@@ -51,6 +51,21 @@ npm run preview
 
 Сборка находится в `dist/`. Для просмотра нужен HTTP-сервер, открытие `index.html` через `file://` не поддерживается. Тесты проверяют цикл карт, ограничения энергии, реакцию защитных способностей на сильную атаку, тайм-аут, ничью и влияние тактики на исход на 50 воспроизводимых комбинациях оружия и seed.
 
+## Публикация на GitHub Pages
+
+Сайт: https://aertonik.github.io/PRIME-TIME-SHOWDOWN/
+
+В `vite.config.ts` задан `base: '/PRIME-TIME-SHOWDOWN/'`. Workflow `.github/workflows/deploy.yml` при push в `main` выполняет `npm ci` и `npm run build`, затем публикует только содержимое `dist` через официальный Pages artifact. В настройках репозитория **Settings → Pages → Source** должен быть выбран **GitHub Actions**. Исходный `index.html` из корня репозитория напрямую публиковать нельзя: браузер не запускает исходный TypeScript.
+
+Локальная проверка именно собранного сайта:
+
+```sh
+npm run build
+npm run preview
+```
+
+Адрес предпросмотра: http://localhost:4173/PRIME-TIME-SHOWDOWN/
+
 ## Устройство прототипа
 
 - `src/combat.ts` — симуляция боя без Phaser, с внедряемым генератором случайных чисел.
