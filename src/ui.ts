@@ -1,165 +1,42 @@
-import { CARDS, WEAPONS, cardById, icon, type CardId, type WeaponId } from './data';
-import { Match, type FighterState } from './combat';
-
-export interface Preferences { weapon: WeaponId; deck: CardId[]; muted: boolean; fans: number; coins: number; }
-export const defaults: Preferences = { weapon: 'pulse', deck: ['dash', 'power', 'shield', 'shock'], muted: false, fans: 0, coins: 0 };
-export function loadPreferences(): Preferences {
-  try {
-    const saved = JSON.parse(localStorage.getItem('prime-time-v1') || '{}');
-    return { ...defaults, ...saved, weapon: WEAPONS.some(w => w.id === saved.weapon) ? saved.weapon : defaults.weapon,
-      deck: Array.isArray(saved.deck) && saved.deck.length === 4 && new Set(saved.deck).size === 4 && saved.deck.every((id: CardId) => CARDS.some(c => c.id === id)) ? saved.deck : [...defaults.deck],
-      fans: Number.isFinite(saved.fans) ? saved.fans : 0, coins: Number.isFinite(saved.coins) ? saved.coins : 0 };
-  } catch { return { ...defaults, deck: [...defaults.deck] }; }
-}
+import { BALANCE, CARDS, CARD_IDS, WEAPONS, fame, type CardId, type WeaponId } from './data';
+import type { Combat } from './combat';
+import type { Profile } from './storage';
+import { escapeHtml as esc, icon } from './icons';
+export type Screen = 'home' | 'loadout' | 'career' | 'settings' | 'intro' | 'battle' | 'result';
 export class UI {
-  root = document.querySelector<HTMLDivElement>('#interface')!;
-  preferences = loadPreferences();
-  onPlay = () => {};
-  onCard = (_index: number) => {};
-  onPause = (_paused: boolean) => {};
-  onLobby = () => {};
-  onSound = (_muted: boolean) => {};
-  private lastHand = '';
-  private toastTimer = 0;
-  private warning = false;
-  private mode = 'lobby';
-  private lastBuffs = '';
-  constructor() {
-    this.root.innerHTML = `
-      <header class="topbar"><div class="live"><i></i>LIVE ON AIR</div><div class="top-meta"><span>STUDIO 01</span><button class="icon-button sound-toggle" aria-label="Выключить звук"></button><button class="icon-button hidden" id="pause-button" aria-label="Пауза">${icon('pause')}</button></div></header>
-      <section id="lobby" aria-label="Подготовка к матчу">
-        <div class="lobby-title"><div class="eyebrow">THE WORLD IS WATCHING</div><h1>PRIME TIME<span>SHOWDOWN</span></h1></div>
-        <div class="intro-tag">ТВОЙ ВЫХОД. ТВОЯ СЛАВА.</div>
-        <div class="fighter-tag player"><b>NEON</b><span>ВОСХОДЯЩАЯ ЗВЕЗДА</span></div><div class="fighter-tag enemy"><b>VOLT</b><span>ЧЕМПИОН СТУДИИ</span></div>
-        <div class="loadout"><div class="section-line">01 / ТВОЁ ОРУЖИЕ <small>АВТОМАТИЧЕСКИЙ ОГОНЬ</small></div><div class="weapons">${WEAPONS.map(w => `<button class="weapon" data-weapon="${w.id}" aria-pressed="false">${icon(w.id)}<span><b>${w.name}</b><small>${w.tag}</small></span></button>`).join('')}</div>
-          <div class="section-line deck-label">02 / ТВОЯ ТАКТИКА <small class="deck-count"></small></div>
-          <div class="deck-grid">${CARDS.map(c => `<button class="deck-card" style="--card:${c.color}" data-select="${c.id}" aria-pressed="false" aria-label="${c.name}: ${c.description} Стоимость: ${c.cost}.">${icon(c.id)}<span><b>${c.name}</b><span class="mini-cost">${c.cost} ЭНЕРГИИ</span></span><span class="check hidden">✓</span></button>`).join('')}</div>
-          <div class="card-info" aria-live="polite">Выбери 4 карты. Применяй их в нужный момент.</div>
-          <button class="play-button" id="play">PLAY ${icon('arrow')}</button><div class="lobby-foot">75 СЕКУНД <span>·</span> 2 БОЙЦА <span>·</span> ОДИН ПРЯМОЙ ЭФИР</div>
-        </div>
-      </section>
-      <section id="match-hud" class="hidden" aria-label="Дуэль">
-        <div class="match-brand">PRIME TIME <span>/ SHOWDOWN</span></div>
-        <div class="scoreboard"><div class="competitor"><div class="name-row"><b>NEON</b><small>ТЫ</small></div><div class="health"><span id="player-health"></span></div><div class="hp-number" id="player-hp">1 200 / 1 200</div></div><div class="clock"><b id="timer">1:15</b><small>ON THE CLOCK</small></div><div class="competitor enemy"><div class="name-row"><b>VOLT</b><small>ИИ</small></div><div class="health"><span id="enemy-health"></span></div><div class="hp-number" id="enemy-hp">1 200 / 1 200</div></div></div>
-        <div class="status-strip"><div class="status-side player-buffs"></div><div class="status-side enemy-buffs"></div></div>
-        <div class="showtime-label hidden">★ SHOWTIME ★</div><div class="round-label"><span>MAIN EVENT / 01</span><strong>NEON DOME</strong></div>
-        <div class="warning hidden" role="status"><b>ВНИМАНИЕ: МОЩНЫЙ ВЫСТРЕЛ</b><small>Рывок, щит или электрошок!</small></div>
-        <div class="arena-tip">Бойцы атакуют сами. <strong>Момент решаешь ты.</strong></div>
-        <div class="energy-panel"><div class="energy-title"><span>${icon('shock')}ЭНЕРГИЯ</span><b><span id="energy-number">6</span><small> / 10</small></b></div><div class="energy-track">${Array.from({ length: 10 }, () => '<div class="energy-cell"><i></i></div>').join('')}</div></div>
-        <div class="hand" aria-label="Карты способностей"></div><div class="match-footer"><span><strong>ТВОИ КАРТЫ</strong> · НАЖМИ ДЛЯ АКТИВАЦИИ</span><span class="onair-bars"><i></i><i></i><i></i></span><span>ПРЯМОЙ ЭФИР</span></div>
-      </section>
-      <div id="countdown" class="overlay countdown hidden"><div><small>КАМЕРЫ ГОТОВЫ. А ТЫ?</small><div class="count-number">3</div><p>Бойцы двигаются и стреляют сами.<br>Нажимай карты, чтобы изменить ход боя.</p></div></div>
-      <div id="pause" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="dialog pause-dialog"><div class="eyebrow">BROADCAST ON HOLD</div><h2 id="pause-title">РЕКЛАМНАЯ ПАУЗА</h2><p>Эфир подождёт. Твоя энергия тоже.</p><button class="play-button" id="resume">ПРОДОЛЖИТЬ ${icon('arrow')}</button><button class="secondary" id="quit">К ВЫБОРУ СНАРЯЖЕНИЯ</button></div></div>
-      <div id="result" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Результат матча"></div><div class="toast hidden" role="status"></div>`;
-    this.root.querySelectorAll<HTMLButtonElement>('[data-weapon]').forEach(btn => btn.onclick = () => {
-      this.preferences.weapon = btn.dataset.weapon as WeaponId;
-      this.updateLoadout(); this.save(); this.info(WEAPONS.find(w => w.id === this.preferences.weapon)!.description);
-    });
-    this.root.querySelectorAll<HTMLButtonElement>('[data-select]').forEach(btn => btn.onclick = () => {
-      const id = btn.dataset.select as CardId;
-      if (this.preferences.deck.includes(id)) this.preferences.deck = this.preferences.deck.filter(c => c !== id);
-      else if (this.preferences.deck.length < 4) this.preferences.deck.push(id);
-      else { this.info('Сначала убери одну карту, чтобы добавить другую.'); return; }
-      this.info(cardById(id).description); this.updateLoadout();
-      if (this.preferences.deck.length === 4) this.save();
-    });
-    this.el<HTMLButtonElement>('#play').onclick = () => this.onPlay();
-    this.el<HTMLButtonElement>('.sound-toggle').onclick = () => {
-      this.preferences.muted = !this.preferences.muted; this.soundIcon(); this.save(); this.onSound(this.preferences.muted);
+  constructor(public root: HTMLElement) {}
+  header(p: Profile) { return `<header class="topbar"><div class="identity"><span class="avatar">${icon('star')}</span><span><strong>${esc(p.name)}</strong><small>${fame(p.fans).name} / LV.${fame(p.fans).level}</small></span></div><div class="wallet"><span>${icon('fans')}<b>${p.fans.toLocaleString('ru')}</b></span><span class="gold">${icon('coin')}<b>${p.coins.toLocaleString('ru')}</b></span></div></header>`; }
+  back(title: string, sub: string) { return `<header class="page-header"><button class="icon-button" data-action="home" aria-label="Главное меню">${icon('back')}</button><div><small>${sub}</small><h1>${title}</h1></div><span class="channel">CH.01</span></header>`; }
+  render(screen: Screen, p: Profile, match?: Combat, rewards?: { fans: number; coins: number; win: boolean; draw: boolean }) {
+    this.root.className = screen;
+    const views: Record<Screen, () => string> = {
+      home: () => `${this.header(p)}<section class="home-brand"><div class="broadcast"><span class="live-dot"></span> LIVE ON AIR <span>EST. 1999</span></div><h1>PRIME<span>TIME<span class="title-star">✦</span></span></h1><div class="showdown"><i></i> SHOWDOWN <i></i></div><p>ТВОЙ МОМЕНТ. ТВОЙ ЭФИР.</p></section><div class="hero-caption"><span class="vertical-copy">THE NEXT BIG THING</span><span class="hero-label"><i></i> НОВЫЙ УЧАСТНИК</span></div><section class="home-bottom"><div class="season-line"><span>EPISODE 001 <b>THE DEBUT</b></span><span>${p.wins} ПОБЕД ${icon('trophy')}</span></div><button class="primary play-button" data-action="play"><span><small>КАМЕРЫ ГОТОВЫ. А ТЫ?</small>В БОЙ</span>${icon('play')}</button><button class="loadout-button" data-action="loadout">${icon('weapon')}<span>СНАРЯЖЕНИЕ<small>${WEAPONS[p.weapon].tag} · 4 КАРТЫ</small></span><b>↗</b></button><nav><button data-action="career">${icon('trophy')} КАРЬЕРА</button><button data-action="settings">${icon('settings')} НАСТРОЙКИ</button></nav><footer><span>ALPHA 0.1</span><span>NO SCRIPT. JUST SHOWDOWN.</span><span class="live-dot"></span></footer></section>`,
+      loadout: () => `${this.back('СНАРЯЖЕНИЕ', 'BACKSTAGE / 01')}<div class="loadout-scroll"><div class="section-label">ОСНОВНОЕ ОРУЖИЕ <span>03 AVAILABLE</span></div><div class="weapon-tabs">${(Object.keys(WEAPONS) as WeaponId[]).map(id => `<button data-weapon="${id}" class="${id === p.weapon ? 'selected' : ''}">${icon('weapon')}<span>${WEAPONS[id].tag}</span></button>`).join('')}</div><div class="fighter-preview"><div><small>YOUR FIGHTER</small><h2>${esc(p.name)}</h2><span class="tag">${fame(p.fans).name}</span></div><div class="gun-info"><small>EQUIPPED</small><h3>${WEAPONS[p.weapon].name}</h3><p>${WEAPONS[p.weapon].description}</p><div class="gun-stats"><span>УРОН <b>${WEAPONS[p.weapon].damage}</b></span><span>ТЕМП <b>${(1 / WEAPONS[p.weapon].interval).toFixed(1)}/с</b></span></div></div></div><section class="deck-panel"><div class="section-label">ТВОЙ КОМПЛЕКТ <span id="deck-count">${p.deck.length} / 4</span></div><p class="muted">Выбери 4 карты. В бою доступны 3, следующая — в очереди.</p><div class="deck-grid">${CARD_IDS.map(id => this.deckCard(id, p.deck.includes(id))).join('')}</div><div class="combo-tip">${icon('bolt')} <span><b>ВРЕМЯ ДЛЯ КОМБО — 2 СЕКУНДЫ</b>DASH или SHOCK → POWER SHOT = +50% урона</span></div><button class="primary" data-action="save-loadout" ${p.deck.length !== 4 ? 'disabled' : ''}>ГОТОВО К ЭФИРУ ${icon('check')}</button></section></div>`,
+      career: () => `${this.back('КАРЬЕРА', 'YOUR ROAD TO PRIME TIME')}<div class="page-content"><div class="career-emblem">${icon('trophy')}</div><div class="center"><span class="eyebrow">УРОВЕНЬ ПОПУЛЯРНОСТИ ${fame(p.fans).level}</span><h2 class="big-title">${fame(p.fans).name}</h2><p>${fame(p.fans).ru}</p></div><div class="fame-progress"><span>${p.fans} ФАНАТОВ</span><span>${fame(p.fans).next}</span><div><i style="width:${Math.min(100, p.fans / fame(p.fans).next * 100)}%"></i></div></div><div class="career-stats"><div><b>${p.wins}</b><span>ПОБЕД</span></div><div><b>${p.matches}</b><span>ЭФИРОВ</span></div><div><b>${p.damage}</b><span>УРОН</span></div><div><b>${p.combos}</b><span>КОМБО</span></div></div><div class="career-path">${[{ n: 'NEW FACE', f: 0 }, { n: 'RISING STAR', f: 400 }, { n: 'HEADLINER', f: 1200 }].map((s, i) => `<div class="${p.fans >= s.f ? 'reached' : ''}"><b>0${i + 1}</b><span>${s.n}<small>${s.f} ФАНАТОВ</small></span>${icon(p.fans >= s.f ? 'check' : 'star')}</div>`).join('')}</div><p class="muted center">Победа: от 85 фанатов · Комбо: +15<br>Каждый выход в эфир приносит награды.</p><button class="primary" data-action="play">СЛЕДУЮЩИЙ ЭФИР ${icon('play')}</button></div>`,
+      settings: () => `${this.back('НАСТРОЙКИ', 'CONTROL ROOM')}<div class="page-content settings-content"><span class="eyebrow">ПРОФИЛЬ УЧАСТНИКА</span><label class="name-field">НИКНЕЙМ<input id="nickname" maxlength="16" value="${esc(p.name)}" autocomplete="off" spellcheck="false"></label><div class="setting-row"><div>${icon('sound')}<span>ЗВУК<small>Синтезированные эффекты и аудитория</small></span></div><button role="switch" aria-checked="${p.sound}" aria-label="Звук" class="toggle ${p.sound ? 'on' : ''}" data-action="sound"><i></i></button></div><div class="setting-row"><div>${icon('settings')}<span>ГРАФИКА<small>Авто снижает эффекты при низком FPS</small></span></div><button class="chip" data-action="quality">${p.quality === 'auto' ? 'АВТО' : 'НИЗКАЯ'}</button></div><div class="settings-note"><span class="eyebrow">КАК ИГРАТЬ</span><h3>ТЫ РЕШАЕШЬ, КОГДА.</h3><p>Боец двигается и стреляет сам. Следи за энергией и используй карты в нужный момент.</p><p>Жёлтое предупреждение — соперник готовит мощный выстрел. Защищайся щитом, уходи рывком или прерывай электрошоком.</p><p>На 35-й секунде начинается SHOWTIME: энергия обоих бойцов восстанавливается быстрее.</p></div><button class="primary" data-action="save-settings">СОХРАНИТЬ ${icon('check')}</button><p class="muted center">Прогресс хранится в этом браузере.<br>Alpha 0.1 · локальные дуэли против ИИ</p></div>`,
+      intro: () => `<div class="intro-card"><div class="broadcast"><span class="live-dot"></span> ВХОДЯЩИЙ СИГНАЛ</div><span class="eyebrow">ПРИГЛАШЕНИЕ / УЧАСТНИК 001</span><h1>ТЕБЯ<br>УВИДЯТ<br><em>ВСЕ.</em></h1><div class="host-quote"><span>THE HOST</span><p>«Добро пожаловать в PRIME TIME! Здесь рождаются легенды!»</p><p>«Ты пока неизвестный новичок. Готов доказать, что достоин эфира?»</p></div><button class="primary" data-action="start">Я ГОТОВ ${icon('play')}</button><button class="text-button" data-action="start">ПРОПУСТИТЬ ВСТУПЛЕНИЕ →</button></div>`,
+      battle: () => this.battle(p, match!),
+      result: () => `<div class="result-page"><div class="broadcast"><span class="live-dot"></span> ЭФИР ЗАВЕРШЁН <span>EP.${String(p.matches).padStart(3, '0')}</span></div><div class="result-title"><span class="eyebrow">${rewards!.draw ? 'TOO CLOSE TO CALL' : rewards!.win ? 'THE CROWD GOES WILD' : 'YOUR STORY IS JUST BEGINNING'}</span><h1>${rewards!.draw ? 'НИЧЬЯ' : rewards!.win ? 'ПОБЕДА' : 'ЕЩЁ ДУБЛЬ'}</h1><p>${rewards!.win ? 'Сегодня эфир принадлежит тебе.' : rewards!.draw ? 'Достойные соперники. Нужен реванш.' : 'Даже легенды начинают с первого дубля.'}</p></div><div class="result-spacer"></div><div class="result-rewards"><div>${icon('fans')}<strong>+${rewards!.fans}</strong><span>ФАНАТОВ</span></div><div>${icon('coin')}<strong>+${rewards!.coins}</strong><span>КРЕДИТОВ</span></div></div><div class="result-stats"><span>НАНЕСЁННЫЙ УРОН <b>${match!.stats.damage}</b></span><span>ИСПОЛЬЗОВАНО КАРТ <b>${match!.stats.cards}</b></span><span>ВРЕМЯ В ЭФИРЕ <b>${Math.ceil(match!.elapsed)} С</b></span></div><div class="best-moment">${icon('bolt')}<span><small>ЛУЧШИЙ МОМЕНТ</small><b>${match!.stats.best}</b></span><span class="tag">${fame(p.fans).name}</span></div><button class="primary" data-action="again">PLAY AGAIN ${icon('play')}</button><button class="secondary" data-action="home">ГЛАВНОЕ МЕНЮ</button></div>`,
     };
-    this.el<HTMLButtonElement>('#pause-button').onclick = () => this.onPause(true);
-    this.el<HTMLButtonElement>('#resume').onclick = () => this.onPause(false);
-    this.el<HTMLButtonElement>('#quit').onclick = () => this.onLobby();
-    this.el('.hand').addEventListener('click', e => {
-      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-slot]');
-      if (button) this.onCard(Number(button.dataset.slot));
-    });
-    this.updateLoadout(); this.soundIcon();
+    this.root.innerHTML = views[screen]();
   }
-  el<T extends HTMLElement = HTMLElement>(query: string) { return this.root.querySelector<T>(query)!; }
-  save() { try { localStorage.setItem('prime-time-v1', JSON.stringify(this.preferences)); } catch { /* Private browsing still works. */ } }
-  private info(text: string) { this.el('.card-info').textContent = text; }
-  private updateLoadout() {
-    this.root.querySelectorAll<HTMLElement>('[data-weapon]').forEach(b => { const chosen = b.dataset.weapon === this.preferences.weapon; b.classList.toggle('selected', chosen); b.setAttribute('aria-pressed', String(chosen)); });
-    this.root.querySelectorAll<HTMLElement>('[data-select]').forEach(b => { const chosen = this.preferences.deck.includes(b.dataset.select as CardId); b.classList.toggle('selected', chosen); b.setAttribute('aria-pressed', String(chosen)); b.querySelector('.check')!.classList.toggle('hidden', !chosen); });
-    this.el('.deck-count').textContent = `${this.preferences.deck.length} / 4 ВЫБРАНО`;
-    this.el<HTMLButtonElement>('#play').disabled = this.preferences.deck.length !== 4;
+  deckCard(id: CardId, selected: boolean) { const c = CARDS[id]; return `<button class="deck-card ${selected ? 'selected' : ''}" style="--card:${c.color}" data-card="${id}" aria-pressed="${selected}"><span class="cost">${c.cost}</span><span class="selection-mark">${icon('check')}</span>${icon(c.icon, 'card-symbol')}<b>${c.name}</b><small>${c.description}</small></button>`; }
+  battle(p: Profile, m: Combat) {
+    return `<div class="battle-top"><div class="broadcast"><span class="live-dot"></span> LIVE ON AIR <button class="pause-button" data-action="pause" aria-label="Пауза">Ⅱ</button></div><div class="scoreboard"><div class="fighter-hud"><small>YOU / ${esc(p.name)}</small><div class="health"><i id="player-hp"></i></div><strong id="player-health">320</strong></div><div class="clock"><small>ROUND 01</small><b id="clock">75</b></div><div class="fighter-hud rival"><small id="rival-name">${m.enemy.tactic === 'aggressive' ? 'STATIC JACK' : 'VELVET VIPER'}</small><div class="health"><i id="enemy-hp"></i></div><strong id="enemy-health">320</strong></div></div><div class="match-caption"><span>${WEAPONS[p.weapon].tag}</span><span>1 VS 1</span><span>${WEAPONS[m.enemy.weapon].tag}</span></div><div id="enemy-warning" class="enemy-warning" hidden>⚠ СОПЕРНИК ГОТОВИТ POWER SHOT</div><div id="battle-status" class="battle-status"></div></div><div id="announcement" class="announcement" aria-live="polite"></div><div id="combat-labels"></div><section class="battle-bottom"><div class="energy-label"><span>${icon('bolt')} ЭНЕРГИЯ <b id="energy-value">7 / 10</b></span><span id="next-card">ДАЛЕЕ: ${CARDS[m.cycle.next].name}</span></div><div class="energy-track"><i id="energy-bar"></i></div><div class="hand" id="hand"></div><p class="battle-hint" id="battle-hint">DASH / SHOCK → POWER SHOT = КОМБО</p></section><div id="pause-overlay" class="pause-overlay" hidden><span class="eyebrow">ЭФИР ПРИОСТАНОВЛЕН</span><h2>ПАУЗА</h2><button class="primary" data-action="resume">ПРОДОЛЖИТЬ ${icon('play')}</button><button class="secondary" data-action="quit">ЗАВЕРШИТЬ МАТЧ</button><p class="muted">Выход засчитывается как поражение.</p></div>`;
   }
-  private soundIcon() {
-    const b = this.el<HTMLButtonElement>('.sound-toggle');
-    b.innerHTML = icon(this.preferences.muted ? 'muted' : 'sound');
-    b.setAttribute('aria-label', this.preferences.muted ? 'Включить звук' : 'Выключить звук');
-    b.setAttribute('aria-pressed', String(this.preferences.muted));
-  }
-  lobby() {
-    this.mode = 'lobby'; this.show('#lobby', true); this.show('#match-hud', false); this.show('#pause-button', false);
-    for (const id of ['#countdown', '#pause', '#result', '.toast']) this.show(id, false);
-    this.updateLoadout();
-  }
-  begin(match: Match) {
-    this.mode = 'countdown'; this.lastHand = ''; this.lastBuffs = ''; this.warning = false;
-    this.show('#lobby', false); this.show('#match-hud', true); this.show('#result', false); this.show('#pause', false); this.show('.warning', false);
-    this.show('.showtime-label', false); this.show('#pause-button', false); this.show('#countdown', true); this.update(match);
-  }
-  count(value: string) {
-    const number = this.el('.count-number'); number.textContent = value;
-    number.style.animation = 'none'; void number.offsetWidth; number.style.animation = '';
-  }
-  start() { this.mode = 'fight'; this.show('#countdown', false); this.show('#pause-button', true); }
-  pause(value: boolean) { this.show('#pause', value); this.mode = value ? 'pause' : 'fight'; if (value) this.el('#resume').focus(); }
-  show(selector: string, visible: boolean) { this.el(selector).classList.toggle('hidden', !visible); }
-  toast(message: string) {
-    this.el('.toast').textContent = message; this.show('.toast', true); window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.show('.toast', false), 2000);
-  }
-  update(match: Match) {
-    for (const side of ['player', 'enemy'] as const) {
-      this.el(`#${side}-health`).style.width = `${match[side].hp / match.maxHp * 100}%`;
-      this.el(`#${side}-hp`).textContent = `${match[side].hp.toLocaleString('ru')} / 1 200`;
-    }
-    const sec = Math.ceil(match.remaining);
-    this.el('#timer').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    this.el('.clock').classList.toggle('urgent', sec <= 15);
-    this.el('#energy-number').textContent = `${Math.floor(match.energy)}`;
-    this.root.querySelectorAll<HTMLElement>('.energy-cell i').forEach((cell, i) => cell.style.width = `${Math.min(1, Math.max(0, match.energy - i)) * 100}%`);
-    const handKey = match.hand.join();
-    if (handKey !== this.lastHand) {
-      match.hand.forEach((id, i) => {
-        const current = this.el('.hand').children[i] as HTMLButtonElement | undefined;
-        if (current?.dataset.card === id) return;
-        const c = cardById(id), b = document.createElement('button');
-        b.className = 'ability replacing'; b.style.setProperty('--card', c.color); b.dataset.slot = `${i}`; b.dataset.card = id;
-        b.setAttribute('aria-label', `${c.name}. ${c.description} Стоимость: ${c.cost}.`);
-        b.title = c.description;
-        b.innerHTML = `<span class="key">${i + 1}</span><span class="cost">${c.cost}</span>${icon(c.id)}<b>${c.name}</b><small>${c.short}</small>`;
-        if (current) current.replaceWith(b); else this.el('.hand').append(b);
-      });
-      this.lastHand = handKey;
-    }
-    this.root.querySelectorAll<HTMLButtonElement>('[data-slot]').forEach((b, i) => { b.disabled = this.mode !== 'fight' || !match.canPlay(i); });
-    if (this.warning !== (match.warning > 0)) { this.warning = match.warning > 0; this.show('.warning', this.warning); }
-    this.show('.showtime-label', match.showtime && !this.warning);
-    const buffKey = [match.player, match.enemy].map(f => [f.shield, f.smoke, f.dodge, f.boost, f.stun].map(n => Math.ceil(n)).join()).join('|');
-    if (buffKey !== this.lastBuffs) {
-      const buffs = (f: FighterState) => (['shield', 'smoke', 'dodge', 'boost', 'stun'] as const).filter(b => f[b] > 0).map(b => `<span class="buff">${{ shield: 'ЩИТ', smoke: 'ДЫМ', dodge: 'РЫВОК', boost: 'БУСТ', stun: 'ОГЛУШЁН' }[b]} ${Math.ceil(f[b])}с</span>`).join('');
-      this.el('.player-buffs').innerHTML = buffs(match.player); this.el('.enemy-buffs').innerHTML = buffs(match.enemy); this.lastBuffs = buffKey;
-    }
-  }
-  finishing(winner: string) {
-    this.mode = 'result'; this.show('#pause-button', false); this.show('.warning', false);
-    this.root.querySelectorAll<HTMLButtonElement>('[data-slot]').forEach(b => b.disabled = true);
-    const banner = document.createElement('div'); banner.className = 'end-banner';
-    banner.textContent = winner === 'player' ? 'VICTORY!' : winner === 'draw' ? 'DRAW!' : 'KNOCKOUT!'; this.root.append(banner);
-    window.setTimeout(() => banner.remove(), 1300);
-  }
-  result(match: Match) {
-    const win = match.winner === 'player', draw = match.winner === 'draw';
-    const fans = win ? 120 + match.stats.cards * 8 : draw ? 60 : 35 + match.stats.cards * 3;
-    const coins = win ? 80 : draw ? 40 : 25;
-    this.preferences.fans += fans; this.preferences.coins += coins; this.save();
-    this.el('#result').innerHTML = `<div class="dialog result ${win ? '' : 'loss'}"><div class="trophy">${icon(win ? 'trophy' : 'shock')}</div><div class="eyebrow">${win ? 'A STAR IS BORN' : draw ? 'TOO CLOSE TO CALL' : 'THE COMEBACK STARTS HERE'}</div><h2>${win ? 'ТВОЙ ПРАЙМ-ТАЙМ' : draw ? 'НА РАВНЫХ' : 'ЕЩЁ ОДИН ДУБЛЬ'}</h2><p>${win ? 'Студия скандирует твоё имя. Это был твой эфир.' : draw ? 'Даже камеры не смогли выбрать победителя.' : 'VOLT забрал этот эфир. Смени тактику и вернись.'}</p><div class="rewards"><div class="reward">${icon('fans')}<b>+${fans}</b><small>НОВЫХ ФАНАТОВ</small></div><div class="reward">${icon('coin')}<b>+${coins}</b><small>ШОУ-КОИНОВ</small></div></div><div class="result-stats"><span><b>${match.stats.dealt.toLocaleString('ru')}</b>УРОНА</span><span><b>${match.stats.cards}</b>КАРТ СЫГРАНО</span><span><b>${Math.round(match.elapsed)}с</b>В ЭФИРЕ</span></div><button class="play-button" id="again">PLAY AGAIN ${icon('arrow')}</button><button class="secondary" id="edit-loadout">ИЗМЕНИТЬ СНАРЯЖЕНИЕ</button><p class="result-note">Демо-прогресс · ${this.preferences.fans.toLocaleString('ru')} фанатов · ${this.preferences.coins} монет всего</p></div>`;
-    this.el<HTMLButtonElement>('#again').onclick = () => this.onPlay();
-    this.el<HTMLButtonElement>('#edit-loadout').onclick = () => this.onLobby();
-    this.show('#result', true); this.el('#again').focus();
+  private lastHand = '';
+  updateBattle(m: Combat, blocked = false) {
+    const set = (id: string, text: string) => { const el = this.root.querySelector<HTMLElement>(`#${id}`); if (el && el.textContent !== text) el.textContent = text; };
+    for (const side of ['player', 'enemy'] as const) { const hp = this.root.querySelector<HTMLElement>(`#${side}-hp`); if (hp) hp.style.width = `${m[side].hp / BALANCE.hp * 100}%`; set(`${side}-health`, String(m[side].hp)); }
+    set('clock', String(Math.ceil(m.remaining)).padStart(2, '0'));
+    set('energy-value', `${Math.floor(m.player.energy)} / 10`); const bar = this.root.querySelector<HTMLElement>('#energy-bar'); if (bar) bar.style.width = `${m.player.energy * 10}%`;
+    set('next-card', `ДАЛЕЕ: ${CARDS[m.cycle.next].name}`);
+    const key = m.cycle.hand.join(','); const hand = this.root.querySelector<HTMLElement>('#hand');
+    if (hand && (key !== this.lastHand || !hand.children.length)) { this.lastHand = key; hand.innerHTML = m.cycle.hand.map((id, i) => `<button class="battle-card" style="--card:${CARDS[id].color}" data-play="${i}"><span class="cost">${CARDS[id].cost}</span>${icon(CARDS[id].icon, 'card-symbol')}<b>${CARDS[id].name}</b><small>${CARDS[id].label}</small></button>`).join(''); }
+    this.root.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((el, i) => { el.disabled = blocked || m.player.energy < CARDS[m.cycle.hand[i]].cost || m.player.stun > 0 || (m.cycle.hand[i] === 'power' && m.player.windup > 0) || m.finished; });
+    const warning = this.root.querySelector<HTMLElement>('#enemy-warning'); if (warning) warning.hidden = m.enemy.windup <= 0 || m.finished;
+    const states = [m.player.shield > 0 && 'ЩИТ', m.player.smoke > 0 && 'ДЫМ', m.player.stun > 0 && 'ОГЛУШЕНИЕ', m.player.overdrive > 0 && 'ФОРСАЖ', m.player.dodge > 0 && 'УКЛОНЕНИЕ'].filter(Boolean).join(' · ');
+    set('battle-status', states);
+    set('battle-hint', m.player.shockWindow > 0 || m.player.dashWindow > 0 ? 'КОМБО ОТКРЫТО → POWER SHOT!' : m.showtime ? 'SHOWTIME · ВОССТАНОВЛЕНИЕ ЭНЕРГИИ ×1,25' : 'DASH / SHOCK → POWER SHOT = КОМБО');
   }
 }

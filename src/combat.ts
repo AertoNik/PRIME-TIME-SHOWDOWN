@@ -1,178 +1,93 @@
-import { cardById, type CardId, type WeaponId } from './data';
-
+import { BALANCE, CARDS, WEAPONS, type CardId, type WeaponId } from './data';
+import { CardCycle } from './cards';
+import { botChoice, preferredRange, type Tactic } from './ai';
 export type Side = 'player' | 'enemy';
-export interface FighterState {
-  side: Side; hp: number; x: number; y: number; targetX: number; targetY: number;
-  attackIn: number; moveIn: number; shield: number; dodge: number; smoke: number; stun: number; boost: number;
-}
-export type CombatEvent =
-  | { type: 'shot'; side: Side; heavy: boolean; scatter: boolean; targetX: number; targetY: number }
-  | { type: 'hit'; side: Side; damage: number; blocked: boolean; critical: boolean }
-  | { type: 'miss'; side: Side }
-  | { type: 'cast'; side: Side; card: CardId }
-  | { type: 'warning'; active: boolean }
-  | { type: 'showtime'; active: boolean }
-  | { type: 'finish'; winner: Side | 'draw' }
-  | { type: 'combo'; count: number };
-interface PendingHit { in: number; target: Side; damage: number; accuracy: number; heavy: boolean; }
-
-export function shuffled<T>(array: T[], random = Math.random): T[] {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-export class Match {
-  readonly maxHp = 1200;
-  readonly maxEnergy = 10;
-  player: FighterState;
-  enemy: FighterState;
-  hand: CardId[];
-  queue: CardId[];
-  slots = [0, 0, 0];
-  energy = 6;
+export interface Fighter { side: Side; x: number; z: number; hp: number; weapon: WeaponId; energy: number; shield: number; smoke: number; stun: number; dodge: number; overdrive: number; cooldown: number; windup: number; pendingCombo: string; dashWindow: number; shockWindow: number; recoil: number; hit: number; stride: number; tactic: Tactic }
+export interface CombatEvent { type: 'shot' | 'hit' | 'card' | 'combo' | 'showtime' | 'finish' | 'evade'; side: Side; x: number; z: number; tx?: number; tz?: number; damage?: number; heavy?: boolean; text?: string; card?: CardId; hit?: boolean; weapon?: WeaponId }
+export interface MatchStats { damage: number; received: number; cards: number; combos: number; dodges: number; best: string }
+export class Combat {
+  player: Fighter;
+  enemy: Fighter;
+  cycle: CardCycle;
   elapsed = 0;
-  remaining = 75;
+  remaining = BALANCE.duration;
   finished = false;
   winner: Side | 'draw' | null = null;
   showtime = false;
-  showtimeAt: number;
-  warning = 0;
-  heavyIn = 5.5;
-  defenseIn = 10;
-  combo = 0;
-  lastCardAt = -100;
-  stats = { cards: 0, dealt: 0, prevented: 0, combos: 0 };
-  private hits: PendingHit[] = [];
-  private events: CombatEvent[] = [];
-  constructor(public weapon: WeaponId, deck: CardId[], private random = Math.random) {
-    if (deck.length !== 4 || new Set(deck).size !== 4) throw new Error('Choose four unique cards');
-    const pool = shuffled(deck, random);
-    this.hand = pool.slice(0, 3);
-    this.queue = pool.slice(3);
-    this.showtimeAt = 18 + random() * 8;
-    this.player = this.fighter('player', 135, 410);
-    this.enemy = this.fighter('enemy', 315, 370);
+  events: CombatEvent[] = [];
+  stats: MatchStats = { damage: 0, received: 0, cards: 0, combos: 0, dodges: 0, best: 'В центре внимания' };
+  private aiClock = 2.5;
+  constructor(weapon: WeaponId, deck: CardId[], public random: () => number = Math.random, tactic: Tactic = random() < 0.5 ? 'aggressive' : 'cautious') {
+    const fighter = (side: Side, gun: WeaponId, z: number): Fighter => ({ side, x: side === 'player' ? -1.1 : 1.1, z, hp: BALANCE.hp, weapon: gun, energy: 7, shield: 0, smoke: 0, stun: 0, dodge: 0, overdrive: 0, cooldown: 0.7, windup: 0, pendingCombo: '', dashWindow: 0, shockWindow: 0, recoil: 0, hit: 0, stride: 0, tactic });
+    this.player = fighter('player', weapon, 2.7);
+    this.enemy = fighter('enemy', (['pistol', 'shotgun', 'carbine'] as WeaponId[])[Math.floor(random() * 3)], -2.7);
+    this.cycle = new CardCycle(deck, random);
   }
-  private fighter(side: Side, x: number, y: number): FighterState {
-    return { side, hp: this.maxHp, x, y, targetX: x, targetY: y, attackIn: 0.7, moveIn: 1, shield: 0, dodge: 0, smoke: 0, stun: 0, boost: 0 };
-  }
-  drainEvents() { return this.events.splice(0); }
-  canPlay(index: number) {
-    return !this.finished && index >= 0 && index < 3 && this.slots[index] <= 0 && this.energy >= cardById(this.hand[index]).cost;
-  }
-  play(index: number): boolean {
-    if (!this.canPlay(index)) return false;
-    const card = this.hand[index];
-    this.energy -= cardById(card).cost;
-    this.slots[index] = 0.52;
-    this.stats.cards++;
-    this.combo = this.elapsed - this.lastCardAt < 4 ? this.combo + 1 : 1;
-    this.lastCardAt = this.elapsed;
-    if (this.combo >= 2) { this.events.push({ type: 'combo', count: this.combo }); this.stats.combos++; }
-    this.cast('player', card);
-    this.hand[index] = this.queue.shift()!;
-    this.queue.push(card);
+  emit(type: CombatEvent['type'], f: Fighter, extra: Partial<CombatEvent> = {}) { this.events.push({ type, side: f.side, x: f.x, z: f.z, ...extra }); }
+  play(index: number) { if (this.finished || this.player.stun > 0 || (this.cycle.hand[index] === 'power' && this.player.windup > 0)) return false; const card = this.cycle.play(index, this.player.energy); if (!card) return false; this.activate(this.player, this.enemy, card); this.stats.cards++; return true; }
+  activate(f: Fighter, other: Fighter, card: CardId) {
+    if (this.finished || f.stun > 0 || f.energy < CARDS[card].cost || (card === 'power' && f.windup > 0)) return false;
+    f.energy -= CARDS[card].cost;
+    this.emit('card', f, { card, text: CARDS[card].name });
+    if (card === 'dash') { f.dodge = 0.65; f.dashWindow = 2; const dx = f.x - other.x, dz = f.z - other.z, d = Math.hypot(dx, dz) || 1; f.x = Math.max(-4.1, Math.min(4.1, f.x - dz / d * 1.7)); f.z = Math.max(-4.5, Math.min(4.5, f.z + dx / d * 1.7)); }
+    if (card === 'shield') f.shield = 3;
+    if (card === 'smoke') f.smoke = 4;
+    if (card === 'overdrive') f.overdrive = 5;
+    if (card === 'shock') { other.stun = 1.6; other.windup = 0; other.pendingCombo = ''; f.shockWindow = 2; this.hurt(f, other, 8, false); }
+    if (card === 'power') { f.windup = 0.75; f.pendingCombo = f.shockWindow > 0 ? 'SHOCK + POWER' : f.dashWindow > 0 ? 'DASH + POWER' : ''; f.dashWindow = 0; f.shockWindow = 0; }
     return true;
   }
-  private cast(side: Side, card: CardId) {
-    const f = this[side];
-    this.events.push({ type: 'cast', side, card });
-    switch (card) {
-      case 'dash':
-        f.dodge = 1.05;
-        f.targetX = side === 'player' ? 88 + this.random() * 100 : 270 + this.random() * 80;
-        f.targetY = f.y > 405 ? 350 : 460;
-        break;
-      case 'power': this.fire(side, 125, 1, true); break;
-      case 'shield': f.shield = 4; break;
-      case 'smoke': f.smoke = 5; break;
-      case 'shock': {
-        const other = this[side === 'player' ? 'enemy' : 'player'];
-        other.stun = 1.8;
-        if (side === 'player' && this.warning > 0) {
-          this.warning = 0; this.heavyIn = 6;
-          this.events.push({ type: 'warning', active: false });
-        }
-        this.hits.push({ in: 0.05, target: other.side, damage: 35, accuracy: 1, heavy: false });
-        break;
-      }
-      case 'adrenaline': f.boost = 5; break;
-    }
+  hurt(from: Fighter, target: Fighter, damage: number, heavy: boolean) {
+    if (target.dodge > 0) { this.emit('evade', target, { text: 'DODGE' }); if (target.side === 'player') this.stats.dodges++; return 0; }
+    const amount = Math.min(target.hp, Math.round(damage * (target.shield > 0 ? 0.2 : 1)));
+    target.hp = Math.max(0, target.hp - amount); target.hit = 0.28;
+    const dx = target.x - from.x, dz = target.z - from.z, length = Math.hypot(dx, dz) || 1;
+    target.x = Math.max(-4.2, Math.min(4.2, target.x + dx / length * (heavy ? 0.55 : 0.12)));
+    target.z = Math.max(-4.7, Math.min(4.7, target.z + dz / length * (heavy ? 0.55 : 0.12)));
+    if (from.side === 'player') this.stats.damage += amount; else this.stats.received += amount;
+    this.emit('hit', target, { damage: amount, heavy }); return amount;
   }
-  private fire(side: Side, damage: number, accuracy: number, heavy = false) {
-    const target = this[side === 'player' ? 'enemy' : 'player'];
-    this.events.push({ type: 'shot', side, heavy, scatter: side === 'player' && this.weapon === 'scatter' && !heavy, targetX: target.x, targetY: target.y });
-    this.hits.push({ in: heavy ? 0.25 : 0.16, target: target.side, damage: damage * (this.showtime ? 1.2 : 1), accuracy, heavy });
+  shoot(f: Fighter, target: Fighter, heavy = false) {
+    const distance = Math.hypot(f.x - target.x, f.z - target.z), gun = WEAPONS[f.weapon];
+    const accuracy = (heavy ? 1 : 0.93) * (target.smoke > 0 ? 0.35 : 1);
+    const hit = this.random() < accuracy && target.dodge <= 0;
+    const combo = heavy ? f.pendingCombo : '';
+    let damage = heavy ? 45 * (combo ? 1.5 : 1) : gun.damage;
+    if (!heavy && f.weapon === 'shotgun') damage *= Math.max(0.22, Math.min(1.2, 3.3 / Math.max(distance, 0.5)));
+    if (!heavy && distance > gun.range + 1) damage *= 0.65;
+    f.recoil = 0.22;
+    this.emit('shot', f, { tx: target.x, tz: target.z, heavy, hit, weapon: f.weapon });
+    if (hit) { const dealt = this.hurt(f, target, damage, heavy); if (combo && dealt > 0) { this.emit('combo', f, { text: combo }); if (f.side === 'player') { this.stats.combos++; this.stats.best = combo; } } }
+    else if (target.dodge > 0) { this.emit('evade', target, { text: 'DODGE' }); if (target.side === 'player') this.stats.dodges++; }
+    if (heavy) f.pendingCombo = '';
   }
-  step(dt: number) {
+  update(dt: number) {
     if (this.finished) return;
-    dt = Math.min(dt, 0.1);
-    this.elapsed += dt;
-    this.remaining = Math.max(0, 75 - this.elapsed);
-    this.energy = Math.min(this.maxEnergy, this.energy + dt * (this.showtime ? 1.4 : 0.78));
-    this.slots = this.slots.map(v => Math.max(0, v - dt));
-    if (!this.showtime && this.elapsed >= this.showtimeAt && this.elapsed < this.showtimeAt + 6) {
-      this.showtime = true; this.events.push({ type: 'showtime', active: true });
-    } else if (this.showtime && this.elapsed >= this.showtimeAt + 6) {
-      this.showtime = false; this.events.push({ type: 'showtime', active: false });
-    }
+    dt = Math.max(0, Math.min(dt, 0.05)); this.elapsed += dt; this.remaining = Math.max(0, BALANCE.duration - this.elapsed);
+    if (!this.showtime && this.elapsed >= BALANCE.showtime) { this.showtime = true; this.emit('showtime', this.player, { text: 'SHOWTIME' }); }
     for (const f of [this.player, this.enemy]) {
-      for (const buff of ['shield', 'dodge', 'smoke', 'stun', 'boost'] as const) f[buff] = Math.max(0, f[buff] - dt);
+      const other = f === this.player ? this.enemy : this.player;
+      if (f.hp <= 0 || other.hp <= 0) continue;
+      f.energy = Math.min(BALANCE.energy, f.energy + dt * BALANCE.regen * (this.showtime ? 1.25 : 1));
+      for (const key of ['shield', 'smoke', 'stun', 'dodge', 'overdrive', 'dashWindow', 'shockWindow', 'recoil', 'hit'] as const) f[key] = Math.max(0, f[key] - dt);
       if (f.stun > 0) continue;
-      f.moveIn -= dt;
-      if (f.moveIn <= 0 && f.dodge <= 0) {
-        f.targetX = f.side === 'player' ? 90 + this.random() * 120 : 250 + this.random() * 110;
-        f.targetY = 350 + this.random() * 110;
-        f.moveIn = 1.5 + this.random() * 1.5;
-      }
-      const dx = f.targetX - f.x, dy = f.targetY - f.y;
-      const distance = Math.hypot(dx, dy);
-      const speed = (f.dodge > 0 ? 460 : 42) * dt;
-      if (distance > 1) { f.x += dx / distance * Math.min(distance, speed); f.y += dy / distance * Math.min(distance, speed); }
-      f.attackIn -= dt * (f.boost > 0 ? 1.85 : 1) * (this.showtime ? 1.18 : 1);
-      if (f.attackIn <= 0) {
-        const scatter = f.side === 'player' && this.weapon === 'scatter';
-        const distanceToEnemy = Math.hypot(this.player.x - this.enemy.x, this.player.y - this.enemy.y);
-        this.fire(f.side, scatter ? 40 : f.side === 'player' ? 24 : 26, scatter ? distanceToEnemy < 205 ? 0.94 : 0.68 : 0.88);
-        f.attackIn += scatter ? 1.15 : f.side === 'player' ? 0.8 : 0.9;
-      }
+      if (f.windup > 0) { f.windup -= dt; if (f.windup <= 0) this.shoot(f, other, true); continue; }
+      const dx = other.x - f.x, dz = other.z - f.z, d = Math.hypot(dx, dz) || 1;
+      const desired = preferredRange(WEAPONS[f.weapon].range, f.tactic);
+      const radial = Math.max(-1, Math.min(1, (d - desired) * 0.8));
+      const strafe = Math.sin(this.elapsed * 0.85 + (f.side === 'player' ? 0 : 2.8)) * 0.85;
+      const speed = (f.dodge > 0 ? 5 : 1.3) * dt;
+      const ox = f.x, oz = f.z;
+      f.x = Math.max(-4.1, Math.min(4.1, f.x + (dx / d * radial - dz / d * strafe) * speed));
+      f.z = Math.max(-4.5, Math.min(4.5, f.z + (dz / d * radial + dx / d * strafe) * speed));
+      f.stride += Math.hypot(f.x - ox, f.z - oz) * 8;
+      f.cooldown -= dt * (f.overdrive > 0 ? 1.9 : 1);
+      if (f.cooldown <= 0 && d < 9) { this.shoot(f, other); f.cooldown = WEAPONS[f.weapon].interval; }
     }
-    if (this.enemy.stun <= 0) {
-      if (this.warning > 0) {
-        this.warning -= dt;
-        if (this.warning <= 0) { this.fire('enemy', 112, 1, true); this.heavyIn = 7.5 + this.random() * 2; this.events.push({ type: 'warning', active: false }); }
-      } else {
-        this.heavyIn -= dt;
-        if (this.heavyIn <= 0) { this.warning = 1.35; this.events.push({ type: 'warning', active: true }); }
-      }
-      this.defenseIn -= dt;
-      if (this.defenseIn <= 0) { this.cast('enemy', this.random() > 0.5 ? 'shield' : 'adrenaline'); this.defenseIn = 12; }
-    }
-    const due = this.hits.filter(hit => (hit.in -= dt) <= 0);
-    this.hits = this.hits.filter(hit => hit.in > 0);
-    for (const hit of due) {
-      const target = this[hit.target];
-      const smoke = target.smoke > 0;
-      if (target.dodge > 0 || this.random() > hit.accuracy * (smoke ? 0.35 : 1)) {
-        this.events.push({ type: 'miss', side: hit.target });
-        if (hit.target === 'player') this.stats.prevented += Math.round(hit.damage);
-        continue;
-      }
-      const blocked = target.shield > 0;
-      const damage = Math.round(hit.damage * (blocked ? 0.28 : 1));
-      target.hp = Math.max(0, target.hp - damage);
-      if (target.side === 'enemy') this.stats.dealt += damage;
-      else if (blocked) this.stats.prevented += Math.round(hit.damage - damage);
-      this.events.push({ type: 'hit', side: target.side, damage, blocked, critical: hit.heavy });
-    }
-    if (this.player.hp <= 0 || this.enemy.hp <= 0 || this.remaining <= 0) {
-      this.finished = true;
-      this.winner = this.player.hp === this.enemy.hp ? 'draw' : this.player.hp > this.enemy.hp ? 'player' : 'enemy';
-      this.events.push({ type: 'finish', winner: this.winner });
-    }
+    this.aiClock -= dt;
+    if (this.aiClock <= 0 && this.enemy.stun <= 0) { this.aiClock = 2.3 + this.random() * 1.8; this.activate(this.enemy, this.player, botChoice(this.enemy.hp, this.player.windup > 0, this.random())); }
+    if (this.player.hp <= 0 || this.enemy.hp <= 0 || this.remaining <= 0) this.finish();
   }
+  finish() { if (this.finished) return; this.finished = true; this.winner = this.player.hp === this.enemy.hp ? 'draw' : this.player.hp > this.enemy.hp ? 'player' : 'enemy'; this.emit('finish', this.winner === 'enemy' ? this.enemy : this.player); }
+  drainEvents() { return this.events.splice(0); }
 }

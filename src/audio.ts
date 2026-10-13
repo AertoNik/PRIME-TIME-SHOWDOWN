@@ -1,23 +1,22 @@
-export class Sound {
-  private context?: AudioContext;
-  muted = false;
-  unlock() {
-    try { this.context ||= new AudioContext(); void this.context.resume(); } catch { /* Audio is optional. */ }
+import type { WeaponId } from './data';
+export class Audio {
+  private ctx?: AudioContext;
+  enabled = true;
+  unlock() { if (!this.enabled) return; try { this.ctx ??= new AudioContext(); if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {}); } catch { /* Silent browsers remain playable. */ } }
+  tone(frequency: number, duration = 0.08, type: OscillatorType = 'sine', volume = 0.07, end = frequency / 2, delay = 0) {
+    if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime + delay, osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(frequency, t); osc.frequency.exponentialRampToValueAtTime(Math.max(20, end), t + duration);
+    gain.gain.setValueAtTime(volume, t); gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc.connect(gain); gain.connect(this.ctx.destination); osc.start(t); osc.stop(t + duration);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
   }
-  tone(freq: number, length = 0.08, type: OscillatorType = 'sine', gain = 0.04, endFreq?: number, delay = 0) {
-    if (this.muted || !this.context || this.context.state !== 'running') return;
-    const ctx = this.context, osc = ctx.createOscillator(), vol = ctx.createGain();
-    const at = ctx.currentTime + delay;
-    osc.type = type; osc.frequency.setValueAtTime(freq, at);
-    if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, at + length);
-    vol.gain.setValueAtTime(gain, at); vol.gain.exponentialRampToValueAtTime(0.0001, at + length);
-    osc.connect(vol); vol.connect(ctx.destination); osc.start(at); osc.stop(at + length);
-  }
-  shot(heavy = false) { this.tone(heavy ? 180 : 350, heavy ? 0.18 : 0.055, 'sawtooth', heavy ? 0.04 : 0.012, 60); }
-  hit() { this.tone(85, 0.055, 'triangle', 0.025, 35); }
-  card() { this.tone(420, 0.09, 'sine', 0.045, 850); this.tone(840, 0.1, 'triangle', 0.025, 1100, 0.07); }
-  count(go = false) { this.tone(go ? 880 : 440, go ? 0.3 : 0.12, 'sine', 0.045); }
-  warning() { this.tone(660, 0.12, 'square', 0.018); this.tone(880, 0.12, 'square', 0.018, undefined, 0.18); }
-  win() { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.28, 'triangle', 0.045, undefined, i * 0.13)); }
-  lose() { [330, 294, 220].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.035, undefined, i * 0.18)); }
+  click() { this.tone(650, 0.04, 'triangle', 0.04); }
+  shot(weapon: WeaponId, heavy: boolean) { this.tone(heavy ? 110 : weapon === 'shotgun' ? 85 : weapon === 'carbine' ? 880 : 200, heavy ? 0.25 : 0.09, weapon === 'carbine' ? 'sine' : 'sawtooth', heavy ? 0.08 : 0.035, 40); }
+  card() { this.tone(260, 0.15, 'triangle', 0.06, 850); }
+  hit() { this.tone(70, 0.07, 'triangle', 0.035, 30); }
+  shield() { this.tone(450, 0.28, 'sine', 0.04, 1100); }
+  win() { [330, 440, 554, 660].forEach((f, i) => this.tone(f, 0.25, 'triangle', 0.06, f, i * 0.12)); }
+  crowd() { [90, 130, 180].forEach((f, i) => this.tone(f, 0.6, 'sawtooth', 0.012, f * 2, i * 0.08)); }
+  dispose() { void this.ctx?.close(); }
 }
