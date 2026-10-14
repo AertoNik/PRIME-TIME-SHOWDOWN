@@ -16,6 +16,6 @@ export const CARDS: Record<CardId, { name: string; label: string; cost: number; 
 };
 export const CARD_IDS = Object.keys(CARDS) as CardId[];
 export const DEFAULT_DECK: CardId[] = ['dash', 'power', 'shield', 'shock'];
-export const BALANCE = { hp: 320, duration: 75, energy: 10, regen: 0.8, showtime: 35, fixedStep: 1 / 60 };
+export const BALANCE = { hp: 320, duration: 75, energy: 10, regen: 0.8, showtime: 18, fixedStep: 1 / 60 };
 export const RIVALS = [{ name: 'STATIC JACK', style: 'aggressive' }, { name: 'VELVET VIPER', style: 'cautious' }] as const;
 export function fame(fans: number) { return fans >= 1200 ? { name: 'HEADLINER', ru: 'Звезда эфира', level: 3, next: 2400 } : fans >= 400 ? { name: 'RISING STAR', ru: 'На подъёме', level: 2, next: 1200 } : { name: 'NEW FACE', ru: 'Новое лицо', level: 1, next: 400 }; }
