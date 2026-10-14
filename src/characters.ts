@@ -17,9 +17,17 @@ export class Character {
   shield: THREE.Mesh;
   ring: THREE.Mesh;
   halo: THREE.Mesh;
+  aura: THREE.Mesh;
+  charge: THREE.Mesh;
+  hitShell: THREE.Mesh;
   constructor(public enemy = false) {
-    const jacket = enemy ? 0x973748 : 0x1e6666, accent = enemy ? 0xff7187 : 0xf5b844, skin = enemy ? 0xc38667 : 0xdba477;
+    const jacket = enemy ? 0xb84362 : 0x248b86, accent = enemy ? 0xff7187 : 0xf5b844, skin = enemy ? 0xc38667 : 0xdba477;
     this.root.add(this.body); this.body.position.y = 0.92;
+    cube(this.body, 0x263849, 0.56, 0.52, 0.2, 0, 0.53, -0.3);
+    cube(this.body, accent, 0.1, 0.32, 0.05, -0.13, 0.56, -0.42);
+    cube(this.body, accent, 0.1, 0.32, 0.05, 0.13, 0.56, -0.42);
+    cylinder(this.body, 0x516978, 0.018, 0.018, 0.6, -0.24, 1, -0.34);
+    cube(this.body, 0x67efcf, 0.12, 0.05, 0.05, -0.14, 0.65, 0.34, 0, true);
     // Broad cropped jacket, fitted trousers, reinforced shoulders and large sneakers.
     const torso = cylinder(this.body, jacket, 0.43, 0.31, 0.67, 0, 0.49); torso.scale.z = 0.72;
     cube(this.body, 0x151f2b, 0.37, 0.5, 0.08, 0, 0.49, 0.29);
@@ -36,7 +44,7 @@ export class Character {
     for (const [arm, sign] of [[this.leftArm, -1], [this.rightArm, 1]] as const) {
       this.body.add(arm); arm.position.set(sign * 0.44, 0.74, 0);
       cylinder(arm, jacket, 0.19, 0.16, 0.36, 0, -0.12);
-      cube(arm, 0x303c49, 0.34, 0.18, 0.36, 0, 0.03, 0, 0.35);
+      cube(arm, 0x303c49, 0.39, 0.2, 0.4, 0, 0.03, 0, 0.35);
       cube(arm, accent, 0.2, 0.05, 0.37, 0, 0.13);
       cylinder(arm, skin, 0.13, 0.15, 0.33, 0, -0.43);
       cube(arm, 0x172631, 0.28, 0.23, 0.27, 0, -0.6);
@@ -52,17 +60,24 @@ export class Character {
     cube(head, 0x122632, 0.48, 0.14, 0.08, 0, 0.08, 0.24, 0.3);
     cube(head, enemy ? 0xff6c85 : 0x65eed9, 0.38, 0.07, 0.09, 0, 0.09, 0.28, 0.5, true);
     const hair = cylinder(head, 0x1b2028, 0.26, 0.3, 0.16, 0, 0.24); hair.scale.z = 0.9;
-    for (let i = 0; i < 4; i++) { const tuft = cube(head, enemy ? 0xeae0bf : 0x20252b, 0.12, 0.18 + i * 0.02, 0.13, 0, 0.34, -0.18 + i * 0.1); tuft.rotation.x = -0.25; }
+    for (let i = 0; i < 4; i++) { const tuft = cube(head, enemy ? 0xf2e4bb : 0xba8644, 0.14, 0.23 + i * 0.025, 0.13, 0, 0.34, -0.18 + i * 0.1); tuft.rotation.x = -0.25; }
     for (const s of [-1, 1]) cylinder(head, 0x252f3a, 0.1, 0.1, 0.1, s * 0.29, 0.02).rotation.z = Math.PI / 2;
     cube(head, accent, 0.04, 0.04, 0.24, 0.32, -0.05, 0.12);
     this.rightArm.add(this.gun); this.gun.position.set(0, -0.59, 0.1); this.gun.rotation.x = Math.PI / 2;
     this.setWeapon('pistol');
-    this.shield = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 12), new THREE.MeshBasicMaterial({ color: 0x68d9ff, transparent: true, opacity: 0.17, wireframe: true, depthWrite: false }));
+    this.shield = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 12), new THREE.MeshBasicMaterial({ color: 0x68d9ff, transparent: true, opacity: 0.16, wireframe: false, depthWrite: false }));
     this.shield.position.y = 1.15; this.shield.scale.y = 1.2; this.root.add(this.shield); this.shield.visible = false;
+    const lattice = new THREE.Mesh(this.shield.geometry, new THREE.MeshBasicMaterial({ color: 0x91e2ff, wireframe: true, transparent: true, opacity: 0.19, depthWrite: false, toneMapped: false })); this.shield.add(lattice);
     this.ring = new THREE.Mesh(new THREE.RingGeometry(0.65, 0.72, 32), new THREE.MeshBasicMaterial({ color: enemy ? 0xff6988 : 0x64eed6, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
     this.ring.rotation.x = -Math.PI / 2; this.ring.position.y = 0.025; this.root.add(this.ring);
     this.halo = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.025, 4, 18), new THREE.MeshBasicMaterial({ color: 0xd1a3ff }));
     this.halo.rotation.x = Math.PI / 2; this.halo.position.y = 2.7; this.halo.visible = false; this.root.add(this.halo);
+    this.aura = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.035, 5, 24), new THREE.MeshBasicMaterial({ color: 0xff7d9d, transparent: true, opacity: 0.8, depthWrite: false }));
+    this.aura.rotation.x = -Math.PI / 2; this.aura.position.y = 0.12; this.aura.visible = false; this.root.add(this.aura);
+    this.charge = new THREE.Mesh(new THREE.IcosahedronGeometry(0.23, 1), new THREE.MeshBasicMaterial({ color: 0xffd75d, wireframe: true, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.charge.position.set(0.48, 1.55, 0.95); this.charge.visible = false; this.root.add(this.charge);
+    this.hitShell = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.35, 0.7, 8), new THREE.MeshBasicMaterial({ color: 0xfff5c7, transparent: true, opacity: 0.2, depthWrite: false }));
+    this.hitShell.position.y = 0.5; this.hitShell.scale.z = 0.76; this.hitShell.visible = false; this.body.add(this.hitShell);
   }
   setWeapon(id: WeaponId) { this.gun.clear(); const color = this.enemy ? 0xff7187 : 0xf7bd53; const length = id === 'pistol' ? 0.5 : id === 'shotgun' ? 0.85 : 0.95;
     cube(this.gun, 0x222e3b, 0.2, 0.24, length, 0, 0, length * 0.25, 0.6);
@@ -72,22 +87,37 @@ export class Character {
     if (id === 'carbine') for (let i = 0; i < 3; i++) cube(this.gun, 0x64f6de, 0.22, 0.05, 0.06, 0, 0.05, i * 0.16, 0.4, true);
     if (id === 'shotgun') cube(this.gun, 0x885844, 0.24, 0.18, 0.35, 0, -0.1, 0.4);
   }
-  update(f: Fighter, other: Fighter, time: number, victory = false) {
-    this.root.position.set(f.x, 0, f.z);
-    this.root.rotation.y = Math.atan2(other.x - f.x, other.z - f.z);
-    this.body.position.y = 0.92 + Math.abs(Math.sin(f.stride)) * 0.045;
-    this.leftLeg.rotation.x = Math.sin(f.stride) * 0.28; this.rightLeg.rotation.x = -Math.sin(f.stride) * 0.28;
-    this.body.rotation.z = f.hit > 0 ? Math.sin(f.hit * 35) * 0.14 : f.dodge > 0 ? -0.25 : Math.sin(time * 2) * 0.015;
-    this.body.rotation.x = f.hit > 0 ? -f.hit * 0.4 : 0;
-    this.rightArm.rotation.x = -1.35 + f.recoil * 1.8 - (f.windup > 0 ? 0.25 : 0);
-    this.leftArm.rotation.x = victory ? -2.5 + Math.sin(time * 5) * 0.3 : -0.65;
-    this.shield.visible = f.shield > 0; this.shield.rotation.y = time * 0.7;
+  snapTo(f: Fighter) { this.root.position.set(f.x, 0, f.z); }
+  update(f: Fighter, other: Fighter, time: number, victory = false, dt = 1 / 60) {
+    const blend = Math.min(1, dt * (f.dodge > 0 ? 25 : 17));
+    this.root.position.x += (f.x - this.root.position.x) * blend;
+    this.root.position.z += (f.z - this.root.position.z) * blend;
+    const angle = Math.atan2(other.x - f.x, other.z - f.z), difference = angle - this.root.rotation.y;
+    this.root.rotation.y += Math.atan2(Math.sin(difference), Math.cos(difference)) * Math.min(1, dt * 13);
+    const moving = Math.min(1, f.speed / 2), step = Math.sin(f.stride);
+    this.body.position.y = 0.92 + Math.abs(step) * 0.075 * moving + Math.sin(time * 2.4) * 0.018;
+    this.leftLeg.rotation.x = step * 0.48 * moving; this.rightLeg.rotation.x = -step * 0.48 * moving;
+    this.leftLeg.rotation.z = 0.045; this.rightLeg.rotation.z = -0.045;
+    this.body.rotation.z = f.hit > 0 ? Math.sin(f.hit * 30) * f.hit * 0.65 : f.dodge > 0 ? -0.32 : Math.sin(f.stride * 0.5) * 0.06 * moving;
+    this.body.rotation.x = f.hit > 0 ? -f.hit * 0.55 : f.windup > 0 ? -0.07 : 0.04 * moving;
+    this.rightArm.rotation.x = -1.35 + f.recoil * 1.5 - (f.windup > 0 ? 0.28 : 0);
+    this.rightArm.rotation.z = -0.06 - f.recoil * 0.3;
+    this.leftArm.rotation.x = victory ? -2.5 + Math.sin(time * 5) * 0.3 : -0.85 + step * moving * 0.12;
+    this.shield.visible = f.shield > 0 && f.hp > 0; this.shield.rotation.y = time * 0.8;
+    (this.shield.material as THREE.MeshBasicMaterial).opacity = 0.075 + Math.sin(time * 6) * 0.015 + f.hit * 0.1;
     this.halo.visible = f.stun > 0; this.halo.rotation.z = time * 4;
+    this.charge.visible = f.windup > 0 && f.hp > 0; this.charge.rotation.y = time * 14;
+    this.charge.scale.setScalar(0.7 + (1 - f.windup / 0.85) * 1.5 + Math.sin(time * 40) * 0.1);
+    this.aura.visible = f.overdrive > 0 && f.hp > 0;
+    this.aura.scale.setScalar(1 + Math.sin(time * 12) * 0.08);
+    (this.aura.material as THREE.MeshBasicMaterial).color.setHex(f.fortified > 0 ? 0xffd064 : 0xff7d9d);
+    this.hitShell.visible = f.hit > 0;
+    (this.hitShell.material as THREE.MeshBasicMaterial).opacity = Math.min(0.5, f.hit);
     this.ring.scale.setScalar(f.windup > 0 ? 1.2 + Math.sin(time * 25) * 0.2 : 1);
     (this.ring.material as THREE.MeshBasicMaterial).color.setHex(f.windup > 0 ? 0xffb83e : this.enemy ? 0xff6988 : 0x64eed6);
-    if (f.hp <= 0) { this.body.rotation.z = -0.8; this.body.position.y = 0.45; this.rightArm.rotation.x = -0.2; }
-    if (victory) this.body.position.y += Math.max(0, Math.sin(time * 4)) * 0.18;
+    if (f.hp <= 0) { this.body.rotation.z = -1.05; this.body.position.y = 0.34; this.rightArm.rotation.x = -0.2; this.leftLeg.rotation.x = -0.4; }
+    if (victory) { this.body.position.y += Math.max(0, Math.sin(time * 4)) * 0.24; this.body.rotation.z = Math.sin(time * 4) * 0.08; }
   }
-  dispose() { for (const m of [this.shield, this.ring, this.halo]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }
+  dispose() { for (const m of [this.shield, this.ring, this.halo, this.aura, this.charge, this.hitShell]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); for (const child of m.children) if (child instanceof THREE.Mesh) (child.material as THREE.Material).dispose(); } }
 }
 export function disposeShared() { for (const m of materials.values()) m.dispose(); for (const g of shapes.values()) g.dispose(); materials.clear(); shapes.clear(); }

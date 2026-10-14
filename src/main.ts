@@ -14,6 +14,8 @@ const profile = load(); audio.enabled = profile.sound;
 let screen: Screen = 'home', match: Combat | undefined, arena: Arena;
 let rewards: ReturnType<typeof reward> | undefined;
 let countdown = 0, countdownValue = 0, paused = false, contextOk = true;
+let hitStop = 0, lastCheer = -10;
+let impactTimer = 0;
 let resultDelay = 0, accumulator = 0, previous = performance.now(), frame = 0;
 let announcementTimer = 0, toastTimer = 0;
 let draft = [...profile.deck];
@@ -21,29 +23,33 @@ function persist() { if (!save(profile)) toast('Сохранение недос�
 function toast(text: string) { const el = document.querySelector<HTMLElement>('#toast')!; el.textContent = text; el.classList.add('visible'); window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove('visible'), 3200); }
 function announce(text: string, sub = '', combo = false, duration = 1100) { const el = document.querySelector<HTMLElement>('#announcement'); if (!el) return; window.clearTimeout(announcementTimer); el.className = `announcement ${combo ? 'combo' : ''}`; el.innerHTML = `${escapeHtml(text)}${sub ? `<small>${escapeHtml(sub)}</small>` : ''}`; void el.offsetWidth; el.classList.add('visible'); announcementTimer = window.setTimeout(() => el.classList.remove('visible'), duration); }
 function show(next: Screen) {
+  const loadoutScroll = next === 'loadout' && screen === 'loadout' ? ui.root.querySelector('.loadout-scroll')?.scrollTop || 0 : 0;
   screen = next; if (arena) arena.preview = next === 'loadout'; game.dataset.screen = next; ui.render(next, next === 'loadout' ? { ...profile, deck: draft } : profile, match, rewards);
+  if (next === 'loadout') { const pane = ui.root.querySelector('.loadout-scroll'); if (pane) pane.scrollTop = loadoutScroll; }
   if (next === 'home' || next === 'loadout' || next === 'intro') arena?.setMode('lobby', profile.weapon);
   if (next === 'home') { match = undefined; rewards = undefined; paused = false; }
 }
 function start() {
+  window.clearTimeout(toastTimer); document.querySelector('#toast')?.classList.remove('visible'); game.classList.remove('impact');
   profile.intro = true; persist(); match = new Combat(profile.weapon, [...profile.deck]); rewards = undefined;
-  accumulator = 0; countdown = 3; countdownValue = 3; paused = false; resultDelay = 0;
-  arena.setMode('battle', profile.weapon, match.enemy.weapon); show('battle'); ui.updateBattle(match, countdown > 0 || paused); announce('3', 'ПРИГОТОВЬСЯ К ЭФИРУ', false, 1000);
+  accumulator = 0; hitStop = 0; lastCheer = -10; countdown = 3; countdownValue = 3; paused = false; resultDelay = 0;
+  arena.setMode('battle', profile.weapon, match.enemy.weapon); arena.player.snapTo(match.player); arena.enemy.snapTo(match.enemy); show('battle'); ui.updateBattle(match, countdown > 0 || paused); announce('3', 'ПРИГОТОВЬСЯ К ЭФИРУ', false, 1000);
 }
 function pause() { if (screen !== 'battle' || !match || match.finished) return; paused = true; const p = document.querySelector<HTMLElement>('#pause-overlay'); if (p) p.hidden = false; }
 function resume() { if (!contextOk) return; paused = false; accumulator = 0; previous = performance.now(); const p = document.querySelector<HTMLElement>('#pause-overlay'); if (p) p.hidden = true; audio.unlock(); }
 function handleEvent(e: CombatEvent) {
   arena.event(e);
   if (e.type === 'shot') audio.shot(e.weapon!, !!e.heavy);
-  if (e.type === 'hit') { audio.hit(); if (screen === 'battle') { const el = document.createElement('span'); el.className = `damage-label ${e.side === 'player' ? 'enemy' : ''}`; el.textContent = `−${e.damage}`; // Project world position into screen coordinates.
+  if (e.type === 'hit') { audio.hit(!!e.heavy, !!e.blocked); if (e.heavy) { hitStop = Math.max(hitStop, e.blocked ? 0.025 : 0.065); game.classList.remove('impact'); void game.offsetWidth; game.classList.add('impact'); window.clearTimeout(impactTimer); impactTimer = window.setTimeout(() => game.classList.remove('impact'), 200); if (match && match.elapsed - lastCheer > 4 && !e.blocked) { audio.crowd(); lastCheer = match.elapsed; announce('POWER HIT', 'ВОТ ЭТО ВЫСТРЕЛ!', true, 850); } } if (screen === 'battle') { const el = document.createElement('span'); el.className = `damage-label ${e.side === 'player' ? 'enemy' : ''}`; el.textContent = e.blocked ? `BLOCK ${e.damage}` : `−${e.damage}`; if (e.blocked) el.classList.add('blocked'); if (e.heavy) el.classList.add('heavy'); // Project world position into screen coordinates.
       const pos = arena.player.root.position.clone().set(e.x, 2.6, e.z).project(arena.camera); el.style.left = `${(pos.x + 1) * game.clientWidth / 2}px`; el.style.top = `${(-pos.y + 1) * game.clientHeight / 2}px`; document.querySelector('#combat-labels')?.append(el); window.setTimeout(() => el.remove(), 700); } }
-  if (e.type === 'card') { audio.card(); if (e.card === 'shield') audio.shield(); const el = document.createElement('span'); el.className = `card-callout ${e.side === 'enemy' ? 'enemy' : ''}`; el.textContent = `${e.side === 'enemy' ? 'RIVAL / ' : ''}${CARDS[e.card!].name}`; document.querySelector('#combat-labels')?.append(el); window.setTimeout(() => el.remove(), 1000); }
-  if (e.type === 'combo') { announce(e.text!, e.side === 'player' ? 'КОМБО! +50% УРОНА' : 'КОМБО СОПЕРНИКА', true); audio.crowd(); }
-  if (e.type === 'showtime') { announce('SHOWTIME', 'ОБОИМ БОЙЦАМ: ЭНЕРГИЯ ×1,25', false, 1800); audio.crowd(); }
+  if (e.type === 'card') { audio.card(e.card); if (e.card === 'shield') audio.shield(); const el = document.createElement('span'); el.className = `card-callout ${e.side === 'enemy' ? 'enemy' : ''}`; el.textContent = `${e.side === 'enemy' ? 'RIVAL / ' : ''}${CARDS[e.card!].name}`; document.querySelector('#combat-labels')?.append(el); window.setTimeout(() => el.remove(), 1000); }
+  if (e.type === 'combo') { hitStop = Math.max(hitStop, 0.085); announce(e.text!, e.side === 'player' ? `PERFECT PLAY / ${e.detail}` : 'КОМБО СОПЕРНИКА', true, 1500); audio.combo(); }
+  if (e.type === 'showtime') { announce('SHOWTIME', 'ОБОИМ БОЙЦАМ: ЭНЕРГИЯ ×1,25', false, 1800); audio.showtime(); }
+  if (e.type === 'evade' && (e.text === 'DODGE' || e.text === 'INTERRUPTED')) { const el = document.createElement('span'); el.className = `card-callout ${e.side === 'enemy' ? 'enemy' : ''}`; el.textContent = e.text === 'DODGE' ? 'DODGE / МИМО!' : 'АТАКА ПРЕРВАНА'; document.querySelector('#combat-labels')?.append(el); window.setTimeout(() => el.remove(), 1000); }
   if (e.type === 'finish') {
     rewards = reward(profile, match!); persist(); resultDelay = 1.6;
     announce(match!.winner === 'player' ? 'K.O. / YOU WIN' : match!.winner === 'draw' ? 'DRAW' : 'CUT! / YOU LOSE', 'ЭФИР ЗАВЕРШЁН', true, 1500);
-    if (match!.winner === 'player') audio.win(); else audio.tone(200, 0.4, 'triangle', 0.06, 70); audio.crowd();
+    if (match!.winner === 'player') audio.win(); else audio.lose(); audio.crowd();
   }
 }
 ui.root.addEventListener('click', e => {
@@ -72,12 +78,13 @@ function loop(now: number) {
   frame = requestAnimationFrame(loop); const dt = Math.min(0.05, Math.max(0, (now - previous) / 1000)); previous = now;
   if (!contextOk || document.hidden) return;
   if (screen === 'battle' && match && !paused) {
-    if (countdown > 0) { countdown -= dt; const value = Math.ceil(countdown); if (value !== countdownValue && value >= 0) { countdownValue = value; announce(value > 0 ? String(value) : 'ON AIR!', value > 0 ? 'ЗАЙМИ СВОЁ МЕСТО' : 'ПОРА ДЕЛАТЬ ШОУ', false, 850); audio.tone(value > 0 ? 440 : 880, 0.1); } }
+    if (countdown > 0) { countdown -= dt; const value = Math.ceil(countdown); if (value !== countdownValue && value >= 0) { countdownValue = value; announce(value > 0 ? String(value) : 'ON AIR!', value > 0 ? 'ЗАЙМИ СВОЁ МЕСТО' : 'ПОРА ДЕЛАТЬ ШОУ', false, 850); audio.countdown(value); } }
+    else if (!match.finished && hitStop > 0) { hitStop = Math.max(0, hitStop - dt); accumulator = 0; for (const e of match.drainEvents()) handleEvent(e); }
     else if (!match.finished) { accumulator += dt; let steps = 0; while (accumulator >= BALANCE.fixedStep && steps++ < 4) { match.update(BALANCE.fixedStep); accumulator -= BALANCE.fixedStep; } for (const e of match.drainEvents()) handleEvent(e); }
     else if (resultDelay > 0) { resultDelay -= dt; if (resultDelay <= 0) show('result'); }
     ui.updateBattle(match, countdown > 0 || paused);
   }
-  arena.render(paused ? 0 : dt, match);
+  arena.render(paused ? 0 : dt, match, hitStop > 0 ? 0.12 : 1);
 }
 try {
   arena = new Arena(document.querySelector<HTMLElement>('#stage')!, ok => {

@@ -1,4 +1,4 @@
-import { CARD_IDS, DEFAULT_DECK, WEAPONS, type CardId, type WeaponId } from './data';
+import { CARD_IDS, DEFAULT_DECK, WEAPONS, fame, type CardId, type WeaponId } from './data';
 import type { Combat } from './combat';
 export interface Profile { version: 1; name: string; fans: number; coins: number; wins: number; matches: number; damage: number; combos: number; weapon: WeaponId; deck: CardId[]; intro: boolean; sound: boolean; quality: 'auto' | 'low' }
 export const SAVE_KEY = 'prime-time.alpha.1';
@@ -15,11 +15,13 @@ export function load(): Profile {
   } catch { return base; }
 }
 export function save(profile: Profile): boolean { try { localStorage.setItem(SAVE_KEY, JSON.stringify(profile)); return true; } catch { return false; } }
+export interface MatchRewards { fans: number; coins: number; win: boolean; draw: boolean; beforeFans: number; afterFans: number; fromLevel: number; toLevel: number }
 export function reward(profile: Profile, match: Combat) {
+  const beforeFans = profile.fans, fromLevel = fame(beforeFans).level;
   const win = match.winner === 'player', draw = match.winner === 'draw';
   const fans = (win ? 85 : draw ? 45 : 25) + match.stats.combos * 15 + Math.min(20, match.stats.dodges * 5);
   const coins = win ? 60 : draw ? 35 : 25;
   profile.fans += fans; profile.coins += coins; profile.matches++; if (win) profile.wins++;
   profile.damage += match.stats.damage; profile.combos += match.stats.combos;
-  return { fans, coins, win, draw };
+  return { fans, coins, win, draw, beforeFans, afterFans: profile.fans, fromLevel, toLevel: fame(profile.fans).level };
 }
