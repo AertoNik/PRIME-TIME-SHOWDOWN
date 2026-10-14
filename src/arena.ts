@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGraphicsContext } from './graphics';
 import { Character, cube, cylinder, material, disposeShared } from './characters';
 import { Effects } from './effects';
 import { Combat, type CombatEvent } from './combat';
@@ -24,7 +25,8 @@ export class Arena {
   private onLost = (e: Event) => { e.preventDefault(); this.contextChanged(false); };
   private onRestored = () => { this.contextChanged(true); this.resize(); };
   constructor(private host: HTMLElement, private contextChanged: (ok: boolean) => void) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    const graphics = createGraphicsContext();
+    this.renderer = new THREE.WebGLRenderer({ canvas: graphics.canvas, context: graphics.context, antialias: graphics.antialias, alpha: false });
     this.renderer.setClearColor(0x10171f); this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace; this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;

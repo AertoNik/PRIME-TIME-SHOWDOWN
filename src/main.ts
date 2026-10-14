@@ -1,4 +1,5 @@
 import './style.css';
+import { startupErrorHtml } from './graphics';
 import { Arena } from './arena';
 import { Combat, type CombatEvent } from './combat';
 import { BALANCE, CARDS, WEAPONS, type CardId, type WeaponId } from './data';
@@ -86,5 +87,5 @@ try {
     else { fatal.hidden = true; toast('Сигнал восстановлен. Продолжи матч с паузы.'); }
   });
   document.querySelector('#boot')?.remove(); arena.setQuality(profile.quality === 'low'); show('home'); frame = requestAnimationFrame(loop);
-} catch (error) { document.querySelector('#boot')?.remove(); console.error(error); const fatal = document.querySelector<HTMLElement>('#fatal')!; fatal.innerHTML = '<h2>НУЖЕН WEBGL</h2><p>Не удалось запустить 3D-сцену. Включи аппаратное ускорение или открой игру в браузере с поддержкой WebGL.</p><button class="primary" onclick="location.reload()">ПОВТОРИТЬ</button>'; fatal.hidden = false; }
+} catch (error) { document.querySelector('#boot')?.remove(); console.error(error); const fatal = document.querySelector<HTMLElement>('#fatal')!; fatal.innerHTML = startupErrorHtml(error); fatal.hidden = false; }
 window.addEventListener('pagehide', e => { persist(); if (!e.persisted) { cancelAnimationFrame(frame); arena?.dispose(); audio.dispose(); } });
