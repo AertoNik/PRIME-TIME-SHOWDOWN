@@ -1,0 +1,161 @@
+// All tunable numbers for the duel live here, separate from implementation.
+
+export const MATCH = {
+  /** Fight length in seconds (spec: 60–90, Alpha default 75). */
+  duration: 75,
+  /** Pre-fight intro / countdown length. */
+  introTime: 3.4,
+  /** Post-KO / time-up outro before results. */
+  outroTime: 3.2,
+  /** Fixed simulation step. */
+  fixedStep: 1 / 60,
+  maxEnergy: 10,
+  /** ~1 energy per 1.25 s. */
+  energyPerSecond: 0.8,
+  startEnergy: 4,
+  handSize: 3,
+  deckSize: 4,
+  /** Minimum delay between two card plays by the same side. */
+  cardLockout: 0.3,
+  /** Seconds after a card during which the next card can form a combo. */
+  comboWindow: 3.0,
+  /** HP fraction difference treated as a draw on time-up. */
+  drawEpsilon: 0.005,
+  fighterRadius: 0.55,
+  spawnZ: 4.4,
+};
+
+/** Arena footprint (world units). Fighters move inside the inner rounded rect. */
+export const ARENA = {
+  halfX: 4.6,
+  halfZ: 6.6,
+  cornerRadius: 1.6,
+  /** Inner face of the barrier walls. */
+  wallX: 5.3,
+  wallZ: 7.3,
+  wallCorner: 2.2,
+  /** Height projectiles travel at (visual only). */
+  shotHeight: 1.05,
+  /** Breakable LED speaker stacks embedded in the barrier. */
+  props: [
+    { x: -2.5, z: -7.3 },
+    { x: 2.5, z: -7.3 },
+    { x: -5.3, z: -2.9 },
+    { x: 5.3, z: -2.9 },
+    { x: -5.3, z: 2.9 },
+    { x: 5.3, z: 2.9 },
+  ],
+  propRespawn: 10,
+};
+
+export const CARD_TUNING = {
+  dash: { distance: 3.3, duration: 0.24, invuln: 0.45 },
+  power_shot: {
+    windup: 0.26,
+    telegraph: 0.9,
+    /** Fraction of the telegraph after which the AI locks its aim. */
+    lockAt: 0.62,
+    damage: 720,
+    speed: 20,
+    radius: 0.5,
+    knockback: 3.2,
+    range: 15,
+  },
+  shield: { duration: 2.8, absorb: 1100 },
+  smoke: { duration: 4.8, radius: 2.7, missChance: 0.5, aimError: 0.38, damageCut: 0.0 },
+  shock: { damage: 260, stun: 1.15, shieldStun: 0.6 },
+  overdrive: { duration: 5.5, fireRate: 1.6, damage: 1.15, speed: 1.22 },
+  adrenaline: { duration: 2.0, shots: 10, damage: 88, speed: 1.35 },
+  knockout: {
+    windup: 0.3,
+    telegraph: 0.85,
+    lockAt: 0.6,
+    rushDistance: 5.6,
+    rushSpeed: 17,
+    damage: 950,
+    knockback: 8,
+    stun: 0.55,
+    hitRange: 1.45,
+    wallSlamDamage: 260,
+    wallSlamStun: 0.8,
+    missRecover: 0.6,
+  },
+  system_overload: {
+    duration: 3.2,
+    damage: 180,
+    dot: 75,
+    dotInterval: 0.5,
+    fireRateMult: 0.5,
+    damageTakenMult: 1.2,
+    moveMult: 0.75,
+    energyDrain: 3,
+  },
+};
+
+export const COMBO_TUNING = {
+  counterStrikeMult: 1.5,
+  electroBlastMult: 1.6,
+  electroBlastStun: 0.9,
+  ironRushDamage: 450,
+  ironRushRadius: 3.4,
+  ironRushKnockback: 5,
+  ironRushDurationMult: 1.5,
+  phantomDecoyTime: 2.8,
+  superstarMult: 1.4,
+};
+
+export const PASSIVE_TUNING = {
+  momentum: { duration: 2.2, speed: 1.35, fireRate: 1.25, cooldown: 3.5 },
+  iron_skin: { threshold: 330, duration: 3.0, reduction: 0.4, cooldown: 7 },
+  overclock: { energy: 1.5, duration: 4.0, regenMult: 1.5 },
+};
+
+export const BROADCAST = {
+  start: 30,
+  /** Passive decay per second: a static fight bleeds viewers. */
+  decay: 0.75,
+  /** Extra decay when the producer sits idle on full energy. */
+  idleDecay: 0.9,
+  idleTime: 6,
+  dmgToRating: 0.0022,
+  heavyHit: 4,
+  /** Heavy hits closer together than this are 'seen it' moments: half value. */
+  heavyFatigue: 6,
+  perfectDodge: 7,
+  closeCall: 3,
+  perfectBlock: 6,
+  block: 0.8,
+  interrupt: 8,
+  smokeMiss: 1.5,
+  decoyPop: 4,
+  varietyNew: 2.5,
+  comeback: 5,
+  wallSlam: 5,
+  shockHit: 2,
+  whiffPunish: 4,
+  koWin: 10,
+  finisherHeavy: 10,
+  buzzerBeater: 8,
+  dominant: 6,
+  koLoss: -12,
+  takenHeavy: -2,
+  enemyCombo: -3,
+  /** A shield that blocked nothing / smoke that caused no miss: the audience shrugs. */
+  wasted: -2.5,
+  /** Repeating the same card back-to-back earns nothing from variety. */
+  thresholds: [
+    { value: 50, text: 'THE CROWD GOES WILD!' },
+    { value: 75, text: 'PRIME TIME MOMENT!' },
+    { value: 90, text: 'LEGENDARY BROADCAST!' },
+  ],
+  finalWeights: { avg: 0.62, peak: 0.18, end: 0.2 },
+  /** Viewer counter shown in HUD (cosmetic, derived from rating & fame). */
+  baseViewers: 120000,
+};
+
+/** Producer pilot profile: how the player's own fighter moves and aims on its own. */
+export const PILOT = {
+  aimLead: 0.85,
+  aimError: 0.05,
+  dodgeSkill: 0.55,
+};

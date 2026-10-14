@@ -1,0 +1,293 @@
+import { FAME_TIERS, GOALS, LEVEL_THRESHOLDS, LEVEL_TITLES, REWARDS, type GoalDef, type GoalId } from '../config/career';
+import { COMBOS, UNIVERSAL_CARDS } from '../config/cards';
+import { DIFFICULTIES, FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
+import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
+import type { MatchResultData } from '../combat/types';
+import type { SaveData, SaveSystem } from './SaveSystem';
+
+export interface RewardLine {
+  label: string;
+  value: number;
+  kind: 'money' | 'fans' | 'rep';
+  note?: string;
+}
+
+export interface MatchRewards {
+  money: number;
+  fans: number;
+  rep: number;
+  lines: RewardLine[];
+}
+
+export interface MatchOutcome {
+  rewards: MatchRewards;
+  levelBefore: number;
+  levelAfter: number;
+  repBefore: number;
+  newGoals: GoalId[];
+  fighterFansBefore: number;
+}
+
+export interface LevelInfo {
+  level: number;
+  title: string;
+  cur: number;
+  next: number | null;
+  progress: number;
+}
+
+export function levelFor(rep: number): LevelInfo {
+  let lvl = 1;
+  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) if (rep >= LEVEL_THRESHOLDS[i]) lvl = i + 1;
+  const cur = LEVEL_THRESHOLDS[lvl - 1];
+  const next = lvl < LEVEL_THRESHOLDS.length ? LEVEL_THRESHOLDS[lvl] : null;
+  return {
+    level: lvl,
+    title: LEVEL_TITLES[lvl - 1],
+    cur,
+    next,
+    progress: next === null ? 1 : (rep - cur) / (next - cur),
+  };
+}
+
+export function fameTier(fans: number): string {
+  let label = FAME_TIERS[0].label;
+  for (const t of FAME_TIERS) if (fans >= t.min) label = t.label;
+  return label;
+}
+
+export function gradeFor(rating: number): string {
+  if (rating >= 90) return 'S';
+  if (rating >= 75) return 'A';
+  if (rating >= 60) return 'B';
+  if (rating >= 40) return 'C';
+  return 'D';
+}
+
+/** Producer career rules on top of the save data. */
+export class CareerSystem {
+  private store: SaveSystem;
+
+  constructor(store: SaveSystem) {
+    this.store = store;
+  }
+
+  get s(): SaveData {
+    return this.store.data;
+  }
+
+  level(): LevelInfo {
+    return levelFor(this.s.reputation);
+  }
+
+  signedCount(): number {
+    return FIGHTER_ORDER.filter((id) => this.s.fighters[id].unlocked).length;
+  }
+
+  totalFans(): number {
+    return FIGHTER_ORDER.filter((id) => this.s.fighters[id].unlocked).reduce((a, id) => a + this.s.fighters[id].fans, 0);
+  }
+
+  difficultyUnlocked(d: Difficulty): boolean {
+    return this.level().level >= DIFFICULTIES[d].unlockLevel;
+  }
+
+  availableCards(id: FighterId): CardId[] {
+    return [...UNIVERSAL_CARDS, FIGHTERS[id].signature];
+  }
+
+  setDeck(id: FighterId, deck: CardId[]): void {
+    if (deck.length !== 4) return;
+    this.s.fighters[id].deck = deck.slice();
+    this.store.save();
+  }
+
+  select(id: FighterId): boolean {
+    if (!this.s.fighters[id].unlocked) return false;
+    this.s.selected = id;
+    this.store.save();
+    return true;
+  }
+
+  canSign(id: FighterId): { ok: boolean; reason: string } {
+    const f = FIGHTERS[id];
+    const p = this.s.fighters[id];
+    if (p.unlocked) return { ok: false, reason: 'Контракт подписан' };
+    if (!f.contract) return { ok: false, reason: '' };
+    if (this.level().level < f.contract.level) return { ok: false, reason: `Нужен уровень продюсера ${f.contract.level}` };
+    if (this.s.money < f.contract.cost) return { ok: false, reason: `Не хватает $${f.contract.cost - Math.floor(this.s.money)}` };
+    return { ok: true, reason: '' };
+  }
+
+  sign(id: FighterId): GoalId[] {
+    const c = this.canSign(id);
+    if (!c.ok) return [];
+    this.s.money -= FIGHTERS[id].contract!.cost;
+    this.s.fighters[id].unlocked = true;
+    this.s.selected = id;
+    const g = this.refreshGoals();
+    this.store.save();
+    return g;
+  }
+
+  rename(name: string): void {
+    const n = name.trim().slice(0, 28);
+    if (n) {
+      this.s.orgName = n.toUpperCase();
+      this.store.save();
+    }
+  }
+
+  pickNextRival(seed: number): RivalId {
+    const pool = RIVAL_ORDER.filter((r) => r !== this.s.lastRival);
+    const r = pool[Math.abs(Math.floor(seed)) % pool.length];
+    this.s.nextRival = r;
+    this.store.save();
+    return r;
+  }
+
+  computeRewards(r: MatchResultData, fighter: FighterId, diff: Difficulty): MatchRewards {
+    const dm = DIFFICULTIES[diff].rewardMult;
+    const fans = this.s.fighters[fighter].fans;
+    const lines: RewardLine[] = [];
+    const key = r.outcome;
+    const purse = Math.round(REWARDS.purse[key] * dm);
+    lines.push({
+      label: key === 'win' ? 'Гонорар за победу' : key === 'draw' ? 'Гонорар за ничью' : 'Гонорар за выход',
+      value: purse,
+      kind: 'money',
+      note: dm > 1 ? `×${dm} сложность` : undefined,
+    });
+    let money = purse;
+    if (r.method === 'ko' && key === 'win') {
+      const b = Math.round(REWARDS.koBonus * dm);
+      lines.push({ label: 'Бонус за нокаут', value: b, kind: 'money' });
+      money += b;
+    }
+    const ratingMoney = Math.round(r.rating * REWARDS.ratingMoney * dm);
+    lines.push({ label: `Рейтинг шоу ${r.rating}`, value: ratingMoney, kind: 'money', note: 'реклама в эфире' });
+    money += ratingMoney;
+    const combos = Math.min(REWARDS.comboCap, r.combos);
+    if (combos > 0) {
+      const cm = combos * REWARDS.comboMoney;
+      lines.push({ label: `Комбо ×${combos}`, value: cm, kind: 'money' });
+      money += cm;
+    }
+    const star = Math.round(Math.min(REWARDS.starPowerCap, Math.sqrt(fans) * REWARDS.starPowerK));
+    if (star > 0 && r.method !== 'forfeit') {
+      lines.push({ label: 'Спонсоры бойца', value: star, kind: 'money', note: `${fans.toLocaleString('ru-RU')} фанатов` });
+      money += star;
+    }
+    if (r.method === 'forfeit') {
+      money = Math.round(money * 0.3);
+      lines.push({ label: 'Штраф за сдачу', value: 0, kind: 'money', note: '−70%' });
+    }
+    const fanBase = REWARDS.fans[key] * dm;
+    const fanMult = REWARDS.fansRatingBase + (r.rating / 100) * REWARDS.fansRatingK;
+    const gainedFans = r.method === 'forfeit' ? 0 : Math.round(fanBase * fanMult);
+    lines.push({ label: 'Новые фанаты', value: gainedFans, kind: 'fans', note: `×${fanMult.toFixed(2)} от рейтинга` });
+    const rep = Math.max(0, Math.round(REWARDS.rep[key] * dm + r.rating / REWARDS.repRatingDiv) - (r.method === 'forfeit' ? 6 : 0));
+    lines.push({ label: 'Репутация продюсера', value: rep, kind: 'rep' });
+    return { money, fans: gainedFans, rep, lines };
+  }
+
+  /** Apply a finished match to the save. */
+  applyMatch(r: MatchResultData, fighter: FighterId, diff: Difficulty, rival: RivalId): MatchOutcome {
+    const s = this.s;
+    const rewards = this.computeRewards(r, fighter, diff);
+    const levelBefore = this.level().level;
+    const repBefore = s.reputation;
+    const fp = s.fighters[fighter];
+    const fighterFansBefore = fp.fans;
+    s.money += rewards.money;
+    s.totalEarned += rewards.money;
+    s.reputation += rewards.rep;
+    s.fansEarned += rewards.fans;
+    fp.fans += rewards.fans;
+    s.matches++;
+    fp.matches++;
+    if (r.outcome === 'win') {
+      s.wins++;
+      fp.wins++;
+      if (diff === 'pro') s.proWins++;
+      if (diff === 'champion') s.championWins++;
+    } else if (r.outcome === 'loss') {
+      s.losses++;
+      fp.losses++;
+    } else {
+      s.draws++;
+      fp.draws++;
+    }
+    s.bestRating = Math.max(s.bestRating, r.rating);
+    fp.bestRating = Math.max(fp.bestRating, r.rating);
+    s.bestCombosInMatch = Math.max(s.bestCombosInMatch, r.combos);
+    s.bestPerfectsInMatch = Math.max(s.bestPerfectsInMatch, r.perfects);
+    s.lastRival = rival;
+    const newGoals = this.refreshGoals();
+    this.pickNextRival(s.seed + s.matches * 31);
+    s.seed = (s.seed * 1103515245 + 12345) % 2147483647;
+    this.store.save();
+    return { rewards, levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore };
+  }
+
+  goalProgress(g: GoalDef): number {
+    const s = this.s;
+    switch (g.id) {
+      case 'first_win':
+        return Math.min(g.target, s.wins);
+      case 'combo_3':
+        return Math.min(g.target, s.bestCombosInMatch);
+      case 'rating_70':
+        return Math.min(g.target, s.bestRating);
+      case 'perfect_3':
+        return Math.min(g.target, s.bestPerfectsInMatch);
+      case 'fans_2500':
+        return Math.min(g.target, s.fansEarned);
+      case 'sign_second':
+        return Math.min(g.target, this.signedCount());
+      case 'pro_win':
+        return Math.min(g.target, s.proWins);
+      case 'champion_win':
+        return Math.min(g.target, s.championWins);
+    }
+  }
+
+  /** Marks newly completed goals; returns their ids. */
+  refreshGoals(): GoalId[] {
+    const fresh: GoalId[] = [];
+    for (const g of GOALS) {
+      const st = this.s.goals[g.id];
+      if (!st.done && this.goalProgress(g) >= g.target) {
+        st.done = true;
+        fresh.push(g.id);
+      }
+    }
+    return fresh;
+  }
+
+  unclaimed(): number {
+    return GOALS.filter((g) => this.s.goals[g.id].done && !this.s.goals[g.id].claimed).length;
+  }
+
+  claim(id: GoalId): { money: number; rep: number } | null {
+    const g = GOALS.find((x) => x.id === id);
+    const st = this.s.goals[id];
+    if (!g || !st.done || st.claimed) return null;
+    st.claimed = true;
+    this.s.money += g.reward.money;
+    this.s.reputation += g.reward.rep;
+    this.refreshGoals();
+    this.store.save();
+    return g.reward;
+  }
+
+  comboHints(deck: CardId[]): string[] {
+    const out: string[] = [];
+    for (const c of COMBOS) {
+      const a = c.first.find((x) => deck.includes(x));
+      const b = c.second.find((x) => deck.includes(x));
+      if (a && b) out.push(c.id);
+    }
+    return out;
+  }
+}
