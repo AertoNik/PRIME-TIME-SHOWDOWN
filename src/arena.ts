@@ -96,6 +96,13 @@ export class Arena {
     for (const f of [this.player, this.enemy]) { const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.015; f.root.add(shadow); f.root.scale.setScalar(1.15); this.scene.add(f.root); }
     this.scene.add(this.effects.group);
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(host); this.resize();
+    this.renderer.domElement.dataset.heroModel = 'loading';
+    void this.player.loadHero().then(loaded => {
+      const canvas = this.renderer.domElement, visual = this.player.heroVisual;
+      canvas.dataset.heroModel = loaded ? 'glb' : 'procedural';
+      canvas.dataset.heroBones = String(visual?.bones.size ?? 0);
+      canvas.dataset.heroAnimations = String(visual?.clips.length ?? 0);
+    });
   }
   resize() { const w = this.host.clientWidth, h = this.host.clientHeight; this.renderer.setSize(w, h); const halfWidth = 6.35; this.camera.left = -halfWidth; this.camera.right = halfWidth; this.camera.top = halfWidth * h / w; this.camera.bottom = -this.camera.top; this.camera.updateProjectionMatrix(); }
   setQuality(low: boolean) { this.low = low; this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, low ? 1 : 1.75)); this.key.castShadow = !low; this.effects.quality = low ? 0.5 : 1; this.resize(); }

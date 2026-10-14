@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Fighter } from './combat';
 import type { WeaponId } from './data';
+import { HeroVisual, heroModelUrl, loadHeroModel, disposeHeroScene, type HeroLoader } from './hero-model';
 const materials = new Map<string, THREE.MeshStandardMaterial>();
 const shapes = new Map<string, THREE.BufferGeometry>();
 export function material(color: number, metalness = 0, emissive = false) { const key = `${color}:${metalness}:${emissive}`; let mat = materials.get(key); if (!mat) { mat = new THREE.MeshStandardMaterial({ color, roughness: metalness ? 0.38 : 0.8, metalness, emissive: emissive ? color : 0, emissiveIntensity: emissive ? 1.5 : 0 }); materials.set(key, mat); } return mat; }
@@ -20,6 +21,11 @@ export class Character {
   aura: THREE.Mesh;
   charge: THREE.Mesh;
   hitShell: THREE.Mesh;
+  heroVisual: HeroVisual | null = null;
+  private loading?: Promise<boolean>;
+  private disposed = false;
+  private weaponLength = 0.5;
+  private muzzle = new THREE.Vector3();
   constructor(public enemy = false) {
     const jacket = enemy ? 0xb84362 : 0x248b86, accent = enemy ? 0xff7187 : 0xf5b844, skin = enemy ? 0xc38667 : 0xdba477;
     this.root.add(this.body); this.body.position.y = 0.92;
@@ -79,7 +85,27 @@ export class Character {
     this.hitShell = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.35, 0.7, 8), new THREE.MeshBasicMaterial({ color: 0xfff5c7, transparent: true, opacity: 0.2, depthWrite: false }));
     this.hitShell.position.y = 0.5; this.hitShell.scale.z = 0.76; this.hitShell.visible = false; this.body.add(this.hitShell);
   }
-  setWeapon(id: WeaponId) { this.gun.clear(); const color = this.enemy ? 0xff7187 : 0xf7bd53; const length = id === 'pistol' ? 0.5 : id === 'shotgun' ? 0.85 : 0.95;
+  loadHero(loader: HeroLoader = loadHeroModel): Promise<boolean> {
+    if (this.enemy || this.disposed) return Promise.resolve(false);
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      try {
+        const gltf = await loader(heroModelUrl());
+        if (this.disposed) { disposeHeroScene(gltf.scene); return false; }
+        let visual: HeroVisual;
+        try { visual = new HeroVisual(gltf); } catch (error) { disposeHeroScene(gltf.scene); throw error; }
+        this.heroVisual = visual; this.root.add(visual.root); visual.attachWeapon(this.gun);
+        this.body.visible = false; this.leftLeg.visible = false; this.rightLeg.visible = false;
+        visual.root.add(this.hitShell); this.hitShell.position.y = 1.4;
+        return true;
+      } catch (error) {
+        console.warn('Hero GLB unavailable; using procedural player.', error);
+        return false;
+      }
+    })();
+    return this.loading;
+  }
+  setWeapon(id: WeaponId) { this.gun.clear(); const color = this.enemy ? 0xff7187 : 0xf7bd53; const length = id === 'pistol' ? 0.5 : id === 'shotgun' ? 0.85 : 0.95; this.weaponLength = length;
     cube(this.gun, 0x222e3b, 0.2, 0.24, length, 0, 0, length * 0.25, 0.6);
     cube(this.gun, color, 0.21, 0.1, length * 0.65, 0, 0.1, length * 0.25, 0.4);
     cube(this.gun, 0x101822, 0.13, 0.3, 0.17, 0, -0.17, -0.08);
@@ -87,7 +113,7 @@ export class Character {
     if (id === 'carbine') for (let i = 0; i < 3; i++) cube(this.gun, 0x64f6de, 0.22, 0.05, 0.06, 0, 0.05, i * 0.16, 0.4, true);
     if (id === 'shotgun') cube(this.gun, 0x885844, 0.24, 0.18, 0.35, 0, -0.1, 0.4);
   }
-  snapTo(f: Fighter) { this.root.position.set(f.x, 0, f.z); }
+  snapTo(f: Fighter) { this.root.position.set(f.x, 0, f.z); this.heroVisual?.reset(); }
   update(f: Fighter, other: Fighter, time: number, victory = false, dt = 1 / 60) {
     const blend = Math.min(1, dt * (f.dodge > 0 ? 25 : 17));
     this.root.position.x += (f.x - this.root.position.x) * blend;
@@ -117,7 +143,15 @@ export class Character {
     (this.ring.material as THREE.MeshBasicMaterial).color.setHex(f.windup > 0 ? 0xffb83e : this.enemy ? 0xff6988 : 0x64eed6);
     if (f.hp <= 0) { this.body.rotation.z = -1.05; this.body.position.y = 0.34; this.rightArm.rotation.x = -0.2; this.leftLeg.rotation.x = -0.4; }
     if (victory) { this.body.position.y += Math.max(0, Math.sin(time * 4)) * 0.24; this.body.rotation.z = Math.sin(time * 4) * 0.08; }
+    if (this.heroVisual) {
+      this.heroVisual.update(f, time, victory, dt);
+      if (this.charge.visible) {
+        this.root.updateMatrixWorld(true);
+        this.muzzle.set(0, 0.015, this.weaponLength * 0.9); this.gun.localToWorld(this.muzzle);
+        this.charge.position.copy(this.root.worldToLocal(this.muzzle));
+      }
+    }
   }
-  dispose() { for (const m of [this.shield, this.ring, this.halo, this.aura, this.charge, this.hitShell]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); for (const child of m.children) if (child instanceof THREE.Mesh) (child.material as THREE.Material).dispose(); } }
+  dispose() { if (this.disposed) return; this.disposed = true; this.heroVisual?.dispose(); for (const m of [this.shield, this.ring, this.halo, this.aura, this.charge, this.hitShell]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); for (const child of m.children) if (child instanceof THREE.Mesh) (child.material as THREE.Material).dispose(); } }
 }
 export function disposeShared() { for (const m of materials.values()) m.dispose(); for (const g of shapes.values()) g.dispose(); materials.clear(); shapes.clear(); }
