@@ -188,8 +188,12 @@ export class Renderer {
     this.frameTimes = [];
   }
 
+  /** Called after the quality level changes (auto downgrade or settings). */
+  onQuality: ((q: QualityLevel) => void) | null = null;
+
   applyQuality(q: QualityLevel): void {
     this.quality = q;
+    this.onQuality?.(q);
     const p = PROFILES[q];
     this.renderer.shadowMap.enabled = p.shadows;
     this.key.castShadow = p.shadows;
@@ -236,6 +240,17 @@ export class Renderer {
     } else {
       this.lastAdjust = now;
     }
+  }
+
+  /** Seasonal light colours (intensities untouched, no extra lights). */
+  applyLights(l: { hemiSky: number; hemiGround: number; fillA: number; fillB: number; rim: number; fog: number }): void {
+    this.hemi.color.setHex(l.hemiSky);
+    this.hemi.groundColor.setHex(l.hemiGround);
+    this.fillA.color.setHex(l.fillA);
+    this.fillB.color.setHex(l.fillB);
+    this.rim.color.setHex(l.rim);
+    (this.scene.fog as Fog).color.setHex(l.fog);
+    (this.scene.background as Color).setHex(l.fog);
   }
 
   setBloomStrength(v: number): void {

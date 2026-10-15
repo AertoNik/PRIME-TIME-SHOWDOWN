@@ -28,7 +28,9 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA } from '../config/balance';
+import { THEMES, type ArenaTheme, type Sponsor } from '../config/themes.config';
 import { clamp01, ease, Rng } from '../core/math';
+import { SeasonalDecor } from './SeasonalDecor';
 import { canvasTexture, makeCanvas } from './textures';
 
 function roundedRectShape(hx: number, hz: number, r: number): Shape {
@@ -253,31 +255,32 @@ function drawStars(): CanvasTexture {
   return t;
 }
 
-const SPONSORS = [
-  { text: 'VOLTA COLA', bg: '#e8202a', fg: '#ffffff' },
-  { text: 'HYPERDRIVE', bg: '#101433', fg: '#22f0e0' },
-  { text: 'NEON NOODLE', bg: '#ffcc1a', fg: '#1a1033' },
-  { text: 'KINETIX', bg: '#7a2bff', fg: '#ffffff' },
-];
-
 /** Scrolling LED ribbon: sponsors + one live broadcast segment redrawn with match data. */
-function drawBoard(c: HTMLCanvasElement, live: { left: string; right: string; rating: number; mode: string }, blink: boolean): void {
+function drawBoard(
+  c: HTMLCanvasElement,
+  live: { left: string; right: string; rating: number; mode: string },
+  blink: boolean,
+  sponsors: Sponsor[],
+  idle: [string, string],
+  accent: string,
+): void {
   const g = c.getContext('2d')!;
   const W = c.width;
   const H = c.height;
-  const segs = SPONSORS.length + 1;
+  const segs = sponsors.length + 1;
   const seg = W / segs;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  SPONSORS.forEach((s, i) => {
+  sponsors.forEach((s, i) => {
     g.fillStyle = s.bg;
     g.fillRect(i * seg, 0, seg, H);
     g.fillStyle = s.fg;
-    g.font = `italic 900 ${Math.round(H * 0.5)}px Unbounded, "Arial Black", sans-serif`;
+    const size = Math.round(H * (s.text.length > 12 ? 0.36 : 0.5));
+    g.font = `italic 900 ${size}px Unbounded, "Arial Black", sans-serif`;
     g.fillText(s.text, i * seg + seg / 2, H / 2 + 4);
   });
   // live segment
-  const x0 = SPONSORS.length * seg;
+  const x0 = sponsors.length * seg;
   g.fillStyle = '#070a1c';
   g.fillRect(x0, 0, seg, H);
   g.fillStyle = blink ? '#ff2a4a' : '#7a1020';
@@ -292,9 +295,9 @@ function drawBoard(c: HTMLCanvasElement, live: { left: string; right: string; ra
     g.fillStyle = '#ffd23a';
     g.fillText(`★ РЕЙТИНГ ${Math.round(live.rating)}`, x0 + 52, H * 0.74);
   } else {
-    g.fillText('LIVE  PRIME TIME', x0 + 52, H * 0.34);
-    g.fillStyle = '#22f0e0';
-    g.fillText('SHOWDOWN', x0 + 52, H * 0.74);
+    g.fillText(`LIVE  ${idle[0]}`, x0 + 52, H * 0.34);
+    g.fillStyle = accent;
+    g.fillText(idle[1], x0 + 52, H * 0.74);
   }
   // LED dot mask
   g.fillStyle = 'rgba(0,0,0,0.35)';
@@ -342,6 +345,7 @@ interface Cone {
   speed: number;
   phase: number;
   mat: ShaderMaterial;
+  lens: MeshBasicMaterial;
 }
 
 /** The TV studio arena: floor, barrier, props, stands, crowd, screens and lights. */
@@ -368,6 +372,9 @@ export class Arena {
     headline: 'PRIME TIME: SHOWDOWN',
   };
   private neonMats: MeshBasicMaterial[] = [];
+  private theme: ArenaTheme = THEMES.default.arena;
+  private sticks!: Points;
+  private decor: SeasonalDecor | null = null;
   private wallGlow: MeshBasicMaterial;
   private cones: Cone[] = [];
   readonly props: PropView[] = [];
@@ -381,6 +388,7 @@ export class Arena {
     this.buildProps();
     this.wallGlow = this.group.userData.wallGlow as MeshBasicMaterial;
     const crowd = this.buildStands();
+    this.sticks = crowd.sticks;
     this.sticksMat = crowd.sticks.material as ShaderMaterial;
     this.boardCanvas = makeCanvas(2560, 128).c;
     this.boardTex = this.buildBoards();
@@ -691,7 +699,7 @@ export class Arena {
 
   // ------------------------------------------------------------ boards
   private buildBoards(): CanvasTexture {
-    drawBoard(this.boardCanvas, { left: '', right: '', rating: 0, mode: 'menu' }, true);
+    this.paintBoard(true);
     const tex = canvasTexture(this.boardCanvas);
     tex.wrapS = RepeatWrapping;
     const mat = new MeshBasicMaterial({ map: tex, toneMapped: false });
@@ -737,7 +745,7 @@ export class Arena {
       this.group.add(s);
     }
 
-    // neon signs
+    // neon signs (textures are swapped by applyTheme)
     const neon1 = new MeshBasicMaterial({ map: drawNeon('PRIME TIME', '#22f0e0'), transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
     neon1.color.setScalar(1.6);
     const s1 = new Mesh(new PlaneGeometry(10, 2.5), neon1);
@@ -763,6 +771,57 @@ export class Arena {
 
   setScreen(info: Partial<ScreenInfo>): void {
     Object.assign(this.screenInfo, info);
+    this.decor?.setMenuVisible(this.screenInfo.mode === 'menu');
+  }
+
+  private paintBoard(blink: boolean): void {
+    const si = this.screenInfo;
+    const th = this.theme;
+    drawBoard(this.boardCanvas, { left: si.left, right: si.right, rating: si.rating, mode: si.mode }, blink, th.sponsors, th.boardLive, th.screen.colorA);
+  }
+
+  /**
+   * Re-dress the arena for a season: neon texts, LED ribbon, big-screen palette,
+   * spotlights, crowd glow sticks and the seasonal decoration set. Geometry and
+   * collisions stay the same; previous seasonal objects are disposed.
+   */
+  applyTheme(th: ArenaTheme, lowQuality: boolean): void {
+    this.theme = th;
+    const [main, side, live] = this.neonMats;
+    const swap = (m: MeshBasicMaterial, tex: CanvasTexture) => {
+      m.map?.dispose();
+      m.map = tex;
+      m.needsUpdate = true;
+    };
+    swap(main, drawNeon(th.neon.main[0], th.neon.main[1], 1024, 256, th.neon.main[0].length > 10 ? 120 : 150));
+    swap(side, drawNeon(th.neon.side[0], th.neon.side[1], 1024, 256, th.neon.side[0].length > 9 ? 112 : 130));
+    swap(live, drawNeon(th.neon.live[0], th.neon.live[1], 1024, 256, th.neon.live[0].length > 9 ? 96 : 120));
+    this.cones.forEach((c, i) => {
+      const col = th.spots[i % th.spots.length];
+      (c.mat.uniforms.uColor.value as Color).setHex(col);
+      c.lens.color.setHex(col).multiplyScalar(3);
+    });
+    const colAttr = this.sticks.geometry.getAttribute('color') as Float32BufferAttribute;
+    const cc = new Color();
+    for (let i = 0; i < colAttr.count; i++) {
+      cc.setHex(th.sticks[i % th.sticks.length]);
+      colAttr.setXYZ(i, cc.r, cc.g, cc.b);
+    }
+    colAttr.needsUpdate = true;
+    this.paintBoard(this.boardBlink);
+    this.boardTex.needsUpdate = true;
+    this.drawScreen();
+    this.decor?.dispose();
+    this.decor = null;
+    if (th.decor !== 'none' || th.ambient !== 'none') {
+      this.decor = new SeasonalDecor(th.decor, th.ambient, th.ambientColors, lowQuality);
+      this.decor.setMenuVisible(this.screenInfo.mode === 'menu');
+      this.group.add(this.decor.group);
+    }
+  }
+
+  setLowQuality(low: boolean): void {
+    this.decor?.setQuality(low);
   }
 
   private drawScreen(): void {
@@ -770,15 +829,16 @@ export class Arena {
     const W = this.screenCanvas.width;
     const H = this.screenCanvas.height;
     const s = this.screenInfo;
+    const th = this.theme.screen;
     const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#0d1440');
-    bg.addColorStop(1, '#060818');
+    bg.addColorStop(0, th.bgTop);
+    bg.addColorStop(1, th.bgBottom);
     g.fillStyle = bg;
     g.fillRect(0, 0, W, H);
     // moving diagonal stripes
     g.save();
     g.globalAlpha = 0.08;
-    g.fillStyle = '#22f0e0';
+    g.fillStyle = th.colorA;
     const off = (this.time * 60) % 80;
     for (let x = -H; x < W + H; x += 80) {
       g.beginPath();
@@ -803,13 +863,13 @@ export class Arena {
     if (s.mode === 'menu') {
       g.font = 'italic 900 92px Unbounded, "Arial Black", sans-serif';
       g.fillStyle = '#ffffff';
-      g.shadowColor = '#22f0e0';
+      g.shadowColor = th.colorA;
       g.shadowBlur = 24;
-      g.fillText('PRIME TIME', W / 2, H / 2 - 50);
-      g.shadowColor = '#ff7a1a';
-      g.fillStyle = '#ff9a3a';
+      g.fillText(th.title, W / 2, H / 2 - 50);
+      g.shadowColor = th.colorB;
+      g.fillStyle = th.colorB;
       g.font = 'italic 900 72px Unbounded, "Arial Black", sans-serif';
-      g.fillText('SHOWDOWN', W / 2, H / 2 + 50);
+      g.fillText(th.subtitle, W / 2, H / 2 + 50);
       g.shadowBlur = 0;
       g.font = '700 28px Rubik, Arial, sans-serif';
       g.fillStyle = 'rgba(255,255,255,0.7)';
@@ -847,6 +907,11 @@ export class Arena {
       g.font = '800 26px Rubik, Arial, sans-serif';
       g.fillStyle = '#fff';
       g.fillText(`РЕЙТИНГ ШОУ ${Math.round(s.rating)}`, W / 2, by + 62);
+      if (th.fightHeadline) {
+        g.font = 'italic 900 30px Unbounded, "Arial Black", sans-serif';
+        g.fillStyle = th.colorB;
+        g.fillText(th.fightHeadline, W / 2, H - 34);
+      }
       if (s.headline) {
         g.font = 'italic 900 40px Unbounded, "Arial Black", sans-serif';
         g.fillStyle = '#ffe14d';
@@ -906,11 +971,12 @@ export class Arena {
       pivot.add(cone);
       const housing = new Mesh(new CylinderGeometry(0.35, 0.45, 0.7, 14), housingMat);
       pivot.add(housing);
-      const lens = new Mesh(new SphereGeometry(0.32, 12, 8), new MeshBasicMaterial({ color: new Color(s.color).multiplyScalar(3) }));
+      const lensMat = new MeshBasicMaterial({ color: new Color(s.color).multiplyScalar(3) });
+      const lens = new Mesh(new SphereGeometry(0.32, 12, 8), lensMat);
       lens.position.y = -0.35;
       pivot.add(lens);
       this.group.add(pivot);
-      this.cones.push({ mesh: pivot, baseYaw: s.yaw, speed: 0.35 + Math.random() * 0.2, phase: Math.random() * 6, mat });
+      this.cones.push({ mesh: pivot, baseYaw: s.yaw, speed: 0.35 + Math.random() * 0.2, phase: Math.random() * 6, mat, lens: lensMat });
     }
   }
 
@@ -941,6 +1007,7 @@ export class Arena {
       m.color.setScalar(1.5 * flick + this.flashBoost * 0.8);
     }
     this.wallGlow.color.setScalar(1.6 + Math.sin(t * 3) * 0.15 + this.flashBoost * 1.2);
+    this.decor?.update(dt, ex);
     this.sticksMat.uniforms.uScale.value = 300;
 
     for (const p of this.props) {
@@ -954,8 +1021,7 @@ export class Arena {
     if (this.boardTimer <= 0) {
       this.boardTimer = 0.5;
       this.boardBlink = !this.boardBlink;
-      const si = this.screenInfo;
-      drawBoard(this.boardCanvas, { left: si.left, right: si.right, rating: si.rating, mode: si.mode }, this.boardBlink);
+      this.paintBoard(this.boardBlink);
       this.boardTex.needsUpdate = true;
     }
     this.screenTimer -= dt;
@@ -966,6 +1032,8 @@ export class Arena {
   }
 
   dispose(): void {
+    this.decor?.dispose();
+    this.decor = null;
     this.group.traverse((o) => {
       const m = o as Mesh;
       if (m.geometry) m.geometry.dispose();

@@ -64,6 +64,7 @@ export class UIManager {
     const s = this.screens.get(name);
     if (!s) return;
     this.current = name;
+    this.root.dataset.screen = name; // lets CSS hide menu-only decoration during fights
     s.onShow?.(params);
     s.el.classList.add('active');
   }

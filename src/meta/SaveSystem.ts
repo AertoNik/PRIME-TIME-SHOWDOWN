@@ -1,6 +1,7 @@
 import { CAREER_START, GOALS, type GoalId } from '../config/career';
 import { UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
+import { COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 
 export type QualitySetting = 'auto' | 'high' | 'medium' | 'low';
@@ -20,6 +21,30 @@ export interface FighterProgress {
 export interface GoalState {
   done: boolean;
   claimed: boolean;
+}
+
+/** Progress in one seasonal event (kept after the event ends). */
+export interface EventProgress {
+  /** Spendable seasonal currency. */
+  tokens: number;
+  /** Lifetime currency earned / spent in this event (history, never decreases). */
+  earned: number;
+  spent: number;
+  /** Quest id -> counted progress and whether its reward was claimed. */
+  quests: Record<string, { p: number; claimed: boolean }>;
+  /** Cosmetics bought in the event shop. */
+  bought: CosmeticId[];
+  grandClaimed: boolean;
+  /** Daily cap bookkeeping for match tokens (local date key). */
+  day: string;
+  dayTokens: number;
+}
+
+export interface CosmeticsState {
+  owned: CosmeticId[];
+  equipped: Partial<Record<CosmeticSlot, CosmeticId>>;
+  /** When and where each item was obtained. */
+  history: { id: CosmeticId; event: string; at: number }[];
 }
 
 export interface SaveData {
@@ -47,12 +72,15 @@ export interface SaveData {
   lastRival: RivalId | null;
   seed: number;
   hintsSeen: boolean;
+  events: Record<string, EventProgress>;
+  cosmetics: CosmeticsState;
 }
 
 // The key never changes between versions so existing careers keep loading;
 // `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
-const VERSION = 2;
+// v2 (1.1): settings.camera. v3 (1.2): events + cosmetics.
+const VERSION = 3;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -96,7 +124,58 @@ export function defaultSave(): SaveData {
     lastRival: null,
     seed: Math.floor(Math.random() * 1e9),
     hintsSeen: false,
+    events: {},
+    cosmetics: { owned: [], equipped: {}, history: [] },
   };
+}
+
+export function emptyEventProgress(): EventProgress {
+  return { tokens: 0, earned: 0, spent: 0, quests: {}, bought: [], grandClaimed: false, day: '', dayTokens: 0 };
+}
+
+function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
+  const out: Record<string, EventProgress> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== 'object' || id.length > 64) continue;
+    const e = v as Partial<EventProgress>;
+    const p = emptyEventProgress();
+    p.tokens = Math.max(0, Math.floor(num(e.tokens, 0)));
+    p.earned = Math.max(0, Math.floor(num(e.earned, 0)));
+    p.spent = Math.max(0, Math.floor(num(e.spent, 0)));
+    if (e.quests && typeof e.quests === 'object') {
+      for (const [q, st] of Object.entries(e.quests as Record<string, { p?: unknown; claimed?: unknown }>)) {
+        if (!st || typeof st !== 'object') continue;
+        p.quests[q] = { p: Math.max(0, num(st.p, 0)), claimed: bool(st.claimed, false) };
+      }
+    }
+    if (Array.isArray(e.bought)) p.bought = [...new Set(e.bought.filter(isCosmeticId))];
+    p.grandClaimed = bool(e.grandClaimed, false);
+    p.day = typeof e.day === 'string' ? e.day.slice(0, 16) : '';
+    p.dayTokens = Math.max(0, num(e.dayTokens, 0));
+    out[id] = p;
+  }
+  return out;
+}
+
+function sanitizeCosmetics(raw: unknown): CosmeticsState {
+  const c: CosmeticsState = { owned: [], equipped: {}, history: [] };
+  if (!raw || typeof raw !== 'object') return c;
+  const r = raw as Partial<CosmeticsState>;
+  if (Array.isArray(r.owned)) c.owned = [...new Set(r.owned.filter(isCosmeticId))];
+  if (r.equipped && typeof r.equipped === 'object') {
+    for (const slot of COSMETIC_SLOTS) {
+      const id = (r.equipped as Record<string, unknown>)[slot];
+      // only items the player actually owns can be equipped
+      if (isCosmeticId(id) && c.owned.includes(id)) c.equipped[slot] = id;
+    }
+  }
+  if (Array.isArray(r.history)) {
+    for (const h of r.history) {
+      if (h && typeof h === 'object' && isCosmeticId(h.id)) c.history.push({ id: h.id, event: String(h.event ?? '').slice(0, 64), at: num(h.at, 0) });
+    }
+  }
+  return c;
 }
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -159,6 +238,9 @@ export function sanitize(raw: unknown): SaveData {
   if (typeof r.lastRival === 'string' && RIVAL_ORDER.includes(r.lastRival as RivalId)) d.lastRival = r.lastRival as RivalId;
   d.seed = num(r.seed, d.seed);
   d.hintsSeen = bool(r.hintsSeen, false);
+  // v3: seasonal progress and cosmetics (absent before Alpha 1.2 -> empty)
+  d.events = sanitizeEvents(r.events);
+  d.cosmetics = sanitizeCosmetics(r.cosmetics);
   return d;
 }
 

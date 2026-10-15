@@ -140,6 +140,7 @@ export class BattleHUD implements Screen {
       <div class="edge-glow"></div>
       <div class="vignette"></div>
       <div class="glitch-overlay"></div>
+      <div class="bc-frame" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
       <div class="hud-top">
         <div class="hp-box left">
           <div class="hp-main">

@@ -3,6 +3,9 @@ import { COMBOS } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import type { Difficulty, FighterId, RivalId } from '../../config/types';
 import type { MatchResultData } from '../../combat/types';
+import type { MatchEventOutcome } from '../../meta/EventManager';
+import { ICONS } from '../eventArt';
+import { currencyIcon } from './EventsScreen';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { gradeFor, levelFor, type MatchOutcome } from '../../meta/CareerSystem';
@@ -16,6 +19,7 @@ export interface ResultsParams {
   fighter: FighterId;
   rival: RivalId;
   difficulty: Difficulty;
+  event?: MatchEventOutcome | null;
 }
 
 export class ResultsScreen implements Screen {
@@ -41,6 +45,9 @@ export class ResultsScreen implements Screen {
       } else if (act === 'prep') {
         this.g.audio.ui('click');
         this.g.goto('prep');
+      } else if (act === 'events') {
+        this.g.audio.ui('click');
+        this.g.goto('events');
       } else if (act === 'roster') {
         this.g.audio.ui('click');
         this.g.goto('roster', { back: 'prep' });
@@ -102,11 +109,31 @@ export class ResultsScreen implements Screen {
       else tip = '<b>Совет:</b> не копите энергию до упора и чередуйте разные карты — зрители не любят простой и повторы.';
     }
 
+    // seasonal event block: currency earned + quests finished by this match
+    let eventBlock = '';
+    const eo = p.event;
+    const ev = eo ? this.g.events.find(eo.eventId) : null;
+    if (eo && ev) {
+      const icon = currencyIcon(ev);
+      const parts = eo.lines.map((l) => `${esc(l.label)} +${l.value}`).join(' · ');
+      const quests = eo.completed
+        .map((q) => `<div class="evr-quest">${ICONS.check}<span>Задание выполнено: <b>${esc(q.title)}</b> · +${q.reward}</span></div>`)
+        .join('');
+      eventBlock = `<div class="section panel ev-result" style="animation:lineIn .35s ease ${T0 + 0.15}s both">
+          <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+${eo.tokens}<span class="evr-coin">${icon}</span></span></div>
+          <div class="muted evr-lines">${parts || 'Победы, высокий рейтинг и комбо приносят жетоны'}${eo.capped ? ' · дневной лимит жетонов за бои достигнут' : ''}</div>
+          ${quests}
+          ${quests ? '<button class="label evr-link" data-act="events">Забрать награды в «Событиях» ›</button>' : ''}
+        </div>`;
+    }
+    const champion = r.outcome === 'win' && this.g.save.data.cosmetics.equipped.title === 'title_halloween_champion';
+    this.el.classList.toggle('champion', champion);
     this.el.classList.remove('instant');
     this.el.innerHTML = `
       <div class="fill scroll" style="padding-top:4px">
         <div class="result-title">
           <div class="rt ${r.outcome}">${titles[r.outcome]}</div>
+          ${champion ? `<div class="champ-ribbon">${ICONS.crown}<span>HALLOWEEN CHAMPION</span></div>` : ''}
           <div class="rs">${methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
         </div>
         <div class="reward-tiles" style="animation:lineIn .3s ease ${T0}s both">
@@ -123,6 +150,7 @@ export class ResultsScreen implements Screen {
             <div class="label" style="margin-top:3px">Урон ${formatNumber(r.damageDealt)} · Идеальных реакций ${r.perfects}</div>
           </div>
         </div>
+        ${eventBlock}
         ${tip ? `<div class="result-tip">${tip}</div>` : ''}
         <div class="section panel combos-panel">
           <div class="section-title"><span class="h2">Комбо эфира · ${r.combos}</span><span class="label">${r.bestCombo ? 'лучшее — золотом' : ''}</span></div>

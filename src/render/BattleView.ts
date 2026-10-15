@@ -30,6 +30,17 @@ import type { FighterFX, VFX } from './VFX';
 
 export const TEAM_COLORS: [Color, Color] = [new Color(0x2ad8ff), new Color(0xff3a3a)];
 
+/** Season palette + the player's equipped battle cosmetics (set by Game before each match). */
+export interface BattleStyle {
+  combo: number[];
+  confetti: number[];
+  dashFx: 'phantom' | null;
+  victoryFx: 'pumpkin' | null;
+}
+
+const PHANTOM = new Color(0xa855ff);
+const PHANTOM_SPARK = new Color(0x9dff5c);
+
 export interface TimeFx {
   hitstop: number;
   slowmo: number;
@@ -61,6 +72,8 @@ interface Slot {
   teamRing: Mesh;
   shadow: Mesh;
   accent: Color;
+  /** DASH trail/afterimage colour (accent, or PURPLE PHANTOM for the player). */
+  dashColor: Color;
   pos: Vector3;
   stunArcT: number;
   emberT: number;
@@ -80,6 +93,7 @@ const rng = new Rng(99);
 
 /** Renders a Match: fighters, projectiles and all reactive effects. */
 export class BattleView {
+  style: BattleStyle = { combo: [0xffd23a], confetti: [0x22f0e0, 0xff7a1a, 0xff4fd8, 0xffe14d, 0x7aa8ff, 0xffffff], dashFx: null, victoryFx: null };
   private r: Renderer;
   private arena: Arena;
   private vfx: VFX;
@@ -182,6 +196,7 @@ export class BattleView {
         teamRing,
         shadow,
         accent,
+        dashColor: f.side === 0 && this.style.dashFx === 'phantom' ? PHANTOM.clone() : accent,
         pos: new Vector3(f.x, 0, f.z),
         stunArcT: 0,
         emberT: 0,
@@ -406,8 +421,8 @@ export class BattleView {
       tr.width = 1.1;
       tr.color.set(0xff5a2a);
     } else if (s.trailT > 0) {
-      tr.width = 0.9;
-      tr.color.copy(s.accent);
+      tr.width = s.dashColor !== s.accent ? 1.05 : 0.9;
+      tr.color.copy(s.dashColor);
     } else if (f.overdrive > 0) {
       tr.width = 0.5;
       tr.color.set(0xff7a1a);
@@ -644,6 +659,9 @@ export class BattleView {
           this.vfx.rays(s.pos.x, 1.3, s.pos.z, _c.set(0xff4fd8), 0.6, 4.4, 0.6, 1.8);
         }
         if (e.side === 0) {
+          // seasonal accent: an extra burst in the event palette
+          const pal = this.style.combo;
+          for (let i = 1; i < pal.length; i++) this.vfx.burst(s.pos.x, 1.3, s.pos.z, _c.set(pal[i]), ultra ? 14 : 9, ultra ? 8 : 6, 0.18, 0.7, 2.4, -1.5, 2.5);
           this.requestTime(ultra ? 0.3 : 0.42, ultra ? 0.5 : 0.35);
           this.cam.kick(ultra ? 0.8 : 0.5);
           this.cam.focusAccent(s.pos, ultra ? 1 : 0.6);
@@ -745,16 +763,26 @@ export class BattleView {
         const dz = e.toZ - e.fromZ;
         const l = Math.hypot(dx, dz) || 1;
         s.model.anim.dash(dx / l, dz / l);
-        s.trailT = 0.32;
+        const dc = s.dashColor;
+        const phantom = dc !== s.accent;
+        s.trailT = phantom ? 0.42 : 0.32;
         this.vfx.dust(e.fromX, e.fromZ, 8, dx / l, dz / l);
-        this.vfx.ring(e.fromX, e.fromZ, s.accent, 0.4, 2.2, 0.3, 2);
+        this.vfx.ring(e.fromX, e.fromZ, dc, 0.4, 2.2, 0.3, 2);
         for (let i = 0; i < 10; i++) {
           const t = i / 10;
-          this.vfx.sparks.spawn(e.fromX + dx * t, rng.range(0.4, 1.8), e.fromZ + dz * t, (dx / l) * 2, 0, (dz / l) * 2, 0.22 + t * 0.15, 0.2, 0.02, s.accent, 2, 4, 0);
+          this.vfx.sparks.spawn(e.fromX + dx * t, rng.range(0.4, 1.8), e.fromZ + dz * t, (dx / l) * 2, 0, (dz / l) * 2, 0.22 + t * 0.15, 0.2, 0.02, phantom && i % 3 === 0 ? PHANTOM_SPARK : dc, 2, 4, 0);
+        }
+        if (phantom) {
+          // PURPLE PHANTOM: fading ghost silhouettes along the dash path
+          for (let i = 1; i <= 3; i++) {
+            const t = i / 4;
+            this.vfx.glow(e.fromX + dx * t, 1.1, e.fromZ + dz * t, PHANTOM, 1.4, 0.6, 0.35 + i * 0.06, 1.8);
+          }
+          this.vfx.burst(e.fromX, 1.0, e.fromZ, PHANTOM_SPARK, 10, 3, 0.14, 0.4, 2.2, -1, 1);
         }
         if (e.style === 'blink') {
-          this.vfx.burst(e.fromX, 1.1, e.fromZ, s.accent, 20, 4, 0.2, 0.35, 2.6);
-          this.vfx.burst(e.toX, 1.1, e.toZ, s.accent, 20, 4, 0.2, 0.35, 2.6);
+          this.vfx.burst(e.fromX, 1.1, e.fromZ, dc, 20, 4, 0.2, 0.35, 2.6);
+          this.vfx.burst(e.toX, 1.1, e.toZ, dc, 20, 4, 0.2, 0.35, 2.6);
         }
         break;
       }
@@ -866,7 +894,7 @@ export class BattleView {
         const winner = this.slots[1 - e.side];
         winner.victoryDelay = 0.9;
         if (e.side === 1) {
-          this.vfx.confetti(s.pos.x, 2, s.pos.z, 120);
+          this.vfx.confetti(s.pos.x, 2, s.pos.z, 120, this.style.confetti);
         }
         break;
       }
@@ -881,7 +909,18 @@ export class BattleView {
           if (w.victoryDelay < 0) w.victoryDelay = m.fighters[1 - m.winner].ko ? 0.9 : 0.2;
           this.cam.finishFocus.copy(w.pos);
           if (m.winner === 0) {
-            setTimeout(() => this.vfx.confetti(w.pos.x, 3, w.pos.z, 160), 900);
+            const pumpkin = this.style.victoryFx === 'pumpkin';
+            setTimeout(() => {
+              if (this.match !== m) return;
+              this.vfx.confetti(w.pos.x, 3, w.pos.z, pumpkin ? 110 : 160, pumpkin ? [0xff8a1f, 0xb45cff, 0xa8ff60, 0xffd27a] : this.style.confetti);
+              if (pumpkin) {
+                // PUMPKIN VICTORY
+                this.vfx.pumpkins(w.pos.x, 1.6, w.pos.z, 14);
+                setTimeout(() => this.match === m && this.vfx.pumpkins(w.pos.x, 1.6, w.pos.z, 8), 700);
+                this.vfx.ring(w.pos.x, w.pos.z, _c.set(0xff8a1f), 1, 6, 0.8, 2.6);
+                this.vfx.rays(w.pos.x, 1.4, w.pos.z, _c.set(0xb45cff), 1, 5, 0.8, 1.8);
+              }
+            }, 900);
           }
         } else if (e.phase === 'outro') {
           this.cam.finishFocus.set(0, 0, 0);

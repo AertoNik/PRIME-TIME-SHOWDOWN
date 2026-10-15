@@ -301,3 +301,44 @@ export function scorchTexture(): Texture {
     return c;
   });
 }
+
+/** Little glowing jack-o'-lantern sprite (PUMPKIN VICTORY). */
+export function pumpkinSpriteTexture(): Texture {
+  return cached('pumpkin', () => {
+    const { c, g } = makeCanvas(96, 96);
+    g.translate(48, 52);
+    const body = g.createRadialGradient(-8, -10, 4, 0, 0, 40);
+    body.addColorStop(0, '#ffc86a');
+    body.addColorStop(0.55, '#ff8a1f');
+    body.addColorStop(1, '#b8420a');
+    g.fillStyle = body;
+    for (const [dx, w] of [[-14, 20], [14, 20], [0, 22]] as [number, number][]) {
+      g.beginPath();
+      g.ellipse(dx, 0, w, 32, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#4a7a2a';
+    g.fillRect(-4, -42, 8, 14);
+    g.fillStyle = '#ffe9a0';
+    g.shadowColor = '#ffd04a';
+    g.shadowBlur = 8;
+    for (const dx of [-11, 11]) {
+      g.beginPath();
+      g.moveTo(dx - 7, -2);
+      g.lineTo(dx + 7, -2);
+      g.lineTo(dx, -14);
+      g.fill();
+    }
+    g.beginPath();
+    g.moveTo(-18, 8);
+    g.lineTo(-10, 14);
+    g.lineTo(-4, 9);
+    g.lineTo(2, 15);
+    g.lineTo(8, 9);
+    g.lineTo(14, 14);
+    g.lineTo(18, 8);
+    g.quadraticCurveTo(0, 28, -18, 8);
+    g.fill();
+    return c;
+  });
+}

@@ -27,7 +27,7 @@ import {
   type Texture,
 } from 'three';
 import { clamp01, ease, Rng } from '../core/math';
-import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, puffTexture, raysTexture, ringTexture, scorchTexture, starTexture } from './textures';
+import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, pumpkinSpriteTexture, puffTexture, raysTexture, ringTexture, scorchTexture, starTexture } from './textures';
 import type { WeaponType } from '../config/types';
 
 const _v = new Vector3();
@@ -1072,6 +1072,62 @@ class GlitchField {
 
 // ============================================================================= VFX
 /** Central effects manager: pooled particles, flashes, rings, bolts, smoke, debris. */
+/** Tumbling sprites with gravity (PUMPKIN VICTORY). Built on first use. */
+class SpriteRain {
+  private items: { s: Sprite; m: SpriteMaterial; vel: Vector3; spin: number; life: number; max: number; size: number }[] = [];
+  private next = 0;
+
+  constructor(group: Group, n: number, tex: Texture) {
+    for (let i = 0; i < n; i++) {
+      const m = new SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+      const s = new Sprite(m);
+      s.visible = false;
+      group.add(s);
+      this.items.push({ s, m, vel: new Vector3(), spin: 0, life: 0, max: 1, size: 1 });
+    }
+  }
+
+  spawn(x: number, y: number, z: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const it = this.items[this.next];
+      this.next = (this.next + 1) % this.items.length;
+      // a low, wide toss so the pumpkins stay around the winner in the finish/results shot
+      const a = rng.range(0, Math.PI * 2);
+      const sp = rng.range(1.2, 3.2);
+      it.s.position.set(x + rng.range(-0.4, 0.4), y, z + rng.range(-0.4, 0.4));
+      it.vel.set(Math.cos(a) * sp, rng.range(4.5, 7), Math.sin(a) * sp);
+      it.spin = rng.range(-5, 5);
+      it.max = it.life = rng.range(2.2, 3);
+      it.size = rng.range(0.45, 0.72);
+      it.s.visible = true;
+    }
+  }
+
+  update(dt: number): void {
+    for (const it of this.items) {
+      if (!it.s.visible) continue;
+      it.life -= dt;
+      if (it.life <= 0) {
+        it.s.visible = false;
+        continue;
+      }
+      it.vel.y -= 9 * dt;
+      it.vel.multiplyScalar(1 - 0.6 * dt);
+      it.s.position.addScaledVector(it.vel, dt);
+      if (it.s.position.y < 0.2) {
+        it.s.position.y = 0.2;
+        it.vel.y = Math.abs(it.vel.y) * 0.35;
+      }
+      it.m.rotation += it.spin * dt;
+      const k = it.life / it.max;
+      it.m.opacity = Math.min(1, k * 3);
+      it.s.scale.setScalar(it.size * (k > 0.9 ? (1 - k) * 10 : 1));
+    }
+  }
+}
+
+const DEFAULT_CONFETTI = [0x22f0e0, 0xff7a1a, 0xff4fd8, 0xffe14d, 0x7aa8ff, 0xffffff];
+
 export class VFX {
   readonly group = new Group();
   readonly sparks: ParticlePool;
@@ -1084,6 +1140,7 @@ export class VFX {
   private debris: DebrisPool;
   private scorches: ScorchPool;
   private raysPool: FlashPool;
+  private pumpkinRain: SpriteRain | null = null;
   readonly fighterFX: FighterFX[] = [];
   readonly glitch: GlitchField[] = [];
   private t = 0;
@@ -1228,14 +1285,20 @@ export class VFX {
     this.debris.spawn(x, y, z, color, count, 1);
   }
 
-  confetti(x: number, y: number, z: number, count: number): void {
-    const cols = [0x22f0e0, 0xff7a1a, 0xff4fd8, 0xffe14d, 0x7aa8ff, 0xffffff];
+  /** Victory confetti; `cols` comes from the active season's palette. */
+  confetti(x: number, y: number, z: number, count: number, cols: number[] = DEFAULT_CONFETTI): void {
     for (let i = 0; i < count; i++) {
       _c.setHex(cols[i % cols.length]);
       const a = rng.range(0, 6.28);
       const sp = rng.range(2, 7);
       this.sparks.spawn(x, y, z, Math.cos(a) * sp, rng.range(5, 11), Math.sin(a) * sp, rng.range(1.4, 2.6), 0.14, 0.1, _c, 1.6, 1.2, 6);
     }
+  }
+
+  /** Glowing pumpkins thrown into the air (PUMPKIN VICTORY cosmetic). */
+  pumpkins(x: number, y: number, z: number, count: number): void {
+    if (!this.pumpkinRain) this.pumpkinRain = new SpriteRain(this.group, 22, pumpkinSpriteTexture());
+    this.pumpkinRain.spawn(x, y, z, count);
   }
 
   /** Weapon-specific muzzle flash: crisp pistol pop, shotgun blast, rapid carbine flicker. */
@@ -1329,6 +1392,7 @@ export class VFX {
     this.debris.update(dt);
     this.scorches.update(dt);
     this.raysPool.update(dt);
+    this.pumpkinRain?.update(dt);
   }
 
   get time(): number {

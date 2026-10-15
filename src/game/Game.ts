@@ -1,10 +1,12 @@
 import { MATCH } from '../config/balance';
+import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import type { Difficulty, FighterId, RivalId } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
 import { Match } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { CareerSystem } from '../meta/CareerSystem';
+import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
 import { Arena } from '../render/Arena';
 import { BattleView, type TimeFx } from '../render/BattleView';
@@ -16,15 +18,34 @@ import { Showcase } from '../render/Showcase';
 import { VFX } from '../render/VFX';
 import { BattleHUD } from '../ui/screens/BattleHUD';
 import { CareerScreen } from '../ui/screens/CareerScreen';
+import { EventsScreen } from '../ui/screens/EventsScreen';
 import { MenuScreen } from '../ui/screens/MenuScreen';
 import { PrepScreen } from '../ui/screens/PrepScreen';
 import { ResultsScreen } from '../ui/screens/ResultsScreen';
 import { RosterScreen } from '../ui/screens/RosterScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
+import { ThemeManager } from './ThemeManager';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'battle' | 'results';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'battle' | 'results';
+
+/**
+ * Developer-only switches, read from the address bar in `npm run dev` only:
+ *   ?event=halloween-2026 | winter-preview | none   force an event (manual mode)
+ *   ?now=2026-10-25                                 pretend it is this date (auto mode)
+ * The published build ignores them, so players cannot change seasons.
+ */
+function devEventOverrides(): { settings: EventSettings; clock?: () => number } {
+  if (!import.meta.env.DEV) return { settings: eventSettings };
+  const qs = new URLSearchParams(location.search);
+  const ev = qs.get('event');
+  const now = qs.get('now');
+  const settings: EventSettings = ev ? { mode: 'manual', forcedEventId: ev } : eventSettings;
+  const t = now ? Date.parse(now.length <= 10 ? now + 'T12:00:00Z' : now) : NaN;
+  return Number.isFinite(t) ? { settings, clock: () => t + (performance.now() - bootT) } : { settings };
+}
+const bootT = performance.now();
 
 const ALL_LOOKS = ['ray', 'bruno', 'nika', 'dex', 'tank', 'zoe'];
 
@@ -48,6 +69,8 @@ export class Game {
   readonly audio = new AudioSystem();
   readonly save = new SaveSystem();
   readonly career: CareerSystem;
+  readonly events: EventManager;
+  themes!: ThemeManager;
   renderer!: Renderer;
   arena!: Arena;
   vfx!: VFX;
@@ -61,6 +84,9 @@ export class Game {
   match: Match | null = null;
   paused = false;
   private matchMeta: { fighter: FighterId; rival: RivalId; difficulty: Difficulty } | null = null;
+  /** Event that was running when the current match started (its quests get the result). */
+  private matchEventId: string | null = null;
+  private seasonCheckT = 0;
   private resultsShown = false;
   private acc = 0;
   private last = 0;
@@ -77,6 +103,7 @@ export class Game {
   constructor(stage: HTMLElement, uiRoot: HTMLElement) {
     this.stage = stage;
     this.career = new CareerSystem(this.save);
+    this.events = new EventManager(this.save, devEventOverrides());
     this.ui = new UIManager(uiRoot);
     this.ui.onSoundToggle = () => this.toggleSound();
     this.ui.setSoundIcon(this.save.data.settings.sound);
@@ -143,6 +170,11 @@ export class Game {
     this.showcase = new Showcase(this.models);
     this.renderer.scene.add(this.showcase.group);
     this.battleView = new BattleView(this.renderer, this.arena, this.vfx, this.cam, this.models, this.timeFx);
+    this.themes = new ThemeManager({ renderer: this.renderer, arena: this.arena, battleView: this.battleView, audio: this.audio, uiRoot: this.ui.root });
+    this.themes.apply(this.events.themeId);
+    this.themes.setMotion(this.cam.intensity);
+    this.applyCosmetics();
+    this.renderer.onQuality = (q) => this.themes?.setLowQuality(q === 'low');
     for (let i = 0; i < ALL_LOOKS.length; i++) {
       this.models.get(ALL_LOOKS[i]);
       this.title.setProgress(0.4 + (i / ALL_LOOKS.length) * 0.35);
@@ -158,6 +190,7 @@ export class Game {
     this.ui.register('roster', new RosterScreen(this));
     this.ui.register('prep', new PrepScreen(this));
     this.ui.register('career', new CareerScreen(this));
+    this.ui.register('events', new EventsScreen(this));
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
 
@@ -212,6 +245,7 @@ export class Game {
   goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results'>, param?: unknown): void {
     if (this.screen === 'battle' || this.screen === 'results') this.endBattleView();
     this.screen = name;
+    this.refreshSeason();
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(f.look, f.theme.accent);
     this.cam.setMode('showcase', 1.0);
@@ -261,6 +295,26 @@ export class Game {
     this.timeFx.slowScale = 1;
   }
 
+  /**
+   * Re-check the event calendar; when a season starts or ends, switch the theme.
+   * Never called mid-fight, so a match always finishes in the look it started with.
+   */
+  refreshSeason(): boolean {
+    if (!this.events.refresh()) return false;
+    this.themes?.apply(this.events.themeId);
+    const e = this.events.active;
+    if (this.bootDone) {
+      this.ui.toast(e ? `${e.title}: событие началось!` : 'Сезонное событие завершилось. Награды остаются в коллекции.', !!e);
+      if (e) this.themes?.sting();
+    }
+    return true;
+  }
+
+  /** Push equipped cosmetics to the UI and the battle renderer. */
+  applyCosmetics(): void {
+    this.themes?.applyCosmetics(this.save.data.cosmetics.equipped);
+  }
+
   /** Re-fit the camera to the HUD after layout changes (rotation, address bar, window resize). */
   private updateLayoutFraming(): void {
     if (!this.hud) return;
@@ -293,6 +347,7 @@ export class Game {
     });
     this.match = match;
     this.matchMeta = { fighter, rival, difficulty };
+    this.matchEventId = this.events.playable ? this.events.active!.id : null;
     this.resultsShown = false;
     this.paused = false;
     this.acc = 0;
@@ -381,6 +436,7 @@ export class Game {
     this.resultsShown = true;
     const meta = this.matchMeta;
     const outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival);
+    const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
     if (!this.save.data.hintsSeen) {
       this.save.data.hintsSeen = true;
       this.save.save();
@@ -397,7 +453,7 @@ export class Game {
     setTimeout(() => {
       if (this.screen === 'results') this.audio.playTrack('menu');
     }, 3000);
-    this.ui.show('results', { result: m.result, outcome, ...meta });
+    this.ui.show('results', { result: m.result, outcome, event: eventOutcome, ...meta });
   }
 
   // -------------------------------------------------------------- settings
@@ -420,6 +476,7 @@ export class Game {
 
   applyCameraMotion(c: CameraMotion): void {
     this.cam.intensity = c === 'full' ? 1 : c === 'reduced' ? 0.45 : 0;
+    this.themes?.setMotion(this.cam.intensity);
   }
 
   setCameraMotion(c: CameraMotion): void {
@@ -486,6 +543,7 @@ export class Game {
             } else if (a === 'reset') {
               this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Это действие нельзя отменить.', 'Сбросить', () => {
                 this.save.reset();
+                this.applyCosmetics();
                 this.ui.toast('Прогресс сброшен. Новый сезон начинается!');
                 this.goto('menu');
               });
@@ -508,6 +566,7 @@ export class Game {
          <p><b style="color:#ff8a7a">Красная зона</b> — соперник заряжает мощный удар. DASH уклоняется, SHIELD блокирует, SHOCK прерывает заряд. Удачные реакции дают бонус рейтинга.</p>
          <p><b style="color:var(--pink)">Рейтинг шоу</b> растёт за комбо, идеальные уклонения и блоки, мощные попадания, разнообразие приёмов и эффектный финиш. Простой и бездействие снижают его. Рейтинг определяет гонорар и новых фанатов.</p>
          <p><b style="color:var(--teal)">Карьера:</b> зарабатывайте деньги и репутацию, подписывайте новых бойцов, открывайте сложность «Профи» и «Чемпион».</p>
+         <p><b style="color:var(--btn-a)">События:</b> в праздничные сезоны в меню появляется раздел «События» с заданиями, сезонными жетонами и бесплатными косметическими наградами. Полученные предметы остаются у вас навсегда.</p>
        </div>
        <div class="modal-actions"><button class="btn teal wide" data-a="ok">Понятно</button></div>`,
       (root) => {
@@ -605,6 +664,12 @@ export class Game {
       this.showcase.update(dtReal);
       const p = this.showcase.group.position;
       this.cam.update(dtReal, p, p);
+      // seasons start/end on their own: check the calendar now and then outside fights
+      this.seasonCheckT -= dtReal;
+      if (this.seasonCheckT <= 0 && this.bootDone && this.screen !== 'title' && this.screen !== 'results') {
+        this.seasonCheckT = 30;
+        if (this.refreshSeason() && (this.screen === 'menu' || this.screen === 'events')) this.ui.show(this.screen);
+      }
     }
     this.arena.update(dtReal);
     this.vfx.update(dt === 0 && m ? 0 : m ? dt : dtReal, this.renderer.camera);

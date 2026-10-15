@@ -14,7 +14,7 @@ export class TitleScreen implements Screen {
       `<div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span></div>
        <div class="loader-bar"><i></i></div>
        <div class="tap-hint" style="visibility:hidden">НАЖМИТЕ, ЧТОБЫ ВЫЙТИ В ЭФИР</div>
-       <div class="credits">ALPHA 1.1.1 · MOBILE &amp; QUALITY PATCH</div>`,
+       <div class="credits">ALPHA 1.2 · SEASONAL EVENTS</div>`,
     );
     this.bar = this.el.querySelector('.loader-bar > i') as HTMLElement;
     this.hint = this.el.querySelector('.tap-hint') as HTMLElement;

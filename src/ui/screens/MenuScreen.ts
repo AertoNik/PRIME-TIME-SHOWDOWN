@@ -3,7 +3,10 @@ import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
 import { CARDS, PASSIVES } from '../../config/cards';
+import { ThemeManager } from '../../game/ThemeManager';
 import { countUp, el, esc, portraitHTML } from '../dom';
+import { ICONS } from '../eventArt';
+import { currencyIcon, formatSpan } from './EventsScreen';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
@@ -25,6 +28,7 @@ export class MenuScreen implements Screen {
       else if (act === 'roster') this.g.goto('roster');
       else if (act === 'career') this.g.goto('career');
       else if (act === 'settings') this.g.openSettings();
+      else if (act === 'events') this.g.goto('events');
     });
   }
 
@@ -36,6 +40,26 @@ export class MenuScreen implements Screen {
     const fp = s.fighters[s.selected];
     const rival = RIVALS[s.nextRival];
     const unclaimed = g.career.unclaimed();
+    const em = g.events;
+    const ev = em.active;
+    const title = ThemeManager.titleName(s.cosmetics.equipped);
+    // seasonal entry: the main way into the Events screen
+    let entry = '';
+    if (ev && em.playable) {
+      const pend = em.pending();
+      const left = em.timeLeft();
+      entry = `<button class="event-entry live" data-act="events">
+          <span class="ee-ico">${currencyIcon(ev)}</span>
+          <span class="ee-text"><b>${esc(ev.title)}</b><small>${Number.isFinite(left) ? `ещё ${formatSpan(left)}` : 'тестовый режим'} · <span class="ee-tok">${em.tokens(ev)}<i>${currencyIcon(ev)}</i></span></small></span>
+          ${pend ? `<span class="ee-badge">${pend}</span>` : ''}<span class="ee-go">${UI_ICONS.next}</span>
+        </button>`;
+    } else if (ev) {
+      entry = `<button class="event-entry" data-act="events"><span class="ee-ico">${currencyIcon(ev)}</span><span class="ee-text"><b>${esc(ev.title)}</b><small>${esc(ev.subtitle)}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
+    } else if (em.upcoming) {
+      entry = `<button class="event-entry soon" data-act="events"><span class="ee-ico">${ICONS.calendar}</span><span class="ee-text"><b>Скоро: ${esc(em.upcoming.title)}</b><small>Премьера через ${formatSpan(em.timeToStart(em.upcoming))}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
+    } else if (s.cosmetics.owned.length) {
+      entry = `<button class="event-entry" data-act="events"><span class="ee-ico">${ICONS.star}</span><span class="ee-text"><b>Коллекция</b><small>Сезонные награды: ${s.cosmetics.owned.length}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
+    }
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">
         <div class="lvl-badge" title="Уровень продюсера">${lvl.level}</div>
@@ -43,18 +67,19 @@ export class MenuScreen implements Screen {
         <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
       </div>
       <div class="menu-head">
-        <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span></div>
-        <div class="label" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
+        <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span>${ev ? `<span class="season-tag">${esc(ev.title)}</span>` : ''}</div>
+        <div class="label menu-org" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
       </div>
       <div class="fill pass"></div>
       <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">
         ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
         <div class="meta">
           <div class="name">${esc(f.name)}</div>
+          ${title ? `<div class="plate-title">${ICONS.crown}<span>${esc(title)}</span></div>` : ''}
           <div class="nick" style="color:${f.theme.accent}">«${esc(f.nickname)}» · ${esc(f.style)}</div>
           <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
             <span class="chip gold">${UI_ICONS.fans.replace('<svg', '<svg width="11" height="11" style="color:#ff4fd8"')} ${formatNumber(fp.fans)} фанатов</span>
-            <span class="chip">${esc(fameTier(fp.fans))}</span>
+            <span class="chip plate-tier">${esc(fameTier(fp.fans))}</span>
           </div>
           <div class="plate-abilities"><span>◆ ${esc(PASSIVES[f.passive].name)}</span><span style="color:${CARDS[f.signature].color}">★ ${esc(CARDS[f.signature].name)}</span></div>
         </div>
@@ -65,6 +90,7 @@ export class MenuScreen implements Screen {
         <span class="chip red">${esc(BEHAVIORS[rival.behavior].label)}</span>
       </div>
       <div class="spacer-8"></div>
+      ${entry ? `<div class="menu-event">${entry}</div>` : ''}
       <div class="menu-actions">
         <button class="btn big wide" data-act="fight"><span class="shine"></span>В БОЙ</button>
         <div class="menu-nav">

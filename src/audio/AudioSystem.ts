@@ -411,6 +411,28 @@ export class AudioSystem {
     [0, 4, 7].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(67 + 12 + n), dur: 1.2, gain: 0.05, delay: 0.75, attack: 0.02, filter: { type: 'lowpass', f0: 2500 } }));
   }
 
+  /** Short seasonal accent (opening the Events screen, season start). */
+  sting(kind: 'none' | 'spooky' | 'frost'): void {
+    if (kind === 'spooky') {
+      // theremin-like glide over a minor arpeggio + a soft bell
+      this.tone({ type: 'sine', f0: NOTE(76), f1: NOTE(69), dur: 0.9, gain: 0.07, attack: 0.08, detune: 12 });
+      this.tone({ type: 'sine', f0: NOTE(88), f1: NOTE(81), dur: 0.9, gain: 0.025, attack: 0.1 });
+      [0, 3, 7, 10].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(57 + n), dur: 0.5, gain: 0.06, delay: 0.08 + i * 0.11 }));
+      this.tone({ type: 'sine', f0: NOTE(93), dur: 1.4, gain: 0.04, delay: 0.55, attack: 0.002 });
+      this.tone({ type: 'sine', f0: NOTE(93) * 2.76, dur: 0.8, gain: 0.012, delay: 0.55, attack: 0.002 });
+    } else if (kind === 'frost') {
+      [0, 7, 12, 16, 19, 24].forEach((n, i) => this.tone({ type: 'sine', f0: NOTE(76 + n), dur: 0.6, gain: 0.045, delay: i * 0.07, attack: 0.002 }));
+      this.noise({ dur: 0.6, gain: 0.025, type: 'highpass', f0: 6000, delay: 0.05 });
+    }
+  }
+
+  /** Seasonal reward unlocked. */
+  reward(): void {
+    [0, 4, 7, 11, 14].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(72 + n), dur: 0.3, gain: 0.07, delay: i * 0.07 }));
+    [0, 7, 12].forEach((n) => this.tone({ type: 'sine', f0: NOTE(84 + n), dur: 1.1, gain: 0.035, delay: 0.38, attack: 0.01 }));
+    this.noise({ dur: 0.5, gain: 0.03, type: 'highpass', f0: 5000, delay: 0.36 });
+  }
+
   defeat(): void {
     [7, 5, 3, 0].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(62 + n), dur: 0.35, gain: 0.1, delay: i * 0.22 }));
     this.tone({ type: 'sawtooth', f0: NOTE(50), dur: 1.4, gain: 0.06, delay: 0.85, filter: { type: 'lowpass', f0: 800 } });
