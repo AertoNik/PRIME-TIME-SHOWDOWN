@@ -2,6 +2,7 @@ import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import { challengeById, SURVIVAL } from '../config/modes.config';
+import { bossById } from '../config/boss.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
 import { Match, type MatchMods } from '../combat/Match';
@@ -35,7 +36,11 @@ import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'modes' | 'battle' | 'results' | 'survival';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
-export type ModeSession = { kind: 'classic' } | { kind: 'survival'; runId: number; wave: WaveSetup } | { kind: 'challenge'; id: string };
+export type ModeSession =
+  | { kind: 'classic' }
+  | { kind: 'survival'; runId: number; wave: WaveSetup }
+  | { kind: 'challenge'; id: string }
+  | { kind: 'boss'; id: string };
 
 /** Everything needed to set up one fight. */
 interface LaunchSpec {
@@ -44,6 +49,7 @@ interface LaunchSpec {
   rival: RivalId;
   difficulty: Difficulty;
   mods?: MatchMods;
+  boss?: string;
 }
 
 /**
@@ -63,7 +69,7 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'dex', 'tank', 'zoe', 'crash'];
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'dex', 'tank', 'zoe', 'crash', 'vale'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>
@@ -276,6 +282,7 @@ export class Game {
     if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
     this.screen = name;
     this.refreshSeason();
+    this.setChampionStage(false);
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(f.look, f.theme.accent);
     this.cam.setMode('showcase', 1.0);
@@ -338,6 +345,16 @@ export class Game {
       if (e) this.themes?.sting();
     }
     return true;
+  }
+
+  /**
+   * BOSS FIGHT dresses the studio in the championship look (lights, banners, UI
+   * palette); every other screen and mode shows the current season's theme.
+   */
+  private setChampionStage(on: boolean): void {
+    if (!this.themes) return;
+    if (on) this.themes.apply('champion');
+    else if (this.themes.id === 'champion') this.themes.apply(this.events.themeId);
   }
 
   /** Push equipped cosmetics to the UI and the battle renderer. */
@@ -403,8 +420,25 @@ export class Game {
     this.arena.setScreen({ headline: def.title });
   }
 
+  /** BOSS FIGHT: the selected fighter against the legendary champion. */
+  startBoss(id: string): void {
+    const def = bossById(id);
+    if (!def) return;
+    const s = this.save.data;
+    const fighter = s.selected;
+    if (!s.fighters[fighter].unlocked) return;
+    this.launch(
+      { fighter, deck: s.fighters[fighter].deck.slice(), rival: def.rival, difficulty: def.rewards.purseDifficulty, mods: this.modes.bossMods(def), boss: def.id },
+      { kind: 'boss', id: def.id },
+    );
+    this.arena.setSpots(def.phases[0].spots);
+    this.arena.setScreen({ headline: def.title });
+    this.audio.sting('champion');
+  }
+
   private launch(spec: LaunchSpec, mode: ModeSession): void {
     if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
+    this.setChampionStage(mode.kind === 'boss');
     const s = this.save.data;
     const { fighter, rival, difficulty } = spec;
     const match = new Match({
@@ -415,6 +449,7 @@ export class Game {
       seed: (s.seed + s.matches * 7919 + Math.floor(performance.now())) >>> 0,
       fans: s.fighters[fighter].fans,
       mods: spec.mods,
+      boss: spec.boss,
     });
     this.match = match;
     this.matchMeta = { fighter, rival, difficulty, mode };
@@ -486,7 +521,9 @@ export class Game {
                   ? 'Марафон закончится. Награда — только за уже пройденные волны.'
                   : kind === 'challenge'
                     ? 'Испытание не будет пройдено, а гонорар — урезан.'
-                    : 'Бой будет засчитан как поражение, а гонорар — урезан.';
+                    : kind === 'boss'
+                      ? 'Чемпион сохранит титул: бой засчитан как поражение, гонорар урезан.'
+                      : 'Бой будет засчитан как поражение, а гонорар — урезан.';
               this.confirm('Сдаться?', text, 'Сдаться', () => {
                 this.paused = false;
                 this.match?.forfeit();
@@ -526,8 +563,19 @@ export class Game {
       return;
     }
     let challenge = null;
+    let boss = null;
     let outcome;
-    if (mode.kind === 'challenge') {
+    if (mode.kind === 'boss') {
+      const def = bossById(mode.id)!;
+      outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, {
+        moneyMult: def.rewards.moneyMult,
+        moneyLabel: 'Легендарный эфир',
+        rotateRival: false,
+      });
+      boss = this.modes.recordBoss(mode.id, m.result, meta.fighter);
+      outcome.levelAfter = this.career.level().level;
+      if (boss?.cosmeticNew) this.applyCosmetics();
+    } else if (mode.kind === 'challenge') {
       const def = challengeById(mode.id)!;
       outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, {
         moneyMult: def.moneyMult,
@@ -541,7 +589,7 @@ export class Game {
     }
     const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
     this.enterResultsView(m.result.outcome);
-    this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, ...meta });
+    this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
   }
 
   /** Shared after-fight presentation: camera on the winner, results music, win/loss sting. */
@@ -670,7 +718,7 @@ export class Game {
          <p><b style="color:#ff8a7a">Красная зона</b> — соперник заряжает мощный удар. DASH уклоняется, SHIELD блокирует, SHOCK прерывает заряд. Удачные реакции дают бонус рейтинга.</p>
          <p><b style="color:var(--pink)">Рейтинг шоу</b> растёт за комбо, идеальные уклонения и блоки, мощные попадания, разнообразие приёмов и эффектный финиш. Простой и бездействие снижают его. Рейтинг определяет гонорар и новых фанатов.</p>
          <p><b style="color:var(--teal)">Карьера:</b> зарабатывайте деньги и репутацию, подписывайте новых бойцов, открывайте сложность «Профи» и «Чемпион».</p>
-         <p><b style="color:var(--gold)">Режимы эфира:</b> кроме обычной дуэли есть <b>SURVIVAL</b> — пять боёв подряд одним бойцом, здоровье переносится между волнами, после каждой победы выбирается бонус — и <b>PRIME CHALLENGE</b>: спецвыпуски с особыми правилами и наградой за первое прохождение. Вход — кнопка «Режимы эфира» в меню.</p>
+         <p><b style="color:var(--gold)">Режимы эфира:</b> кроме обычной дуэли есть <b>SURVIVAL</b> — пять боёв подряд одним бойцом, здоровье переносится между волнами, после каждой победы выбирается бонус, <b>PRIME CHALLENGE</b> — спецвыпуски с особыми правилами и наградой за первое прохождение — и <b>BOSS FIGHT</b>: бой с легендарным чемпионом в три фазы, победа только нокаутом. Вход — кнопка «Режимы эфира» в меню.</p>
          <p><b style="color:var(--btn-a)">События:</b> в праздничные сезоны в меню появляется раздел «События» с заданиями, сезонными жетонами и бесплатными косметическими наградами. Полученные предметы остаются у вас навсегда.</p>
        </div>
        <div class="modal-actions"><button class="btn teal wide" data-a="ok">Понятно</button></div>`,
@@ -842,6 +890,23 @@ export class Game {
         break;
       case 'whiff':
         a.ooh();
+        break;
+      case 'telegraph':
+        // the champion's signature moves get their own warning sting
+        if (e.side === 1 && this.match?.boss && (e.card === 'knockout' || e.card === 'charged_shot')) a.bossWarn();
+        break;
+      case 'bossPhase': {
+        const ph = this.match?.boss?.def.phases[e.phase - 1];
+        a.bossPhase(e.phase);
+        this.timeFx.slowmo = 0.9;
+        this.timeFx.slowScale = 0.35;
+        this.renderer.pulseFlash(e.phase >= 3 ? 0xff3a4a : 0xffc23a, 4);
+        this.cam.addTrauma(0.5);
+        if (ph) this.arena.setSpots(ph.spots);
+        break;
+      }
+      case 'bossMove':
+        if (e.move === 'encore') a.bossWarn();
         break;
       default:
         break;

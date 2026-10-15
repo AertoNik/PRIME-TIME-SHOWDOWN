@@ -216,6 +216,48 @@ function webTexture(): CanvasTexture {
   return canvasTexture(c);
 }
 
+/** Crimson title banner with a gold border, crown and the boss monogram (BOSS FIGHT). */
+function bannerTexture(): CanvasTexture {
+  const { c, g } = makeCanvas(160, 416);
+  const W = 160;
+  const H = 416;
+  g.fillStyle = '#8a0f22';
+  g.beginPath();
+  g.moveTo(0, 0);
+  g.lineTo(W, 0);
+  g.lineTo(W, H - 40);
+  g.lineTo(W / 2, H);
+  g.lineTo(0, H - 40);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = '#ffd76a';
+  g.lineWidth = 8;
+  g.stroke();
+  g.strokeStyle = 'rgba(255, 215, 106, 0.5)';
+  g.lineWidth = 2;
+  g.strokeRect(16, 16, W - 32, H - 90);
+  // crown
+  g.fillStyle = '#ffd76a';
+  g.beginPath();
+  g.moveTo(40, 96);
+  g.lineTo(44, 50);
+  g.lineTo(62, 74);
+  g.lineTo(80, 40);
+  g.lineTo(98, 74);
+  g.lineTo(116, 50);
+  g.lineTo(120, 96);
+  g.closePath();
+  g.fill();
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = 'italic 900 64px Unbounded, "Arial Black", sans-serif';
+  g.fillText('VV', W / 2, 160);
+  g.font = '900 20px Unbounded, "Arial Black", sans-serif';
+  g.fillStyle = '#fff1c0';
+  ['L', 'E', 'G', 'E', 'N', 'D'].forEach((ch, i) => g.fillText(ch, W / 2, 214 + i * 26));
+  return canvasTexture(c);
+}
+
 /**
  * Flat additive glow on the fighting floor: seasonal colour creeping in from the
  * barrier, a few glyphs in the corners. The centre stays clear for readability.
@@ -227,7 +269,8 @@ function floorDecal(kind: DecorKind): Mesh {
   const H = Math.round((W * hz) / hx);
   const { c, g } = makeCanvas(W, H);
   const halloween = kind === 'pumpkins';
-  const edge = halloween ? '150, 60, 255' : '150, 215, 255';
+  const champion = kind === 'champion';
+  const edge = halloween ? '150, 60, 255' : champion ? '255, 190, 60' : '150, 215, 255';
   const grd = g.createRadialGradient(W / 2, H / 2, H * 0.22, W / 2, H / 2, H * 0.62);
   grd.addColorStop(0, `rgba(${edge}, 0)`);
   grd.addColorStop(0.7, `rgba(${edge}, 0.10)`);
@@ -243,7 +286,20 @@ function floorDecal(kind: DecorKind): Mesh {
       const y = H / 2 + sz * (hz - 1.25) * ppu;
       g.save();
       g.translate(x, y);
-      if (halloween) {
+      if (champion) {
+        // little crowns in the corners
+        g.strokeStyle = 'rgba(255, 215, 106, 0.6)';
+        g.beginPath();
+        g.moveTo(-16, 10);
+        g.lineTo(-14, -8);
+        g.lineTo(-6, 2);
+        g.lineTo(0, -12);
+        g.lineTo(6, 2);
+        g.lineTo(14, -8);
+        g.lineTo(16, 10);
+        g.closePath();
+        g.stroke();
+      } else if (halloween) {
         g.strokeStyle = 'rgba(255, 150, 50, 0.55)';
         for (const [dx, rx] of [[-9, 13], [9, 13], [0, 15]] as [number, number][]) {
           g.beginPath();
@@ -373,6 +429,7 @@ export class SeasonalDecor {
     this.group.add(this.menuGroup);
     if (kind === 'pumpkins') this.buildHalloween();
     else if (kind === 'frost') this.buildFrost();
+    else if (kind === 'champion') this.buildChampion();
     if (kind !== 'none') this.group.add(floorDecal(kind));
     if (ambient !== 'none') {
       this.ambientCount = ambient === 'snow' ? 120 : 70;
@@ -523,6 +580,58 @@ export class SeasonalDecor {
       snowmen.setMatrixAt(i, _m);
     });
     this.menuGroup.add(snowmen);
+  }
+
+  /**
+   * BOSS FIGHT dressing: golden light pylons around the barrier (where seasonal
+   * props stand) and four crimson-gold title banners above the stands.
+   */
+  private buildChampion(): void {
+    const rng = new Rng(71);
+    const parts: BufferGeometry[] = [];
+    const base = new CylinderGeometry(0.42, 0.52, 0.5, 10);
+    base.translate(0, 0.25, 0);
+    parts.push(colorAttr(base, new Color(0x1a1410)));
+    const column = new CylinderGeometry(0.2, 0.28, 1.2, 10);
+    column.translate(0, 1.1, 0);
+    parts.push(colorAttr(column, new Color(0x2a2016)));
+    const cupGeo = new CylinderGeometry(0.46, 0.26, 0.28, 12, 1, true);
+    cupGeo.translate(0, 1.82, 0);
+    parts.push(colorAttr(cupGeo, new Color(0xd8a23a)));
+    const pylonGeo = mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
+    parts.forEach((p) => p.dispose());
+    const pylons = new InstancedMesh(pylonGeo, new MeshLambertMaterial({ vertexColors: true, emissive: new Color(0x2a1a08) }), ARENA_SPOTS.length);
+    placeInstances(pylons, ARENA_SPOTS, false, rng);
+    this.group.add(pylons);
+    // glowing gold "flame" on top of each pylon (breathes with the crowd)
+    const glowMat = new MeshStandardMaterial({ color: 0x3a2408, emissive: new Color(1, 0.72, 0.22), emissiveIntensity: 2.4, roughness: 0.6 });
+    this.glowMats.push(glowMat);
+    const flame = new OctahedronGeometry(0.3, 0);
+    flame.scale(1, 1.6, 1);
+    const flames = new InstancedMesh(flame, glowMat, ARENA_SPOTS.length);
+    ARENA_SPOTS.forEach(([x, y, z, s], i) => {
+      _m.compose(_p.set(x, y + 2.15 * s, z), _q.setFromAxisAngle(_up, i * 0.7), _s.setScalar(s));
+      flames.setMatrixAt(i, _m);
+    });
+    flames.instanceMatrix.needsUpdate = true;
+    this.group.add(flames);
+    // title banners above the stands, either side of the big screens
+    const tex = bannerTexture();
+    const bannerMat = new MeshBasicMaterial({ map: tex, side: DoubleSide, transparent: true, toneMapped: false });
+    const bannerGeo = new PlaneGeometry(1.7, 4.4);
+    const spots: [number, number, number, number][] = [
+      [-7.6, 6.6, -15.6, 0],
+      [7.6, 6.6, -15.6, 0],
+      [-13.6, 6, -8.2, 0.75],
+      [13.6, 6, -8.2, -0.75],
+    ];
+    const banners = new InstancedMesh(bannerGeo, bannerMat, spots.length);
+    spots.forEach(([x, y, z, yaw], i) => {
+      _m.compose(_p.set(x, y, z), _q.setFromAxisAngle(_up, yaw), _s.setScalar(1));
+      banners.setMatrixAt(i, _m);
+    });
+    banners.instanceMatrix.needsUpdate = true;
+    this.group.add(banners);
   }
 
   setMenuVisible(v: boolean): void {

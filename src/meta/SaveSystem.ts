@@ -114,9 +114,44 @@ export interface ChallengeProgress {
   bestFighter: FighterId | null;
 }
 
+/** One BOSS FIGHT attempt, kept as a short history. */
+export interface BossHistoryEntry {
+  at: number;
+  fighter: FighterId;
+  won: boolean;
+  /** Fight time in seconds. */
+  time: number;
+  rating: number;
+  /** Highest phase the champion reached (1..3). */
+  phase: number;
+  /** Champion's health left at the end (0 on a win). */
+  bossHp: number;
+}
+
+export interface BossProgress {
+  attempts: number;
+  wins: number;
+  /** When the champion was first defeated (0 = never). The first-win reward is paid together with this flag. */
+  firstWinAt: number;
+  /** Fastest win in seconds (0 = none). */
+  bestTime: number;
+  /** Best show rating in a win (0 = none). */
+  bestRating: number;
+  /** Highest phase ever reached (1..3). */
+  bestPhase: number;
+  /** Lowest health the champion was left with in a lost fight (1 = never hurt). */
+  bestBossHp: number;
+  bestFighter: FighterId | null;
+  winsByFighter: Partial<Record<FighterId, number>>;
+  /** Most recent attempts first (max 10). */
+  history: BossHistoryEntry[];
+}
+
 export interface ModesState {
   survival: SurvivalRecords;
   challenges: Record<string, ChallengeProgress>;
+  /** v5 (1.3.1): BOSS FIGHT progress per boss id. */
+  boss: Record<string, BossProgress>;
 }
 
 export interface SaveData {
@@ -153,8 +188,8 @@ export interface SaveData {
 // The key never changes between versions so existing careers keep loading;
 // `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
-// v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes.
-const VERSION = 4;
+// v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes. v5 (1.3.1): boss fight.
+const VERSION = 5;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -209,7 +244,11 @@ export function emptySurvival(): SurvivalRecords {
 }
 
 export function emptyModes(): ModesState {
-  return { survival: emptySurvival(), challenges: {} };
+  return { survival: emptySurvival(), challenges: {}, boss: {} };
+}
+
+export function emptyBoss(): BossProgress {
+  return { attempts: 0, wins: 0, firstWinAt: 0, bestTime: 0, bestRating: 0, bestPhase: 0, bestBossHp: 1, bestFighter: null, winsByFighter: {}, history: [] };
 }
 
 export function emptyChallenge(): ChallengeProgress {
@@ -356,6 +395,42 @@ function sanitizeModes(raw: unknown): ModesState {
       p.bestAt = Math.max(0, num(c.bestAt, 0));
       p.bestFighter = isFighter(c.bestFighter) ? c.bestFighter : null;
       m.challenges[id] = p;
+    }
+  }
+  if (r.boss && typeof r.boss === 'object') {
+    for (const [id, v] of Object.entries(r.boss as Record<string, unknown>)) {
+      if (!v || typeof v !== 'object' || id.length > 48) continue;
+      const b = v as Partial<BossProgress>;
+      const p = emptyBoss();
+      p.wins = count(b.wins);
+      p.attempts = Math.max(p.wins, count(b.attempts));
+      p.firstWinAt = Math.max(0, num(b.firstWinAt, 0));
+      p.bestTime = Math.max(0, num(b.bestTime, 0));
+      p.bestRating = Math.min(100, count(b.bestRating));
+      p.bestPhase = Math.min(3, count(b.bestPhase));
+      p.bestBossHp = Math.min(1, Math.max(0, num(b.bestBossHp, 1)));
+      p.bestFighter = isFighter(b.bestFighter) ? b.bestFighter : null;
+      if (b.winsByFighter && typeof b.winsByFighter === 'object') {
+        for (const f of FIGHTER_ORDER) {
+          const n = (b.winsByFighter as Record<string, unknown>)[f];
+          if (n !== undefined) p.winsByFighter[f] = count(n);
+        }
+      }
+      if (Array.isArray(b.history)) {
+        for (const h of b.history.slice(0, 10)) {
+          if (!h || typeof h !== 'object' || !isFighter(h.fighter)) continue;
+          p.history.push({
+            at: Math.max(0, num(h.at, 0)),
+            fighter: h.fighter,
+            won: bool(h.won, false),
+            time: Math.max(0, num(h.time, 0)),
+            rating: Math.min(100, count(h.rating)),
+            phase: Math.min(3, Math.max(1, count(h.phase))),
+            bossHp: Math.min(1, Math.max(0, num(h.bossHp, 1))),
+          });
+        }
+      }
+      m.boss[id] = p;
     }
   }
   return m;

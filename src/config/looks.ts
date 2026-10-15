@@ -1,10 +1,10 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat';
 export type PantsStyle = 'track' | 'cargo' | 'jogger';
-export type BodyType = 'lean' | 'heavy' | 'slim';
-export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor';
+export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic';
+export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -192,5 +192,28 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x121216,
     glow: 0xff3a82,
     rim: 0xff9ac0,
+  },
+  // Alpha 1.3.1 boss: the show's legendary champion. Broad athletic build, long
+  // black showman coat with gold lapels and epaulettes, championship belt,
+  // slicked-back hair with a gold streak, gold-plated rail rifle.
+  vale: {
+    id: 'vale',
+    body: 'athletic',
+    skin: 0xe2b08c,
+    hair: { style: 'slick', color: 0x17141d, color2: 0xffc94a },
+    top: { style: 'coat', main: 0x141119, accent: 0xd8a23a, trim: 0xffd76a, inner: 0xa3122c },
+    pants: { style: 'track', main: 0x15121a, accent: 0xd8a23a },
+    shoes: { main: 0x15121a, accent: 0xd8a23a, sole: 0xffd76a, boots: true },
+    gloves: 0x15121a,
+    fingerless: false,
+    eyes: 0x6a3e14,
+    brow: 'cocky',
+    mouth: 'smirk',
+    accessories: ['belt', 'stubble', 'earring'],
+    weapon: 'pulse_rifle',
+    weaponColor: 0xf0c04a,
+    weaponDark: 0x16131b,
+    glow: 0xffb43a,
+    rim: 0xffe39a,
   },
 };

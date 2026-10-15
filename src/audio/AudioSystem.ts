@@ -426,7 +426,17 @@ export class AudioSystem {
   }
 
   /** Short seasonal accent (opening the Events screen, season start). */
-  sting(kind: 'none' | 'spooky' | 'frost'): void {
+  sting(kind: 'none' | 'spooky' | 'frost' | 'champion'): void {
+    if (kind === 'champion') {
+      // championship fanfare: drum hit, brass power chord, rising gold shimmer
+      this.tone({ type: 'sine', f0: 120, f1: 45, dur: 0.7, gain: 0.5 });
+      this.noise({ dur: 0.5, gain: 0.18, type: 'lowpass', f0: 2500, f1: 200 });
+      [0, 7, 12, 16].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(55 + n), dur: 1.1, gain: 0.05, delay: 0.05, attack: 0.03, filter: { type: 'lowpass', f0: 1800, f1: 3200 } }));
+      [0, 4, 7, 12].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(67 + n), dur: 0.22, gain: 0.05, delay: 0.55 + i * 0.09, filter: { type: 'lowpass', f0: 3500 } }));
+      this.tone({ type: 'sine', f0: NOTE(91), dur: 1.2, gain: 0.035, delay: 0.95, attack: 0.01 });
+      this.cheer(1.2);
+      return;
+    }
     if (kind === 'spooky') {
       // theremin-like glide over a minor arpeggio + a soft bell
       this.tone({ type: 'sine', f0: NOTE(76), f1: NOTE(69), dur: 0.9, gain: 0.07, attack: 0.08, detune: 12 });
@@ -438,6 +448,24 @@ export class AudioSystem {
       [0, 7, 12, 16, 19, 24].forEach((n, i) => this.tone({ type: 'sine', f0: NOTE(76 + n), dur: 0.6, gain: 0.045, delay: i * 0.07, attack: 0.002 }));
       this.noise({ dur: 0.6, gain: 0.025, type: 'highpass', f0: 6000, delay: 0.05 });
     }
+  }
+
+  /** BOSS FIGHT phase change: impact, rising siren-like sweep, minor power chord. */
+  bossPhase(phase: number): void {
+    this.tone({ type: 'sine', f0: 90, f1: 32, dur: 0.9, gain: 0.6 });
+    this.noise({ dur: 0.9, gain: 0.3, type: 'lowpass', f0: 4000, f1: 120 });
+    this.tone({ type: 'sawtooth', f0: 180, f1: phase >= 3 ? 1400 : 900, dur: 0.6, gain: 0.07, filter: { type: 'lowpass', f0: 500, f1: 5000, q: 6 } });
+    const base = phase >= 3 ? 50 : 53;
+    [0, 3, 7, 12].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(base + n), dur: 1.2, gain: 0.05, delay: 0.25, attack: 0.04, filter: { type: 'lowpass', f0: 2200 } }));
+    this.cheer(1.4);
+  }
+
+  /** BOSS FIGHT signature move warning (PRIME RUSH / SPOTLIGHT SHOT / ENCORE). */
+  bossWarn(): void {
+    if (!this.throttle('bossWarn', 500)) return;
+    this.tone({ type: 'square', f0: NOTE(76), dur: 0.12, gain: 0.07, filter: { type: 'lowpass', f0: 3000 } });
+    this.tone({ type: 'square', f0: NOTE(83), dur: 0.16, gain: 0.07, delay: 0.12, filter: { type: 'lowpass', f0: 3000 } });
+    this.tone({ type: 'sawtooth', f0: NOTE(47), dur: 0.35, gain: 0.08, filter: { type: 'lowpass', f0: 900 } });
   }
 
   /** Seasonal reward unlocked. */

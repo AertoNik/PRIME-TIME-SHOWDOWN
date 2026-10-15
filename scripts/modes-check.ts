@@ -4,7 +4,8 @@
 // Part 2: balance report — real headless fights with the scripted players from bots.ts.
 //         Usage: npm run modes [runsPerCell]   (0 skips the balance report)
 import { CHALLENGES, PERKS, SURVIVAL, challengeById } from '../src/config/modes.config';
-import { FIGHTERS, RIVAL_ORDER } from '../src/config/fighters';
+import { BOSSES } from '../src/config/boss.config';
+import { FIGHTERS, RIVALS, RIVAL_ORDER } from '../src/config/fighters';
 import type { FighterId } from '../src/config/types';
 import { Match } from '../src/combat/Match';
 import type { MatchResultData } from '../src/combat/types';
@@ -256,7 +257,96 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.2.5 save gets empty mode records', m.modes.survival.runs === 0 && m.modes.survival.active === null && Object.keys(m.modes.challenges).length === 0);
   const junk = sanitize({ modes: { survival: { bestWave: 99, runs: -3, active: { fighter: 'nobody', rivals: [] } }, challenges: { spotlight: { attempts: 'x', clears: 4, firstClearAt: 5 } } } });
   check('corrupt mode data is cleaned', junk.modes.survival.bestWave === 5 && junk.modes.survival.runs === 0 && junk.modes.survival.active === null && junk.modes.challenges.spotlight.attempts === 4);
-  check('save version is 4', defaultSave().version === 4);
+  check('save version is 5', defaultSave().version === 5);
+}
+
+// ----------------------------------------------------------------- boss fight
+{
+  const def = BOSSES.vale;
+  const mods = { duration: def.duration, introTime: def.introTime, timeUpRule: 'rival' as const };
+  const mk = (seed: number, extra = {}) => new Match({ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck, rival: 'vale', difficulty: 'pro', seed, fans: 0, mods: { ...mods, ...extra }, boss: 'vale' });
+  const m = mk(1);
+  const boss = m.fighters[1];
+  check('boss: 2:00 fight, longer intro, champion AI', m.duration === 120 && m.introTime === 5.6 && m.difficulty.id === 'champion' && !!m.boss);
+  check('boss: 23 800 HP, phase-1 deck and personality', boss.maxHp === Math.round(13600 * (RIVALS.vale.mods!.hpMult ?? 1)) && m.hands[1].deck.join() === def.phases[0].deck.join() && m.ais[1].profile.behavior.label === def.phases[0].behavior.label);
+  check('boss is not a regular opponent (Classic / Survival never pick him)', !RIVAL_ORDER.includes('vale'));
+  let guard = 0;
+  while (m.phase === 'intro' && guard++ < 2000) m.step(1 / 60);
+  check('boss intro lasts 5.6 s before FIGHT', Math.abs(m.clock - 5.6) < 0.05);
+  const evs: string[] = [];
+  const drain = () => {
+    for (const e of m.drainEvents()) if (e.type === 'bossPhase' || e.type === 'bossMove') evs.push(e.type === 'bossPhase' ? 'phase' + e.phase : e.move);
+  };
+  m.drainEvents();
+  boss.hp = Math.round(boss.maxHp * 0.6);
+  m.step(1 / 60);
+  drain();
+  check('phase 2 at 65%: event, new deck, pressure AI, STAR POWER', m.boss!.phase === 2 && evs.includes('phase2') && evs.includes('star') && m.hands[1].deck.includes('knockout') && m.ais[1].profile.behavior.pressure > 0 && boss.overdrive > 0);
+  for (let i = 0; i < 120; i++) m.step(1 / 60);
+  drain();
+  check('phase 2 announced only once', evs.filter((x) => x === 'phase2').length === 1);
+  boss.hp = Math.round(boss.maxHp * 0.25);
+  m.step(1 / 60);
+  drain();
+  check('phase 3 at 30%: FINAL BROADCAST with encore', m.boss!.phase === 3 && evs.includes('phase3') && def.phases[2].encore);
+  // phase 3: the champion's own PRIME RUSH is followed by exactly one re-telegraphed ENCORE
+  const rushes: number[] = [];
+  const encoreAt: number[] = [];
+  m.hands[1].energy = 10;
+  for (let i = 0; i < 60 * 12 && m.phase === 'fight' && (rushes.length < 3 || m.time - rushes[0] < 6); i++) {
+    if (m.fighters[0].hp < 3000) m.fighters[0].hp = 9000; // keep the (idle) player alive
+    m.step(1 / 60);
+    for (const e of m.drainEvents()) {
+      if (e.type === 'rush' && e.side === 1) rushes.push(m.time);
+      if (e.type === 'bossMove' && e.move === 'encore') encoreAt.push(m.time);
+    }
+  }
+  const inCd = encoreAt.filter((t) => t - (rushes[0] ?? 0) < def.encoreCooldown).length;
+  check('ENCORE: the first PRIME RUSH is followed by one telegraphed second rush, then a cooldown', rushes.length >= 2 && encoreAt.length >= 1 && encoreAt[0] > rushes[0] && rushes[1] > encoreAt[0] && inCd === 1);
+  const two = mk(2);
+  guard = 0;
+  while (two.phase === 'intro' && guard++ < 2000) two.step(1 / 60);
+  two.drainEvents();
+  two.fighters[1].hp = Math.round(two.fighters[1].maxHp * 0.2);
+  two.step(1 / 60);
+  const pe = two.drainEvents().filter((e) => e.type === 'bossPhase').length;
+  check('a huge hit crossing both thresholds still announces both phases', two.boss!.phase === 3 && pe === 2);
+  const t = mk(3, { duration: 0.05 });
+  guard = 0;
+  while (t.phase !== 'over' && guard++ < 3000) {
+    if (t.phase === 'fight') t.fighters[1].hp = Math.round(t.fighters[1].maxHp * 0.1);
+    t.step(1 / 60);
+  }
+  check('time-up in a boss fight: the champion keeps the title (knockout only)', t.result?.method === 'time' && t.winner === 1 && t.result.bossPhase === 3);
+  const classic = new Match({ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck, rival: 'dex', difficulty: 'pro', seed: 4, fans: 0 });
+  check('Classic Duel has no boss logic and the usual 3.4 s intro', classic.boss === null && classic.introTime === 3.4 && classic.result === null);
+
+  // rewards, records, saves
+  const w = world();
+  const { store, modes } = w;
+  const m0 = store.data.money;
+  const l1 = modes.recordBoss('vale', result({ outcome: 'loss', method: 'ko', bossPhase: 2, enemyHpFrac: 0.41, duration: 80 }), 'ray')!;
+  check('lost boss fight: attempt and best result saved, no reward', !l1.won && l1.firstWin === null && store.data.money === m0 && l1.progress.bestPhase === 2 && Math.abs(l1.progress.bestBossHp - 0.41) < 1e-9);
+  const w1 = modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 97.2, rating: 88 }), 'vega')!;
+  const fw = def.rewards.firstWin;
+  const c = store.data.cosmetics;
+  check('first win pays money, fans, reputation and the PRIME LEGEND title once', !!w1.firstWin && store.data.money - m0 === fw.money && w1.cosmeticNew && c.owned.includes('title_prime_legend') && c.equipped.title === 'title_prime_legend');
+  check('first win recorded with time, rating and fighter', w1.progress.firstWinAt > 0 && w1.progress.wins === 1 && w1.progress.bestTime === 98 && w1.progress.bestRating === 88 && w1.progress.winsByFighter.vega === 1);
+  const m1 = store.data.money;
+  const w2 = modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 85, rating: 80 }), 'ray')!;
+  check('second win: no first-win reward again, new best time', w2.firstWin === null && !w2.cosmeticNew && store.data.money === m1 && w2.progress.bestTime === 85 && w2.newBestTime && w2.progress.bestRating === 88);
+  const f = modes.recordBoss('vale', result({ outcome: 'loss', method: 'forfeit', bossPhase: 1, enemyHpFrac: 0.05 }), 'ray')!;
+  check('forfeit counts as an attempt but never as a best result', !f.won && f.progress.attempts === 4 && Math.abs(f.progress.bestBossHp - 0.41) < 1e-9);
+  for (let i = 0; i < 12; i++) modes.recordBoss('vale', result({ outcome: 'loss', bossPhase: 1, enemyHpFrac: 0.9 }), 'nika');
+  check('fight history keeps the last 10 attempts', modes.bossProgress('vale').history.length === 10);
+  const back = world(Object.assign(new MemSave(), { data: sanitize(JSON.parse(JSON.stringify(store.data))) }));
+  const m2 = back.store.data.money;
+  const w3 = back.modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 99 }), 'ray')!;
+  check('after reload: records kept, first-win reward not paid again', w3.firstWin === null && back.store.data.money === m2 && w3.progress.wins === 3 && back.store.data.cosmetics.owned.filter((x) => x === 'title_prime_legend').length === 1);
+  const v4 = sanitize({ version: 4, money: 900, modes: { survival: { runs: 3, bestWave: 4 }, challenges: { spotlight: { attempts: 2, clears: 1, firstClearAt: 5 } } } });
+  check('Alpha 1.3 save (v4) loads: Survival/Challenge kept, empty boss records', v4.modes.survival.bestWave === 4 && v4.modes.challenges.spotlight.clears === 1 && Object.keys(v4.modes.boss).length === 0 && v4.money === 900);
+  const junk = sanitize({ modes: { boss: { vale: { wins: 'x', attempts: 2, bestPhase: 9, bestBossHp: -1, history: [{ fighter: 'nobody' }, { fighter: 'ray', phase: 7, won: true }] } } } });
+  check('corrupt boss data is cleaned', junk.modes.boss.vale.bestPhase === 3 && junk.modes.boss.vale.bestBossHp === 0 && junk.modes.boss.vale.history.length === 1 && junk.modes.boss.vale.history[0].phase === 3);
 }
 
 let ok = true;
@@ -308,6 +398,28 @@ if (N > 0) {
       }
       const pc = (v: number) => `${Math.round((v / N) * 100)}%`.padStart(6);
       console.log(`${f.padEnd(8)} ${mode.padEnd(7)} ${(waves / N).toFixed(2).padStart(8)}  ${pc(reach3)}  ${pc(clear)}  ${(hpN ? (hp5 / hpN) * 100 : 0).toFixed(0).padStart(7)}%  ${(dur / N / 60).toFixed(1).padStart(7)}`);
+    }
+  }
+
+  console.log(`\nBOSS FIGHT vs ${RIVALS.vale.fullName}: ${N} fights per cell, default decks (idle = no cards)`);
+  console.log('fighter  player  win%  avgDur  phase reached 1/2/3  bossHpLeftOnLoss  rushes  spotlights');
+  const bd = BOSSES.vale;
+  for (const f of fighters) {
+    for (const mode of ['idle', 'mash', 'combo'] as Mode[]) {
+      let win = 0, dur = 0, left = 0, rush = 0, spot = 0;
+      const ph = [0, 0, 0, 0];
+      for (let i = 0; i < N; i++) {
+        const { m, events } = runMatch(f, 'vale', 'pro', mode, 5000 + i * 7919, undefined, { duration: bd.duration, introTime: bd.introTime, timeUpRule: 'rival' }, 'vale');
+        const r = m.result!;
+        if (r.outcome === 'win') win++;
+        else left += r.enemyHpFrac;
+        dur += r.duration;
+        ph[r.bossPhase ?? 1]++;
+        rush += events.get('rivalCard:knockout') ?? 0;
+        spot += events.get('rivalCard:charged_shot') ?? 0;
+      }
+      const lost = N - win;
+      console.log(`${f.padEnd(8)} ${mode.padEnd(7)} ${String(Math.round((win / N) * 100)).padStart(4)}%  ${(dur / N).toFixed(0).padStart(5)}s  ${`${ph[1]}/${ph[2]}/${ph[3]}`.padStart(9)}            ${lost ? String(Math.round((left / lost) * 100)).padStart(3) + '%' : '   -'}        ${(rush / N).toFixed(1).padStart(4)}  ${(spot / N).toFixed(1).padStart(5)}`);
     }
   }
 

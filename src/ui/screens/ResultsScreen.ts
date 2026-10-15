@@ -1,15 +1,17 @@
 import { GOALS } from '../../config/career';
+import { COSMETICS } from '../../config/cosmetics.config';
+import { RIVALS } from '../../config/fighters';
 import { COMBOS } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import type { Difficulty, FighterId, RivalId } from '../../config/types';
 import type { MatchResultData } from '../../combat/types';
 import type { MatchEventOutcome } from '../../meta/EventManager';
-import { ICONS } from '../eventArt';
+import { ICONS, REWARD_ART } from '../eventArt';
 import { currencyIcon } from './EventsScreen';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game, ModeSession } from '../../game/Game';
 import { gradeFor, levelFor, type MatchOutcome } from '../../meta/CareerSystem';
-import { formatChallengeValue, type ChallengeOutcome } from '../../meta/GameModes';
+import { formatChallengeValue, type BossOutcome, type ChallengeOutcome } from '../../meta/GameModes';
 import { MODE_ICONS } from '../modeArt';
 import { countUp, el, esc } from '../dom';
 import { UI_ICONS } from '../icons';
@@ -26,6 +28,8 @@ export interface ResultsParams {
   mode?: ModeSession;
   /** Prime Challenge verdict, records and first-clear reward. */
   challenge?: ChallengeOutcome | null;
+  /** BOSS FIGHT verdict, records and first-win reward. */
+  boss?: BossOutcome | null;
 }
 
 export class ResultsScreen implements Screen {
@@ -48,13 +52,16 @@ export class ResultsScreen implements Screen {
       if (act === 'again') {
         this.g.audio.ui('confirm');
         if (mode?.kind === 'challenge') this.g.startChallenge(mode.id, this.last!.difficulty);
+        else if (mode?.kind === 'boss') this.g.startBoss(mode.id);
         else this.g.startMatch();
       } else if (act === 'menu') {
         this.g.audio.ui('click');
         this.g.goto('menu');
       } else if (act === 'prep') {
         this.g.audio.ui('click');
-        this.g.goto('prep', { mode: mode?.kind === 'challenge' ? { kind: 'challenge', id: mode.id } : { kind: 'classic' } });
+        this.g.goto('prep', {
+          mode: mode?.kind === 'challenge' ? { kind: 'challenge', id: mode.id } : mode?.kind === 'boss' ? { kind: 'boss', id: mode.id } : { kind: 'classic' },
+        });
       } else if (act === 'modes') {
         this.g.audio.ui('click');
         this.g.goto('modes');
@@ -156,17 +163,43 @@ export class ResultsScreen implements Screen {
           <div class="ch-best">${ch.newBest && ch.value !== null ? `<span class="chip gold">${MODE_ICONS.trophy.replace('<svg', '<svg width="11" height="11"')} Новый рекорд</span>` : ''}<span class="muted">Рекорд: <b>${esc(bestTxt)}</b> · пройдено ${ch.progress.clears} из ${ch.progress.attempts}</span></div>
         </div>`;
     }
-    const champion = r.outcome === 'win' && this.g.save.data.cosmetics.equipped.title === 'title_halloween_champion';
+    // BOSS FIGHT verdict: defeated or title kept, how far the fight went, first-win reward
+    let bossBlock = '';
+    const bo = p.boss;
+    if (bo) {
+      const rv = RIVALS[bo.def.rival];
+      const ph = bo.def.phases[bo.phase - 1];
+      const pr = bo.progress;
+      const verdict = bo.won
+        ? `<div class="bb-verdict won">ЛЕГЕНДА ПОВЕРЖЕНА</div>`
+        : `<div class="bb-verdict">ТИТУЛ У ЧЕМПИОНА</div>`;
+      const line = bo.won
+        ? `${esc(rv.name)} нокаутирован за ${Math.ceil(r.duration)} с · рейтинг ${r.rating}`
+        : r.method === 'forfeit'
+          ? 'Бой остановлен продюсером'
+          : `Дошли до фазы ${bo.phase} «${esc(ph.title)}» · у чемпиона осталось ${Math.max(1, Math.round(bo.bossHp * 100))}%`;
+      const pips = bo.def.phases.map((x) => `<i class="${x.n < bo.phase || bo.won ? 'on' : x.n === bo.phase ? 'cur' : ''}"></i>`).join('');
+      const fw = bo.firstWin;
+      bossBlock = `<div class="section panel boss-result ${bo.won ? 'won' : 'lost'}" style="animation:lineIn .35s ease ${T0 + 0.1}s both">
+          ${verdict}
+          <div class="row between bb-row"><span class="bb-line">${line}</span><span class="bb-pips">${pips}</span></div>
+          ${fw ? `<div class="ch-first">${UI_ICONS.star}<span>Первая победа над легендой: <b>+${formatMoney(fw.money)}</b> · <b>+${formatNumber(fw.fans)}</b> фанатов · <b>+${fw.rep}★</b> · титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span></div>` : ''}
+          <div class="ch-best">${bo.newBestTime && bo.won && !fw ? `<span class="chip gold">${MODE_ICONS.trophy.replace('<svg', '<svg width="11" height="11"')} Новый рекорд времени</span>` : ''}<span class="muted">Побед ${pr.wins} из ${pr.attempts}${pr.bestTime ? ` · лучшее время <b>${pr.bestTime} с</b>` : ''}${pr.bestRating ? ` · лучший рейтинг <b>${pr.bestRating}</b>` : ''}</span></div>
+        </div>`;
+    }
+    const titleId = this.g.save.data.cosmetics.equipped.title;
+    const champion = r.outcome === 'win' && !!titleId;
     this.el.classList.toggle('champion', champion);
     this.el.classList.remove('instant');
     this.el.innerHTML = `
       <div class="fill scroll" style="padding-top:4px">
         <div class="result-title">
           <div class="rt ${r.outcome}">${titles[r.outcome]}</div>
-          ${champion ? `<div class="champ-ribbon">${ICONS.crown}<span>HALLOWEEN CHAMPION</span></div>` : ''}
-          <div class="rs">${p.challenge ? `${esc(p.challenge.def.title)} · ` : ''}${methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
+          ${champion && titleId ? `<div class="champ-ribbon">${ICONS.crown}<span>${esc(COSMETICS[titleId].name)}</span></div>` : ''}
+          <div class="rs">${p.challenge ? `${esc(p.challenge.def.title)} · ` : p.boss ? `${esc(p.boss.def.title)} · ` : ''}${p.boss && r.method === 'time' ? 'ВРЕМЯ ВЫШЛО' : methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
         </div>
         ${challengeBlock}
+        ${bossBlock}
         <div class="reward-tiles" style="animation:lineIn .3s ease ${T0}s both">
           <div class="rtile money"><span class="rv" data-total>+$0</span><span class="rk">Гонорар</span></div>
           <div class="rtile fans"><span class="rv">+${formatNumber(o.rewards.fans)}</span><span class="rk">Фанаты</span></div>
@@ -207,11 +240,11 @@ export class ResultsScreen implements Screen {
       </div>
       <div class="result-actions">
         <button class="btn ghost" data-act="menu">Главное меню</button>
-        <button class="btn" data-act="again"><span class="shine"></span>${p.challenge ? 'Повторить' : 'Ещё бой'}</button>
+        <button class="btn" data-act="again"><span class="shine"></span>${p.challenge ? 'Повторить' : p.boss ? 'Реванш' : 'Ещё бой'}</button>
       </div>
       <div class="result-links">
-        <button class="label" data-act="prep">Колода и сложность</button>
-        ${p.challenge ? '<button class="label" data-act="modes">Режимы эфира</button>' : '<button class="label" data-act="roster">Сменить бойца</button>'}
+        <button class="label" data-act="prep">${p.boss ? 'Колода и боец' : 'Колода и сложность'}</button>
+        ${p.challenge || p.boss ? '<button class="label" data-act="modes">Режимы эфира</button>' : '<button class="label" data-act="roster">Сменить бойца</button>'}
       </div>`;
 
     const ratingEl = this.el.querySelector('[data-rating]') as HTMLElement;
@@ -245,6 +278,32 @@ export class ResultsScreen implements Screen {
     later(delayAfterLines + 1.2, () => {
       finished = true;
     });
+    // first win over the champion: reveal the title, already equipped
+    if (bo?.firstWin && bo.cosmeticNew) later(delayAfterLines + 0.9, () => this.revealTitle(bo.firstWin!.cosmetic));
+  }
+
+  private revealTitle(id: keyof typeof COSMETICS): void {
+    const c = COSMETICS[id];
+    const g = this.g;
+    if (g.ui.modalOpen) return;
+    g.audio.reward();
+    g.ui.modal(
+      `<div class="reward-pop rarity-${c.rarity}">
+         <div class="rp-rays"></div>
+         <div class="rp-art">${REWARD_ART[c.art]}</div>
+         <div class="label rp-kind">Новый титул · Легендарный</div>
+         <div class="h1 rp-name">${esc(c.name)}</div>
+         <p class="rp-desc">${esc(c.desc)}</p>
+         <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже надето · ${esc(c.where)}</div>
+         <div class="modal-actions"><button class="btn teal wide" data-a="ok">Отлично!</button></div>
+       </div>`,
+      (root, close) => {
+        root.querySelector('[data-a="ok"]')!.addEventListener('click', () => {
+          g.audio.ui('click');
+          close();
+        });
+      },
+    );
   }
 
   onHide(): void {

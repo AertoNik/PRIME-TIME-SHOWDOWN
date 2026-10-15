@@ -1,4 +1,6 @@
+import { bossById, type BossDef } from '../config/boss.config';
 import { REWARDS } from '../config/career';
+import { COSMETICS, type CosmeticId } from '../config/cosmetics.config';
 import { RIVALS, RIVAL_ORDER } from '../config/fighters';
 import { PERKS, PERK_ORDER, SURVIVAL, challengeById, type ChallengeDef, type ModeReward, type PerkDef, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
@@ -7,7 +9,7 @@ import type { MatchResultData } from '../combat/types';
 import { Rng } from '../core/math';
 import type { CareerSystem, GrantOutcome, RewardLine } from './CareerSystem';
 import type { EventManager, MatchEventOutcome } from './EventManager';
-import { emptyChallenge, emptyPerks, type ChallengeProgress, type SaveSystem, type SurvivalRecords, type SurvivalRun, type WaveLog } from './SaveSystem';
+import { emptyBoss, emptyChallenge, emptyPerks, type BossProgress, type ChallengeProgress, type SaveSystem, type SurvivalRecords, type SurvivalRun, type WaveLog } from './SaveSystem';
 
 /**
  * How a Survival attempt ended.
@@ -71,6 +73,22 @@ export interface ChallengeOutcome {
   value: number | null;
   newBest: boolean;
   progress: ChallengeProgress;
+}
+
+export interface BossOutcome {
+  def: BossDef;
+  won: boolean;
+  /** Highest phase the champion reached. */
+  phase: number;
+  /** Champion's health left (0 on a win). */
+  bossHp: number;
+  /** Paid now (first win only). */
+  firstWin: { money: number; fans: number; rep: number; cosmetic: CosmeticId } | null;
+  /** The cosmetic was newly added to the collection. */
+  cosmeticNew: boolean;
+  newBestTime: boolean;
+  newBestRating: boolean;
+  progress: BossProgress;
 }
 
 const ULTRA = new Set(['superstar', 'electro_blast']);
@@ -366,6 +384,70 @@ export class GameModes {
   private topDifficulty(run: SurvivalRun): Difficulty {
     const i = Math.max(0, Math.min(SURVIVAL.waves.length - 1, run.waves.length - 1));
     return SURVIVAL.waves[i].difficulty;
+  }
+
+  // ------------------------------------------------------------ boss fight
+  bossProgress(id: string): BossProgress {
+    return this.store.data.modes.boss[id] ?? emptyBoss();
+  }
+
+  /** Fight rules of a boss: longer bout, longer intro, knockout only. */
+  bossMods(def: BossDef): MatchMods {
+    return { duration: def.duration, introTime: def.introTime, timeUpRule: 'rival' };
+  }
+
+  /** Count a finished boss fight; pays the first-win reward (money, fans, reputation, title) exactly once. */
+  recordBoss(id: string, r: MatchResultData, fighter: FighterId): BossOutcome | null {
+    const def = bossById(id);
+    if (!def) return null;
+    const all = this.store.data.modes.boss;
+    const p = (all[id] ??= emptyBoss());
+    const won = r.outcome === 'win' && r.method !== 'forfeit';
+    const phase = Math.min(3, Math.max(1, r.bossPhase ?? 1));
+    const bossHp = won ? 0 : Math.min(1, Math.max(0, r.enemyHpFrac));
+    const time = Math.max(1, Math.ceil(r.duration));
+    p.attempts++;
+    p.bestPhase = Math.max(p.bestPhase, phase);
+    let newBestTime = false;
+    let newBestRating = false;
+    let firstWin: BossOutcome['firstWin'] = null;
+    let cosmeticNew = false;
+    if (won) {
+      p.wins++;
+      p.winsByFighter[fighter] = (p.winsByFighter[fighter] ?? 0) + 1;
+      if (p.bestTime === 0 || time < p.bestTime) {
+        p.bestTime = time;
+        p.bestFighter = fighter;
+        newBestTime = true;
+      }
+      if (r.rating > p.bestRating) {
+        p.bestRating = r.rating;
+        newBestRating = true;
+      }
+      if (p.firstWinAt === 0) {
+        p.firstWinAt = this.clock();
+        const fw = def.rewards.firstWin;
+        firstWin = { ...fw };
+        this.career.grant({ money: fw.money, fans: fw.fans, rep: fw.rep }, fighter);
+        cosmeticNew = this.grantCosmetic(fw.cosmetic, `boss-${def.id}`);
+      }
+    } else if (r.method !== 'forfeit') {
+      p.bestBossHp = Math.min(p.bestBossHp, bossHp);
+    }
+    p.history.unshift({ at: this.clock(), fighter, won, time, rating: r.rating, phase, bossHp });
+    if (p.history.length > 10) p.history.length = 10;
+    this.store.save();
+    return { def, won, phase, bossHp, firstWin, cosmeticNew, newBestTime, newBestRating, progress: { ...p, history: p.history.slice() } };
+  }
+
+  /** Add a cosmetic to the collection once; a newly obtained item is equipped right away (like event rewards). */
+  private grantCosmetic(id: CosmeticId, source: string): boolean {
+    const c = this.store.data.cosmetics;
+    if (c.owned.includes(id)) return false;
+    c.owned.push(id);
+    c.history.push({ id, event: source, at: this.clock() });
+    c.equipped[COSMETICS[id].slot] = id;
+    return true;
   }
 
   // ------------------------------------------------------------ challenges

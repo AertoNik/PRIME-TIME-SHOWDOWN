@@ -66,11 +66,15 @@ export class MenuScreen implements Screen {
     // game modes entry (Alpha 1.3): Survival record and cleared challenges at a glance
     const sv = s.modes.survival;
     const chDone = CHALLENGES.filter((c) => (s.modes.challenges[c.id]?.firstClearAt ?? 0) > 0).length;
+    const bossP = s.modes.boss.vale;
     const fresh = sv.runs === 0 && CHALLENGES.every((c) => !s.modes.challenges[c.id]?.attempts);
+    const bossNew = !bossP?.attempts;
     const modesEntry = `<button class="modes-entry" data-act="modes">
         <span class="me-ico">${MODE_ICONS.challenge}</span>
-        <span class="me-text"><b>Режимы эфира</b><small>${fresh ? 'Survival · Prime Challenge' : `Survival ${sv.bestWave}/${SURVIVAL.waves.length} · испытания ${chDone}/${CHALLENGES.length}`}</small></span>
-        ${fresh ? '<span class="me-new">NEW</span>' : ''}<span class="ee-go">${UI_ICONS.next}</span>
+        <span class="me-text"><b>Режимы эфира</b><small>${
+          fresh ? 'Survival · Challenge · Boss Fight' : `Волны ${sv.bestWave}/${SURVIVAL.waves.length} · испытания ${chDone}/${CHALLENGES.length} · босс ${bossP?.wins ? '✓' : '—'}`
+        }</small></span>
+        ${fresh || bossNew ? `<span class="me-new">${fresh ? 'NEW' : 'BOSS'}</span>` : ''}<span class="ee-go">${UI_ICONS.next}</span>
       </button>`;
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">

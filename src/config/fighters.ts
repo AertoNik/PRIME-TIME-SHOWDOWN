@@ -239,8 +239,25 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     theme: { main: '#ff2f6e', accent: '#ffd23a', dark: '#2a0814' },
     mods: { style: 'Напор и ближний бой', hpMult: 0.85, speedMult: 1.08, fireRateMult: 1.05, idleStyle: 'bouncy', victoryStyle: 'hype' },
   },
+  // Alpha 1.3.1: the first BOSS — legendary champion of the show. Fought only in
+  // BOSS FIGHT (src/config/boss.config.ts drives his three phases); he is not
+  // part of RIVAL_ORDER, so Classic Duel and Survival never pick him.
+  vale: {
+    id: 'vale',
+    name: 'ВИКТОР',
+    nickname: 'ЛЕГЕНДА',
+    fullName: 'Виктор «Легенда» Вейл',
+    archetype: 'vega',
+    behavior: 'tactical',
+    look: 'vale',
+    deck: ['dash', 'shield', 'overdrive', 'charged_shot'],
+    bio: 'Пятикратный чемпион PRIME TIME и лицо прайм-тайма. Золотая винтовка, фирменный таран и ни одного проигранного финала. Вживую его не видели уже два сезона.',
+    theme: { main: '#ffc23a', accent: '#fff1b0', dark: '#2a1600' },
+    mods: { style: 'Чемпионская техника и шоу', hpMult: 1.75, speedMult: 1.04, fireRateMult: 1.0, idleStyle: 'poise', victoryStyle: 'flex', dashStyle: 'lunge' },
+  },
 };
 
+/** Regular opponents (Classic Duel rotation, Survival waves). The boss is not one of them. */
 export const RIVAL_ORDER: RivalId[] = ['dex', 'tank', 'zoe', 'crash'];
 
 /**

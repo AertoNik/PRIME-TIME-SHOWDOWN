@@ -82,7 +82,7 @@ export interface RunResult {
   cardDamage: Map<CardId, number>;
 }
 
-export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[], mods?: MatchMods): RunResult {
+export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[], mods?: MatchMods, boss?: string): RunResult {
   const m = new Match({
     fighter,
     deck: deck ?? FIGHTERS[fighter].defaultDeck,
@@ -92,6 +92,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
     fans: 500,
     autoPlayer: mode === 'combo' ? undefined : AUTO[mode],
     mods,
+    boss,
   });
   const st: BotState = { think: 0, react: -1, reactKey: '' };
   const events = new Map<string, number>();
@@ -99,7 +100,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
   let lastCard: CardId | null = null;
   let steps = 0;
   const dt = 1 / 60;
-  while (m.phase !== 'over' && steps < 60 * 130) {
+  while (m.phase !== 'over' && steps < 60 * (m.duration + 55)) {
     if (mode === 'combo') comboBot(m, st, dt);
     m.step(dt);
     for (const e of m.drainEvents() as MatchEvent[]) {

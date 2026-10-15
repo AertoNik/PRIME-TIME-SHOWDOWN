@@ -230,6 +230,41 @@ export const DIMS: Record<BodyType, Dims> = {
     shoeL: 0.43,
     shoeW: 0.25,
   },
+  // Alpha 1.3.1 boss: taller than "lean", broad V-shaped chest and shoulders
+  athletic: {
+    hipY: 0.7,
+    hipW: 0.16,
+    thigh: 0.32,
+    shin: 0.34,
+    legR: 0.115,
+    pelvisW: 0.52,
+    pelvisH: 0.27,
+    pelvisD: 0.37,
+    spineY: 0.06,
+    torsoH: 0.68,
+    profile: [
+      [0.29, 0],
+      [0.3, 0.06],
+      [0.33, 0.2],
+      [0.4, 0.38],
+      [0.42, 0.5],
+      [0.37, 0.6],
+      [0.23, 0.68],
+      [0.001, 0.705],
+    ],
+    depth: 0.76,
+    shoulderX: 0.45,
+    shoulderY: 0.54,
+    upperArm: 0.29,
+    foreArm: 0.27,
+    armR: 0.112,
+    handR: 0.16,
+    neckY: 0.66,
+    neckR: 0.112,
+    headR: 0.44,
+    shoeL: 0.5,
+    shoeW: 0.28,
+  },
 };
 
 function torsoR(d: Dims, y: number): number {
@@ -372,6 +407,19 @@ export function getRigGeometry(lookId: string): RigGeometry {
     P.add(wb, shade(pm, 0.6), { p: [0, d.pelvisH * 0.42, 0] });
     if (look.top.style === 'vest' || look.top.style === 'puffer' || look.top.style === 'pads') {
       P.add(rbox(0.12, 0.08, 0.04, 0.015), 0xffc23a, { p: [0, d.pelvisH * 0.42, d.pelvisD * 0.52] });
+    }
+    if (look.top.style === 'coat') {
+      // showman coat tails: two flared flaps behind the hips with a gold hem
+      const tm = look.top.main;
+      for (const ss of [1, -1]) {
+        const at = { p: [ss * 0.12, -0.2, -d.pelvisD * 0.52] as V3, r: [0.3, ss * 0.12, ss * 0.1] as V3 };
+        P.add(rbox(0.2, 0.46, 0.035, 0.015), tm, at);
+        P.add(rbox(0.205, 0.035, 0.04, 0.012), look.top.trim, { p: [at.p[0] + ss * 0.022, -0.42, -d.pelvisD * 0.52 - 0.07], r: at.r });
+      }
+      // side skirt panels so the coat reads as long from the side
+      for (const ss of [1, -1]) {
+        P.add(rbox(0.035, 0.34, 0.26, 0.014), tm, { p: [ss * (d.pelvisW * 0.52), -0.12, -0.03], r: [0.12, 0, ss * 0.08] });
+      }
     }
   }
 
@@ -548,6 +596,27 @@ export function getRigGeometry(lookId: string): RigGeometry {
         TG.add(rbox(0.05, 0.05, 0.012, 0.006), look.glow, { p: [-0.12, h * 0.68, torsoR(d, h * 0.68) * d.depth + 0.006], r: [0, -0.3, Math.PI / 4] }, GLOW);
         break;
       }
+      case 'coat': {
+        // long showman coat: gold lapels over a crimson shirt, double row of gold buttons, high collar
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(rbox(0.17, h * 0.34, 0.03, 0.02), top.inner, { p: [0, h * 0.75, zf(h * 0.75) - 0.004] });
+        for (const ss of [1, -1]) {
+          T.add(rbox(0.075, h * 0.52, 0.03, 0.012), top.accent, { p: [ss * 0.105, h * 0.66, zf(h * 0.66) + 0.002], r: [0, ss * 0.3, -ss * 0.36] });
+          T.add(rbox(0.018, h * 0.52, 0.03, 0.006), top.trim, { p: [ss * 0.145, h * 0.67, zf(h * 0.67) - 0.006], r: [0, ss * 0.42, -ss * 0.36] });
+          for (let i = 0; i < 3; i++) {
+            const y = h * (0.12 + i * 0.12);
+            T.add(sph(0.024, 10, 8), top.trim, { p: [ss * 0.08, y, zf(y) + 0.006] });
+          }
+        }
+        T.add(torsoRing(d, 0.03, 0.012, 0.035), top.trim);
+        const collar = tor(0.205, 0.05, Math.PI * 1.5, 22);
+        collar.rotateX(Math.PI / 2);
+        collar.rotateY(Math.PI * 1.25);
+        T.add(collar, top.trim, { p: [0, h * 0.95, -0.01], s: [1, 1.7, 0.95] });
+        TG.add(rbox(0.05, 0.05, 0.012, 0.006), look.glow, { p: [-0.15, h * 0.6, zf(h * 0.6) + 0.01], r: [0, -0.35, Math.PI / 4] }, GLOW);
+        break;
+      }
       case 'pads': {
         // sleeveless jersey with a hazard-stripe badge (shoulder pads below)
         T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
@@ -582,6 +651,28 @@ export function getRigGeometry(lookId: string): RigGeometry {
         T.add(rim, top.trim, { p: [at.p[0], at.p[1] - 0.04, 0], r: at.r, s: [1.15, 1, 1.05] });
         T.add(sph(0.2, 14, 10), shade(top.accent, 0.62), { p: [at.p[0], at.p[1] - 0.07, 0], r: at.r, s: [1.1, 0.42, 1.0] });
       }
+    }
+
+    // gold epaulettes with fringe: the champion's coat silhouette
+    if (top.style === 'coat') {
+      for (const ss of [1, -1]) {
+        const ex = ss * d.shoulderX * 0.96;
+        const ey = d.shoulderY + 0.07;
+        T.add(sph(0.16, 14, 10), top.accent, { p: [ex, ey, 0], s: [1.25, 0.42, 1.08], r: [0, 0, -ss * 0.22] });
+        const rim = tor(0.16, 0.022, Math.PI * 2, 20);
+        rim.rotateX(Math.PI / 2);
+        T.add(rim, top.trim, { p: [ex, ey - 0.02, 0], r: [0, 0, -ss * 0.22], s: [1.25, 1, 1.08] });
+        for (let i = -2; i <= 2; i++) T.add(rbox(0.02, 0.075, 0.02, 0.008), top.trim, { p: [ex + ss * 0.19, ey - 0.08, i * 0.055], r: [0, 0, -ss * 0.22] });
+      }
+    }
+    // championship belt worn over the coat
+    if (look.accessories.includes('belt')) {
+      T.add(torsoRing(d, 0.06, 0.02, 0.05), 0x2a1d10);
+      const bz = torsoR(d, 0.06) * d.depth + 0.04;
+      T.add(sph(0.13, 20, 14), 0xffc23a, { p: [0, 0.07, bz], s: [1.45, 0.95, 0.28] });
+      T.add(sph(0.1, 18, 12), 0xffe9a0, { p: [0, 0.07, bz + 0.02], s: [1.3, 0.8, 0.22] });
+      TG.add(sph(0.045, 12, 10), 0xff3a4a, { p: [0, 0.07, bz + 0.045], s: [1, 1, 0.45] }, GLOW * 0.8);
+      for (const ss of [1, -1]) T.add(rbox(0.08, 0.075, 0.03, 0.015), 0xd8a23a, { p: [ss * 0.24, 0.065, torsoR(d, 0.06) * d.depth * 0.86], r: [0, ss * 0.7, 0] });
     }
 
     // accessories on torso
@@ -635,10 +726,18 @@ export function getRigGeometry(lookId: string): RigGeometry {
     } else if (top.style === 'racer') {
       // racing stripe down the outside of the sleeve
       U.add(rbox(0.032, d.upperArm * 0.8, 0.04, 0.012), top.accent, { p: [s * ar * 1.18, -d.upperArm * 0.5, 0] });
+    } else if (top.style === 'coat') {
+      const ring = tor(ar * 1.25, 0.016);
+      ring.rotateX(Math.PI / 2);
+      U.add(ring, top.accent, { p: [0, -d.upperArm * 0.62, 0] });
     }
     // forearm
     F.add(cap(ar * (bare ? 1.05 : 1.12), d.foreArm * 0.55), sleeveMain, { p: [0, -d.foreArm * 0.45, 0] });
     if (top.style === 'racer') F.add(rbox(0.03, d.foreArm * 0.62, 0.038, 0.012), top.accent, { p: [s * ar * 1.12, -d.foreArm * 0.42, 0] });
+    if (top.style === 'coat') {
+      // wide turned-back gold cuff
+      F.add(cyl(ar * 1.32, ar * 1.22, 0.1, 16), top.accent, { p: [0, -d.foreArm * 0.78, 0] });
+    }
     if (!bare) {
       const cuff = tor(ar * 1.1, 0.035);
       cuff.rotateX(Math.PI / 2);
@@ -794,6 +893,19 @@ export function getRigGeometry(lookId: string): RigGeometry {
         H.add(sph(0.18, 14, 10), shade(hc, 1.12), { p: [0, cy + R * 1.3, R * 0.8], s: [0.8, 0.7, 1.1], r: [1.1, 0, 0] });
         H.add(sph(0.12, 12, 10), shade(hc, 1.3), { p: [-0.13, cy + R * 1.08, R * 0.45], s: [0.45, 0.55, 1.4], r: [0.7, 0, 0.25] });
         for (const s of [1, -1]) H.add(rbox(0.05, 0.1, 0.07, 0.02), h2, { p: [s * R * 0.92, cy + 0.02, 0.1] });
+        break;
+      }
+      case 'slick': {
+        // slicked-back champion hair: smooth cap swept to the back, volume on top, a gold streak
+        H.add(new SphereGeometry(R * 1.045, 26, 14, 0, Math.PI * 2, 0, 1.25), hc, { p: [0, cy + 0.01, -0.04], r: [-0.42, 0, 0] });
+        H.add(new SphereGeometry(R * 1.035, 22, 12, Math.PI, Math.PI, 0.45, 1.68), hc, { p: [0, cy, -0.01] });
+        H.add(sph(0.26, 18, 12), hc, { p: [0, cy + R * 0.86, R * 0.32], s: [1.15, 0.52, 1.1], r: [0.35, 0, 0] });
+        H.add(sph(0.23, 16, 12), shade(hc, 1.25), { p: [0, cy + R * 0.97, -R * 0.06], s: [1.05, 0.5, 1.3], r: [-0.12, 0, 0] });
+        // the gold streak sweeping back from the front roll
+        H.add(sph(0.11, 12, 10), h2, { p: [0.12, cy + R * 1.0, R * 0.12], s: [0.62, 0.42, 2.3], r: [0.2, 0.12, 0] });
+        // tapered nape
+        H.add(sph(0.22, 14, 10), hc, { p: [0, cy - R * 0.1, -R * 0.78], s: [1.45, 0.95, 0.72] });
+        for (const s of [1, -1]) H.add(rbox(0.05, 0.13, 0.07, 0.02), hc, { p: [s * R * 0.93, cy - 0.01, 0.08] });
         break;
       }
       case 'mohawk': {

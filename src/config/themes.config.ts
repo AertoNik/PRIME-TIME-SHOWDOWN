@@ -3,15 +3,15 @@
 // ThemeManager (src/game/ThemeManager.ts) applies it; nothing else needs to change
 // to add a new look. See docs/SEASONAL_EVENTS.md.
 
-export type ThemeId = 'default' | 'halloween' | 'winter';
+export type ThemeId = 'default' | 'halloween' | 'winter' | 'champion';
 
 /** 3D decoration sets built by render/SeasonalDecor.ts. */
-export type DecorKind = 'none' | 'pumpkins' | 'frost';
+export type DecorKind = 'none' | 'pumpkins' | 'frost' | 'champion';
 /** Floating ambient particles in the arena. */
 export type AmbientKind = 'none' | 'spirits' | 'snow';
 /** DOM decoration on menu screens (corners + a few floating glyphs). */
 export type UiDecorKind = 'none' | 'cobweb' | 'frost';
-export type StingKind = 'none' | 'spooky' | 'frost';
+export type StingKind = 'none' | 'spooky' | 'frost' | 'champion';
 
 export interface Sponsor {
   text: string;
@@ -219,6 +219,83 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     vfx: { combo: [0xffd23a, 0x8fe8ff, 0xffffff], confetti: [0xffffff, 0x8fe8ff, 0xff5a5a, 0x9dffc8, 0xbfd4ff] },
     ui: { decor: 'frost', particleColors: ['#ffffff', '#cfefff'] },
     sting: 'frost',
+  },
+
+  // Alpha 1.3.1 BOSS FIGHT: championship dressing of the same studio (not a season).
+  // Applied only for the boss fight and its results; the season theme returns afterwards.
+  champion: {
+    id: 'champion',
+    label: 'LEGENDARY SHOWDOWN',
+    css: {
+      '--bg': '#07060a',
+      '--navy-950': '#0d0b10',
+      '--navy-900': '#14111a',
+      '--navy-850': '#1a1620',
+      '--navy-800': '#221c28',
+      '--navy-700': '#2c2433',
+      '--line': 'rgba(255, 200, 90, 0.18)',
+      '--line-rgb': '255, 205, 110',
+      '--muted': '#cdb88e',
+      '--dim': '#7a6a4c',
+      '--teal': '#ffd76a',
+      '--teal-2': '#e8b23a',
+      '--teal-rgb': '255, 215, 106',
+      '--shade-rgb': '8, 6, 10',
+      '--pop-rgb': '26, 18, 12',
+      '--panel-a': 'rgba(42, 33, 30, 0.95)',
+      '--panel-b': 'rgba(16, 12, 16, 0.97)',
+      '--surface-a': 'rgba(72, 56, 40, 0.92)',
+      '--surface-b': 'rgba(28, 22, 22, 0.96)',
+      '--tile-a': 'rgba(46, 36, 30, 0.92)',
+      '--tile-b': 'rgba(18, 14, 16, 0.94)',
+      '--btn-a': '#ffe08a',
+      '--btn-b': '#f2b632',
+      '--btn-c': '#d8901a',
+      '--btn-edge': '#7a4a08',
+      '--btn-glow': 'rgba(255, 190, 60, 0.38)',
+      '--btn2-a': '#ff8a96',
+      '--btn2-b': '#e8283c',
+      '--btn2-c': '#b8142a',
+      '--btn2-edge': '#5a0814',
+      '--btn2-ink': '#fff3f0',
+      '--app-glow-1': 'rgba(255, 180, 60, 0.18)',
+      '--app-glow-2': 'rgba(220, 30, 50, 0.16)',
+      '--rating-grad': 'linear-gradient(90deg, #ffe08a, #ffb43a 45%, #ff5a3a 75%, #e8203c)',
+      '--edge-glow': 'rgba(255, 200, 60, 0.85)',
+      '--card-ring': 'rgba(255, 215, 106, 0.55)',
+      '--card-glow': 'rgba(255, 180, 60, 0.25)',
+      '--live-bg': '#e8203c',
+      '--season-a': '#ffd76a',
+      '--season-b': '#e8203c',
+    },
+    arena: {
+      lights: { hemiSky: 0xffe6bf, hemiGround: 0x2a1418, fillA: 0xffb43a, fillB: 0xe8203c, rim: 0xffe08a, fog: 0x0a0708 },
+      spots: [0xffc23a, 0xfff1c0, 0xffa31a, 0xffffff],
+      sticks: [0xffd76a, 0xffffff, 0xe8203c, 0xffb43a, 0xfff1c0],
+      neon: { main: ['LEGENDARY', '#ffd76a'], side: ['SHOWDOWN', '#ff3a4a'], live: ['● TITLE FIGHT', '#ffd76a'] },
+      sponsors: [
+        { text: 'CHAMPION GOLD', bg: '#1a1208', fg: '#ffd76a' },
+        { text: 'VICTOR VALE', bg: '#e8203c', fg: '#fff3e0' },
+        { text: 'LEGENDARY SHOWDOWN', bg: '#ffd76a', fg: '#1a1208' },
+        { text: 'PRIME TIME', bg: '#14111a', fg: '#ffb43a' },
+      ],
+      boardLive: ['TITLE', 'FIGHT'],
+      screen: {
+        title: 'LEGENDARY',
+        subtitle: 'SHOWDOWN',
+        colorA: '#ffd76a',
+        colorB: '#ff3a4a',
+        bgTop: '#2a1a08',
+        bgBottom: '#0a0608',
+        fightHeadline: 'VICTOR VALE · TITLE FIGHT',
+      },
+      decor: 'champion',
+      ambient: 'spirits',
+      ambientColors: [0xffd76a, 0xffb43a, 0xff3a4a],
+    },
+    vfx: { combo: [0xffd23a, 0xffe08a, 0xff3a4a], confetti: [0xffd76a, 0xffffff, 0xe8203c, 0xffb43a, 0x1a1208] },
+    ui: { decor: 'none', particleColors: [] },
+    sting: 'champion',
   },
 };
 

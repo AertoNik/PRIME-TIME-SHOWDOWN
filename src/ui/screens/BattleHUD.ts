@@ -3,6 +3,7 @@ import { MATCH } from '../../config/balance';
 import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import { PERKS, PERK_ORDER, challengeById, type ChallengeDef } from '../../config/modes.config';
+import { bossById, type BossDef } from '../../config/boss.config';
 import type { CardId, Side } from '../../config/types';
 import type { Match } from '../../combat/Match';
 import type { MatchEvent } from '../../combat/types';
@@ -133,6 +134,12 @@ export class BattleHUD implements Screen {
   private modeLive: HTMLElement | null = null;
   private modeLiveTxt = '';
   private challenge: ChallengeDef | null = null;
+  /** BOSS FIGHT: the champion's data (phases, move names) and the warning strip. */
+  private bossDef: BossDef | null = null;
+  private bossWarnEl: HTMLElement | null = null;
+  private bossWarnTimer: number | null = null;
+  /** The next PRIME RUSH telegraph is the ENCORE (second charge). */
+  private encoreNext = false;
 
   constructor(g: Game) {
     this.g = g;
@@ -305,6 +312,24 @@ export class BattleHUD implements Screen {
     const caption = this.setupMode(mode);
     // Matchup intro (modes add a TV caption: wave number or challenge name)
     const sides = `<span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span>`;
+    if (this.bossDef) {
+      // BOSS FIGHT: a short championship presentation instead of the plain VS card
+      const def = this.bossDef;
+      const intro = el(
+        'div',
+        'boss-intro',
+        `<div class="bi-card">
+           <div class="bi-kicker">${esc(def.title)}</div>
+           <div class="bi-face">${portraitHTML(g.portraits[rv.look], rv.theme.main, rv.theme.dark)}</div>
+           <div class="bi-name">${esc(rv.fullName)}</div>
+           <div class="bi-sub">${esc(def.kicker)} · 3 фазы · только нокаут</div>
+           <div class="bi-vs"><span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span></div>
+         </div>`,
+      );
+      this.el.appendChild(intro);
+      setTimeout(() => intro.remove(), 3300);
+      return;
+    }
     const intro = el(
       'div',
       'matchup-intro',
@@ -314,13 +339,58 @@ export class BattleHUD implements Screen {
     setTimeout(() => intro.remove(), 3100);
   }
 
+  /** Mode strip text for the champion's current phase. */
+  private bossStrip(phase: number): void {
+    const def = this.bossDef;
+    if (!def) return;
+    const ph = def.phases[phase - 1];
+    this.modeStrip.innerHTML = `<span class="ms-tag boss">BOSS</span><span class="ms-main">ФАЗА <b>${phase}</b>/${def.phases.length} · ${esc(ph.title)}</span>`;
+    for (let i = 1; i <= def.phases.length; i++) this.el.classList.toggle(`boss-p${i}`, i === phase);
+  }
+
+  /** Short on-screen warning while the champion charges a signature move. */
+  private bossWarn(name: string, counter: string, seconds: number): void {
+    this.bossWarnEl?.remove();
+    if (this.bossWarnTimer !== null) clearTimeout(this.bossWarnTimer);
+    const w = el('div', 'boss-warn', `<b>⚠ ${esc(name)}</b><span>${esc(counter)}</span>`);
+    // just below the mode strip, whatever the phone's safe area and HUD height
+    w.style.top = `${Math.round(this.modeStrip.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 8)}px`;
+    this.el.appendChild(w);
+    this.bossWarnEl = w;
+    this.bossWarnTimer = window.setTimeout(() => {
+      w.remove();
+      if (this.bossWarnEl === w) this.bossWarnEl = null;
+      this.bossWarnTimer = null;
+    }, Math.max(700, seconds * 1000 + 250));
+  }
+
   /** Fill the mode strip for Survival / Prime Challenge; returns the intro caption (empty for Classic). */
   private setupMode(mode: ModeSession): string {
     this.challenge = null;
+    this.bossDef = null;
+    this.encoreNext = false;
     this.modeLive = null;
     this.modeLiveTxt = '';
+    this.bossWarnEl?.remove();
+    this.bossWarnEl = null;
+    this.el.querySelectorAll('.phase-mark').forEach((x) => x.remove());
+    this.el.classList.remove('boss-p1', 'boss-p2', 'boss-p3');
     this.el.classList.toggle('has-mode', mode.kind !== 'classic');
     this.el.dataset.mode = mode.kind;
+    if (mode.kind === 'boss') {
+      const def = bossById(mode.id);
+      if (!def) return '';
+      this.bossDef = def;
+      this.bossStrip(1);
+      // phase thresholds on the champion's health bar (it drains towards the right)
+      const bar = this.hpBoxes[1].querySelector('.hp-bar') as HTMLElement;
+      for (const ph of def.phases.slice(1)) {
+        const mark = el('i', 'phase-mark');
+        mark.style.left = `${(1 - ph.at) * 100}%`;
+        bar.appendChild(mark);
+      }
+      return '';
+    }
     if (mode.kind === 'survival') {
       const w = mode.wave;
       const run = this.g.modes.activeRun;
@@ -847,6 +917,15 @@ export class BattleHUD implements Screen {
         if (e.hit) this.spawnFloater('ПРИМАНКА!', 'callout', e.x, 2.4, e.z, 0.9, 0.6);
         break;
       case 'telegraph':
+        if (e.side === 1 && this.bossDef && (e.card === 'knockout' || e.card === 'charged_shot')) {
+          const encore = this.encoreNext && e.card === 'knockout';
+          this.encoreNext = false;
+          const mv = this.bossDef.moves.find((x) => x.id === (encore ? 'encore' : e.card === 'knockout' ? 'rush' : 'spotlight'));
+          if (mv) {
+            const counter = encore ? 'Второй таран! Ещё один DASH или SHIELD' : e.card === 'knockout' ? 'DASH в сторону или SHIELD' : 'Уйдите с красной линии рывком DASH';
+            this.bossWarn(encore ? `${mv.name} · PRIME RUSH` : mv.name, counter, e.duration);
+          }
+        }
         if (e.side === 1) {
           this.g.audio.telegraph();
           if (!this.hints.telegraph && !this.g.save.data.hintsSeen) {
@@ -897,12 +976,29 @@ export class BattleHUD implements Screen {
           // The combo banner already names the move; skip the duplicate card callout.
           if (!e.combo) this.callout(0, c.name, c.color);
         } else {
-          // Rival combos name the combo instead of the card (one label, not two).
+          // Rival combos name the combo instead of the card (one label, not two);
+          // the champion's cards carry his signature names.
           const rc = e.combo ? COMBOS.find((x) => x.id === e.combo)! : null;
-          this.callout(1, (rc ? rc.name : c.name) + '!', '#ff8a7a');
+          const bossName = this.bossDef?.cardNames[e.card];
+          this.callout(1, (rc ? rc.name : (bossName ?? c.name)) + '!', bossName ? '#ffd76a' : '#ff8a7a');
         }
         break;
       }
+      case 'bossPhase': {
+        const def = this.bossDef;
+        if (!def) break;
+        const ph = def.phases[e.phase - 1];
+        this.bossStrip(e.phase);
+        this.queueBanner({ text: ph.title, sub: `ФАЗА ${e.phase} · ${def.phases.length === e.phase ? 'ФИНАЛ' : 'НОВЫЙ ТЕМП'}`, tier: 3 });
+        this.screenFlash(0.5);
+        vibrate([30, 40, 30]);
+        break;
+      }
+      case 'bossMove':
+        // the ENCORE's own windup follows right away and gets the special warning
+        if (e.move === 'encore') this.encoreNext = true;
+        else if (e.move === 'star') this.callout(1, 'STAR POWER!', '#ffd76a');
+        break;
       case 'cardFail':
         break;
       default:
@@ -913,5 +1009,9 @@ export class BattleHUD implements Screen {
   onHide(): void {
     this.hintEl?.remove();
     this.hintEl = null;
+    this.bossWarnEl?.remove();
+    this.bossWarnEl = null;
+    if (this.bossWarnTimer !== null) clearTimeout(this.bossWarnTimer);
+    this.bossWarnTimer = null;
   }
 }

@@ -106,6 +106,10 @@ export type MatchEvent =
   | { type: 'impact'; side: Side; x: number; z: number; kind: 'wall' | 'expire' | 'shield' | 'decoy'; heavy: boolean; weapon: WeaponType }
   | { type: 'card'; side: Side; card: CardId; combo: ComboId | null }
   | { type: 'cardFail'; side: Side; card: CardId; reason: CardFailReason }
+  /** BOSS FIGHT: the champion entered phase `phase` (2 or 3). */
+  | { type: 'bossPhase'; phase: number }
+  /** BOSS FIGHT: a signature move outside the card system (ENCORE rush) or STAR POWER. */
+  | { type: 'bossMove'; move: 'encore' | 'star' }
   | { type: 'combo'; side: Side; combo: ComboId }
   | { type: 'dodge'; side: Side; x: number; z: number; perfect: boolean; heavy: boolean }
   | { type: 'miss'; side: Side; x: number; z: number }
@@ -176,4 +180,6 @@ export interface MatchResultData {
   playerHpFrac: number;
   enemyHpFrac: number;
   finisher: boolean;
+  /** BOSS FIGHT: highest phase the champion reached (1..3). */
+  bossPhase?: number;
 }

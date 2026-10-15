@@ -57,7 +57,7 @@ export const ICONS = {
 export type QuestIcon = 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv';
 
 /** Large preview art for reward cards. */
-export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown', string> = {
+export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt', string> = {
   card: S(
     `<rect x="16" y="6" width="40" height="54" rx="7" fill="#24123c" stroke="#ff8a1f" stroke-width="3" transform="rotate(10 36 33)"/>
      <rect x="8" y="8" width="40" height="54" rx="7" fill="#6a2ab8" stroke="#ffb347" stroke-width="3"/>
@@ -91,6 +91,16 @@ export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crow
     `<circle cx="32" cy="34" r="26" fill="#2a1446" stroke="#ffd23a" stroke-width="3"/>
      <path d="M14 44 L17 22 L26 32 L32 16 L38 32 L47 22 L50 44 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="2" stroke-linejoin="round"/>
      <g transform="translate(24 30) scale(.26)">${PUMPKIN_BODY}</g>`,
+  ),
+  // Alpha 1.3.1: championship belt (BOSS FIGHT first-win title)
+  belt: S(
+    `<circle cx="32" cy="32" r="28" fill="#1a1208" stroke="#ffd23a" stroke-width="2.5"/>
+     <rect x="2" y="27" width="60" height="12" rx="4" fill="#2a1d10" stroke="#7a5a1a" stroke-width="1.5"/>
+     <ellipse cx="32" cy="33" rx="17" ry="13" fill="#ffc23a" stroke="#7a3a00" stroke-width="2"/>
+     <ellipse cx="32" cy="33" rx="12" ry="9" fill="#ffe9a0"/>
+     <circle cx="32" cy="33" r="4.5" fill="#e8202a" stroke="#7a0a10" stroke-width="1.2"/>
+     <rect x="8" y="29" width="7" height="8" rx="2" fill="#d8a23a"/><rect x="49" y="29" width="7" height="8" rx="2" fill="#d8a23a"/>
+     <path d="M24 14 L27 6 L32 12 L37 6 L40 14 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="1.5" stroke-linejoin="round"/>`,
   ),
 };
 

@@ -1,9 +1,11 @@
 import { ARENA, BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
+import { bossById } from '../config/boss.config';
 import { CARDS } from '../config/cards';
 import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
 import type { Behavior, CardId, ComboDef, ComboId, Difficulty, DifficultyDef, FighterId, RivalDef, RivalId, Side } from '../config/types';
 import { Rng } from '../core/math';
 import { Abilities } from './Abilities';
+import { BossDirector } from './BossDirector';
 import { BroadcastSystem, type BroadcastHost } from './BroadcastSystem';
 import { CardHand } from './CardSystem';
 import { CombatSystem } from './CombatSystem';
@@ -24,6 +26,8 @@ export interface MatchConfig {
   autoPlayer?: { behavior: Behavior; smarts: number; dodge: number; reaction: number; eagerness?: number };
   /** Game-mode modifiers (Survival / Prime Challenge). Absent in Classic Duel. */
   mods?: MatchMods;
+  /** BOSS FIGHT: id from src/config/boss.config.ts (the rival must be that boss). */
+  boss?: string;
 }
 
 /**
@@ -43,6 +47,10 @@ export interface MatchMods {
   /** Rival HP / damage multipliers on top of the difficulty (Survival waves). */
   rivalHpMult?: number;
   rivalDmgMult?: number;
+  /** Pre-fight intro length (default MATCH.introTime). */
+  introTime?: number;
+  /** Who wins when time runs out: 'hp' (default: lost the smaller share of HP) or 'rival' (BOSS FIGHT: knockout only). */
+  timeUpRule?: 'hp' | 'rival';
 }
 
 interface Deferred {
@@ -67,7 +75,10 @@ export class Match implements BroadcastHost {
   time = 0;
   /** Fight length for this match (Classic: MATCH.duration). */
   readonly duration: number;
+  readonly introTime: number;
   timeLeft: number;
+  /** BOSS FIGHT phases and signature moves (null in every other mode). */
+  readonly boss: BossDirector | null = null;
   clock = 0;
   winner: Side | null = null;
 
@@ -94,13 +105,15 @@ export class Match implements BroadcastHost {
   constructor(cfg: MatchConfig) {
     this.cfg = cfg;
     this.rng = new Rng(cfg.seed);
-    this.difficulty = DIFFICULTIES[cfg.difficulty];
+    const bossDef = cfg.boss ? bossById(cfg.boss) : null;
+    this.difficulty = bossDef ? bossDef.ai : DIFFICULTIES[cfg.difficulty];
     this.rival = RIVALS[cfg.rival];
     const pDef = FIGHTERS[cfg.fighter];
     const eDef = rivalFighterDef(this.rival);
     const d = this.difficulty;
     const mods = cfg.mods ?? {};
     this.duration = mods.duration ?? MATCH.duration;
+    this.introTime = mods.introTime ?? MATCH.introTime;
     this.timeLeft = this.duration;
 
     const player = new FighterSim(0, pDef, pDef.name, pDef.look, 1, mods.playerDmgMult ?? 1, MATCH.fighterRadius);
@@ -168,6 +181,7 @@ export class Match implements BroadcastHost {
     };
     this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, enemyProfile)];
     this.props = ARENA.props.map((p) => ({ x: p.x, z: p.z, alive: true, respawn: 0 }));
+    if (bossDef) this.boss = new BossDirector(this, bossDef);
   }
 
   // ----------------------------------------------------------------- basics
@@ -178,6 +192,7 @@ export class Match implements BroadcastHost {
   emit(e: MatchEvent): void {
     this.events.push(e);
     this.broadcast.onEvent(e);
+    this.boss?.onEvent(e);
     // Reading an attack with DASH pays back energy.
     if (e.type === 'dodge' && e.perfect && this.time - this.fighters[e.side].lastDash < 1.0) {
       this.hands[e.side].gain(CARD_TUNING.dash.perfectRefund);
@@ -207,7 +222,7 @@ export class Match implements BroadcastHost {
     this.clock += dt;
     if (this.phase === 'intro') {
       this.phaseTime += dt;
-      const remaining = MATCH.introTime - this.phaseTime;
+      const remaining = this.introTime - this.phaseTime;
       const n = Math.ceil(remaining);
       if (n < this.countdown && n <= 3) {
         this.countdown = n;
@@ -239,6 +254,7 @@ export class Match implements BroadcastHost {
       this.ais[0].update(dt);
       this.ais[1].update(dt);
       this.runDeferred(dt);
+      this.boss?.update(dt);
     }
 
     this.combat.updateFighter(this.fighters[0], dt);
@@ -410,7 +426,8 @@ export class Match implements BroadcastHost {
     const lostP = (p.startHp - p.hp) / p.maxHp;
     const lostE = (e.startHp - e.hp) / e.maxHp;
     let winner: Side | null = null;
-    if (Math.abs(lostP - lostE) >= MATCH.drawEpsilon) winner = lostP < lostE ? 0 : 1;
+    if (this.cfg.mods?.timeUpRule === 'rival') winner = 1;
+    else if (Math.abs(lostP - lostE) >= MATCH.drawEpsilon) winner = lostP < lostE ? 0 : 1;
     this.finish('time', winner);
   }
 
@@ -462,6 +479,7 @@ export class Match implements BroadcastHost {
       playerHpFrac: p.hpFrac,
       enemyHpFrac: e.hpFrac,
       finisher: this.broadcast.finisher,
+      bossPhase: this.boss ? this.boss.phase : undefined,
     };
   }
 }

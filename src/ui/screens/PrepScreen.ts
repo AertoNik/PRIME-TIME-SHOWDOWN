@@ -1,6 +1,8 @@
 import { CARDS, COMBOS } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
+import { bossById } from '../../config/boss.config';
+import { COSMETICS } from '../../config/cosmetics.config';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
 import { formatChallengeValue } from '../../meta/GameModes';
@@ -10,7 +12,7 @@ import { MODE_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
 
 /** What the prep screen is preparing: a Classic Duel, a Survival marathon or one Prime Challenge. */
-export type PrepMode = { kind: 'classic' } | { kind: 'survival' } | { kind: 'challenge'; id: string };
+export type PrepMode = { kind: 'classic' } | { kind: 'survival' } | { kind: 'challenge'; id: string } | { kind: 'boss'; id: string };
 
 const WAVE_LABEL = (i: number) => {
   const w = SURVIVAL.waves[i];
@@ -36,7 +38,7 @@ export class PrepScreen implements Screen {
   /** params: { mode } to open a specific setup; without params the last setup stays (e.g. back from the roster). */
   onShow(params?: unknown): void {
     const pm = (params as { mode?: PrepMode } | undefined)?.mode;
-    if (pm) this.mode = pm.kind === 'challenge' && !challengeById(pm.id) ? { kind: 'classic' } : pm;
+    if (pm) this.mode = (pm.kind === 'challenge' && !challengeById(pm.id)) || (pm.kind === 'boss' && !bossById(pm.id)) ? { kind: 'classic' } : pm;
     const s = this.g.save.data;
     this.deck = s.fighters[s.selected].deck.slice();
     this.focus = this.deck[0] ?? null;
@@ -118,6 +120,10 @@ export class PrepScreen implements Screen {
         g.startChallenge(this.mode.id, this.diff);
         return;
       }
+      if (this.mode.kind === 'boss') {
+        g.startBoss(this.mode.id);
+        return;
+      }
       s.difficulty = this.diff;
       g.save.save();
       g.startMatch();
@@ -154,6 +160,46 @@ export class PrepScreen implements Screen {
             <div class="mode-facts"><span>Полное прохождение <b>+$${SURVIVAL.completion.money}</b></span>${rec.firstClearPaid ? '' : `<span>Первое прохождение <b>+$${SURVIVAL.firstClear.money} +${SURVIVAL.firstClear.rep}★</b></span>`}<span>Рекорд <b>${rec.bestWave}/${SURVIVAL.waves.length}</b></span></div>
           </div>`,
         start: 'Начать марафон',
+      };
+    }
+    if (mode.kind === 'boss') {
+      const def = bossById(mode.id)!;
+      const rival = RIVALS[def.rival];
+      const p = g.modes.bossProgress(def.id);
+      const fw = def.rewards.firstWin;
+      const phases = def.phases
+        .map((ph) => `<div class="bp-phase p${ph.n}"><b>${ph.n}</b><span><i>${esc(ph.title)}</i>${esc(ph.desc)}</span></div>`)
+        .join('');
+      const moves = def.moves
+        .map((mv) => `<div class="bp-move"><span class="bp-mname">${esc(mv.name)}<small>с фазы ${mv.from}</small></span><span class="bp-mdesc">${esc(mv.desc)}</span><span class="bp-mcounter">${esc(mv.counter)}</span></div>`)
+        .join('');
+      // a short, deck-aware hint: the champion's heavy hits are answered with DASH / SHIELD
+      const d = this.deck;
+      let tip = '';
+      if (!d.includes('dash') && !d.includes('shield')) tip = 'В колоде нет ни DASH, ни SHIELD — от тарана PRIME RUSH и луча SPOTLIGHT SHOT будет нечем защититься.';
+      else if (!d.includes('shield')) tip = 'SHIELD гасит PRIME RUSH и помогает пережить STAR POWER. Против чемпиона он очень полезен.';
+      else if (d.includes('adrenaline') && !d.includes('overdrive')) tip = 'Бой длинный: OVERDRIVE чаще окупается против чемпиона, чем ADRENALINE.';
+      return {
+        title: 'Boss Fight',
+        side: `<div class="mside b boss-side">${portraitHTML(g.portraits[rival.look], rival.theme.main, rival.theme.dark)}<div class="mname">${esc(rival.name)}</div><span class="chip gold">ЛЕГЕНДА</span></div>`,
+        note: `<b class="bp-full">${esc(rival.fullName)}</b> · ${esc(def.kicker)}. ${esc(rival.bio)}`,
+        section: `<div class="section panel boss-rules">
+            <div class="section-title"><span class="h2">${esc(def.title)}</span><span class="label">3 фазы</span></div>
+            <div class="bp-phases">${phases}</div>
+            <ul class="mode-rules">
+              <li>Бой длится ${Math.floor(def.duration / 60)}:${String(def.duration % 60).padStart(2, '0')}. Победа — только нокаутом: если время выйдет, титул останется у чемпиона.</li>
+              <li>Каждый мощный удар чемпион показывает красной зоной и предупреждением на экране.</li>
+            </ul>
+            <div class="label bp-label">Фирменные приёмы</div>
+            <div class="bp-moves">${moves}</div>
+            ${tip ? `<div class="mode-tip"><b>Совет:</b> ${esc(tip)}</div>` : ''}
+            <div class="mode-facts">${
+              p.firstWinAt
+                ? `<span>Побед <b>${p.wins}</b></span><span>Лучшее время <b>${p.bestTime} с</b></span><span>Повтор <b>гонорар ×${String(def.rewards.moneyMult).replace('.', ',')}</b></span>`
+                : `<span>Первая победа <b>+$${fw.money} · +${fw.fans} фанатов · +${fw.rep}★</b></span><span>Титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span>${p.attempts ? `<span>Лучшее <b>фаза ${p.bestPhase}/3</b></span>` : ''}`
+            }</div>
+          </div>`,
+        start: 'Выйти на бой',
       };
     }
     if (mode.kind === 'challenge') {
@@ -212,6 +258,7 @@ export class PrepScreen implements Screen {
           <div class="seg-control" style="margin-top:8px">${diffs}</div>
         </div>`;
     this.el.classList.toggle('mode-prep', !!mp);
+    this.el.classList.toggle('boss-prep', this.mode.kind === 'boss');
     this.el.innerHTML = `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
@@ -237,7 +284,7 @@ export class PrepScreen implements Screen {
           <div class="center rival-note" style="grid-column:1/-1;max-width:none;margin-top:6px">${mp ? mp.note : `«${esc(rival.nickname)}» · стиль: ${esc(rf.style.toLowerCase())}. ${esc(rival.bio)}`}</div>
         </div>
         ${mp ? mp.section : ''}
-        ${this.mode.kind === 'survival' ? '' : diffSection}
+        ${this.mode.kind === 'survival' || this.mode.kind === 'boss' ? '' : diffSection}
         <div class="section panel">
           <div class="section-title"><span class="h2">Колода · ${this.deck.length}/4</span><span class="label">3 в руке + 1 в очереди</span></div>
           <div class="deck-slots">${slots}</div>

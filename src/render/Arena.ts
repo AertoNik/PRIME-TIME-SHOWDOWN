@@ -824,6 +824,15 @@ export class Arena {
     this.decor?.setQuality(low);
   }
 
+  /** Recolour the four moving spotlights (BOSS FIGHT phases) without rebuilding the theme. */
+  setSpots(colors: number[]): void {
+    this.cones.forEach((c, i) => {
+      const col = colors[i % colors.length];
+      (c.mat.uniforms.uColor.value as Color).setHex(col);
+      c.lens.color.setHex(col).multiplyScalar(3);
+    });
+  }
+
   private drawScreen(): void {
     const g = this.screenCtx;
     const W = this.screenCanvas.width;

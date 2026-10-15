@@ -59,6 +59,16 @@ const checks: [string, boolean][] = [
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, modes: { survival: { runs: 4, completions: 1, bestWave: 5, bestScore: 402, firstClearPaid: true }, challenges: { spotlight: { attempts: 3, clears: 1, firstClearAt: 1790000000000, best: 86 } } } })));
     return v.modes.survival.bestWave === 5 && v.modes.survival.firstClearPaid && v.modes.challenges.spotlight.firstClearAt === 1790000000000 && v.modes.challenges.spotlight.best === 86;
   })()],
+  // Alpha 1.3.1: boss progress starts empty; 1.3 records and the collection are untouched
+  ['1.3.1: old saves get empty boss records', Object.keys(s.modes.boss).length === 0 && Object.keys(s11.modes.boss).length === 0],
+  ['1.3.1: Alpha 1.3 records survive next to the boss block', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 4, modes: { survival: { runs: 6, bestWave: 3 }, challenges: { high_stakes: { attempts: 1, clears: 1, firstClearAt: 7 } } } })));
+    return v.modes.survival.bestWave === 3 && v.modes.challenges.high_stakes.firstClearAt === 7 && Object.keys(v.modes.boss).length === 0;
+  })()],
+  ['1.3.1: boss records and the PRIME LEGEND title round-trip', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, cosmetics: { owned: ['title_prime_legend'], equipped: { title: 'title_prime_legend' } }, modes: { boss: { vale: { attempts: 3, wins: 1, firstWinAt: 1790000000000, bestTime: 96, bestPhase: 3 } } } })));
+    return v.modes.boss.vale.wins === 1 && v.modes.boss.vale.firstWinAt === 1790000000000 && v.cosmetics.equipped.title === 'title_prime_legend';
+  })()],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
 let ok = true;

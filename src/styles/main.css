@@ -5225,3 +5225,441 @@ input {
 .ch-best b {
   color: var(--text);
 }
+
+/* =====================================================================
+   Alpha 1.3.1 — BOSS FIGHT: Legendary Showdown (modes card, prep, HUD,
+   results). The fight itself runs in the "champion" theme (themes.config.ts).
+   ===================================================================== */
+
+/* ---- modes screen card */
+.mode-card.boss {
+  --mc-rgb: 255, 194, 58;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(232, 32, 60, 0.28), transparent 60%),
+    linear-gradient(135deg, rgba(255, 194, 58, 0.22), transparent 55%),
+    linear-gradient(180deg, #2a1f16 0%, #120e12 100%);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(255, 194, 58, 0.7), 0 0 26px rgba(255, 170, 40, 0.18);
+}
+.bc-glow {
+  position: absolute;
+  inset: -40% -20% auto auto;
+  width: 70%;
+  height: 120%;
+  pointer-events: none;
+  background: conic-gradient(from 200deg, transparent, rgba(255, 215, 106, 0.16), transparent 40%);
+  animation: bcSpin 9s linear infinite;
+}
+@keyframes bcSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.bc-face .portrait {
+  width: 50px;
+  height: 50px;
+  flex: none;
+  box-shadow: 0 0 0 2px #ffd76a, 0 0 16px rgba(255, 194, 58, 0.55);
+}
+.bc-name {
+  margin-top: 8px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(12px, 4cqw, 15px);
+  color: #ffe39a;
+}
+.bc-name small {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted);
+}
+.bc-phases {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 10px;
+}
+.bc-phase {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 9px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(7.5px, 2.4cqw, 9.5px);
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #ffe9b0;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 194, 58, 0.35);
+}
+.bc-phase b {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2a1400;
+  background: #ffc23a;
+  font-size: 9px;
+}
+.bc-phase:nth-child(3) b {
+  color: #fff;
+  background: #e8203c;
+}
+@container (max-width: 359px) {
+  .mode-card .mc-kicker {
+    font-size: 8.5px;
+    letter-spacing: 0.04em;
+  }
+  .me-text small {
+    font-size: 10.5px;
+  }
+}
+.mode-card.boss .mc-new {
+  font-size: 8.5px;
+  padding: 3px 6px;
+  letter-spacing: 0.03em;
+}
+.bc-cta {
+  background: linear-gradient(180deg, #fff0b0 0%, #ffc23a 50%, #d8901a 100%);
+  color: #2a1400;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 5px 0 #7a4a08, 0 10px 22px rgba(255, 180, 40, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ---- prep screen */
+.boss-prep .matchup {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px rgba(255, 194, 58, 0.55);
+}
+.boss-side .portrait {
+  box-shadow: 0 0 0 3px #ffc23a, 0 0 22px rgba(255, 194, 58, 0.6) !important;
+}
+.bp-full {
+  color: #ffe39a;
+  font-style: normal;
+}
+.boss-rules {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px rgba(255, 194, 58, 0.45);
+}
+.bp-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+.bp-phase {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--tile-a), var(--tile-b));
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #d4dafa;
+}
+.bp-phase b {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: #2a1400;
+  background: #ffc23a;
+}
+.bp-phase.p2 b {
+  background: linear-gradient(135deg, #ffc23a, #ff5a3a);
+}
+.bp-phase.p3 b {
+  color: #fff;
+  background: #e8203c;
+}
+.bp-phase i {
+  display: block;
+  font-style: normal;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #ffe39a;
+}
+.bp-label {
+  margin: 12px 2px 0;
+}
+.bp-moves {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+.bp-move {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: rgba(var(--shade-rgb), 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 194, 58, 0.3);
+}
+.bp-mname {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(9px, 2.9cqw, 11px);
+  color: #ffd76a;
+}
+.bp-mname small {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.bp-mdesc {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: #d4dafa;
+}
+.bp-mcounter {
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--green);
+}
+
+/* ---- battle HUD */
+.ms-tag.boss {
+  color: #2a1400;
+  background: linear-gradient(90deg, #fff0b0, #ffc23a, #e8a01a);
+  box-shadow: 0 0 10px rgba(255, 194, 58, 0.5);
+}
+.hud.boss-p3 .ms-tag.boss {
+  color: #fff;
+  background: linear-gradient(90deg, #ff5a3a, #e8203c);
+  box-shadow: 0 0 12px rgba(232, 32, 60, 0.6);
+}
+.hud.boss-p3 .ms-main b {
+  color: #ff6a6a;
+}
+.phase-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  margin-left: -1.5px;
+  z-index: 2;
+  border-radius: 2px;
+  background: #ffe39a;
+  box-shadow: 0 0 6px rgba(255, 215, 106, 0.9), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.boss-warn {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 140px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 24px);
+  padding: 6px 14px 7px;
+  border-radius: 10px;
+  transform: translateX(-50%);
+  text-align: center;
+  background: linear-gradient(180deg, rgba(150, 10, 30, 0.92), rgba(70, 6, 16, 0.92));
+  box-shadow: 0 0 0 1.5px #ff5a6a, 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 22px rgba(255, 40, 60, 0.45);
+  pointer-events: none !important;
+  animation: bossWarnIn 0.25s ease both, bossWarnPulse 0.5s ease-in-out 0.25s infinite alternate;
+}
+.boss-warn b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(14px, 5cqw, 19px);
+  letter-spacing: 0.04em;
+  color: #fff;
+  white-space: nowrap;
+}
+.boss-warn span {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd2d6;
+}
+@keyframes bossWarnIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.9);
+  }
+}
+@keyframes bossWarnPulse {
+  to {
+    box-shadow: 0 0 0 2px #ffd76a, 0 6px 18px rgba(0, 0, 0, 0.5), 0 0 30px rgba(255, 60, 60, 0.7);
+  }
+}
+.boss-intro {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 14%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none !important;
+  z-index: 3;
+}
+.bi-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 28px);
+  padding: 12px 18px 14px;
+  border-radius: 16px;
+  text-align: center;
+  background: radial-gradient(120% 100% at 50% 0%, rgba(255, 194, 58, 0.25), transparent 60%), linear-gradient(180deg, rgba(30, 22, 14, 0.94), rgba(10, 8, 10, 0.94));
+  box-shadow: 0 0 0 2px #ffc23a, 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 180, 40, 0.35);
+  animation: bossIntro 3.3s ease forwards;
+}
+.bi-kicker {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(15px, 5.6cqw, 22px);
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #fff6d0, #ffc23a 60%, #d8901a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.bi-face .portrait {
+  width: 64px;
+  height: 64px;
+  box-shadow: 0 0 0 3px #ffc23a, 0 0 20px rgba(255, 194, 58, 0.6);
+}
+.bi-name {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(12px, 4.2cqw, 16px);
+  color: #fff;
+}
+.bi-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e8d4a0;
+}
+.bi-vs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.bi-vs .side {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 13px;
+  transform: skewX(-10deg);
+}
+.bi-vs .side.a {
+  background: linear-gradient(90deg, #1488d8, #2ad8ff);
+}
+.bi-vs .side.b {
+  color: #2a1400;
+  background: linear-gradient(90deg, #ffc23a, #ffe39a);
+}
+.bi-vs .vs {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  color: #ffd76a;
+}
+@keyframes bossIntro {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.92);
+  }
+  10% {
+    opacity: 1;
+    transform: none;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* ---- results */
+.boss-result {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px rgba(255, 90, 106, 0.6);
+}
+.boss-result.won {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 2px #ffc23a, 0 0 26px rgba(255, 194, 58, 0.25);
+}
+.bb-verdict {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(12px, 4.2cqw, 16px);
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: linear-gradient(90deg, #b8142a, #e8203c);
+  transform: skewX(-8deg);
+}
+.bb-verdict.won {
+  color: #2a1400;
+  background: linear-gradient(90deg, #fff0b0, #ffc23a, #e8a01a);
+  box-shadow: 0 0 18px rgba(255, 194, 58, 0.5);
+}
+.bb-row {
+  margin-top: 8px;
+  align-items: center;
+}
+.bb-line {
+  font-size: 12px;
+  color: #d4dafa;
+}
+.bb-pips {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+.bb-pips i {
+  width: 14px;
+  height: 7px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.bb-pips i.on {
+  background: #ffc23a;
+}
+.bb-pips i.cur {
+  background: #e8203c;
+}
+/* PRIME LEGEND title: gold ribbon and a gold-crimson victory word */
+:root[data-title='prime-legend'] .champ-ribbon {
+  background: linear-gradient(90deg, #fff1b0, #ffc23a, #e8a01a);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 20px rgba(255, 194, 58, 0.6);
+}
+:root[data-title='prime-legend'] .results.champion .result-title .rt.win {
+  background: linear-gradient(180deg, #fff8dc 0%, #ffd76a 45%, #f2a21a 70%, #e8203c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 5px 0 #4a1a04) drop-shadow(0 0 30px rgba(255, 180, 40, 0.7));
+}

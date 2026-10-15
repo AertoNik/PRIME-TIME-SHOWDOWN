@@ -1,8 +1,10 @@
 import { BEHAVIORS, RIVALS } from '../../config/fighters';
+import { BOSS_ORDER, bossById } from '../../config/boss.config';
+import { COSMETICS } from '../../config/cosmetics.config';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Game } from '../../game/Game';
 import { formatChallengeValue } from '../../meta/GameModes';
-import { el, esc } from '../dom';
+import { el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
@@ -33,6 +35,9 @@ export class ModesScreen implements Screen {
       } else if (act === 'challenge') {
         this.g.audio.ui('confirm');
         this.g.goto('prep', { mode: { kind: 'challenge', id: t.dataset.id! } });
+      } else if (act === 'boss') {
+        this.g.audio.ui('confirm');
+        this.g.goto('prep', { mode: { kind: 'boss', id: t.dataset.id! } });
       }
     });
   }
@@ -116,6 +121,40 @@ export class ModesScreen implements Screen {
           <p class="mc-desc">Спецвыпуски с особыми правилами. Награда за первое прохождение — один раз, повторы приносят обычный гонорар.</p>
           <div class="ch-list">${challenges}</div>
         </section>
+        ${this.bossCard()}
       </div>`;
+  }
+
+  /** BOSS FIGHT — LEGENDARY SHOWDOWN: the champion, goal, rewards and records. */
+  private bossCard(): string {
+    const g = this.g;
+    const def = bossById(BOSS_ORDER[0]);
+    if (!def) return '';
+    const r = RIVALS[def.rival];
+    const p = g.modes.bossProgress(def.id);
+    const fw = def.rewards.firstWin;
+    const phases = def.phases.map((ph) => `<span class="bc-phase"><b>${ph.n}</b>${esc(ph.title)}</span>`).join('');
+    const record = p.wins
+      ? `побед ${p.wins} · лучшее время ${p.bestTime} с`
+      : p.attempts
+        ? `лучшее: фаза ${p.bestPhase}/3, у чемпиона ${Math.round(p.bestBossHp * 100)}%`
+        : 'ещё не бросали вызов';
+    return `<section class="mode-card boss">
+        <div class="bc-glow"></div>
+        <div class="mc-head">
+          <span class="bc-face">${portraitHTML(g.portraits[r.look], r.theme.main, r.theme.dark)}</span>
+          <span class="mc-titles"><span class="mc-kicker">Legendary match</span><span class="mc-title">BOSS FIGHT</span></span>
+          ${p.firstWinAt ? '<span class="chip gold mc-new">ПОБЕЖДЁН</span>' : ''}
+        </div>
+        <div class="bc-name">${esc(r.fullName)} <small>· ${esc(def.kicker)}</small></div>
+        <p class="mc-desc">${esc(def.tagline)}</p>
+        <div class="bc-phases">${phases}</div>
+        <div class="mc-facts">
+          <span><i>Цель</i>нокаутировать чемпиона за ${Math.round(def.duration / 60)} мин</span>
+          <span><i>Награда</i>${p.firstWinAt ? `гонорар легендарного эфира ×${String(def.rewards.moneyMult).replace('.', ',')}` : `первая победа +$${fw.money}, +${fw.rep}★ и титул ${esc(COSMETICS[fw.cosmetic].name)}`}</span>
+        </div>
+        <div class="mc-record"><span class="mcr-label">${MODE_ICONS.trophy}Рекорд</span><span class="mcr-val">${record}</span></div>
+        <button class="btn wide mc-cta bc-cta" data-act="boss" data-id="${def.id}"><span class="shine"></span>Бросить вызов</button>
+      </section>`;
   }
 }

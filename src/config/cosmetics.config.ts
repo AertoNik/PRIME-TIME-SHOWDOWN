@@ -9,7 +9,7 @@
 
 export type CosmeticSlot = 'cardStyle' | 'broadcastFrame' | 'dashFx' | 'victoryFx' | 'title';
 
-export type CosmeticId = 'card_pumpkin' | 'frame_spooky' | 'dash_phantom' | 'victory_pumpkin' | 'title_halloween_champion';
+export type CosmeticId = 'card_pumpkin' | 'frame_spooky' | 'dash_phantom' | 'victory_pumpkin' | 'title_halloween_champion' | 'title_prime_legend';
 
 export interface CosmeticDef {
   id: CosmeticId;
@@ -19,9 +19,9 @@ export interface CosmeticDef {
   /** Where the player will see it (shown on the reward card). */
   where: string;
   /** Preview art key (ui/eventArt.ts). */
-  art: 'card' | 'frame' | 'phantom' | 'victory' | 'crown';
+  art: 'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt';
   rarity: 'rare' | 'epic' | 'legendary';
-  /** Event that awards it (for the collection's history). */
+  /** Event (or game mode) that awards it (for the collection's history). */
   eventId: string;
 }
 
@@ -75,6 +75,17 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     art: 'crown',
     rarity: 'legendary',
     eventId: 'halloween-2026',
+  },
+  // Alpha 1.3.1: awarded once for the first win in BOSS FIGHT (not tied to a season)
+  title_prime_legend: {
+    id: 'title_prime_legend',
+    slot: 'title',
+    name: 'PRIME LEGEND',
+    desc: 'Победитель легендарного чемпиона Виктора Вейла: золотой титул на табличке бойца и чемпионский победный экран.',
+    where: 'Меню и экран победы',
+    art: 'belt',
+    rarity: 'legendary',
+    eventId: 'boss-vale',
   },
 };
 
