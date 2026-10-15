@@ -99,6 +99,18 @@ export const CARDS: Record<CardId, CardDef> = {
     color2: '#5b1fd1',
     exclusive: 'nika',
   },
+  charged_shot: {
+    id: 'charged_shot',
+    name: 'CHARGED SHOT',
+    cost: 5,
+    role: 'Фирменная',
+    short: 'Рельсовый выстрел',
+    desc: `Вега заряжает винтовку и бьёт сквозь арену: ${T.charged_shot.damage} урона, издалека до +${pct(T.charged_shot.farMult)}. Пробивает щит: он ломается и гасит только половину урона.`,
+    color: '#5fd8ff',
+    color2: '#1d3f9e',
+    exclusive: 'vega',
+    heavy: true,
+  },
 };
 
 export const UNIVERSAL_CARDS: CardId[] = ['dash', 'power_shot', 'shield', 'smoke', 'shock', 'overdrive'];
@@ -108,18 +120,18 @@ export const COMBOS: ComboDef[] = [
     id: 'counter_strike',
     name: 'COUNTER STRIKE',
     first: ['dash'],
-    second: ['power_shot', 'knockout'],
+    second: ['power_shot', 'knockout', 'charged_shot'],
     rating: 12,
-    desc: `DASH → POWER SHOT / KNOCKOUT: контратака ×${CT.counterStrikeMult} урона.`,
+    desc: `DASH → POWER SHOT / KNOCKOUT / CHARGED SHOT: контратака ×${CT.counterStrikeMult} урона.`,
     bonus: `урон ×${CT.counterStrikeMult}`,
   },
   {
     id: 'electro_blast',
     name: 'ELECTRO BLAST',
     first: ['shock', 'system_overload'],
-    second: ['power_shot', 'knockout'],
+    second: ['power_shot', 'knockout', 'charged_shot'],
     rating: 15,
-    desc: `SHOCK → POWER SHOT / KNOCKOUT: ×${CT.electroBlastMult} урона, электровзрыв продлевает оглушение.`,
+    desc: `SHOCK → POWER SHOT / KNOCKOUT / CHARGED SHOT: ×${CT.electroBlastMult} урона, электровзрыв продлевает оглушение.`,
     bonus: `урон ×${CT.electroBlastMult} + оглушение`,
   },
   {
@@ -144,7 +156,7 @@ export const COMBOS: ComboDef[] = [
     id: 'superstar',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
-    second: ['adrenaline', 'knockout', 'system_overload'],
+    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
@@ -166,6 +178,11 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
     id: 'overclock',
     name: 'OVERCLOCK',
     desc: `Каждое комбо даёт Нике +${PT.overclock.energy} энергии и ускоряет восстановление энергии на ${pct(PT.overclock.regenMult)} на ${PT.overclock.duration} с.`,
+  },
+  deadeye: {
+    id: 'deadeye',
+    name: 'DEADEYE',
+    desc: `Каждый ${PT.deadeye.every}-й выстрел Веги — снайперский: +${pct(PT.deadeye.mult)} урона.`,
   },
 };
 

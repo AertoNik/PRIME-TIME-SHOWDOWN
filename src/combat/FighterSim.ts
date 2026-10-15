@@ -91,6 +91,8 @@ export class FighterSim {
   counterShots = 0;
   counterT = 0;
   burstCounter = false;
+  /** DEADEYE passive: auto shots fired so far (every Nth is a marksman shot). */
+  shotCount = 0;
   action: Action = { kind: 'none' };
 
   // status timers

@@ -1,6 +1,6 @@
 import { ARENA, BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
 import { CARDS } from '../config/cards';
-import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS } from '../config/fighters';
+import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
 import type { Behavior, CardId, ComboDef, ComboId, Difficulty, DifficultyDef, FighterId, RivalDef, RivalId, Side } from '../config/types';
 import { Rng } from '../core/math';
 import { Abilities } from './Abilities';
@@ -74,7 +74,7 @@ export class Match implements BroadcastHost {
     this.difficulty = DIFFICULTIES[cfg.difficulty];
     this.rival = RIVALS[cfg.rival];
     const pDef = FIGHTERS[cfg.fighter];
-    const eDef = FIGHTERS[this.rival.archetype];
+    const eDef = rivalFighterDef(this.rival);
     const d = this.difficulty;
 
     const player = new FighterSim(0, pDef, pDef.name, pDef.look, 1, 1, MATCH.fighterRadius);
@@ -283,7 +283,7 @@ export class Match implements BroadcastHost {
     if (hand.energy < CARDS[card].cost) return fail('energy');
     if (f.glitch > 0) return fail('glitched');
     if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return fail('stunned');
-    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout';
+    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot';
     const a = f.action.kind;
     let defer = false;
     if (needsBody) {

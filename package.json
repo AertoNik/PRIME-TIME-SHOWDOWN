@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.2.0-alpha",
+  "version": "1.2.5-alpha",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.2: Seasonal Events — Halloween Premiere)",
   "type": "module",
   "scripts": {

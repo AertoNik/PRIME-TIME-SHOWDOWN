@@ -4,7 +4,7 @@ export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
 export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'power' | 'adrenaline';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'power' | 'adrenaline';
 
 export interface Projectile {
   id: number;
@@ -41,6 +41,8 @@ export interface Projectile {
   closest: number;
   /** Fighter decided to sidestep this projectile. */
   sidestepped: boolean;
+  /** 0..1 share of damage that ignores shields (CHARGED SHOT); shields it hits break. */
+  pierce: number;
 }
 
 export interface SmokeZone {
@@ -152,6 +154,8 @@ export interface HitInfo {
   /** Bypasses smoke miss rolls. */
   sure: boolean;
   projectile: Projectile | null;
+  /** Share of damage that goes through a shield (the shield then breaks). */
+  pierce?: number;
 }
 
 export interface MatchResultData {

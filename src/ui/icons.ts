@@ -54,6 +54,14 @@ export const CARD_ICONS: Record<CardId, string> = {
      <rect x="8" y="28" width="22" height="5" fill="#22f0e0" opacity=".9"/>
      <rect x="36" y="36" width="20" height="4" fill="#22f0e0" opacity=".8"/>`,
   ),
+  // crosshair with a rail beam punching through
+  charged_shot: S(
+    `<circle cx="30" cy="32" r="17" fill="none" stroke="#fff" stroke-width="5"/>
+     <path d="M30 9 V19 M30 45 V55 M7 32 H17 M43 32 H53" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+     <circle cx="30" cy="32" r="5" fill="#bff4ff"/>
+     <path d="M30 32 L62 32" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+     <path d="M48 24 L62 32 L48 40" fill="none" stroke="#bff4ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`,
+  ),
 };
 
 export const PASSIVE_ICONS: Record<PassiveId, string> = {
@@ -68,6 +76,12 @@ export const PASSIVE_ICONS: Record<PassiveId, string> = {
     `<circle cx="32" cy="32" r="22" fill="none" stroke="#ff4fd8" stroke-width="5"/>
      <path d="M32 18 V32 L42 38" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
      <path d="M48 6 L44 16 L52 16 L46 28" fill="none" stroke="#ffd23a" stroke-width="3.5" stroke-linejoin="round"/>`,
+  ),
+  deadeye: S(
+    `<path d="M4 32 C14 16 50 16 60 32 C50 48 14 48 4 32 Z" fill="none" stroke="#9ff0ff" stroke-width="4"/>
+     <circle cx="32" cy="32" r="9" fill="none" stroke="#fff" stroke-width="4"/>
+     <circle cx="32" cy="32" r="3.5" fill="#5fd8ff"/>
+     <path d="M32 6 V16 M32 48 V58" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>`,
   ),
 };
 

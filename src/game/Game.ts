@@ -47,7 +47,7 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'dex', 'tank', 'zoe'];
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'dex', 'tank', 'zoe', 'crash'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>

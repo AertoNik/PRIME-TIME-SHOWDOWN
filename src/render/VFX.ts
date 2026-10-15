@@ -1306,6 +1306,12 @@ export class VFX {
     if (heavy) {
       this.muzzle(p, dx, dz, color, true, weapon === 'boom_cannon');
       this.raysPool.spawn(p.x, p.y, p.z, color, 1.6, 0.6, 2.2, 0.18, 4);
+      if (weapon === 'pulse_rifle') {
+        // CHARGED SHOT: a ring of frost sparks and a white-hot core
+        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xffffff), 3.4, 0.5, 1.6, 0.12);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 16, 12, 0.35, 0.12, 2.6);
+        this.rings.spawn(p.x, p.y, p.z, color, 2.4, 0.3, 1.6, 0.25, false);
+      }
       return;
     }
     switch (weapon) {
@@ -1321,6 +1327,12 @@ export class VFX {
         for (let i = 0; i < 4; i++) {
           this.soft.spawn(p.x + dx * 0.3, p.y, p.z + dz * 0.3, dx * 2 + rng.range(-0.6, 0.6), rng.range(0.2, 0.9), dz * 2 + rng.range(-0.6, 0.6), rng.range(0.5, 0.8), 0.4, 1.2, _c.set(0x6a6a80), 1, 3, -0.4);
         }
+        break;
+      case 'pulse_rifle':
+        // single crisp crack: narrow flash, a puff of frost sparks along the barrel
+        this.flashes.spawn(p.x, p.y, p.z, color, 2.8, 0.35, 0.9, 0.05);
+        this.glows.spawn(p.x, p.y, p.z, _c.set(0xffffff), 1.6, 0.25, 0.7, 0.06);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 4, 9, 0.12, 0.08);
         break;
       case 'tech_carbine':
         this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
@@ -1349,6 +1361,11 @@ export class VFX {
       case 'boom_cannon':
         this.flashes.spawn(x, y, z, _c.set(0xffc070), 2.2, 0.5, 1.1, 0.09, 2);
         this.burst(x, y, z, color, 6, 5, 0.15, 0.32, 2.4, 6);
+        break;
+      case 'pulse_rifle':
+        this.flashes.spawn(x, y, z, color, 2.6, 0.35, 1.1, 0.07, 2);
+        this.rings.spawn(x, y, z, color, 2, 0.15, 0.9, 0.18, false);
+        this.burst(x, y, z, color, 6, 7, 0.11, 0.28, 2.6);
         break;
       case 'tech_carbine':
         this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);

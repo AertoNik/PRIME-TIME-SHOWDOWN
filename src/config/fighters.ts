@@ -139,9 +139,53 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
     idleStyle: 'sway',
     theme: { main: '#7a2bff', accent: '#ff4fd8', dark: '#1d0b3d' },
   },
+  // Alpha 1.2.5: precise mobile marksman. Lowest health, slow but accurate
+  // shots that hit harder from afar; rewards spacing and timing.
+  vega: {
+    id: 'vega',
+    name: 'ВЕГА',
+    nickname: 'ЗЕНИТ',
+    fullName: 'Вега «Зенит» Новак',
+    style: 'Точность и тайминг',
+    tagline: 'Один выстрел. Один кадр. Один рейтинг.',
+    bio: 'Самая быстрорастущая звезда лиги. Вега не тратит патроны впустую: каждый её выстрел выглядит как кадр для заставки шоу.',
+    strengths: ['Дальность и точность', 'Сильнее издалека', 'Пробивает щиты'],
+    weaknesses: ['Мало здоровья', 'Медленный темп стрельбы', 'Без карт слабее других'],
+    stats: {
+      maxHp: 13600,
+      moveSpeed: 4.35,
+      armor: 0,
+      attack: {
+        weapon: 'pulse_rifle',
+        interval: 0.7,
+        damage: 83,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.016,
+        speed: 29,
+        range: 10.5,
+        radius: 0.18,
+        homing: 0,
+        falloff: 1.3,
+      },
+      preferredRange: 6.8,
+      evasion: 0.7,
+    },
+    bars: { health: 3, damage: 4, speed: 4, range: 5, control: 3 },
+    passive: 'deadeye',
+    signature: 'charged_shot',
+    look: 'vega',
+    defaultDeck: ['dash', 'shield', 'overdrive', 'charged_shot'],
+    startFans: 2200,
+    contract: { cost: 1300, level: 4 },
+    dashStyle: 'roll',
+    victoryStyle: 'peace',
+    idleStyle: 'poise',
+    theme: { main: '#1aa7e8', accent: '#9ff0ff', dark: '#06273d' },
+  },
 };
 
-export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika'];
+export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega'];
 
 export const RIVALS: Record<RivalId, RivalDef> = {
   dex: {
@@ -180,9 +224,47 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     bio: 'Читает бой как код: прерывает заряды и строит комбо. Держите DASH под рукой.',
     theme: { main: '#14c97a', accent: '#2bff88', dark: '#062a1a' },
   },
+  // Alpha 1.2.5: relentless brawler. A lighter, faster-firing take on the
+  // shotgun archetype with its own "reckless" brain.
+  crash: {
+    id: 'crash',
+    name: 'КРАШ',
+    nickname: 'ТАРАН',
+    fullName: 'Краш «Таран» Делако',
+    archetype: 'bruno',
+    behavior: 'reckless',
+    look: 'crash',
+    deck: ['dash', 'overdrive', 'power_shot', 'knockout'],
+    bio: 'Идёт напролом ради рейтинга и не даёт перевести дух. Держите дистанцию, SHIELD гасит его тараны, а промах оставляет его открытым.',
+    theme: { main: '#ff2f6e', accent: '#ffd23a', dark: '#2a0814' },
+    mods: { style: 'Напор и ближний бой', hpMult: 0.85, speedMult: 1.08, fireRateMult: 1.05, idleStyle: 'bouncy', victoryStyle: 'hype' },
+  },
 };
 
-export const RIVAL_ORDER: RivalId[] = ['dex', 'tank', 'zoe'];
+export const RIVAL_ORDER: RivalId[] = ['dex', 'tank', 'zoe', 'crash'];
+
+/**
+ * The fighter definition a rival actually uses: its archetype plus personal
+ * mods (stats and animation feel). Used by the simulation and the renderer.
+ */
+export function rivalFighterDef(r: RivalDef): FighterDef {
+  const base = FIGHTERS[r.archetype];
+  const m = r.mods;
+  if (!m) return base;
+  return {
+    ...base,
+    style: m.style ?? base.style,
+    stats: {
+      ...base.stats,
+      maxHp: Math.round(base.stats.maxHp * (m.hpMult ?? 1)),
+      moveSpeed: base.stats.moveSpeed * (m.speedMult ?? 1),
+      attack: { ...base.stats.attack, interval: base.stats.attack.interval / (m.fireRateMult ?? 1) },
+    },
+    idleStyle: m.idleStyle ?? base.idleStyle,
+    victoryStyle: m.victoryStyle ?? base.victoryStyle,
+    dashStyle: m.dashStyle ?? base.dashStyle,
+  };
+}
 
 export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
   rookie: {
@@ -266,6 +348,7 @@ export const BEHAVIORS: Record<Behavior, BehaviorDef> = {
     retreatHp: 0,
     energyReserve: 0,
     comboHunter: false,
+    pressure: 0,
   },
   cautious: {
     id: 'cautious',
@@ -278,6 +361,7 @@ export const BEHAVIORS: Record<Behavior, BehaviorDef> = {
     retreatHp: 0.45,
     energyReserve: 3,
     comboHunter: false,
+    pressure: 0,
   },
   tactical: {
     id: 'tactical',
@@ -290,5 +374,19 @@ export const BEHAVIORS: Record<Behavior, BehaviorDef> = {
     retreatHp: 0.25,
     energyReserve: 1,
     comboHunter: true,
+    pressure: 0,
+  },
+  reckless: {
+    id: 'reckless',
+    label: 'НАПОРИСТЫЙ',
+    desc: 'Сближается без пауз, рвётся вперёд рывками и бьёт в открывшиеся окна.',
+    rangeMult: 0.5,
+    strafe: 0.4,
+    dodgeMult: 0.7,
+    cardEagerness: 1.45,
+    retreatHp: 0,
+    energyReserve: 0,
+    comboHunter: false,
+    pressure: 1,
   },
 };

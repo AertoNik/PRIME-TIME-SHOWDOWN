@@ -82,6 +82,22 @@ export const CARD_TUNING = {
     wallSlamStun: 0.8,
     missRecover: 0.6,
   },
+  // Vega's signature: a charged rail shot. Damage grows with distance travelled
+  // (falloff > 1), and it punches through shields.
+  charged_shot: {
+    windup: 0.42,
+    telegraph: 0.95,
+    lockAt: 0.6,
+    damage: 540,
+    /** Damage multiplier reached at full range (1.4 = +40% from afar). */
+    farMult: 1.4,
+    speed: 40,
+    radius: 0.28,
+    range: 11,
+    knockback: 2.2,
+    /** Share of the shot that ignores a shield; a shield it hits always breaks. */
+    pierce: 0.5,
+  },
   system_overload: {
     duration: 2.8,
     damage: 180,
@@ -110,6 +126,8 @@ export const PASSIVE_TUNING = {
   momentum: { duration: 2.2, speed: 1.35, fireRate: 1.25, cooldown: 3.5 },
   iron_skin: { threshold: 330, duration: 3.0, reduction: 0.4, cooldown: 7 },
   overclock: { energy: 1.0, duration: 3.0, regenMult: 1.3 },
+  /** Vega: every Nth auto shot is a marksman shot. */
+  deadeye: { every: 4, mult: 1.75 },
 };
 
 export const BROADCAST = {

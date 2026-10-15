@@ -1,5 +1,5 @@
 import { CARDS, COMBOS } from '../../config/cards';
-import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS } from '../../config/fighters';
+import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS, rivalFighterDef } from '../../config/fighters';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
 import { cardHTML, el, esc, portraitHTML } from '../dom';
@@ -103,7 +103,7 @@ export class PrepScreen implements Screen {
     const s = g.save.data;
     const f = FIGHTERS[s.selected];
     const rival = RIVALS[s.nextRival];
-    const rf = FIGHTERS[rival.archetype];
+    const rf = rivalFighterDef(rival);
     const available = g.career.availableCards(s.selected);
     const slots = [0, 1, 2, 3]
       .map((i) => {

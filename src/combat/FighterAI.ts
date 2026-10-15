@@ -122,7 +122,7 @@ export class FighterAI {
     const foeReach = foe.stats.attack.range;
     // Outranged fighters close in; longer-ranged fighters kite just outside
     // the opponent's effective range (aggressive fighters ignore this).
-    if (b.id !== 'aggressive' && myReach > foeReach + 1.5) {
+    if (b.id !== 'aggressive' && b.pressure <= 0 && myReach > foeReach + 1.5) {
       desired = Math.max(desired, Math.min(myReach * 0.85, foeReach + 1.4));
     } else if (myReach < foeReach - 1.5) {
       desired = Math.min(desired, f.stats.preferredRange);
@@ -139,6 +139,8 @@ export class FighterAI {
       desired *= 1.2;
     }
     if (this.surgeT > 0) desired *= 0.65;
+    // relentless fighters never back off for low health
+    if (b.pressure > 0 && f.hpFrac < 0.3) desired = Math.min(desired, f.stats.preferredRange * b.rangeMult);
     return clamp(desired, 1.7, 8.5);
   }
 
@@ -155,8 +157,9 @@ export class FighterAI {
     // Periodic surge: even cautious fighters push in so fights never stall.
     this.surgeTimer -= dt;
     if (this.surgeTimer <= 0) {
-      this.surgeT = m.rng.range(1.2, 2.2);
-      this.surgeTimer = m.rng.range(b.id === 'aggressive' ? 3.5 : 5, b.id === 'aggressive' ? 6 : 9);
+      const eager = b.id === 'aggressive' || b.pressure > 0;
+      this.surgeT = m.rng.range(1.2, 2.2) * (1 + b.pressure * 0.5);
+      this.surgeTimer = m.rng.range(eager ? 3.5 - b.pressure : 5, eager ? 6 - b.pressure * 1.5 : 9);
     }
     if (this.surgeT > 0) this.surgeT -= dt;
     const desired = this.desiredRange(f, foe);
@@ -168,7 +171,9 @@ export class FighterAI {
 
     // Pursuit: lead a retreating opponent instead of trailing behind.
     const foeAway = (foe.vx * ux + foe.vz * uz) / Math.max(0.1, foe.stats.moveSpeed);
-    if (radial > 0 && foeAway > 0.5 && b.id !== 'cautious') radial = Math.min(1, radial + 0.3);
+    if (radial > 0 && foeAway > 0.5 && b.id !== 'cautious') radial = Math.min(1, radial + 0.3 + b.pressure * 0.3);
+    // pressure fighters charge in at full speed instead of easing into range
+    if (radial > 0 && b.pressure > 0) radial = Math.min(1, radial + b.pressure * 0.35);
 
     // Strafing with varying intensity and short planted pauses (shooting stance)
     this.strafeTimer -= dt;
@@ -180,7 +185,7 @@ export class FighterAI {
     this.plantTimer -= dt;
     if (this.plantTimer <= 0) {
       this.plantT = m.rng.range(0.35, 0.75);
-      this.plantTimer = m.rng.range(b.id === 'aggressive' ? 4 : 2.8, b.id === 'aggressive' ? 7 : 5);
+      this.plantTimer = m.rng.range(b.id === 'aggressive' ? 4 : 2.8, b.id === 'aggressive' ? 7 : 5) * (1 + b.pressure * 1.5);
     }
     let strafe = b.strafe * this.strafeAmt;
     if (this.plantT > 0) {
@@ -385,6 +390,7 @@ export class FighterAI {
         this.plan = null;
       } else if (!f.busy && hand.lockout <= 0 && hand.energy >= CARDS[p.second].cost && m.combos.wouldCombo(this.side, p.second, m.time)) {
         const disrupted = foe.shield > 0 && (p.second === 'power_shot' || p.second === 'knockout');
+        // (CHARGED SHOT pierces shields, so a raised shield does not spoil it)
         if (!disrupted && this.tryPlay(p.second)) {
           this.plan = null;
           return;
@@ -402,7 +408,9 @@ export class FighterAI {
       const regen = MATCH.energyPerSecond * hand.regenMult * MATCH.comboWindow * 0.75;
       for (const c of COMBOS) {
         const first = c.first.find((x) => this.has(x) >= 0);
-        const second = c.second.find((x) => this.has(x) >= 0);
+        // pressure fighters finish with the charge (KNOCKOUT) whenever they can
+        const seconds = b.pressure > 0 ? [...c.second].sort((x, y) => Number(y === 'knockout') - Number(x === 'knockout')) : c.second;
+        const second = seconds.find((x) => this.has(x) >= 0);
         if (!first || !second || first === second) continue;
         const total = CARDS[first].cost + CARDS[second].cost;
         if (hand.energy < CARDS[first].cost || hand.energy + regen < total) continue;
@@ -459,16 +467,21 @@ export class FighterAI {
     const b = this.profile.behavior;
     const hand = m.hands[this.side];
     const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
-    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0;
+    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
+    // Visible openings a pressure fighter jumps on: the foe just spent its DASH,
+    // is slowed, or is committed to a charge of its own.
+    const opening = b.pressure > 0 && (m.time - foe.lastDash < 1.2 || foe.slow > 0 || foe.action.kind === 'windup');
     const foeBlocking = foe.shield > 0 || foe.invuln > 0;
     const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
     let s = 0;
     switch (card) {
       case 'dash':
         if (b.comboHunter && hasHeavy && hand.energy >= 6) s = 3.5;
-        if (dist < 1.8) s += 2.5;
+        if (dist < 1.8 && b.pressure <= 0) s += 2.5;
         if (f.hpFrac < 0.35 && threatened) s += 2;
+        // gap closer: rush in when the target keeps its distance
+        if (b.pressure > 0 && dist > f.stats.preferredRange + 2.2) s += 5 * b.pressure;
         break;
       case 'power_shot':
         s = dist < 11 ? 4.5 : 0;
@@ -476,11 +489,22 @@ export class FighterAI {
         if (foeBlocking) s -= 6;
         if (combo) s += 4;
         if (foe.hp < 700) s += 2.5;
+        if (opening) s += 2.5;
         break;
       case 'knockout':
         s = dist < 4.8 ? 5.2 : 0.5;
         if (foeDisabled) s += 4.5;
         if (foeBlocking) s -= 6;
+        if (combo) s += 4;
+        if (opening && dist < 5.2) s += 3;
+        if (b.pressure > 0 && dist < 5.2) s += 2.5 * b.pressure;
+        break;
+      case 'charged_shot':
+        // pierces shields and hits harder from afar
+        s = dist > 5 ? 6 : 4;
+        if (foeDisabled) s += 4;
+        if (foe.shield > 0) s += 1.5;
+        if (foe.invuln > 0) s -= 6;
         if (combo) s += 4;
         break;
       case 'shield':
@@ -509,6 +533,7 @@ export class FighterAI {
         if (dist < f.stats.preferredRange * 1.5) s += 1.5;
         if (combo) s += 4;
         if (b.id === 'aggressive') s += 1.5;
+        if (b.pressure > 0 && dist < f.stats.preferredRange * 2) s += 2 * b.pressure;
         if (foe.hpFrac < 0.35) s += 1;
         if (f.overdrive > 0) s = -10;
         break;

@@ -1,10 +1,10 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads';
 export type PantsStyle = 'track' | 'cargo' | 'jogger';
 export type BodyType = 'lean' | 'heavy' | 'slim';
-export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush';
+export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -148,5 +148,49 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x101215,
     glow: 0x2bff88,
     rim: 0x9affc8,
+  },
+  // Alpha 1.2.5 — Vega: white racing jacket, platinum high ponytail with icy tips,
+  // flip-up visor; the same slim build as Nika so she sits naturally in the roster.
+  vega: {
+    id: 'vega',
+    body: 'slim',
+    skin: 0xf3cdb0,
+    hair: { style: 'ponytail', color: 0xe2c98e, color2: 0x5fd0ff },
+    top: { style: 'racer', main: 0xd7dfeb, accent: 0x2fb2f0, trim: 0x15365a, inner: 0x152338 },
+    pants: { style: 'jogger', main: 0x1a2a42, accent: 0x2fb2f0 },
+    shoes: { main: 0xf6f8fc, accent: 0x2fb2f0, sole: 0x9fe8ff },
+    gloves: 0x1a2a42,
+    fingerless: false,
+    eyes: 0x2e86c8,
+    brow: 'sly',
+    mouth: 'smirk',
+    accessories: ['visor', 'earring'],
+    weapon: 'pulse_rifle',
+    weaponColor: 0xeef2f8,
+    weaponDark: 0x1a2a42,
+    glow: 0x5fd8ff,
+    rim: 0xa8ecff,
+  },
+  // Crash: heavy brawler in a sleeveless black jersey with big pink shoulder pads
+  // and a tall hot-pink quiff — a different silhouette from Bruno and Tank.
+  crash: {
+    id: 'crash',
+    body: 'heavy',
+    skin: 0xd99a6c,
+    hair: { style: 'quiff', color: 0xff3a82, color2: 0x241a1e },
+    top: { style: 'pads', main: 0x17171d, accent: 0xff2f6e, trim: 0xffd23a, inner: 0x17171d },
+    pants: { style: 'cargo', main: 0x22222a, accent: 0xff2f6e },
+    shoes: { main: 0x17171d, accent: 0xff2f6e, sole: 0xffd23a, boots: true },
+    gloves: 0x17171d,
+    fingerless: true,
+    eyes: 0x3a2214,
+    brow: 'cocky',
+    mouth: 'smirk',
+    accessories: ['chain', 'stubble', 'wristbands'],
+    weapon: 'boom_cannon',
+    weaponColor: 0x24242c,
+    weaponDark: 0x121216,
+    glow: 0xff3a82,
+    rim: 0xff9ac0,
   },
 };

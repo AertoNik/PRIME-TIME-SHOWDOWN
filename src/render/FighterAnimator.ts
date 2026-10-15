@@ -374,7 +374,15 @@ export class FighterAnimator {
     P.elL = -0.25 - A * 0.45;
     P.elR = -0.25 - A * 0.45;
     // Two-handed weapons are carried, not dangled, when not aiming.
-    if (rig.look.weapon === 'tech_carbine') {
+    if (rig.look.weapon === 'pulse_rifle') {
+      // rifle held across the body, muzzle down, while moving between shots
+      P.shRX = -0.3 + sinP * A * 0.12;
+      P.shRZ = 0.22;
+      P.elR = -1.05;
+      P.shLX = -0.75 - sinP * A * 0.08;
+      P.shLZ = -0.5;
+      P.elL = -0.85;
+    } else if (rig.look.weapon === 'tech_carbine') {
       P.shRX = -0.35 + sinP * A * 0.15;
       P.shRZ = 0.25;
       P.elR = -1.1;
@@ -428,6 +436,20 @@ export class FighterAnimator {
           P.hipsRZ += Math.sin(t * 0.8) * 0.03 * idleW;
           break;
         }
+        case 'poise': {
+          // composed: weight settled on one hip, slow breathing, a slight chin-up
+          const br = Math.sin(t * 1.2);
+          P.hipsRZ += (0.06 + br * 0.015) * idleW;
+          P.bodyX += 0.025 * idleW;
+          P.spineRZ -= 0.07 * idleW;
+          P.kneeR += 0.22 * idleW;
+          P.legRX -= 0.08 * idleW;
+          P.kneeL += 0.06 * idleW;
+          P.headRX -= 0.04 * idleW;
+          P.headRZ += 0.05 * idleW;
+          P.spineRX += br * 0.012 * idleW;
+          break;
+        }
         case 'sway': {
           const sw = Math.sin(t * 1.5);
           P.hipsRZ += sw * 0.08 * idleW;
@@ -471,6 +493,18 @@ export class FighterAnimator {
           lerpP('shLZ', -0.5);
           lerpP('elL', -1.05);
           P.spineRY += 0.12 * aw;
+          break;
+        case 'pulse_rifle':
+          // shouldered marksman stance: rifle along the line of sight, cheek on the stock
+          lerpP('shRX', -0.86 + bob * 0.35);
+          lerpP('shRZ', 0.3);
+          lerpP('elR', -0.82);
+          lerpP('shLX', -1.36 + bob * 0.35);
+          lerpP('shLZ', -0.36);
+          lerpP('elL', -0.4);
+          P.spineRY += -0.08 * aw;
+          P.headRX += 0.07 * aw;
+          P.headRZ -= 0.06 * aw;
           break;
         case 'tech_carbine':
           lerpP('shRX', -0.78 + bob * 0.5);

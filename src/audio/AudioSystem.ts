@@ -203,6 +203,14 @@ export class AudioSystem {
   shoot(weapon: WeaponType, heavy: boolean, enemy: boolean): void {
     if (!this.throttle('shoot' + weapon + enemy, heavy ? 0 : 45)) return;
     const v = enemy ? 0.7 : 1;
+    if (heavy && weapon === 'pulse_rifle') {
+      // CHARGED SHOT: rail crack with a bright zing tail
+      this.tone({ type: 'sawtooth', f0: 2400, f1: 180, dur: 0.38, gain: 0.22 * v, filter: { type: 'lowpass', f0: 7000, f1: 600 } });
+      this.tone({ type: 'sine', f0: 1800, f1: 3600, dur: 0.22, gain: 0.08 * v });
+      this.tone({ type: 'sine', f0: 120, f1: 45, dur: 0.4, gain: 0.42 * v });
+      this.noise({ dur: 0.25, gain: 0.24 * v, type: 'highpass', f0: 1800, f1: 600 });
+      return;
+    }
     if (heavy) {
       this.tone({ type: 'sawtooth', f0: 900, f1: 60, dur: 0.45, gain: 0.32 * v, filter: { type: 'lowpass', f0: 4000, f1: 300 } });
       this.tone({ type: 'sine', f0: 140, f1: 40, dur: 0.5, gain: 0.5 * v });
@@ -218,6 +226,12 @@ export class AudioSystem {
         this.noise({ dur: 0.28, gain: 0.32 * v, type: 'lowpass', f0: 2600, f1: 160 });
         this.tone({ type: 'sine', f0: 110, f1: 38, dur: 0.3, gain: 0.42 * v });
         this.tone({ type: 'square', f0: 220, f1: 60, dur: 0.12, gain: 0.08 * v });
+        break;
+      case 'pulse_rifle':
+        // marksman crack: sharp transient + short metallic ring
+        this.noise({ dur: 0.07, gain: 0.12 * v, type: 'highpass', f0: 2200 });
+        this.tone({ type: 'square', f0: 1900 + Math.random() * 150, f1: 420, dur: 0.12, gain: 0.08 * v, filter: { type: 'lowpass', f0: 6000 } });
+        this.tone({ type: 'sine', f0: 2600, f1: 2200, dur: 0.16, gain: 0.03 * v });
         break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst

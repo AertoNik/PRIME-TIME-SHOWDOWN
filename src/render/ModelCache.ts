@@ -1,4 +1,4 @@
-import { FIGHTERS, RIVALS } from '../config/fighters';
+import { FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
 import type { FighterDef } from '../config/types';
 import { FighterAnimator } from './FighterAnimator';
 import { createFighterRig, type FighterRig } from './FighterModel';
@@ -12,7 +12,7 @@ export interface CachedFighter {
 export function defForLook(look: string): FighterDef {
   if (look in FIGHTERS) return FIGHTERS[look as keyof typeof FIGHTERS];
   const rival = Object.values(RIVALS).find((r) => r.look === look);
-  return FIGHTERS[rival ? rival.archetype : 'ray'];
+  return rival ? rivalFighterDef(rival) : FIGHTERS.ray;
 }
 
 /** One rig instance per look (plus hologram twins), built lazily and reused. */

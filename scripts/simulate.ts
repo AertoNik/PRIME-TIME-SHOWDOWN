@@ -5,7 +5,7 @@ import type { Difficulty, FighterId } from '../src/config/types';
 import { runMatch, type Mode } from './bots';
 
 const N = Number((globalThis as { process?: { argv?: string[] } }).process?.argv?.[2] ?? 30);
-const fighters: FighterId[] = ['ray', 'bruno', 'nika'];
+const fighters: FighterId[] = ['ray', 'bruno', 'nika', 'vega'];
 const diffs: Difficulty[] = ['rookie', 'pro', 'champion'];
 const modes: Mode[] = ['idle', 'mash', 'combo'];
 

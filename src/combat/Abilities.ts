@@ -39,8 +39,9 @@ export class Abilities {
         break;
       }
       case 'power_shot':
+      case 'charged_shot':
       case 'knockout': {
-        const t = card === 'power_shot' ? CARD_TUNING.power_shot : CARD_TUNING.knockout;
+        const t = card === 'power_shot' ? CARD_TUNING.power_shot : card === 'charged_shot' ? CARD_TUNING.charged_shot : CARD_TUNING.knockout;
         const telegraph = f.side === 1;
         const total = telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup;
         const dx = f.aimX - f.x;
@@ -226,14 +227,22 @@ export class Abilities {
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
 
-    if (a.card === 'power_shot') {
-      const t = CARD_TUNING.power_shot;
-      m.combat.firePower(f, dirX, dirZ, t.damage * mult * f.outgoingDamageMult(), {
-        crit: a.combo !== null,
-        electric: a.combo === 'electro_blast',
-        stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
-        combo: a.combo,
-      });
+    if (a.card === 'power_shot' || a.card === 'charged_shot') {
+      const charged = a.card === 'charged_shot';
+      const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
+      m.combat.firePower(
+        f,
+        dirX,
+        dirZ,
+        t.damage * mult * f.outgoingDamageMult(),
+        {
+          crit: a.combo !== null,
+          electric: a.combo === 'electro_blast',
+          stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+          combo: a.combo,
+        },
+        charged,
+      );
       f.fireTimer = Math.max(f.fireTimer, 0.35);
     } else {
       const t = CARD_TUNING.knockout;

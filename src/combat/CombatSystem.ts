@@ -18,6 +18,7 @@ export interface SpawnOpts {
   crit?: boolean;
   electric?: boolean;
   combo?: Projectile['combo'];
+  pierce?: number;
 }
 
 /** Muzzle offsets in fighter-local space (x = right, z = forward). */
@@ -29,6 +30,8 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
       return { right: 0.32, fwd: 1.15 };
     case 'tech_carbine':
       return { right: 0.2, fwd: 1.05 };
+    case 'pulse_rifle':
+      return { right: 0.2, fwd: 1.32 };
   }
 }
 
@@ -343,8 +346,15 @@ export class CombatSystem {
     if (counter && startsVolley) f.counterShots--;
     if (!startsVolley) counter = f.burstCounter;
     f.burstCounter = counter;
-    const dmg = atk.damage * f.outgoingDamageMult() * (counter ? CARD_TUNING.dash.counterMult : 1);
-    const kind: ProjectileKind = atk.weapon === 'boom_cannon' ? 'pellet' : atk.weapon === 'tech_carbine' ? 'bolt' : 'auto';
+    // DEADEYE (Vega): every Nth shot is a marksman shot.
+    let deadeye = false;
+    if (f.def.passive === 'deadeye' && startsVolley) {
+      f.shotCount++;
+      deadeye = f.shotCount % PASSIVE_TUNING.deadeye.every === 0;
+    }
+    const dmg = atk.damage * f.outgoingDamageMult() * (counter ? CARD_TUNING.dash.counterMult : 1) * (deadeye ? PASSIVE_TUNING.deadeye.mult : 1);
+    const kind: ProjectileKind =
+      atk.weapon === 'boom_cannon' ? 'pellet' : atk.weapon === 'tech_carbine' ? 'bolt' : atk.weapon === 'pulse_rifle' ? 'rail' : 'auto';
     const n = atk.projectiles;
     for (let i = 0; i < n; i++) {
       const fan = n > 1 ? -atk.spread / 2 + (atk.spread * i) / (n - 1) : 0;
@@ -354,7 +364,7 @@ export class CombatSystem {
         falloff: atk.falloff,
         slowAmount: atk.slow?.amount ?? 0,
         slowDuration: atk.slow?.duration ?? 0,
-        crit: counter,
+        crit: counter || deadeye,
       });
     }
     f.m.shots++;
@@ -380,14 +390,16 @@ export class CombatSystem {
     this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'adrenaline' });
   }
 
-  firePower(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts): void {
+  /** Heavy card shot: POWER SHOT by default, or CHARGED SHOT (faster, longer, pierces shields). */
+  firePower(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts, charged = false): void {
     const yaw = Math.atan2(dirX, dirZ);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
-    const t = CARD_TUNING.power_shot;
+    const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
     this.spawn(f.side, 'power', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, damage, t.radius, t.range, {
       knockback: t.knockback,
       heavy: true,
+      ...(charged ? { falloff: CARD_TUNING.charged_shot.farMult, pierce: CARD_TUNING.charged_shot.pierce } : {}),
       ...opts,
     });
     this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dirX, dz: dirZ, kind: 'power' });
@@ -436,6 +448,7 @@ export class CombatSystem {
     p.dodgeLogged = false;
     p.closest = 999;
     p.sidestepped = false;
+    p.pierce = o.pierce ?? 0;
     this.m.projectiles.push(p);
     return p;
   }
@@ -518,6 +531,7 @@ export class CombatSystem {
               dz: p.vz / len,
               sure: false,
               projectile: p,
+              pierce: p.pierce,
             });
             if (outcome === 'blocked') {
               m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'shield', heavy: p.heavy, weapon: p.weapon });
@@ -606,11 +620,15 @@ export class CombatSystem {
     if (target.ironSkin > 0) dmg *= 1 - PASSIVE_TUNING.iron_skin.reduction;
 
     if (target.shield > 0 && target.shieldHp > 0 && h.kind !== 'dot') {
-      const absorbed = Math.min(target.shieldHp, dmg);
+      // piercing shots: part of the damage goes straight through, and the shield breaks
+      const pierce = h.pierce ?? 0;
+      const absorbed = Math.min(target.shieldHp, dmg * (1 - pierce));
+      if (pierce > 0) target.shieldHp = absorbed;
       target.shieldHp -= absorbed;
       target.shieldAbsorbed += absorbed;
       dmg -= absorbed;
-      const perfect = h.heavy;
+      // blocking a heavy attack is a PERFECT BLOCK — unless it pierced the shield
+      const perfect = h.heavy && pierce <= 0;
       if (perfect) target.m.perfects++;
       m.emit({ type: 'block', side: target.side, x: target.x, z: target.z, perfect, absorbed: Math.round(absorbed) });
       if (target.shieldHp <= 0) {

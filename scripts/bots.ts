@@ -108,7 +108,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
       }
       if (e.type === 'combo') events.set((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo, (events.get((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo) ?? 0) + 1);
       if (e.type === 'hit' && e.source === 0 && e.kind !== 'auto' && lastCard) {
-        const key: CardId = e.kind === 'power' ? 'power_shot' : e.kind === 'adrenaline' ? 'adrenaline' : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : e.kind === 'shock' ? 'shock' : e.kind === 'overload' || e.kind === 'dot' ? 'system_overload' : e.kind === 'burst' ? 'overdrive' : lastCard;
+        const key: CardId = e.kind === 'power' ? (lastCard === 'charged_shot' ? 'charged_shot' : 'power_shot') : e.kind === 'adrenaline' ? 'adrenaline' : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : e.kind === 'shock' ? 'shock' : e.kind === 'overload' || e.kind === 'dot' ? 'system_overload' : e.kind === 'burst' ? 'overdrive' : lastCard;
         cardDamage.set(key, (cardDamage.get(key) ?? 0) + e.damage);
       }
       if (e.type === 'card' && e.side === 1) events.set('rivalCard:' + e.card, (events.get('rivalCard:' + e.card) ?? 0) + 1);

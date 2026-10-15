@@ -16,7 +16,7 @@ function combos4<T>(arr: T[]): T[][] {
   return out;
 }
 
-for (const f of ['ray', 'bruno', 'nika'] as FighterId[]) {
+for (const f of ['ray', 'bruno', 'nika', 'vega'] as FighterId[]) {
   const pool: CardId[] = [...UNIVERSAL_CARDS, FIGHTERS[f].signature];
   const decks = combos4(pool);
   const results: { deck: CardId[]; win: number; rating: number; dur: number }[] = [];
@@ -24,7 +24,7 @@ for (const f of ['ray', 'bruno', 'nika'] as FighterId[]) {
   for (const deck of decks) {
     let win = 0, rating = 0, dur = 0;
     for (let i = 0; i < K; i++) {
-      const { m, events, cardDamage } = runMatch(f, RIVAL_ORDER[i % 3], 'pro', 'combo', 5000 + i * 977, deck);
+      const { m, events, cardDamage } = runMatch(f, RIVAL_ORDER[i % RIVAL_ORDER.length], 'pro', 'combo', 5000 + i * 977, deck);
       const r = m.result!;
       if (r.outcome === 'win') win++;
       rating += r.rating;

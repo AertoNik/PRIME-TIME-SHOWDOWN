@@ -48,6 +48,11 @@ const checks: [string, boolean][] = [
   ['1.1: nika signed and selected', s11.fighters.nika.unlocked && s11.fighters.nika.fans === 3300 && s11.selected === 'nika'],
   ['1.1: difficulty kept', s11.difficulty === 'champion'],
   ['1.1: camera/sound/quality kept', s11.settings.camera === 'reduced' && s11.settings.music === false && s11.settings.quality === 'low'],
+  // Alpha 1.2.5: the new fighter appears locked with its defaults; old progress is untouched
+  ['1.2.5: Vega added, locked, default deck', !s.fighters.vega.unlocked && s.fighters.vega.deck.join() === 'dash,shield,overdrive,charged_shot' && s.fighters.vega.wins === 0],
+  ['1.2.5: old fighters unchanged', s.fighters.ray.wins === 5 && s.fighters.bruno.fans === 4100],
+  ['1.2.5: Crash accepted as next rival', sanitize({ ...alpha10, nextRival: 'crash' }).nextRival === 'crash'],
+  ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
 let ok = true;
 for (const [name, pass] of checks) {

@@ -481,7 +481,21 @@ export class BattleView {
         v.streakWidth = 0.16;
         v.flicker = true;
         break;
+      case 'rail':
+        r = 0.075;
+        elong = 5;
+        v.streakLen = 2.4;
+        v.streakWidth = 0.11;
+        break;
       case 'power':
+        if (p.weapon === 'pulse_rifle') {
+          // CHARGED SHOT: a long white-hot rail beam
+          r = 0.18;
+          elong = 4.5;
+          v.streakLen = 5.5;
+          v.streakWidth = 0.42;
+          break;
+        }
         r = 0.32;
         elong = 1.6;
         v.streakLen = 2.9;
@@ -507,7 +521,7 @@ export class BattleView {
     v.streakMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.9);
     v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.4);
     v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'pellet' ? 0.6 : 0.6);
-    v.ring.visible = p.kind === 'power';
+    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;

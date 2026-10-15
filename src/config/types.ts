@@ -1,7 +1,7 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
-export type FighterId = 'ray' | 'bruno' | 'nika';
-export type RivalId = 'dex' | 'tank' | 'zoe';
+export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega';
+export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash';
 export type CardId =
   | 'dash'
   | 'power_shot'
@@ -11,15 +11,16 @@ export type CardId =
   | 'overdrive'
   | 'adrenaline'
   | 'knockout'
-  | 'system_overload';
+  | 'system_overload'
+  | 'charged_shot';
 export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine';
-export type Behavior = 'aggressive' | 'cautious' | 'tactical';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle';
+export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
-export type PassiveId = 'momentum' | 'iron_skin' | 'overclock';
+export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye';
 export type DashStyle = 'roll' | 'lunge' | 'blink';
 export type VictoryStyle = 'hype' | 'flex' | 'peace';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 
@@ -105,6 +106,17 @@ export interface RivalDef {
   deck: CardId[];
   bio: string;
   theme: { main: string; accent: string; dark: string };
+  /** Personal tweaks on top of the archetype (stats and animation feel). */
+  mods?: {
+    /** Style line shown on the prep screen (defaults to the archetype's). */
+    style?: string;
+    hpMult?: number;
+    speedMult?: number;
+    fireRateMult?: number;
+    idleStyle?: IdleStyle;
+    victoryStyle?: VictoryStyle;
+    dashStyle?: DashStyle;
+  };
 }
 
 export interface CardDef {
@@ -180,4 +192,9 @@ export interface BehaviorDef {
   retreatHp: number;
   energyReserve: number;
   comboHunter: boolean;
+  /**
+   * 0..1 relentless pressure: closes distance hard, rarely plants or backs off,
+   * uses DASH to get in and spends heavy cards in visible openings.
+   */
+  pressure: number;
 }

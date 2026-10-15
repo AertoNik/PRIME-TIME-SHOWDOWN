@@ -14,7 +14,7 @@ for (const mode of ['idle', 'mash', 'combo'] as Mode[]) {
   let combos = 0;
   const orig = Match.prototype.step;
   for (let i = 0; i < N; i++) {
-    const fighter = (['ray', 'bruno', 'nika'] as FighterId[])[i % 3];
+    const fighter = (['ray', 'bruno', 'nika', 'vega'] as FighterId[])[i % 4];
     // instrument BroadcastSystem.add via a one-off patch on construction
     const proto = Match.prototype as unknown as { step: typeof orig };
     let patched = false;
@@ -30,7 +30,7 @@ for (const mode of ['idle', 'mash', 'combo'] as Mode[]) {
       }
       orig.call(this, dt);
     };
-    const { m } = runMatch(fighter, RIVAL_ORDER[i % 3], 'pro', mode, 77 + i * 131);
+    const { m } = runMatch(fighter, RIVAL_ORDER[i % RIVAL_ORDER.length], 'pro', mode, 77 + i * 131);
     proto.step = orig;
     finals += m.result!.rating;
     peaks += m.result!.peakRating;

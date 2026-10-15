@@ -137,7 +137,7 @@ export class CareerScreen implements Screen {
           <div class="kv"><div class="v">${s.wins}-${s.losses}-${s.draws}</div><div class="k">Победы-пор.-ничьи</div></div>
           <div class="kv"><div class="v">${s.bestRating || '—'}</div><div class="k">Лучший рейтинг</div></div>
           <div class="kv"><div class="v">${formatNumber(g.career.totalFans())}</div><div class="k">Фанаты команды</div></div>
-          <div class="kv"><div class="v">${g.career.signedCount()}/3</div><div class="k">Бойцов в составе</div></div>
+          <div class="kv"><div class="v">${g.career.signedCount()}/${FIGHTER_ORDER.length}</div><div class="k">Бойцов в составе</div></div>
           <div class="kv"><div class="v">${formatMoney(s.totalEarned)}</div><div class="k">Заработано</div></div>
         </div>
         <div class="section panel">

@@ -68,6 +68,20 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.02,
     turnRate: 14,
   },
+  // Vega: composed and economical — long smooth strides, minimal bob, snaps onto targets.
+  poise: {
+    strideLength: 2.3,
+    legSwing: 0.74,
+    kneeLift: 1.1,
+    bob: 0.03,
+    sway: 0.045,
+    lean: 0.15,
+    accelLean: 0.07,
+    turnBank: 0.06,
+    armBob: 0.035,
+    contactSquash: 0.02,
+    turnRate: 19,
+  },
 };
 
 /** Weapon handling: recoil spring and how much of the body follows each shot. */
@@ -90,6 +104,8 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   twin_blasters: { kick: 11, stiffness: 520, damping: 26, spine: 0.004, shove: 0, slide: 0.05, shake: 0 },
   boom_cannon: { kick: 9, stiffness: 150, damping: 11, spine: 0.03, shove: 2.6, slide: 0.12, shake: 0.07 },
   tech_carbine: { kick: 5, stiffness: 380, damping: 20, spine: 0.007, shove: 0.35, slide: 0.04, shake: 0 },
+  // marksman rifle: one firm shouldered kick per shot, quick settle
+  pulse_rifle: { kick: 8, stiffness: 430, damping: 22, spine: 0.014, shove: 0.3, slide: 0.08, shake: 0 },
 };
 
 export const HIT_REACTION = {
