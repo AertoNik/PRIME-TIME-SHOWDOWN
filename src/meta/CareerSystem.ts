@@ -28,6 +28,25 @@ export interface MatchOutcome {
   fighterFansBefore: number;
 }
 
+/** Options for matches played inside a game mode (Prime Challenge). */
+export interface MatchApplyOptions {
+  /** Multiplier on the match money (HIGH STAKES). */
+  moneyMult?: number;
+  /** Label for the extra money line. */
+  moneyLabel?: string;
+  /** Classic Duel picks the next opponent after a match; modes leave it alone. */
+  rotateRival?: boolean;
+}
+
+/** What a direct payout (Survival, first-clear bonuses) changed. */
+export interface GrantOutcome {
+  levelBefore: number;
+  levelAfter: number;
+  repBefore: number;
+  newGoals: GoalId[];
+  fighterFansBefore: number;
+}
+
 export interface LevelInfo {
   level: number;
   title: string;
@@ -146,7 +165,7 @@ export class CareerSystem {
     return r;
   }
 
-  computeRewards(r: MatchResultData, fighter: FighterId, diff: Difficulty): MatchRewards {
+  computeRewards(r: MatchResultData, fighter: FighterId, diff: Difficulty, opts: MatchApplyOptions = {}): MatchRewards {
     const dm = DIFFICULTIES[diff].rewardMult;
     const fans = this.s.fighters[fighter].fans;
     const lines: RewardLine[] = [];
@@ -178,6 +197,12 @@ export class CareerSystem {
       lines.push({ label: 'Спонсоры бойца', value: star, kind: 'money', note: `${fans.toLocaleString('ru-RU')} фанатов` });
       money += star;
     }
+    const mm = opts.moneyMult ?? 1;
+    if (mm !== 1 && r.method !== 'forfeit') {
+      const extra = Math.round(money * (mm - 1));
+      lines.push({ label: opts.moneyLabel ?? 'Бонус режима', value: extra, kind: 'money', note: `×${mm}` });
+      money += extra;
+    }
     if (r.method === 'forfeit') {
       money = Math.round(money * 0.3);
       lines.push({ label: 'Штраф за сдачу', value: 0, kind: 'money', note: '−70%' });
@@ -192,9 +217,9 @@ export class CareerSystem {
   }
 
   /** Apply a finished match to the save. */
-  applyMatch(r: MatchResultData, fighter: FighterId, diff: Difficulty, rival: RivalId): MatchOutcome {
+  applyMatch(r: MatchResultData, fighter: FighterId, diff: Difficulty, rival: RivalId, opts: MatchApplyOptions = {}): MatchOutcome {
     const s = this.s;
-    const rewards = this.computeRewards(r, fighter, diff);
+    const rewards = this.computeRewards(r, fighter, diff, opts);
     const levelBefore = this.level().level;
     const repBefore = s.reputation;
     const fp = s.fighters[fighter];
@@ -222,12 +247,37 @@ export class CareerSystem {
     fp.bestRating = Math.max(fp.bestRating, r.rating);
     s.bestCombosInMatch = Math.max(s.bestCombosInMatch, r.combos);
     s.bestPerfectsInMatch = Math.max(s.bestPerfectsInMatch, r.perfects);
-    s.lastRival = rival;
     const newGoals = this.refreshGoals();
-    this.pickNextRival(s.seed + s.matches * 31);
+    if (opts.rotateRival !== false) {
+      s.lastRival = rival;
+      this.pickNextRival(s.seed + s.matches * 31);
+    }
     s.seed = (s.seed * 1103515245 + 12345) % 2147483647;
     this.store.save();
     return { rewards, levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore };
+  }
+
+  /**
+   * Pay a reward that is not a regular match (Survival marathon, first-clear
+   * bonuses). Money, reputation and the fighter's fans go through the same
+   * career counters as match rewards; the caller saves.
+   */
+  grant(reward: { money: number; fans: number; rep: number }, fighter: FighterId): GrantOutcome {
+    const s = this.s;
+    const levelBefore = this.level().level;
+    const repBefore = s.reputation;
+    const fp = s.fighters[fighter];
+    const fighterFansBefore = fp.fans;
+    const money = Math.max(0, Math.round(reward.money));
+    const fans = Math.max(0, Math.round(reward.fans));
+    const rep = Math.max(0, Math.round(reward.rep));
+    s.money += money;
+    s.totalEarned += money;
+    s.reputation += rep;
+    s.fansEarned += fans;
+    fp.fans += fans;
+    const newGoals = this.refreshGoals();
+    return { levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore };
   }
 
   goalProgress(g: GoalDef): number {

@@ -117,7 +117,7 @@ export class EventsScreen implements Screen {
       }
     } else if (act === 'play') {
       g.audio.ui('confirm');
-      g.goto('prep');
+      g.goto('prep', { mode: { kind: 'classic' } });
     }
   }
 

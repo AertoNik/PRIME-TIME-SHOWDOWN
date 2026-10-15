@@ -2,6 +2,7 @@ import { CAREER_START, GOALS, type GoalId } from '../config/career';
 import { UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 
 export type QualitySetting = 'auto' | 'high' | 'medium' | 'low';
@@ -47,6 +48,77 @@ export interface CosmeticsState {
   history: { id: CosmeticId; event: string; at: number }[];
 }
 
+/** One finished Survival wave (kept while the run is in progress). */
+export interface WaveLog {
+  rival: RivalId;
+  outcome: 'win' | 'loss' | 'draw';
+  method: 'ko' | 'time' | 'forfeit';
+  rating: number;
+  combos: number;
+  comboList: string[];
+  perfects: number;
+  damageDealt: number;
+  damageTaken: number;
+  cardsUsed: number;
+  duration: number;
+}
+
+/**
+ * Survival attempt in progress. Written at the start and after every wave, so a
+ * closed tab or reload cannot turn into a free retry or a second payout: on the
+ * next launch the run is closed with the waves it really cleared.
+ */
+export interface SurvivalRun {
+  id: number;
+  fighter: FighterId;
+  deck: CardId[];
+  /** Planned opponents for waves 1..5. */
+  rivals: RivalId[];
+  /** Index of the next wave to fight (0-based). */
+  wave: number;
+  /** HP fraction the fighter brings into the next wave. */
+  hpFrac: number;
+  perks: Record<PerkId, number>;
+  waves: WaveLog[];
+  /** A wave was just won and the bonus is not picked yet. */
+  pendingPerk: boolean;
+  /** Seasonal event running when the attempt started (gets the result once). */
+  eventId: string | null;
+  startedAt: number;
+}
+
+export interface SurvivalRecords {
+  runs: number;
+  completions: number;
+  /** Most waves cleared in one attempt (0..5). */
+  bestWave: number;
+  /** Best show score: sum of the cleared waves' ratings. */
+  bestScore: number;
+  /** When the last record was set (ms, 0 = never). */
+  recordAt: number;
+  recordFighter: FighterId | null;
+  bestByFighter: Partial<Record<FighterId, number>>;
+  /** The one-time first-clear bonus has been paid. */
+  firstClearPaid: boolean;
+  active: SurvivalRun | null;
+}
+
+export interface ChallengeProgress {
+  attempts: number;
+  clears: number;
+  /** When the challenge was first cleared (0 = never). The first-clear reward is paid together with this flag. */
+  firstClearAt: number;
+  /** Personal best (combos / fastest seconds / rating), 0 = none. */
+  best: number;
+  bestAt: number;
+  bestFighter: FighterId | null;
+}
+
+export interface ModesState {
+  survival: SurvivalRecords;
+  challenges: Record<string, ChallengeProgress>;
+}
+
 export interface SaveData {
   version: number;
   orgName: string;
@@ -74,13 +146,15 @@ export interface SaveData {
   hintsSeen: boolean;
   events: Record<string, EventProgress>;
   cosmetics: CosmeticsState;
+  /** v4 (1.3): Survival records and Prime Challenge progress. */
+  modes: ModesState;
 }
 
 // The key never changes between versions so existing careers keep loading;
 // `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
-// v2 (1.1): settings.camera. v3 (1.2): events + cosmetics.
-const VERSION = 3;
+// v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes.
+const VERSION = 4;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -126,7 +200,24 @@ export function defaultSave(): SaveData {
     hintsSeen: false,
     events: {},
     cosmetics: { owned: [], equipped: {}, history: [] },
+    modes: emptyModes(),
   };
+}
+
+export function emptySurvival(): SurvivalRecords {
+  return { runs: 0, completions: 0, bestWave: 0, bestScore: 0, recordAt: 0, recordFighter: null, bestByFighter: {}, firstClearPaid: false, active: null };
+}
+
+export function emptyModes(): ModesState {
+  return { survival: emptySurvival(), challenges: {} };
+}
+
+export function emptyChallenge(): ChallengeProgress {
+  return { attempts: 0, clears: 0, firstClearAt: 0, best: 0, bestAt: 0, bestFighter: null };
+}
+
+export function emptyPerks(): Record<PerkId, number> {
+  return { second_wind: 0, energy_boost: 0, power_surge: 0 };
 }
 
 export function emptyEventProgress(): EventProgress {
@@ -180,6 +271,95 @@ function sanitizeCosmetics(raw: unknown): CosmeticsState {
 
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+const count = (v: unknown) => Math.max(0, Math.floor(num(v, 0)));
+const isFighter = (v: unknown): v is FighterId => typeof v === 'string' && FIGHTER_ORDER.includes(v as FighterId);
+const isRival = (v: unknown): v is RivalId => typeof v === 'string' && RIVAL_ORDER.includes(v as RivalId);
+
+function sanitizeWave(raw: unknown): WaveLog | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = raw as Partial<WaveLog>;
+  if (!isRival(w.rival)) return null;
+  const outcome = w.outcome === 'win' || w.outcome === 'loss' || w.outcome === 'draw' ? w.outcome : 'loss';
+  const method = w.method === 'ko' || w.method === 'time' || w.method === 'forfeit' ? w.method : 'time';
+  return {
+    rival: w.rival,
+    outcome,
+    method,
+    rating: Math.min(100, count(w.rating)),
+    combos: count(w.combos),
+    comboList: Array.isArray(w.comboList) ? w.comboList.filter((c) => typeof c === 'string').slice(0, 40) : [],
+    perfects: count(w.perfects),
+    damageDealt: count(w.damageDealt),
+    damageTaken: count(w.damageTaken),
+    cardsUsed: count(w.cardsUsed),
+    duration: Math.max(0, num(w.duration, 0)),
+  };
+}
+
+function sanitizeRun(raw: unknown): SurvivalRun | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<SurvivalRun>;
+  if (!isFighter(r.fighter) || !Array.isArray(r.rivals)) return null;
+  const rivals = r.rivals.filter(isRival);
+  if (rivals.length !== SURVIVAL.waves.length) return null;
+  const perks = emptyPerks();
+  if (r.perks && typeof r.perks === 'object') {
+    for (const id of PERK_ORDER) perks[id] = count((r.perks as Record<string, unknown>)[id]);
+  }
+  const waves = Array.isArray(r.waves) ? r.waves.map(sanitizeWave).filter((w): w is WaveLog => !!w).slice(0, SURVIVAL.waves.length) : [];
+  return {
+    id: num(r.id, 0),
+    fighter: r.fighter,
+    deck: validDeck(r.fighter, r.deck),
+    rivals,
+    wave: Math.min(SURVIVAL.waves.length, count(r.wave)),
+    hpFrac: Math.min(1, Math.max(0, num(r.hpFrac, 1))),
+    perks,
+    waves,
+    pendingPerk: bool(r.pendingPerk, false),
+    eventId: typeof r.eventId === 'string' ? r.eventId.slice(0, 64) : null,
+    startedAt: num(r.startedAt, 0),
+  };
+}
+
+function sanitizeModes(raw: unknown): ModesState {
+  const m = emptyModes();
+  if (!raw || typeof raw !== 'object') return m;
+  const r = raw as Partial<ModesState>;
+  if (r.survival && typeof r.survival === 'object') {
+    const s = r.survival as Partial<SurvivalRecords>;
+    const t = m.survival;
+    t.runs = count(s.runs);
+    t.completions = count(s.completions);
+    t.bestWave = Math.min(SURVIVAL.waves.length, count(s.bestWave));
+    t.bestScore = Math.min(SURVIVAL.waves.length * 100, count(s.bestScore));
+    t.recordAt = Math.max(0, num(s.recordAt, 0));
+    t.recordFighter = isFighter(s.recordFighter) ? s.recordFighter : null;
+    if (s.bestByFighter && typeof s.bestByFighter === 'object') {
+      for (const id of FIGHTER_ORDER) {
+        const v = (s.bestByFighter as Record<string, unknown>)[id];
+        if (v !== undefined) t.bestByFighter[id] = Math.min(SURVIVAL.waves.length, count(v));
+      }
+    }
+    t.firstClearPaid = bool(s.firstClearPaid, false);
+    t.active = sanitizeRun(s.active);
+  }
+  if (r.challenges && typeof r.challenges === 'object') {
+    for (const [id, v] of Object.entries(r.challenges as Record<string, unknown>)) {
+      if (!v || typeof v !== 'object' || id.length > 48) continue;
+      const c = v as Partial<ChallengeProgress>;
+      const p = emptyChallenge();
+      p.clears = count(c.clears);
+      p.attempts = Math.max(p.clears, count(c.attempts));
+      p.firstClearAt = Math.max(0, num(c.firstClearAt, 0));
+      p.best = Math.max(0, num(c.best, 0));
+      p.bestAt = Math.max(0, num(c.bestAt, 0));
+      p.bestFighter = isFighter(c.bestFighter) ? c.bestFighter : null;
+      m.challenges[id] = p;
+    }
+  }
+  return m;
+}
 
 function validDeck(id: FighterId, deck: unknown): CardId[] {
   const allowed = new Set<CardId>([...UNIVERSAL_CARDS, FIGHTERS[id].signature]);
@@ -241,6 +421,8 @@ export function sanitize(raw: unknown): SaveData {
   // v3: seasonal progress and cosmetics (absent before Alpha 1.2 -> empty)
   d.events = sanitizeEvents(r.events);
   d.cosmetics = sanitizeCosmetics(r.cosmetics);
+  // v4: game modes (absent before Alpha 1.3 -> empty records)
+  d.modes = sanitizeModes(r.modes);
   return d;
 }
 

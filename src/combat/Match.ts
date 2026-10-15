@@ -22,6 +22,27 @@ export interface MatchConfig {
   fans: number;
   /** Headless testing: let an AI play the player's cards too. */
   autoPlayer?: { behavior: Behavior; smarts: number; dodge: number; reaction: number; eagerness?: number };
+  /** Game-mode modifiers (Survival / Prime Challenge). Absent in Classic Duel. */
+  mods?: MatchMods;
+}
+
+/**
+ * Per-fight rule changes used by the game modes. They live only inside one
+ * Match instance, so nothing carries over to the next fight by accident.
+ */
+export interface MatchMods {
+  /** Fight length in seconds (default MATCH.duration). */
+  duration?: number;
+  /** Player / rival energy regeneration multipliers. */
+  energyMult?: number;
+  rivalEnergyMult?: number;
+  /** Player starts with this fraction of max HP (Survival carry-over). */
+  playerHpFrac?: number;
+  /** Player outgoing damage multiplier (Survival POWER SURGE). */
+  playerDmgMult?: number;
+  /** Rival HP / damage multipliers on top of the difficulty (Survival waves). */
+  rivalHpMult?: number;
+  rivalDmgMult?: number;
 }
 
 interface Deferred {
@@ -44,7 +65,9 @@ export class Match implements BroadcastHost {
   phaseTime = 0;
   /** Seconds since FIGHT. */
   time = 0;
-  timeLeft: number = MATCH.duration;
+  /** Fight length for this match (Classic: MATCH.duration). */
+  readonly duration: number;
+  timeLeft: number;
   clock = 0;
   winner: Side | null = null;
 
@@ -76,9 +99,16 @@ export class Match implements BroadcastHost {
     const pDef = FIGHTERS[cfg.fighter];
     const eDef = rivalFighterDef(this.rival);
     const d = this.difficulty;
+    const mods = cfg.mods ?? {};
+    this.duration = mods.duration ?? MATCH.duration;
+    this.timeLeft = this.duration;
 
-    const player = new FighterSim(0, pDef, pDef.name, pDef.look, 1, 1, MATCH.fighterRadius);
-    const enemy = new FighterSim(1, eDef, this.rival.name, this.rival.look, d.hpMult, d.dmgMult, MATCH.fighterRadius);
+    const player = new FighterSim(0, pDef, pDef.name, pDef.look, 1, mods.playerDmgMult ?? 1, MATCH.fighterRadius);
+    const enemy = new FighterSim(1, eDef, this.rival.name, this.rival.look, d.hpMult * (mods.rivalHpMult ?? 1), d.dmgMult * (mods.rivalDmgMult ?? 1), MATCH.fighterRadius);
+    if (mods.playerHpFrac !== undefined) {
+      player.hp = Math.max(1, Math.round(player.maxHp * Math.min(1, Math.max(0, mods.playerHpFrac))));
+      player.startHp = player.hp;
+    }
     player.place(0, MATCH.spawnZ, Math.PI);
     enemy.place(0, -MATCH.spawnZ, 0);
     player.aimX = enemy.x;
@@ -87,7 +117,7 @@ export class Match implements BroadcastHost {
     enemy.aimZ = player.z;
     this.fighters = [player, enemy];
 
-    this.hands = [new CardHand(cfg.deck, 1), new CardHand(this.rival.deck, d.energyMult)];
+    this.hands = [new CardHand(cfg.deck, mods.energyMult ?? 1), new CardHand(this.rival.deck, d.energyMult * (mods.rivalEnergyMult ?? 1))];
 
     this.broadcast = new BroadcastSystem(this);
     this.combat = new CombatSystem(this);
@@ -190,7 +220,7 @@ export class Match implements BroadcastHost {
       }
     } else if (this.phase === 'fight') {
       this.time += dt;
-      this.timeLeft = Math.max(0, MATCH.duration - this.time);
+      this.timeLeft = Math.max(0, this.duration - this.time);
     } else if (this.phase === 'outro') {
       this.phaseTime += dt;
       if (this.phaseTime >= MATCH.outroTime) {
@@ -373,10 +403,14 @@ export class Match implements BroadcastHost {
 
   private timeUp(): void {
     this.emit({ type: 'timeUp' });
-    const pf = this.fighters[0].hpFrac;
-    const ef = this.fighters[1].hpFrac;
+    // Whoever lost less of their max HP during this fight wins. With both sides
+    // starting at full health (Classic) this is exactly "more HP left wins";
+    // in Survival the carried-over damage from earlier waves is not held against the player.
+    const [p, e] = this.fighters;
+    const lostP = (p.startHp - p.hp) / p.maxHp;
+    const lostE = (e.startHp - e.hp) / e.maxHp;
     let winner: Side | null = null;
-    if (Math.abs(pf - ef) >= MATCH.drawEpsilon) winner = pf > ef ? 0 : 1;
+    if (Math.abs(lostP - lostE) >= MATCH.drawEpsilon) winner = lostP < lostE ? 0 : 1;
     this.finish('time', winner);
   }
 

@@ -7,8 +7,10 @@ import type { MatchEventOutcome } from '../../meta/EventManager';
 import { ICONS } from '../eventArt';
 import { currencyIcon } from './EventsScreen';
 import { formatMoney, formatNumber } from '../../core/math';
-import type { Game } from '../../game/Game';
+import type { Game, ModeSession } from '../../game/Game';
 import { gradeFor, levelFor, type MatchOutcome } from '../../meta/CareerSystem';
+import { formatChallengeValue, type ChallengeOutcome } from '../../meta/GameModes';
+import { MODE_ICONS } from '../modeArt';
 import { countUp, el, esc } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -20,11 +22,17 @@ export interface ResultsParams {
   rival: RivalId;
   difficulty: Difficulty;
   event?: MatchEventOutcome | null;
+  /** Game mode of the fight (absent / classic for a Classic Duel). */
+  mode?: ModeSession;
+  /** Prime Challenge verdict, records and first-clear reward. */
+  challenge?: ChallengeOutcome | null;
 }
 
 export class ResultsScreen implements Screen {
   readonly el: HTMLElement;
   private g: Game;
+  /** The fight being shown (to replay a challenge with the same settings). */
+  private last: ResultsParams | null = null;
 
   constructor(g: Game) {
     this.g = g;
@@ -36,15 +44,20 @@ export class ResultsScreen implements Screen {
         return;
       }
       const act = t.dataset.act;
+      const mode = this.last?.mode;
       if (act === 'again') {
         this.g.audio.ui('confirm');
-        this.g.startMatch();
+        if (mode?.kind === 'challenge') this.g.startChallenge(mode.id, this.last!.difficulty);
+        else this.g.startMatch();
       } else if (act === 'menu') {
         this.g.audio.ui('click');
         this.g.goto('menu');
       } else if (act === 'prep') {
         this.g.audio.ui('click');
-        this.g.goto('prep');
+        this.g.goto('prep', { mode: mode?.kind === 'challenge' ? { kind: 'challenge', id: mode.id } : { kind: 'classic' } });
+      } else if (act === 'modes') {
+        this.g.audio.ui('click');
+        this.g.goto('modes');
       } else if (act === 'events') {
         this.g.audio.ui('click');
         this.g.goto('events');
@@ -62,6 +75,7 @@ export class ResultsScreen implements Screen {
 
   onShow(params?: unknown): void {
     const p = params as ResultsParams;
+    this.last = p;
     const r = p.result;
     const o = p.outcome;
     const f = FIGHTERS[p.fighter];
@@ -126,6 +140,22 @@ export class ResultsScreen implements Screen {
           ${quests ? '<button class="label evr-link" data-act="events">Забрать награды в «Событиях» ›</button>' : ''}
         </div>`;
     }
+    // Prime Challenge verdict: every condition with its own tick, first clear and personal best
+    let challengeBlock = '';
+    const ch = p.challenge;
+    if (ch) {
+      const d = ch.def;
+      const checks = ch.checks
+        .map((c) => `<div class="chk ${c.ok ? 'ok' : 'no'}"><span class="chk-i">${c.ok ? '✓' : '✕'}</span><span>${esc(c.label)}</span></div>`)
+        .join('');
+      const bestTxt = ch.progress.best ? formatChallengeValue(d, ch.progress.best) : '—';
+      challengeBlock = `<div class="section panel ch-result ${ch.cleared ? 'cleared' : 'failed'}" style="animation:lineIn .35s ease ${T0 + 0.1}s both">
+          <div class="row between"><span class="h2 ch-title"><span class="ch-ico">${MODE_ICONS[d.icon]}</span>${esc(d.title)}</span><span class="ch-stamp">${ch.cleared ? 'ПРОЙДЕНО' : 'НЕ ПРОЙДЕНО'}</span></div>
+          <div class="ch-checks">${checks}</div>
+          ${ch.firstClear ? `<div class="ch-first">${UI_ICONS.star}<span>Первое прохождение: <b>+${formatMoney(ch.firstClear.money)}</b> и <b>+${ch.firstClear.rep}★</b></span></div>` : ''}
+          <div class="ch-best">${ch.newBest && ch.value !== null ? `<span class="chip gold">${MODE_ICONS.trophy.replace('<svg', '<svg width="11" height="11"')} Новый рекорд</span>` : ''}<span class="muted">Рекорд: <b>${esc(bestTxt)}</b> · пройдено ${ch.progress.clears} из ${ch.progress.attempts}</span></div>
+        </div>`;
+    }
     const champion = r.outcome === 'win' && this.g.save.data.cosmetics.equipped.title === 'title_halloween_champion';
     this.el.classList.toggle('champion', champion);
     this.el.classList.remove('instant');
@@ -134,8 +164,9 @@ export class ResultsScreen implements Screen {
         <div class="result-title">
           <div class="rt ${r.outcome}">${titles[r.outcome]}</div>
           ${champion ? `<div class="champ-ribbon">${ICONS.crown}<span>HALLOWEEN CHAMPION</span></div>` : ''}
-          <div class="rs">${methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
+          <div class="rs">${p.challenge ? `${esc(p.challenge.def.title)} · ` : ''}${methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
         </div>
+        ${challengeBlock}
         <div class="reward-tiles" style="animation:lineIn .3s ease ${T0}s both">
           <div class="rtile money"><span class="rv" data-total>+$0</span><span class="rk">Гонорар</span></div>
           <div class="rtile fans"><span class="rv">+${formatNumber(o.rewards.fans)}</span><span class="rk">Фанаты</span></div>
@@ -176,11 +207,11 @@ export class ResultsScreen implements Screen {
       </div>
       <div class="result-actions">
         <button class="btn ghost" data-act="menu">Главное меню</button>
-        <button class="btn" data-act="again"><span class="shine"></span>Ещё бой</button>
+        <button class="btn" data-act="again"><span class="shine"></span>${p.challenge ? 'Повторить' : 'Ещё бой'}</button>
       </div>
       <div class="result-links">
         <button class="label" data-act="prep">Колода и сложность</button>
-        <button class="label" data-act="roster">Сменить бойца</button>
+        ${p.challenge ? '<button class="label" data-act="modes">Режимы эфира</button>' : '<button class="label" data-act="roster">Сменить бойца</button>'}
       </div>`;
 
     const ratingEl = this.el.querySelector('[data-rating]') as HTMLElement;

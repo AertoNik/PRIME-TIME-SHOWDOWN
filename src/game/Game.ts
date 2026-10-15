@@ -1,12 +1,14 @@
 import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
-import type { Difficulty, FighterId, RivalId } from '../config/types';
+import { challengeById, SURVIVAL } from '../config/modes.config';
+import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
-import { Match } from '../combat/Match';
+import { Match, type MatchMods } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { CareerSystem } from '../meta/CareerSystem';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
+import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
 import { Arena } from '../render/Arena';
 import { BattleView, type TimeFx } from '../render/BattleView';
@@ -20,15 +22,29 @@ import { BattleHUD } from '../ui/screens/BattleHUD';
 import { CareerScreen } from '../ui/screens/CareerScreen';
 import { EventsScreen } from '../ui/screens/EventsScreen';
 import { MenuScreen } from '../ui/screens/MenuScreen';
+import { ModesScreen } from '../ui/screens/ModesScreen';
 import { PrepScreen } from '../ui/screens/PrepScreen';
 import { ResultsScreen } from '../ui/screens/ResultsScreen';
 import { RosterScreen } from '../ui/screens/RosterScreen';
+import { SurvivalScreen } from '../ui/screens/SurvivalScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
 import { ThemeManager } from './ThemeManager';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'battle' | 'results';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'modes' | 'battle' | 'results' | 'survival';
+
+/** Which game mode the current fight belongs to (kept with the match, never global). */
+export type ModeSession = { kind: 'classic' } | { kind: 'survival'; runId: number; wave: WaveSetup } | { kind: 'challenge'; id: string };
+
+/** Everything needed to set up one fight. */
+interface LaunchSpec {
+  fighter: FighterId;
+  deck: CardId[];
+  rival: RivalId;
+  difficulty: Difficulty;
+  mods?: MatchMods;
+}
 
 /**
  * Developer-only switches, read from the address bar in `npm run dev` only:
@@ -70,6 +86,10 @@ export class Game {
   readonly save = new SaveSystem();
   readonly career: CareerSystem;
   readonly events: EventManager;
+  /** Survival marathon and Prime Challenge rules (Alpha 1.3). */
+  readonly modes: GameModes;
+  /** A Survival attempt closed at launch because the game was shut mid-run (shown once in the menu). */
+  private abandoned: SurvivalSummary | null = null;
   themes!: ThemeManager;
   renderer!: Renderer;
   arena!: Arena;
@@ -83,7 +103,7 @@ export class Game {
 
   match: Match | null = null;
   paused = false;
-  private matchMeta: { fighter: FighterId; rival: RivalId; difficulty: Difficulty } | null = null;
+  private matchMeta: { fighter: FighterId; rival: RivalId; difficulty: Difficulty; mode: ModeSession } | null = null;
   /** Event that was running when the current match started (its quests get the result). */
   private matchEventId: string | null = null;
   private seasonCheckT = 0;
@@ -104,6 +124,9 @@ export class Game {
     this.stage = stage;
     this.career = new CareerSystem(this.save);
     this.events = new EventManager(this.save, devEventOverrides());
+    this.modes = new GameModes(this.save, this.career, this.events);
+    // A marathon interrupted by closing the game ends with the waves it really cleared.
+    this.abandoned = this.modes.closeAbandoned();
     this.ui = new UIManager(uiRoot);
     this.ui.onSoundToggle = () => this.toggleSound();
     this.ui.setSoundIcon(this.save.data.settings.sound);
@@ -191,8 +214,10 @@ export class Game {
     this.ui.register('prep', new PrepScreen(this));
     this.ui.register('career', new CareerScreen(this));
     this.ui.register('events', new EventsScreen(this));
+    this.ui.register('modes', new ModesScreen(this));
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
+    this.ui.register('survival', new SurvivalScreen(this));
 
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(f.look, f.theme.accent);
@@ -239,11 +264,16 @@ export class Game {
     this.audio.setMusic(this.save.data.settings.music);
     this.audio.ui('confirm');
     this.goto('menu');
+    if (this.abandoned) {
+      const s = this.abandoned;
+      this.abandoned = null;
+      this.ui.get<SurvivalScreen>('survival').noticeAbandoned(s);
+    }
   }
 
   // ------------------------------------------------------------ navigation
-  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results'>, param?: unknown): void {
-    if (this.screen === 'battle' || this.screen === 'results') this.endBattleView();
+  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results' | 'survival'>, param?: unknown): void {
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
     this.screen = name;
     this.refreshSeason();
     const f = FIGHTERS[this.save.data.selected];
@@ -331,23 +361,65 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- battle
+  /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
   startMatch(): void {
-    if (this.screen === 'battle' || this.screen === 'results') this.endBattleView();
     const s = this.save.data;
     const fighter = s.selected;
     const difficulty = this.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
-    const rival = s.nextRival;
+    this.launch({ fighter, deck: s.fighters[fighter].deck.slice(), rival: s.nextRival, difficulty }, { kind: 'classic' });
+  }
+
+  /** SURVIVAL: start a new marathon with the selected fighter and deck. */
+  startSurvival(): void {
+    const s = this.save.data;
+    const fighter = s.selected;
+    if (!s.fighters[fighter].unlocked) return;
+    // safety: an unfinished attempt is closed (and paid) before a new one starts
+    const left = this.modes.closeAbandoned();
+    if (left) this.ui.toast(`Прошлый марафон закрыт: волн пройдено ${left.cleared}/${SURVIVAL.waves.length}`);
+    const eventId = this.events.playable ? this.events.active!.id : null;
+    this.modes.startRun(fighter, s.fighters[fighter].deck, eventId, (s.seed + s.matches * 131 + Math.floor(performance.now())) >>> 0);
+    this.startSurvivalWave();
+  }
+
+  /** SURVIVAL: fight the next wave of the active marathon. */
+  startSurvivalWave(): void {
+    const run = this.modes.activeRun;
+    if (!run || run.pendingPerk) return;
+    const w = this.modes.waveSetup(run);
+    this.launch({ fighter: run.fighter, deck: run.deck, rival: w.rival, difficulty: w.difficulty, mods: w.mods }, { kind: 'survival', runId: run.id, wave: w });
+    this.arena.setScreen({ headline: w.final ? 'SURVIVAL · FINAL WAVE' : `SURVIVAL · WAVE ${w.index + 1}/${w.total}` });
+  }
+
+  /** PRIME CHALLENGE: one special broadcast with its own rules. */
+  startChallenge(id: string, difficulty: Difficulty): void {
+    const def = challengeById(id);
+    if (!def) return;
+    const s = this.save.data;
+    const fighter = s.selected;
+    if (!s.fighters[fighter].unlocked) return;
+    const diff = this.career.difficultyUnlocked(difficulty) ? difficulty : 'rookie';
+    this.launch({ fighter, deck: s.fighters[fighter].deck.slice(), rival: def.rival, difficulty: diff, mods: this.modes.challengeMods(def) }, { kind: 'challenge', id });
+    this.arena.setScreen({ headline: def.title });
+  }
+
+  private launch(spec: LaunchSpec, mode: ModeSession): void {
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
+    const s = this.save.data;
+    const { fighter, rival, difficulty } = spec;
     const match = new Match({
       fighter,
-      deck: s.fighters[fighter].deck.slice(),
+      deck: spec.deck,
       rival,
       difficulty,
       seed: (s.seed + s.matches * 7919 + Math.floor(performance.now())) >>> 0,
       fans: s.fighters[fighter].fans,
+      mods: spec.mods,
     });
     this.match = match;
-    this.matchMeta = { fighter, rival, difficulty };
-    this.matchEventId = this.events.playable ? this.events.active!.id : null;
+    this.matchMeta = { fighter, rival, difficulty, mode };
+    // Survival reports to the seasonal event once per attempt (see GameModes), not per wave.
+    this.matchEventId = mode.kind !== 'survival' && this.events.playable ? this.events.active!.id : null;
     this.resultsShown = false;
     this.paused = false;
     this.acc = 0;
@@ -356,7 +428,7 @@ export class Game {
     this.timeFx.slowScale = 1;
     this.showcase.hide();
     this.battleView.setup(match);
-    this.hud.setup(match);
+    this.hud.setup(match, mode);
     this.cam.setMode('battle', 1.9);
     this.cam.finishShift = 0.04;
     this.cam.finishDist = 7.5;
@@ -408,7 +480,14 @@ export class Game {
               this.openHelp(() => this.pause());
             } else if (a === 'forfeit') {
               close();
-              this.confirm('Сдаться?', 'Бой будет засчитан как поражение, а гонорар — урезан.', 'Сдаться', () => {
+              const kind = this.matchMeta?.mode.kind;
+              const text =
+                kind === 'survival'
+                  ? 'Марафон закончится. Награда — только за уже пройденные волны.'
+                  : kind === 'challenge'
+                    ? 'Испытание не будет пройдено, а гонорар — урезан.'
+                    : 'Бой будет засчитан как поражение, а гонорар — урезан.';
+              this.confirm('Сдаться?', text, 'Сдаться', () => {
                 this.paused = false;
                 this.match?.forfeit();
               }, () => {
@@ -435,25 +514,50 @@ export class Game {
     if (!m || !m.result || !this.matchMeta || this.resultsShown) return;
     this.resultsShown = true;
     const meta = this.matchMeta;
-    const outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival);
-    const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
+    const mode = meta.mode;
     if (!this.save.data.hintsSeen) {
       this.save.data.hintsSeen = true;
       this.save.save();
     }
+    if (mode.kind === 'survival') {
+      const wave = this.modes.recordWave(mode.runId, m.result, m.fighters[0].hpFrac);
+      this.enterResultsView(m.result.outcome);
+      this.ui.show('survival', wave ? { kind: wave.summary ? 'summary' : 'intermission', wave, summary: wave.summary, result: m.result, mode } : { kind: 'menu' });
+      return;
+    }
+    let challenge = null;
+    let outcome;
+    if (mode.kind === 'challenge') {
+      const def = challengeById(mode.id)!;
+      outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, {
+        moneyMult: def.moneyMult,
+        moneyLabel: 'Высокие ставки',
+        rotateRival: false,
+      });
+      challenge = this.modes.recordChallenge(mode.id, m.result, meta.fighter);
+      outcome.levelAfter = this.career.level().level;
+    } else {
+      outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival);
+    }
+    const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
+    this.enterResultsView(m.result.outcome);
+    this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, ...meta });
+  }
+
+  /** Shared after-fight presentation: camera on the winner, results music, win/loss sting. */
+  private enterResultsView(outcome: 'win' | 'loss' | 'draw'): void {
     this.screen = 'results';
     // Lift the celebrating winner above the results panels.
     this.cam.finishShift = 0.35;
     this.cam.finishDist = 18.5;
     this.ui.showSoundFab(true);
     this.audio.playTrack('none');
-    if (m.result.outcome === 'win') this.audio.victory();
-    else if (m.result.outcome === 'loss') this.audio.defeat();
+    if (outcome === 'win') this.audio.victory();
+    else if (outcome === 'loss') this.audio.defeat();
     else this.audio.reaction(2);
     setTimeout(() => {
       if (this.screen === 'results') this.audio.playTrack('menu');
     }, 3000);
-    this.ui.show('results', { result: m.result, outcome, event: eventOutcome, ...meta });
   }
 
   // -------------------------------------------------------------- settings
@@ -566,6 +670,7 @@ export class Game {
          <p><b style="color:#ff8a7a">Красная зона</b> — соперник заряжает мощный удар. DASH уклоняется, SHIELD блокирует, SHOCK прерывает заряд. Удачные реакции дают бонус рейтинга.</p>
          <p><b style="color:var(--pink)">Рейтинг шоу</b> растёт за комбо, идеальные уклонения и блоки, мощные попадания, разнообразие приёмов и эффектный финиш. Простой и бездействие снижают его. Рейтинг определяет гонорар и новых фанатов.</p>
          <p><b style="color:var(--teal)">Карьера:</b> зарабатывайте деньги и репутацию, подписывайте новых бойцов, открывайте сложность «Профи» и «Чемпион».</p>
+         <p><b style="color:var(--gold)">Режимы эфира:</b> кроме обычной дуэли есть <b>SURVIVAL</b> — пять боёв подряд одним бойцом, здоровье переносится между волнами, после каждой победы выбирается бонус — и <b>PRIME CHALLENGE</b>: спецвыпуски с особыми правилами и наградой за первое прохождение. Вход — кнопка «Режимы эфира» в меню.</p>
          <p><b style="color:var(--btn-a)">События:</b> в праздничные сезоны в меню появляется раздел «События» с заданиями, сезонными жетонами и бесплатными косметическими наградами. Полученные предметы остаются у вас навсегда.</p>
        </div>
        <div class="modal-actions"><button class="btn teal wide" data-a="ok">Понятно</button></div>`,

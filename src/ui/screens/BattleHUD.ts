@@ -2,13 +2,15 @@ import { Vector3 } from 'three';
 import { MATCH } from '../../config/balance';
 import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
+import { PERKS, PERK_ORDER, challengeById, type ChallengeDef } from '../../config/modes.config';
 import type { CardId, Side } from '../../config/types';
 import type { Match } from '../../combat/Match';
 import type { MatchEvent } from '../../combat/types';
 import { damp, formatNumber } from '../../core/math';
-import type { Game } from '../../game/Game';
+import type { Game, ModeSession } from '../../game/Game';
 import { cardHTML, el, esc, portraitHTML, vibrate } from '../dom';
 import { UI_ICONS } from '../icons';
+import { PERK_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
 
 interface Floater {
@@ -126,6 +128,11 @@ export class BattleHUD implements Screen {
   private hintT = 0;
   private statusKey = ['', ''];
   private enemyWarn = false;
+  /** Game-mode strip under the rating (Survival wave / challenge goal). */
+  private modeStrip!: HTMLElement;
+  private modeLive: HTMLElement | null = null;
+  private modeLiveTxt = '';
+  private challenge: ChallengeDef | null = null;
 
   constructor(g: Game) {
     this.g = g;
@@ -178,6 +185,7 @@ export class BattleHUD implements Screen {
         </div>
         <div class="viewers">${UI_ICONS.eye}<span data-viewers>0</span></div>
       </div>
+      <div class="mode-strip"></div>
       <div class="rating-pops"></div>
       <div class="banner-zone"></div>
       <div class="big-center"></div>
@@ -226,6 +234,7 @@ export class BattleHUD implements Screen {
     this.energySegs = Array.from(this.energyBar.querySelectorAll('b')) as HTMLElement[];
     this.slots = [0, 1, 2].map((i) => q(`[data-slot="${i}"]`));
     this.hudBottomEl = q('.hud-bottom');
+    this.modeStrip = q('.mode-strip');
 
     for (let i = 0; i < 28; i++) {
       const e = el('div', 'dmg');
@@ -254,7 +263,7 @@ export class BattleHUD implements Screen {
   }
 
   // --------------------------------------------------------------- setup
-  setup(m: Match): void {
+  setup(m: Match, mode: ModeSession = { kind: 'classic' }): void {
     this.m = m;
     const g = this.g;
     const pf = FIGHTERS[m.cfg.fighter];
@@ -270,7 +279,8 @@ export class BattleHUD implements Screen {
     }
     this.rendered = [null, null, null];
     this.renderedNext = null;
-    this.lag = [1, 1];
+    // Survival: the bar starts at the carried-over health, without a fake damage trail.
+    this.lag = [m.fighters[0].hpFrac, m.fighters[1].hpFrac];
     this.displayRating = m.broadcast.rating;
     this.lastSecond = -1;
     this.bannerQueue = [];
@@ -292,14 +302,47 @@ export class BattleHUD implements Screen {
       f.el.style.display = 'none';
     }
     this.syncHand(true);
-    // Matchup intro
+    const caption = this.setupMode(mode);
+    // Matchup intro (modes add a TV caption: wave number or challenge name)
+    const sides = `<span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span>`;
     const intro = el(
       'div',
       'matchup-intro',
-      `<div class="mi"><span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span></div>`,
+      caption ? `<div class="mi mi-col">${caption}<div class="mi-row">${sides}</div></div>` : `<div class="mi">${sides}</div>`,
     );
     this.el.appendChild(intro);
     setTimeout(() => intro.remove(), 3100);
+  }
+
+  /** Fill the mode strip for Survival / Prime Challenge; returns the intro caption (empty for Classic). */
+  private setupMode(mode: ModeSession): string {
+    this.challenge = null;
+    this.modeLive = null;
+    this.modeLiveTxt = '';
+    this.el.classList.toggle('has-mode', mode.kind !== 'classic');
+    this.el.dataset.mode = mode.kind;
+    if (mode.kind === 'survival') {
+      const w = mode.wave;
+      const run = this.g.modes.activeRun;
+      const perks = run
+        ? PERK_ORDER.filter((id) => id !== 'second_wind' && run.perks[id] > 0)
+            .map((id) => `<span class="ms-perk p-${id}">${PERK_ICONS[id]}+${Math.round(run.perks[id] * PERKS[id].value * 100)}%</span>`)
+            .join('')
+        : '';
+      this.modeStrip.innerHTML = `<span class="ms-tag">SURVIVAL</span><span class="ms-main">${w.final ? 'ФИНАЛЬНАЯ ВОЛНА' : `ВОЛНА <b>${w.index + 1}</b>/${w.total}`}</span>${perks ? `<span class="ms-perks">${perks}</span>` : ''}`;
+      return `<div class="mi-cap ${w.final ? 'final' : ''}">${w.final ? 'SURVIVAL · FINAL WAVE' : `SURVIVAL · WAVE ${w.index + 1}/${w.total}`}</div>`;
+    }
+    if (mode.kind === 'challenge') {
+      const def = challengeById(mode.id);
+      this.challenge = def;
+      if (!def) return '';
+      const extra = def.goal.minRating !== undefined ? '<span class="ms-live" data-ms-live></span>' : def.mods.energyMult ? `<span class="ms-live on">⚡×${String(def.mods.energyMult).replace('.', ',')}</span>` : def.moneyMult !== 1 ? `<span class="ms-live on">$×${String(def.moneyMult).replace('.', ',')}</span>` : '';
+      this.modeStrip.innerHTML = `<span class="ms-tag ch">${esc(def.hudTag)}</span><span class="ms-main"><i>Цель</i>${esc(def.goalShort)}</span>${extra}`;
+      this.modeLive = this.modeStrip.querySelector('[data-ms-live]');
+      return `<div class="mi-cap ch">PRIME CHALLENGE · ${esc(def.title)}</div>`;
+    }
+    this.modeStrip.innerHTML = '';
+    return '';
   }
 
   /**
@@ -309,7 +352,8 @@ export class BattleHUD implements Screen {
   measureInsets(): { top: number; bottom: number } | null {
     const root = this.el.getBoundingClientRect();
     if (root.height < 100) return null;
-    const top = (this.el.querySelector('.rating-row') as HTMLElement).getBoundingClientRect().bottom - root.top;
+    const below = this.el.classList.contains('has-mode') ? this.modeStrip : (this.el.querySelector('.rating-row') as HTMLElement);
+    const top = below.getBoundingClientRect().bottom - root.top;
     const bottom = root.bottom - this.hudBottomEl.getBoundingClientRect().top;
     this.safeTop = top;
     return { top: Math.min(0.4, top / root.height), bottom: Math.min(0.45, bottom / root.height) };
@@ -453,7 +497,7 @@ export class BattleHUD implements Screen {
       }
     }
     // timer
-    const sec = Math.ceil(m.phase === 'intro' ? MATCH.duration : m.timeLeft);
+    const sec = Math.ceil(m.phase === 'intro' ? m.duration : m.timeLeft);
     if (sec !== this.lastSecond) {
       this.lastSecond = sec;
       this.timeEl.textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
@@ -478,6 +522,16 @@ export class BattleHUD implements Screen {
     }
     const viewers = formatNumber(m.broadcast.viewers(m.cfg.fans));
     if (this.viewersEl.textContent !== viewers) this.viewersEl.textContent = viewers;
+    // PRIME SPOTLIGHT: the final rating as the results screen will compute it right now
+    if (this.modeLive && this.challenge?.goal.minRating !== undefined) {
+      const proj = m.broadcast.finalRating();
+      const t = `ИТОГ ${proj}`;
+      if (t !== this.modeLiveTxt) {
+        this.modeLiveTxt = t;
+        this.modeLive.textContent = t;
+        this.modeLive.classList.toggle('on', proj >= this.challenge.goal.minRating);
+      }
+    }
 
     // hand + energy
     this.syncHand(false);

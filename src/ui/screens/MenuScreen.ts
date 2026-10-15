@@ -8,6 +8,8 @@ import { countUp, el, esc, portraitHTML } from '../dom';
 import { ICONS } from '../eventArt';
 import { currencyIcon, formatSpan } from './EventsScreen';
 import { UI_ICONS } from '../icons';
+import { MODE_ICONS } from '../modeArt';
+import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
 
 export class MenuScreen implements Screen {
@@ -24,7 +26,8 @@ export class MenuScreen implements Screen {
       if (!t) return;
       const act = t.dataset.act;
       this.g.audio.ui(act === 'fight' ? 'confirm' : 'click');
-      if (act === 'fight') this.g.goto('prep');
+      if (act === 'fight') this.g.goto('prep', { mode: { kind: 'classic' } });
+      else if (act === 'modes') this.g.goto('modes');
       else if (act === 'roster') this.g.goto('roster');
       else if (act === 'career') this.g.goto('career');
       else if (act === 'settings') this.g.openSettings();
@@ -60,6 +63,15 @@ export class MenuScreen implements Screen {
     } else if (s.cosmetics.owned.length) {
       entry = `<button class="event-entry" data-act="events"><span class="ee-ico">${ICONS.star}</span><span class="ee-text"><b>Коллекция</b><small>Сезонные награды: ${s.cosmetics.owned.length}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
     }
+    // game modes entry (Alpha 1.3): Survival record and cleared challenges at a glance
+    const sv = s.modes.survival;
+    const chDone = CHALLENGES.filter((c) => (s.modes.challenges[c.id]?.firstClearAt ?? 0) > 0).length;
+    const fresh = sv.runs === 0 && CHALLENGES.every((c) => !s.modes.challenges[c.id]?.attempts);
+    const modesEntry = `<button class="modes-entry" data-act="modes">
+        <span class="me-ico">${MODE_ICONS.challenge}</span>
+        <span class="me-text"><b>Режимы эфира</b><small>${fresh ? 'Survival · Prime Challenge' : `Survival ${sv.bestWave}/${SURVIVAL.waves.length} · испытания ${chDone}/${CHALLENGES.length}`}</small></span>
+        ${fresh ? '<span class="me-new">NEW</span>' : ''}<span class="ee-go">${UI_ICONS.next}</span>
+      </button>`;
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">
         <div class="lvl-badge" title="Уровень продюсера">${lvl.level}</div>
@@ -92,7 +104,10 @@ export class MenuScreen implements Screen {
       <div class="spacer-8"></div>
       ${entry ? `<div class="menu-event">${entry}</div>` : ''}
       <div class="menu-actions">
-        <button class="btn big wide" data-act="fight"><span class="shine"></span>В БОЙ</button>
+        <div class="menu-play">
+          <button class="btn big wide" data-act="fight"><span class="shine"></span>В БОЙ</button>
+          ${modesEntry}
+        </div>
         <div class="menu-nav">
           <button class="btn ghost" data-act="roster">${UI_ICONS.users.replace('<svg', '<svg width="18" height="18"')} Бойцы</button>
           <button class="btn ghost" data-act="career" style="position:relative">${UI_ICONS.career.replace('<svg', '<svg width="18" height="18"')} Карьера${unclaimed ? `<span class="badge-dot">${unclaimed}</span>` : ''}</button>

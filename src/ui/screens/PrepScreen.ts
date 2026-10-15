@@ -1,10 +1,22 @@
 import { CARDS, COMBOS } from '../../config/cards';
-import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS, rivalFighterDef } from '../../config/fighters';
+import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
+import { SURVIVAL, challengeById } from '../../config/modes.config';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
+import { formatChallengeValue } from '../../meta/GameModes';
 import { cardHTML, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
+import { MODE_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
+
+/** What the prep screen is preparing: a Classic Duel, a Survival marathon or one Prime Challenge. */
+export type PrepMode = { kind: 'classic' } | { kind: 'survival' } | { kind: 'challenge'; id: string };
+
+const WAVE_LABEL = (i: number) => {
+  const w = SURVIVAL.waves[i];
+  const base = DIFFICULTIES[w.difficulty].label;
+  return w.hpMult > 1.0 ? `${base}+` : base;
+};
 
 export class PrepScreen implements Screen {
   readonly el: HTMLElement;
@@ -12,6 +24,8 @@ export class PrepScreen implements Screen {
   private deck: CardId[] = [];
   private focus: CardId | null = null;
   private diff: Difficulty = 'rookie';
+  /** Kept when returning from the roster, so a mode setup is not lost. */
+  private mode: PrepMode = { kind: 'classic' };
 
   constructor(g: Game) {
     this.g = g;
@@ -19,7 +33,10 @@ export class PrepScreen implements Screen {
     this.el.addEventListener('click', (e) => this.onClick(e));
   }
 
-  onShow(): void {
+  /** params: { mode } to open a specific setup; without params the last setup stays (e.g. back from the roster). */
+  onShow(params?: unknown): void {
+    const pm = (params as { mode?: PrepMode } | undefined)?.mode;
+    if (pm) this.mode = pm.kind === 'challenge' && !challengeById(pm.id) ? { kind: 'classic' } : pm;
     const s = this.g.save.data;
     this.deck = s.fighters[s.selected].deck.slice();
     this.focus = this.deck[0] ?? null;
@@ -36,7 +53,8 @@ export class PrepScreen implements Screen {
     const act = t.dataset.act!;
     if (act === 'back') {
       g.audio.ui('click');
-      g.goto('menu');
+      if (this.mode.kind === 'classic') g.goto('menu');
+      else g.goto('modes');
       return;
     }
     if (act === 'roster') {
@@ -91,11 +109,74 @@ export class PrepScreen implements Screen {
       }
       const s = g.save.data;
       g.career.setDeck(s.selected, this.deck);
+      g.audio.ui('confirm');
+      if (this.mode.kind === 'survival') {
+        g.startSurvival();
+        return;
+      }
+      if (this.mode.kind === 'challenge') {
+        g.startChallenge(this.mode.id, this.diff);
+        return;
+      }
       s.difficulty = this.diff;
       g.save.save();
-      g.audio.ui('confirm');
       g.startMatch();
     }
+  }
+
+  /** Right side of the matchup and the middle section for the game modes. */
+  private modeParts(): { title: string; side: string; note: string; section: string; start: string } | null {
+    const g = this.g;
+    const mode = this.mode;
+    if (mode.kind === 'survival') {
+      const rec = g.modes.survival;
+      const faces = RIVAL_ORDER.map((id) => {
+        const r = RIVALS[id];
+        return `<span class="pool-face">${portraitHTML(g.portraits[r.look], r.theme.main, r.theme.dark)}</span>`;
+      }).join('');
+      const ladder = SURVIVAL.waves
+        .map((w, i) => `<div class="wave-step ${i === SURVIVAL.waves.length - 1 ? 'final' : ''}"><b>${i + 1}</b><span>${esc(WAVE_LABEL(i))}</span></div>`)
+        .join('');
+      return {
+        title: 'SURVIVAL · Подготовка',
+        side: `<div class="mside b"><div class="pool-faces">${faces}</div><div class="mname">5 волн</div><span class="chip red">Марафон</span></div>`,
+        note: 'Соперники выходят по очереди в случайном порядке. Каждая следующая волна сильнее.',
+        section: `<div class="section panel">
+            <div class="section-title"><span class="h2">Правила марафона</span><span class="label">${MODE_ICONS.survival.replace('<svg', '<svg width="14" height="14"')} last star standing</span></div>
+            <div class="wave-ladder">${ladder}</div>
+            <ul class="mode-rules">
+              <li>Пять дуэлей подряд одним бойцом и одной колодой.</li>
+              <li>Здоровье переносится между волнами: после победы +${Math.round(SURVIVAL.healBetween * 100)}%, не больше максимума.</li>
+              <li>После каждой победы — один бонус на выбор: SECOND WIND, ENERGY BOOST или POWER SURGE. Действует до конца марафона.</li>
+              <li>Поражение или ничья завершают марафон. Награда — за пройденные волны.</li>
+            </ul>
+            <div class="mode-tip"><b>Совет:</b> в марафоне колода решает больше, чем в одном бою. Защита (DASH, SHIELD) сберегает здоровье до финала, а связки комбо быстрее закрывают волны.</div>
+            <div class="mode-facts"><span>Полное прохождение <b>+$${SURVIVAL.completion.money}</b></span>${rec.firstClearPaid ? '' : `<span>Первое прохождение <b>+$${SURVIVAL.firstClear.money} +${SURVIVAL.firstClear.rep}★</b></span>`}<span>Рекорд <b>${rec.bestWave}/${SURVIVAL.waves.length}</b></span></div>
+          </div>`,
+        start: 'Начать марафон',
+      };
+    }
+    if (mode.kind === 'challenge') {
+      const def = challengeById(mode.id)!;
+      const rival = RIVALS[def.rival];
+      const p = g.modes.progress(def.id);
+      return {
+        title: `Prime Challenge`,
+        side: `<div class="mside b">${portraitHTML(g.portraits[rival.look], rival.theme.main, rival.theme.dark)}<div class="mname">${esc(rival.name)}</div><span class="chip red">${esc(BEHAVIORS[rival.behavior].label)}</span></div>`,
+        note: `«${esc(def.quote)}»`,
+        section: `<div class="section panel ch-rules">
+            <div class="section-title"><span class="h2 ch-title"><span class="ch-ico">${MODE_ICONS[def.icon]}</span>${esc(def.title)}</span>${p.firstClearAt ? `<span class="chip teal">${UI_ICONS.check.replace('<svg', '<svg width="10" height="10"')} Пройдено</span>` : '<span class="chip gold">Новое</span>'}</div>
+            <ul class="mode-rules">${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+            <div class="mode-facts">${
+              p.firstClearAt
+                ? `<span>Рекорд <b>${p.best ? esc(formatChallengeValue(def, p.best)) : '—'}</b></span><span>Пройдено <b>${p.clears}×</b></span>`
+                : `<span>Первое прохождение <b>+$${def.firstClear.money} +${def.firstClear.rep}★</b></span>`
+            }<span>Повтор <b>обычный гонорар${def.moneyMult !== 1 ? ` ×${String(def.moneyMult).replace('.', ',')}` : ''}</b></span></div>
+          </div>`,
+        start: 'Начать испытание',
+      };
+    }
+    return null;
   }
 
   private render(): void {
@@ -125,10 +206,16 @@ export class PrepScreen implements Screen {
       </button>`;
     }).join('');
 
+    const mp = this.modeParts();
+    const diffSection = `<div class="section panel">
+          <div class="section-title"><span class="h2">Сложность эфира</span><span class="muted" style="font-size:11.5px">${esc(DIFFICULTIES[this.diff].desc)}</span></div>
+          <div class="seg-control" style="margin-top:8px">${diffs}</div>
+        </div>`;
+    this.el.classList.toggle('mode-prep', !!mp);
     this.el.innerHTML = `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
-        <div class="h1">Подготовка к эфиру</div>
+        <div class="h1">${mp ? esc(mp.title) : 'Подготовка к эфиру'}</div>
       </div>
       <div class="fill scroll" style="padding-bottom:10px">
         <div class="matchup panel">
@@ -138,17 +225,19 @@ export class PrepScreen implements Screen {
             <button class="chip teal" aria-label="Сменить бойца">⇄ Сменить</button>
           </div>
           <div class="vs">VS</div>
-          <div class="mside b">
+          ${
+            mp
+              ? mp.side
+              : `<div class="mside b">
             ${portraitHTML(g.portraits[rival.look], rival.theme.main, rival.theme.dark)}
             <div class="mname">${esc(rival.name)}</div>
             <span class="chip red">${esc(BEHAVIORS[rival.behavior].label)}</span>
-          </div>
-          <div class="center rival-note" style="grid-column:1/-1;max-width:none;margin-top:6px">«${esc(rival.nickname)}» · стиль: ${esc(rf.style.toLowerCase())}. ${esc(rival.bio)}</div>
+          </div>`
+          }
+          <div class="center rival-note" style="grid-column:1/-1;max-width:none;margin-top:6px">${mp ? mp.note : `«${esc(rival.nickname)}» · стиль: ${esc(rf.style.toLowerCase())}. ${esc(rival.bio)}`}</div>
         </div>
-        <div class="section panel">
-          <div class="section-title"><span class="h2">Сложность эфира</span><span class="muted" style="font-size:11.5px">${esc(DIFFICULTIES[this.diff].desc)}</span></div>
-          <div class="seg-control" style="margin-top:8px">${diffs}</div>
-        </div>
+        ${mp ? mp.section : ''}
+        ${this.mode.kind === 'survival' ? '' : diffSection}
         <div class="section panel">
           <div class="section-title"><span class="h2">Колода · ${this.deck.length}/4</span><span class="label">3 в руке + 1 в очереди</span></div>
           <div class="deck-slots">${slots}</div>
@@ -168,7 +257,7 @@ export class PrepScreen implements Screen {
         </div>
       </div>
       <div style="padding:8px 12px 0">
-        <button class="btn big wide ${this.deck.length === 4 ? '' : 'disabled'}" data-act="start"><span class="shine"></span>Начать эфир</button>
+        <button class="btn big wide ${this.deck.length === 4 ? '' : 'disabled'}" data-act="start"><span class="shine"></span>${mp ? mp.start : 'Начать эфир'}</button>
       </div>`;
   }
 }

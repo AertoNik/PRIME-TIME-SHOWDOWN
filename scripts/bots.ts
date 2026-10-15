@@ -1,7 +1,7 @@
 // Scripted "players" for headless balance checks. They only use information
 // a human sees on screen (cards, energy, charge telegraphs) and react with a
 // human-like delay, so results approximate real play rather than perfect play.
-import { Match, type MatchConfig } from '../src/combat/Match';
+import { Match, type MatchConfig, type MatchMods } from '../src/combat/Match';
 import { CARDS, COMBOS } from '../src/config/cards';
 import { FIGHTERS } from '../src/config/fighters';
 import type { CardId, Difficulty, FighterId, RivalId } from '../src/config/types';
@@ -82,7 +82,7 @@ export interface RunResult {
   cardDamage: Map<CardId, number>;
 }
 
-export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[]): RunResult {
+export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[], mods?: MatchMods): RunResult {
   const m = new Match({
     fighter,
     deck: deck ?? FIGHTERS[fighter].defaultDeck,
@@ -91,6 +91,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
     seed,
     fans: 500,
     autoPlayer: mode === 'combo' ? undefined : AUTO[mode],
+    mods,
   });
   const st: BotState = { think: 0, react: -1, reactKey: '' };
   const events = new Map<string, number>();

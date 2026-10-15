@@ -71,6 +71,8 @@ export class FighterSim {
 
   hp: number;
   maxHp: number;
+  /** HP at the start of the fight (below max when Survival carries damage over). */
+  startHp: number;
   ko = false;
   victory = false;
 
@@ -145,6 +147,7 @@ export class FighterSim {
     this.look = look;
     this.maxHp = Math.round(def.stats.maxHp * hpMult);
     this.hp = this.maxHp;
+    this.startHp = this.hp;
     this.dmgMult = dmgMult;
     this.radius = radius;
   }

@@ -52,6 +52,13 @@ const checks: [string, boolean][] = [
   ['1.2.5: Vega added, locked, default deck', !s.fighters.vega.unlocked && s.fighters.vega.deck.join() === 'dash,shield,overdrive,charged_shot' && s.fighters.vega.wins === 0],
   ['1.2.5: old fighters unchanged', s.fighters.ray.wins === 5 && s.fighters.bruno.fans === 4100],
   ['1.2.5: Crash accepted as next rival', sanitize({ ...alpha10, nextRival: 'crash' }).nextRival === 'crash'],
+  // Alpha 1.3: game modes start empty on every old save; nothing else changes
+  ['1.3: old saves get empty Survival / Challenge records', s.modes.survival.runs === 0 && s.modes.survival.bestWave === 0 && s.modes.survival.active === null && Object.keys(s.modes.challenges).length === 0 && s11.modes.survival.runs === 0],
+  ['1.3: money, reputation and fighters untouched by the migration', s.money === alpha10.money && s.reputation === alpha10.reputation && s.fighters.ray.wins === 5],
+  ['1.3: mode records round-trip', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, modes: { survival: { runs: 4, completions: 1, bestWave: 5, bestScore: 402, firstClearPaid: true }, challenges: { spotlight: { attempts: 3, clears: 1, firstClearAt: 1790000000000, best: 86 } } } })));
+    return v.modes.survival.bestWave === 5 && v.modes.survival.firstClearPaid && v.modes.challenges.spotlight.firstClearAt === 1790000000000 && v.modes.challenges.spotlight.best === 86;
+  })()],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
 let ok = true;
