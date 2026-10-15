@@ -27,8 +27,8 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
       return { right: muzzle === 0 ? 0.36 : -0.36, fwd: 0.85 };
     case 'boom_cannon':
       return { right: 0.32, fwd: 1.15 };
-    case 'glitch_gauntlet':
-      return { right: 0.34, fwd: 0.9 };
+    case 'tech_carbine':
+      return { right: 0.2, fwd: 1.05 };
   }
 }
 
@@ -66,6 +66,10 @@ export class CombatSystem {
     if (f.ironSkinCd > 0) f.ironSkinCd -= dt;
     if (f.overclock > 0) f.overclock = Math.max(0, f.overclock - dt);
     if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
+    if (f.counterT > 0) {
+      f.counterT -= dt;
+      if (f.counterT <= 0) f.counterShots = 0;
+    }
     if (f.knockback > 0) f.knockback = Math.max(0, f.knockback - dt);
     if (f.glitch > 0) {
       f.glitch = Math.max(0, f.glitch - dt);
@@ -288,9 +292,27 @@ export class CombatSystem {
       }
       return;
     }
-    if (canShoot && f.wantFire && f.fireTimer <= 0) {
+    // Burst weapons finish their burst (re-aiming each shot) unless interrupted.
+    if (f.burstLeft > 0) {
+      if (!canShoot) {
+        f.burstLeft = 0;
+      } else {
+        f.burstTimer -= dt;
+        if (f.burstTimer <= 0) {
+          f.burstLeft--;
+          f.burstTimer = f.stats.attack.burst!.gap / Math.sqrt(f.fireRateMult());
+          this.fireAuto(f);
+        }
+      }
+    }
+    if (canShoot && f.wantFire && f.fireTimer <= 0 && f.burstLeft <= 0) {
       this.fireAuto(f);
-      f.fireTimer = f.stats.attack.interval / f.fireRateMult();
+      const atk = f.stats.attack;
+      if (atk.burst) {
+        f.burstLeft = atk.burst.count - 1;
+        f.burstTimer = atk.burst.gap / Math.sqrt(f.fireRateMult());
+      }
+      f.fireTimer = atk.interval / f.fireRateMult();
     }
   }
 
@@ -315,8 +337,14 @@ export class CombatSystem {
       muzzle = f.muzzleToggle;
     }
     const origin = this.muzzleWorld(f, muzzle, yaw);
-    const dmg = atk.damage * f.outgoingDamageMult();
-    const kind: ProjectileKind = atk.weapon === 'boom_cannon' ? 'pellet' : atk.weapon === 'glitch_gauntlet' ? 'orb' : 'auto';
+    // DASH counter: the next volley (whole burst for the carbine) hits harder.
+    const startsVolley = f.burstLeft <= 0;
+    let counter = f.counterShots > 0 && f.counterT > 0;
+    if (counter && startsVolley) f.counterShots--;
+    if (!startsVolley) counter = f.burstCounter;
+    f.burstCounter = counter;
+    const dmg = atk.damage * f.outgoingDamageMult() * (counter ? CARD_TUNING.dash.counterMult : 1);
+    const kind: ProjectileKind = atk.weapon === 'boom_cannon' ? 'pellet' : atk.weapon === 'tech_carbine' ? 'bolt' : 'auto';
     const n = atk.projectiles;
     for (let i = 0; i < n; i++) {
       const fan = n > 1 ? -atk.spread / 2 + (atk.spread * i) / (n - 1) : 0;
@@ -326,6 +354,7 @@ export class CombatSystem {
         falloff: atk.falloff,
         slowAmount: atk.slow?.amount ?? 0,
         slowDuration: atk.slow?.duration ?? 0,
+        crit: counter,
       });
     }
     f.m.shots++;
@@ -572,6 +601,7 @@ export class CombatSystem {
     }
     let dmg = h.damage;
     if (target.glitch > 0) dmg *= CARD_TUNING.system_overload.damageTakenMult;
+    if (h.kind !== 'dot' && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;
     dmg *= 1 - target.stats.armor;
     if (target.ironSkin > 0) dmg *= 1 - PASSIVE_TUNING.iron_skin.reduction;
 

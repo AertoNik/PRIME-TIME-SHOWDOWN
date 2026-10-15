@@ -86,7 +86,8 @@ export class BroadcastSystem {
           const comeback = this.host.playerHpFrac() < 0.35;
           if (comeback) amt += BROADCAST.comeback;
           this.add(amt, def.name);
-          this.host.emit({ type: 'reaction', text: def.name, tier: 3, sub: comeback ? 'COMEBACK!' : 'AMAZING COMBO!' });
+          const ultra = def.id === 'superstar' || def.id === 'electro_blast';
+          this.host.emit({ type: 'reaction', text: def.name, tier: 3, sub: comeback ? 'COMEBACK!' : ultra ? 'ULTRA COMBO!' : 'AMAZING COMBO!' });
           this.reactionCd = 1.4;
           if (def.rating > this.bestComboValue) {
             this.bestComboValue = def.rating;
@@ -113,6 +114,8 @@ export class BroadcastSystem {
             this.lastHeavy = this.host.time;
           } else if (e.kind === 'shock') {
             this.add(BROADCAST.shockHit, '');
+          } else if (e.kind === 'adrenaline') {
+            this.add(BROADCAST.flurryHit, '');
           }
         } else if (e.heavy) {
           this.add(BROADCAST.takenHeavy, '');

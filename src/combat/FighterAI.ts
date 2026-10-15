@@ -1,5 +1,5 @@
-import { ARENA, CARD_TUNING } from '../config/balance';
-import { CARDS } from '../config/cards';
+import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
+import { CARDS, COMBOS } from '../config/cards';
 import type { BehaviorDef, CardId, Side } from '../config/types';
 import { clamp } from '../core/math';
 import type { FighterSim } from './FighterSim';
@@ -9,8 +9,15 @@ export interface AIProfile {
   aimLead: number;
   aimError: number;
   dodgeSkill: number;
-  reaction: number;
+  /** Human-like reaction window to visible threats. */
+  reactMin: number;
+  reactMax: number;
+  /** Regular card decision cadence. */
+  decideMin: number;
+  decideMax: number;
   cardSmarts: number;
+  /** 0..1 how often the AI deliberately chains its own combos. */
+  comboPlanning: number;
   usesCards: boolean;
   behavior: BehaviorDef;
 }
@@ -22,10 +29,19 @@ interface Perceived {
   vz: number;
 }
 
+interface ComboPlan {
+  second: CardId;
+  until: number;
+}
+
 /**
- * Drives one fighter: range management, strafing, sidestepping, aiming and
- * (for the rival) card decisions. The player's own fighter uses the same
- * brain with `usesCards = false` — the producer plays the cards.
+ * Drives one fighter: range management (aware of the matchup), strafing
+ * with pauses, corner escape, sidestepping, aiming and — for the rival —
+ * card decisions with human reaction delays, variety and combo planning.
+ * The player's own fighter uses the same brain with `usesCards = false`.
+ *
+ * Fairness: the AI only reacts to things a player can see (charge
+ * telegraphs, projectiles in flight) and always after a reaction delay.
  */
 export class FighterAI {
   private m: Match;
@@ -33,6 +49,7 @@ export class FighterAI {
   readonly profile: AIProfile;
   private strafeDir: number;
   private strafeTimer: number;
+  private strafeAmt = 1;
   private decisionTimer: number;
   private aimTimer = 0;
   private dodgeX = 0;
@@ -47,6 +64,10 @@ export class FighterAI {
   private reactKind: 'windup' | 'incoming' = 'incoming';
   private surgeT = 0;
   private surgeTimer: number;
+  private plantT = 0;
+  private plantTimer: number;
+  private recent: CardId[] = [];
+  private plan: ComboPlan | null = null;
 
   constructor(m: Match, side: Side, profile: AIProfile) {
     this.m = m;
@@ -54,8 +75,9 @@ export class FighterAI {
     this.profile = profile;
     this.strafeDir = m.rng.sign();
     this.strafeTimer = m.rng.range(0.8, 2);
-    this.decisionTimer = 1.6 + m.rng.range(0, 1);
+    this.decisionTimer = 1.4 + m.rng.range(0, 1);
     this.surgeTimer = m.rng.range(3, 6);
+    this.plantTimer = m.rng.range(2.5, 5);
   }
 
   update(dt: number): void {
@@ -92,6 +114,34 @@ export class FighterAI {
     return { x: foe.x, z: foe.z, vx: foe.vx, vz: foe.vz };
   }
 
+  /** Preferred fighting distance for this matchup and situation. */
+  private desiredRange(f: FighterSim, foe: FighterSim): number {
+    const b = this.profile.behavior;
+    let desired = f.stats.preferredRange * b.rangeMult;
+    const myReach = f.stats.attack.range;
+    const foeReach = foe.stats.attack.range;
+    // Outranged fighters close in; longer-ranged fighters kite just outside
+    // the opponent's effective range (aggressive fighters ignore this).
+    if (b.id !== 'aggressive' && myReach > foeReach + 1.5) {
+      desired = Math.max(desired, Math.min(myReach * 0.85, foeReach + 1.4));
+    } else if (myReach < foeReach - 1.5) {
+      desired = Math.min(desired, f.stats.preferredRange);
+    }
+    if (f.overdrive > 0 || f.adrenaline > 0) desired *= 0.7;
+    // Exploit a disabled or drained opponent by pressing in.
+    if (foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover') desired *= 0.75;
+    // Low-health personalities
+    const losing = f.hpFrac < foe.hpFrac;
+    if (f.hpFrac < 0.3) {
+      if (b.id === 'aggressive' && foe.hpFrac < 0.4) desired *= 0.8; // all-in
+      else if (b.id === 'cautious' || (b.id === 'tactical' && losing)) desired *= 1.25;
+    } else if (b.retreatHp > 0 && f.hpFrac < b.retreatHp && losing) {
+      desired *= 1.2;
+    }
+    if (this.surgeT > 0) desired *= 0.65;
+    return clamp(desired, 1.7, 8.5);
+  }
+
   // ------------------------------------------------------------------- move
   private move(f: FighterSim, foe: FighterSim, t: Perceived, dt: number): void {
     const m = this.m;
@@ -102,30 +152,40 @@ export class FighterAI {
     const ux = dx / dist;
     const uz = dz / dist;
 
-    let desired = f.stats.preferredRange * b.rangeMult;
-    if (f.overdrive > 0 || f.adrenaline > 0) desired *= 0.7;
-    if (b.retreatHp > 0 && f.hpFrac < b.retreatHp && f.hpFrac < foe.hpFrac) desired *= 1.25;
-    // Periodic "surge": even cautious fighters push in sometimes so fights never stall.
+    // Periodic surge: even cautious fighters push in so fights never stall.
     this.surgeTimer -= dt;
     if (this.surgeTimer <= 0) {
       this.surgeT = m.rng.range(1.2, 2.2);
-      this.surgeTimer = m.rng.range(5, 9);
+      this.surgeTimer = m.rng.range(b.id === 'aggressive' ? 3.5 : 5, b.id === 'aggressive' ? 6 : 9);
     }
-    if (this.surgeT > 0) {
-      this.surgeT -= dt;
-      desired *= 0.65;
-    }
-    desired = clamp(desired, 1.7, 8.5);
+    if (this.surgeT > 0) this.surgeT -= dt;
+    const desired = this.desiredRange(f, foe);
 
     const band = 0.55;
     let radial = 0;
     if (dist > desired + band) radial = clamp((dist - desired) / 2, 0.35, 1);
     else if (dist < desired - band) radial = -clamp((desired - dist) / 2, 0.35, 1);
 
+    // Pursuit: lead a retreating opponent instead of trailing behind.
+    const foeAway = (foe.vx * ux + foe.vz * uz) / Math.max(0.1, foe.stats.moveSpeed);
+    if (radial > 0 && foeAway > 0.5 && b.id !== 'cautious') radial = Math.min(1, radial + 0.3);
+
+    // Strafing with varying intensity and short planted pauses (shooting stance)
     this.strafeTimer -= dt;
     if (this.strafeTimer <= 0) {
       if (m.rng.chance(0.55)) this.strafeDir *= -1;
       this.strafeTimer = m.rng.range(0.8, 2.3);
+      this.strafeAmt = m.rng.range(0.6, 1.15);
+    }
+    this.plantTimer -= dt;
+    if (this.plantTimer <= 0) {
+      this.plantT = m.rng.range(0.35, 0.75);
+      this.plantTimer = m.rng.range(b.id === 'aggressive' ? 4 : 2.8, b.id === 'aggressive' ? 7 : 5);
+    }
+    let strafe = b.strafe * this.strafeAmt;
+    if (this.plantT > 0) {
+      this.plantT -= dt;
+      strafe *= 0.15;
     }
     let tanX = -uz * this.strafeDir;
     let tanZ = ux * this.strafeDir;
@@ -138,23 +198,41 @@ export class FighterAI {
       tanZ = -tanZ;
     }
 
-    let mx = ux * radial + tanX * b.strafe;
-    let mz = uz * radial + tanZ * b.strafe;
+    let mx = ux * radial + tanX * strafe;
+    let mz = uz * radial + tanZ * strafe;
 
-    this.updateDodge(f, dt);
+    this.updateDodge(f);
     if (this.dodgeT > 0) {
       this.dodgeT -= dt;
       mx = this.dodgeX + mx * 0.15;
       mz = this.dodgeZ + mz * 0.15;
     }
 
-    // Soft walls
+    // Soft walls, plus a stronger pull out of corners.
     const wx = ARENA.halfX - 0.8;
     const wz = ARENA.halfZ - 0.8;
-    if (f.x > wx) mx -= (f.x - wx) * 1.2;
-    if (f.x < -wx) mx += (-wx - f.x) * 1.2;
-    if (f.z > wz) mz -= (f.z - wz) * 1.2;
-    if (f.z < -wz) mz += (-wz - f.z) * 1.2;
+    let walls = 0;
+    if (f.x > wx) {
+      mx -= (f.x - wx) * 1.2;
+      walls++;
+    }
+    if (f.x < -wx) {
+      mx += (-wx - f.x) * 1.2;
+      walls++;
+    }
+    if (f.z > wz) {
+      mz -= (f.z - wz) * 1.2;
+      walls++;
+    }
+    if (f.z < -wz) {
+      mz += (-wz - f.z) * 1.2;
+      walls++;
+    }
+    if (walls >= 2) {
+      const cl = Math.hypot(f.x, f.z) || 1;
+      mx -= (f.x / cl) * 0.9;
+      mz -= (f.z / cl) * 0.9;
+    }
 
     // Personal space (real foe position, not the perceived one)
     const rdx = foe.x - f.x;
@@ -169,13 +247,13 @@ export class FighterAI {
     if (len > 0.05) {
       f.intentX = mx / len;
       f.intentZ = mz / len;
-      f.intentSpeed = clamp(len, 0.55, 1);
+      f.intentSpeed = clamp(len, this.plantT > 0 ? 0.2 : 0.55, 1);
     } else {
       f.intentSpeed = 0;
     }
   }
 
-  private updateDodge(f: FighterSim, _dt: number): void {
+  private updateDodge(f: FighterSim): void {
     const m = this.m;
     if (this.considered.size > 300) this.considered.clear();
     for (const p of m.projectiles) {
@@ -235,7 +313,14 @@ export class FighterAI {
   private tryPlay(card: CardId): boolean {
     const i = this.has(card);
     if (i < 0) return false;
-    return this.m.playCard(this.side, i) === null;
+    const ok = this.m.playCard(this.side, i) === null;
+    if (ok) this.remember(card);
+    return ok;
+  }
+
+  private remember(card: CardId): void {
+    this.recent.unshift(card);
+    if (this.recent.length > 3) this.recent.pop();
   }
 
   private detectThreat(f: FighterSim, foe: FighterSim): { key: string; kind: 'windup' | 'incoming' } | null {
@@ -257,7 +342,7 @@ export class FighterAI {
       const rz = f.z - p.z;
       const vv = p.vx * p.vx + p.vz * p.vz;
       const tca = (rx * p.vx + rz * p.vz) / vv;
-      if (tca < 0 || tca > 0.5) continue;
+      if (tca < 0 || tca > 0.65) continue;
       const miss = Math.hypot(p.x + p.vx * tca - f.x, p.z + p.vz * tca - f.z);
       if (miss < f.radius + p.radius + 0.5) return { key: 'p' + p.id, kind: 'incoming' };
     }
@@ -270,13 +355,13 @@ export class FighterAI {
     const b = prof.behavior;
     const hand = m.hands[this.side];
 
-    // 1) Reactions to telegraphed danger.
+    // 1) Reactions to visible danger, after a human reaction delay.
     const threat = this.detectThreat(f, foe);
     if (threat && threat.key !== this.threatKey) {
       this.threatKey = threat.key;
       if (m.rng.chance(prof.dodgeSkill * b.dodgeMult)) {
         this.reactKind = threat.kind;
-        this.reactT = prof.reaction * m.rng.range(0.25, 0.6);
+        this.reactT = m.rng.range(prof.reactMin, prof.reactMax);
       } else {
         this.reactT = -1;
       }
@@ -285,36 +370,88 @@ export class FighterAI {
       this.reactT -= dt;
       if (this.reactT < 0) {
         if (this.reactKind === 'windup') {
-          // Interrupt if possible, otherwise brace.
+          // Interrupt if the charge is still going, otherwise brace.
           if (foe.action.kind === 'windup' && (this.tryPlay('shock') || this.tryPlay('system_overload') || this.tryPlay('shield'))) return;
-        } else {
-          if (this.tryPlay('dash') || this.tryPlay('shield')) return;
+        } else if (this.tryPlay('dash') || this.tryPlay('shield')) {
+          return;
         }
       }
     }
 
-    // 2) Regular decisions.
+    // 2) Finish a planned combo while its window is open.
+    if (this.plan) {
+      const p = this.plan;
+      if (m.time > p.until || m.combos.windowLeft(this.side, m.time) <= 0) {
+        this.plan = null;
+      } else if (!f.busy && hand.lockout <= 0 && hand.energy >= CARDS[p.second].cost && m.combos.wouldCombo(this.side, p.second, m.time)) {
+        const disrupted = foe.shield > 0 && (p.second === 'power_shot' || p.second === 'knockout');
+        if (!disrupted && this.tryPlay(p.second)) {
+          this.plan = null;
+          return;
+        }
+      }
+    }
+
+    // 3) Regular decisions at a human cadence.
     this.decisionTimer -= dt;
     if (this.decisionTimer > 0 || hand.lockout > 0 || f.busy) return;
-    this.decisionTimer = prof.reaction * m.rng.range(0.7, 1.3);
+    this.decisionTimer = m.rng.range(prof.decideMin, prof.decideMax);
+
+    // 3a) Open a combo when both halves are in hand and affordable within the window.
+    if (!this.plan && m.rng.chance(prof.comboPlanning * (b.comboHunter ? 1.15 : 0.8))) {
+      const regen = MATCH.energyPerSecond * hand.regenMult * MATCH.comboWindow * 0.75;
+      for (const c of COMBOS) {
+        const first = c.first.find((x) => this.has(x) >= 0);
+        const second = c.second.find((x) => this.has(x) >= 0);
+        if (!first || !second || first === second) continue;
+        const total = CARDS[first].cost + CARDS[second].cost;
+        if (hand.energy < CARDS[first].cost || hand.energy + regen < total) continue;
+        if (!this.comboMakesSense(c.id, f, foe)) continue;
+        if (this.tryPlay(first)) {
+          this.plan = { second, until: m.time + MATCH.comboWindow - 0.1 };
+          return;
+        }
+      }
+    }
 
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
-    let best = -1;
-    let bestScore = 0;
+    const scored: { i: number; s: number }[] = [];
     for (let i = 0; i < hand.hand.length; i++) {
       const card = hand.hand[i];
       const cost = CARDS[card].cost;
       if (hand.energy < cost) continue;
       let s = this.score(card, f, foe, dist);
       if (hand.energy - cost < b.energyReserve && s < 7) s *= 0.5;
+      // variety: repeating recent cards is boring and predictable
+      if (this.recent[0] === card) s -= 2.5;
+      else if (this.recent.includes(card)) s -= 1;
       s = s * (0.5 + 0.5 * prof.cardSmarts) + m.rng.range(-1, 1) * (1 - prof.cardSmarts) * 3;
       s *= b.cardEagerness;
-      if (s > bestScore) {
-        bestScore = s;
-        best = i;
-      }
+      if (s >= 5) scored.push({ i, s });
     }
-    if (best >= 0 && bestScore >= 5) m.playCard(this.side, best);
+    if (!scored.length) return;
+    scored.sort((a, c) => c.s - a.s);
+    // Usually the best option, sometimes the runner-up (keeps rivals from looping).
+    const pick = scored.length > 1 && m.rng.chance(0.38 - 0.25 * prof.cardSmarts) ? scored[1] : scored[0];
+    const card = hand.hand[pick.i];
+    if (m.playCard(this.side, pick.i) === null) this.remember(card);
+  }
+
+  private comboMakesSense(id: string, f: FighterSim, foe: FighterSim): boolean {
+    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    switch (id) {
+      case 'counter_strike':
+      case 'electro_blast':
+        return foe.shield <= 0 && dist < 10;
+      case 'iron_rush':
+        return dist < 5;
+      case 'phantom_step':
+        return f.hpFrac < 0.75;
+      case 'superstar':
+        return dist < f.stats.attack.range * 1.1 && foe.shield <= 0;
+      default:
+        return true;
+    }
   }
 
   private score(card: CardId, f: FighterSim, foe: FighterSim, dist: number): number {
@@ -325,45 +462,46 @@ export class FighterAI {
     const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
     const foeBlocking = foe.shield > 0 || foe.invuln > 0;
+    const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
     let s = 0;
     switch (card) {
       case 'dash':
-        if (b.comboHunter && hasHeavy && hand.energy >= 6) s = 4;
-        if (dist < 1.8) s += 2;
+        if (b.comboHunter && hasHeavy && hand.energy >= 6) s = 3.5;
+        if (dist < 1.8) s += 2.5;
+        if (f.hpFrac < 0.35 && threatened) s += 2;
         break;
       case 'power_shot':
         s = dist < 11 ? 4.5 : 0;
-        if (foeDisabled) s += 4;
+        if (foeDisabled) s += 4.5;
         if (foeBlocking) s -= 6;
         if (combo) s += 4;
-        if (foe.hp < 650) s += 2;
+        if (foe.hp < 700) s += 2.5;
         break;
       case 'knockout':
-        s = dist < 5.2 ? 5 : 1;
-        if (foeDisabled) s += 4;
+        s = dist < 4.8 ? 5.2 : 0.5;
+        if (foeDisabled) s += 4.5;
         if (foeBlocking) s -= 6;
         if (combo) s += 4;
         break;
       case 'shield':
         s = 1;
-        if ((foe.overdrive > 0 || foe.adrenaline > 0) && dist < foe.stats.attack.range) s += 4.5;
+        if (threatened && dist < foe.stats.attack.range) s += 4.5;
         if (f.hpFrac < 0.4) s += 1.5;
         if (b.id === 'cautious') s += 1.5;
-        if (b.comboHunter && this.has('overdrive') >= 0 && hand.energy >= 8) s += 2.5;
         if (f.shield > 0) s = -10;
         break;
       case 'smoke':
         s = 1.5;
         if (f.hpFrac < 0.5) s += 2.5;
-        if (foe.overdrive > 0 || foe.adrenaline > 0) s += 2;
-        if (b.comboHunter && this.has('dash') >= 0) s += 1.5;
+        if (threatened) s += 2;
+        if (b.id === 'cautious') s += 1;
         if (m.inOwnSmoke(f)) s = -10;
         break;
       case 'shock':
         s = 2.5;
         if (foe.shield > 0) s += 5;
-        if (foe.overdrive > 0 || foe.adrenaline > 0) s += 2;
-        if (b.comboHunter && hasHeavy && hand.energy >= 8) s += 3.5;
+        if (threatened) s += 2;
+        if (b.comboHunter && hasHeavy && hand.energy >= 8) s += 3;
         if (foe.stun > 0 || foe.invuln > 0) s = -6;
         break;
       case 'overdrive':
@@ -371,7 +509,7 @@ export class FighterAI {
         if (dist < f.stats.preferredRange * 1.5) s += 1.5;
         if (combo) s += 4;
         if (b.id === 'aggressive') s += 1.5;
-        if (this.has(f.def.signature) >= 0 && hand.energy >= 9) s += 2;
+        if (foe.hpFrac < 0.35) s += 1;
         if (f.overdrive > 0) s = -10;
         break;
       case 'adrenaline':
@@ -383,7 +521,7 @@ export class FighterAI {
       case 'system_overload':
         s = 4;
         if (m.hands[foe.side].energy >= 5) s += 2;
-        if (foe.overdrive > 0) s += 3;
+        if (threatened) s += 3;
         if (combo) s += 4;
         if (foe.glitch > 0 || foe.invuln > 0) s = -10;
         break;

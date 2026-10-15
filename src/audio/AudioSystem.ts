@@ -218,9 +218,11 @@ export class AudioSystem {
         this.tone({ type: 'sine', f0: 110, f1: 38, dur: 0.3, gain: 0.42 * v });
         this.tone({ type: 'square', f0: 220, f1: 60, dur: 0.12, gain: 0.08 * v });
         break;
-      case 'glitch_gauntlet':
-        this.tone({ type: 'sine', f0: 300, f1: 1400, dur: 0.16, gain: 0.12 * v });
-        this.tone({ type: 'triangle', f0: 600, f1: 2200, dur: 0.12, gain: 0.06 * v, delay: 0.02 });
+      case 'tech_carbine':
+        // crisp electronic tick per round of the burst
+        this.tone({ type: 'square', f0: 1100 + Math.random() * 120, f1: 520, dur: 0.06, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2200, q: 2 } });
+        this.tone({ type: 'sine', f0: 700, f1: 1500, dur: 0.05, gain: 0.05 * v });
+        this.noise({ dur: 0.035, gain: 0.05 * v, type: 'highpass', f0: 3500 });
         break;
     }
   }
@@ -241,8 +243,11 @@ export class AudioSystem {
   card(card: CardId): void {
     switch (card) {
       case 'dash':
-        this.noise({ dur: 0.28, gain: 0.3, type: 'bandpass', f0: 600, f1: 4000, q: 2 });
-        this.tone({ type: 'sine', f0: 300, f1: 900, dur: 0.18, gain: 0.08 });
+        // airy whoosh + low push
+        this.noise({ dur: 0.3, gain: 0.34, type: 'bandpass', f0: 500, f1: 4500, q: 2.2 });
+        this.noise({ dur: 0.18, gain: 0.14, type: 'highpass', f0: 3000, delay: 0.04 });
+        this.tone({ type: 'sine', f0: 140, f1: 70, dur: 0.16, gain: 0.22 });
+        this.tone({ type: 'sine', f0: 320, f1: 1100, dur: 0.2, gain: 0.07 });
         break;
       case 'power_shot':
         this.tone({ type: 'sawtooth', f0: 120, f1: 900, dur: 0.28, gain: 0.12, filter: { type: 'lowpass', f0: 600, f1: 5000 } });
@@ -286,6 +291,15 @@ export class AudioSystem {
     this.noise({ dur, gain, type: 'bandpass', f0: 3200, q: 3 });
     this.tone({ type: 'sawtooth', f0: 60, dur, gain: gain * 0.4, filter: { type: 'highpass', f0: 800 } });
     for (let i = 0; i < 5; i++) this.noise({ dur: 0.03, gain: gain * 0.8, type: 'highpass', f0: 4000, delay: Math.random() * dur * 0.8 });
+  }
+
+  /** Projectile glancing off an energy shield. */
+  deflect(heavy: boolean): void {
+    if (!this.throttle('deflect', 40)) return;
+    const f = heavy ? 1500 : 2300 + Math.random() * 500;
+    this.tone({ type: 'triangle', f0: f, f1: f * 0.55, dur: heavy ? 0.35 : 0.14, gain: heavy ? 0.14 : 0.07 });
+    this.tone({ type: 'sine', f0: f * 2.01, dur: 0.12, gain: 0.04 });
+    this.noise({ dur: 0.05, gain: 0.05, type: 'highpass', f0: 5000 });
   }
 
   block(perfect: boolean): void {
@@ -332,10 +346,16 @@ export class AudioSystem {
     [0, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(79 + n), dur: 0.15, gain: 0.06, delay: i * 0.05 }));
   }
 
-  combo(): void {
+  combo(ultra = false): void {
     [0, 4, 7, 12, 16].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(72 + n), dur: 0.16, gain: 0.08, delay: i * 0.05, filter: { type: 'lowpass', f0: 4000 } }));
     this.tone({ type: 'sawtooth', f0: NOTE(84), dur: 0.6, gain: 0.07, delay: 0.25, filter: { type: 'lowpass', f0: 3000 } });
-    this.cheer(0.9);
+    if (ultra) {
+      // bigger stinger: rising sweep + bright major chord + sub hit
+      this.tone({ type: 'sawtooth', f0: 200, f1: 1800, dur: 0.35, gain: 0.08, filter: { type: 'lowpass', f0: 600, f1: 6000, q: 5 } });
+      [0, 4, 7, 11, 14].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(79 + n), dur: 0.9, gain: 0.045, delay: 0.32, attack: 0.02, filter: { type: 'lowpass', f0: 3800 } }));
+      this.tone({ type: 'sine', f0: 110, f1: 40, dur: 0.5, gain: 0.5, delay: 0.3 });
+    }
+    this.cheer(ultra ? 1.3 : 0.9);
   }
 
   reaction(tier: number): void {
@@ -348,6 +368,8 @@ export class AudioSystem {
 
   cheer(amount: number): void {
     if (!this.throttle('cheer', 400)) return;
+    // a hotter show gets a louder crowd
+    amount *= 0.6 + this.intensity * 0.8;
     this.noise({ dur: 1.4 + amount, gain: 0.16 * amount, type: 'bandpass', f0: 1100, f1: 900, q: 0.7, attack: 0.15 });
     this.noise({ dur: 1.2 + amount, gain: 0.08 * amount, type: 'bandpass', f0: 2400, f1: 1800, q: 1.2, attack: 0.2 });
   }
@@ -373,6 +395,11 @@ export class AudioSystem {
   ko(playerWon: boolean): void {
     this.tone({ type: 'sine', f0: 100, f1: 25, dur: 1.2, gain: 0.7 });
     this.noise({ dur: 1.2, gain: 0.45, type: 'lowpass', f0: 3000, f1: 60 });
+    // ring-side bell
+    for (let i = 0; i < 3; i++) {
+      this.tone({ type: 'triangle', f0: 880, dur: 0.9, gain: 0.12, delay: 0.12 + i * 0.28 });
+      this.tone({ type: 'sine', f0: 2210, dur: 0.6, gain: 0.04, delay: 0.12 + i * 0.28 });
+    }
     if (playerWon) this.cheer(1.4);
     else this.ooh();
   }

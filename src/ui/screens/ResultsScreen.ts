@@ -27,7 +27,10 @@ export class ResultsScreen implements Screen {
     this.el = el('div', 'results');
     this.el.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
-      if (!t) return;
+      if (!t) {
+        this.skip?.();
+        return;
+      }
       const act = t.dataset.act;
       if (act === 'again') {
         this.g.audio.ui('confirm');
@@ -45,6 +48,8 @@ export class ResultsScreen implements Screen {
     });
   }
 
+  private skip: (() => void) | null = null;
+
   onShow(params?: unknown): void {
     const p = params as ResultsParams;
     const r = p.result;
@@ -53,14 +58,16 @@ export class ResultsScreen implements Screen {
     const titles = { win: 'ПОБЕДА', loss: 'ПОРАЖЕНИЕ', draw: 'НИЧЬЯ' };
     const methods = { ko: 'НОКАУТ', time: 'ПО ОЧКАМ · ВРЕМЯ ВЫШЛО', forfeit: 'ПРОДЮСЕР СНЯЛ БОЙЦА' };
     const grade = gradeFor(r.rating);
-    const bestCombo = r.bestCombo ? COMBOS.find((c) => c.id === r.bestCombo)!.name : '—';
     const lvlAfter = levelFor(this.g.save.data.reputation);
     const lvlBefore = levelFor(o.repBefore);
     const levelUp = o.levelAfter > o.levelBefore;
+    // quick, readable reveal (skippable with a tap)
+    const T0 = 0.45;
+    const STEP = 0.07;
     const lines = o.rewards.lines
       .map(
         (l, i) =>
-          `<div class="reward-line" style="animation-delay:${0.9 + i * 0.12}s">
+          `<div class="reward-line" style="animation-delay:${T0 + 0.3 + i * STEP}s">
             <span class="rl-label">${esc(l.label)}${l.note ? ` <span class="rl-note">· ${esc(l.note)}</span>` : ''}</span>
             <span class="rl-val ${l.kind}">${l.kind === 'money' ? (l.value ? '+' + formatMoney(l.value) : '') : '+' + formatNumber(l.value)}${l.kind === 'rep' ? ' ★' : ''}</span>
           </div>`,
@@ -72,37 +79,49 @@ export class ResultsScreen implements Screen {
         return `<div class="goal-done">${UI_ICONS.star}<div class="fill"><div class="h2" style="font-size:12px">Цель выполнена: ${esc(g.title)}</div><div class="muted" style="font-size:11px">Заберите $${g.reward.money} и +${g.reward.rep}★ в разделе «Карьера»</div></div></div>`;
       })
       .join('');
-    const delayAfterLines = 0.9 + o.rewards.lines.length * 0.12;
+    // combos landed this match, best first
+    const counts = new Map<string, number>();
+    for (const c of r.comboList) counts.set(c, (counts.get(c) ?? 0) + 1);
+    const comboChips = [...counts.entries()]
+      .sort((a, b) => (b[0] === r.bestCombo ? 1 : 0) - (a[0] === r.bestCombo ? 1 : 0) || b[1] - a[1])
+      .map(([id, n]) => {
+        const def = COMBOS.find((c) => c.id === id)!;
+        const ultra = id === 'superstar' || id === 'electro_blast';
+        return `<span class="combo-chip ${ultra ? 'ultra' : ''} ${id === r.bestCombo ? 'best' : ''}">${esc(def.name)}${n > 1 ? ` ×${n}` : ''}</span>`;
+      })
+      .join('');
+    const delayAfterLines = T0 + 0.3 + o.rewards.lines.length * STEP;
 
+    this.el.classList.remove('instant');
     this.el.innerHTML = `
       <div class="fill scroll" style="padding-top:4px">
         <div class="result-title">
           <div class="rt ${r.outcome}">${titles[r.outcome]}</div>
           <div class="rs">${methods[r.method]} · ${esc(f.name)} VS ${esc(this.g.rivalName(p.rival))}</div>
         </div>
+        <div class="reward-tiles" style="animation:lineIn .3s ease ${T0}s both">
+          <div class="rtile money"><span class="rv" data-total>+$0</span><span class="rk">Гонорар</span></div>
+          <div class="rtile fans"><span class="rv">+${formatNumber(o.rewards.fans)}</span><span class="rk">Фанаты</span></div>
+          <div class="rtile rep"><span class="rv">+${o.rewards.rep}★</span><span class="rk">Репутация</span></div>
+        </div>
         <div class="rating-card panel">
           <div class="grade ${grade}">${grade}</div>
           <div class="fill" style="min-width:0">
             <div class="label">Рейтинг шоу</div>
             <div class="rating-big"><span data-rating>0</span><span class="muted" style="font-size:15px">/100</span></div>
-            <div class="label" style="margin-top:4px">Пик ${r.peakRating} · Ср. ${r.avgRating}</div>
-            <div class="label" style="margin-top:6px">Комбо: <span style="color:var(--gold)">${esc(bestCombo)}</span></div>
+            <div class="label" style="margin-top:4px">Пик ${r.peakRating} · Среднее ${r.avgRating}</div>
+            <div class="label" style="margin-top:3px">Урон ${formatNumber(r.damageDealt)} · Идеальных реакций ${r.perfects}</div>
           </div>
         </div>
-        <div class="stats-grid">
-          <div class="kv"><div class="v">${formatNumber(r.damageDealt)}</div><div class="k">Урон нанесён</div></div>
-          <div class="kv"><div class="v">${r.combos}</div><div class="k">Комбо</div></div>
-          <div class="kv"><div class="v">${r.perfects}</div><div class="k">Идеальные приёмы</div></div>
+        <div class="section panel combos-panel">
+          <div class="section-title"><span class="h2">Комбо эфира · ${r.combos}</span><span class="label">${r.bestCombo ? 'лучшее — золотом' : ''}</span></div>
+          <div class="combo-chips">${comboChips || '<span class="muted" style="font-size:12px">Без комбо. Золотая подсветка карты подскажет момент.</span>'}</div>
         </div>
         <div class="section panel">
           <div class="section-title"><span class="h2">Гонорар продюсера</span><span class="label">почему столько</span></div>
           <div class="reward-list">${lines}</div>
-          <div class="total-row" style="animation:lineIn .3s ease ${delayAfterLines}s both">
-            <span class="h2">Итого</span>
-            <span class="display" style="font-size:20px;color:var(--gold)" data-total>+$0</span>
-          </div>
         </div>
-        <div class="section panel" style="animation:lineIn .35s ease ${delayAfterLines + 0.2}s both">
+        <div class="section panel" style="animation:lineIn .35s ease ${delayAfterLines}s both">
           <div class="row between">
             <span class="h2">${esc(f.name)}: фанаты</span>
             <span class="display" style="font-size:13px;color:#ff8ae6"><span data-fans>${formatNumber(o.fighterFansBefore)}</span></span>
@@ -128,18 +147,37 @@ export class ResultsScreen implements Screen {
     const totalEl = this.el.querySelector('[data-total]') as HTMLElement;
     const fansEl = this.el.querySelector('[data-fans]') as HTMLElement;
     const lvlBar = this.el.querySelector('[data-lvl]') as HTMLElement;
-    setTimeout(() => countUp(ratingEl, 0, r.rating, 1.1, (n) => String(Math.round(n))), 350);
-    setTimeout(
-      () => countUp(totalEl, 0, o.rewards.money, 1.0, (n) => '+' + formatMoney(n), () => this.g.audio.ui('coin')),
-      delayAfterLines * 1000,
+    const fansAfter = o.fighterFansBefore + o.rewards.fans;
+    const timers: number[] = [];
+    const later = (sec: number, fn: () => void) => timers.push(window.setTimeout(fn, sec * 1000));
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      timers.forEach((t) => clearTimeout(t));
+      this.el.classList.add('instant');
+      ratingEl.textContent = String(r.rating);
+      totalEl.textContent = '+' + formatMoney(o.rewards.money);
+      fansEl.textContent = `${formatNumber(fansAfter)}  (+${formatNumber(o.rewards.fans)})`;
+      lvlBar.style.transform = `scaleX(${lvlAfter.progress})`;
+    };
+    this.skip = finish;
+    later(0.25, () => countUp(ratingEl, 0, r.rating, 0.8, (n) => String(Math.round(n))));
+    later(T0, () => countUp(totalEl, 0, o.rewards.money, 0.8, (n) => '+' + formatMoney(n), () => this.g.audio.ui('coin')));
+    later(delayAfterLines, () =>
+      countUp(fansEl, o.fighterFansBefore, fansAfter, 0.7, (n) => formatNumber(n) + (n >= fansAfter - 0.5 ? `  (+${formatNumber(o.rewards.fans)})` : '')),
     );
-    setTimeout(
-      () => countUp(fansEl, o.fighterFansBefore, o.fighterFansBefore + o.rewards.fans, 1.0, (n) => formatNumber(n) + (n >= o.fighterFansBefore + o.rewards.fans - 0.5 ? `  (+${formatNumber(o.rewards.fans)})` : '')),
-      (delayAfterLines + 0.3) * 1000,
-    );
-    setTimeout(() => {
+    later(delayAfterLines + 0.2, () => {
       lvlBar.style.transform = `scaleX(${lvlAfter.progress})`;
       if (levelUp) this.g.audio.ui('level');
-    }, (delayAfterLines + 0.5) * 1000);
+    });
+    later(delayAfterLines + 1.2, () => {
+      finished = true;
+    });
+  }
+
+  onHide(): void {
+    this.skip?.();
+    this.skip = null;
   }
 }

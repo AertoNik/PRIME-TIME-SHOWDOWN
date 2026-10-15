@@ -51,6 +51,11 @@ export class BattleHUD implements Screen {
   private ratingFill!: HTMLElement;
   private ratingNum!: HTMLElement;
   private ratingMeter!: HTMLElement;
+  private tierEl!: HTMLElement;
+  private tierText = '';
+  private edgeGlow!: HTMLElement;
+  private hpBoxes: HTMLElement[] = [];
+  private energyNeedT = 0;
   private viewersEl!: HTMLElement;
   private pops!: HTMLElement;
   private slots: HTMLElement[] = [];
@@ -95,6 +100,7 @@ export class BattleHUD implements Screen {
     this.el.innerHTML = `
       <div class="fx-layer"></div>
       <div class="screen-flash"></div>
+      <div class="edge-glow"></div>
       <div class="vignette"></div>
       <div class="glitch-overlay"></div>
       <div class="hud-top">
@@ -126,7 +132,7 @@ export class BattleHUD implements Screen {
         <div class="rating-meter">
           <div class="fill" style="transform:scaleX(0.3)"></div>
           <div class="marks"><i style="left:50%"></i><i style="left:75%"></i><i style="left:90%"></i></div>
-          <div class="txt"><span>РЕЙТИНГ ШОУ</span><span data-rating>30</span></div>
+          <div class="txt"><span data-tier>РЕЙТИНГ · ТИХО</span><span data-rating>30</span></div>
         </div>
         <div class="viewers">${UI_ICONS.eye}<span data-viewers>0</span></div>
       </div>
@@ -153,6 +159,7 @@ export class BattleHUD implements Screen {
     this.glitchEl = q('.glitch-overlay');
     for (const side of [0, 1]) {
       const box = this.el.querySelectorAll('.hp-box')[side] as HTMLElement;
+      this.hpBoxes[side] = box;
       this.hpVal[side] = box.querySelector('.val') as HTMLElement;
       this.hpLag[side] = box.querySelector('.lag') as HTMLElement;
       this.hpNum[side] = q(`[data-hp="${side}"]`);
@@ -163,6 +170,8 @@ export class BattleHUD implements Screen {
     this.ratingMeter = q('.rating-meter');
     this.ratingFill = q('.rating-meter .fill');
     this.ratingNum = q('[data-rating]');
+    this.tierEl = q('[data-tier]');
+    this.edgeGlow = q('.edge-glow');
     this.viewersEl = q('[data-viewers]');
     this.pops = q('.rating-pops');
     this.bannerZone = q('.banner-zone');
@@ -212,6 +221,11 @@ export class BattleHUD implements Screen {
     (this.el.querySelector('[data-portrait="1"]') as HTMLElement).innerHTML = portraitHTML(g.portraits[rv.look], rv.theme.main, rv.theme.dark);
     (this.el.querySelector('[data-name="0"]') as HTMLElement).textContent = pf.name;
     (this.el.querySelector('[data-name="1"]') as HTMLElement).textContent = rv.name;
+    for (const side of [0, 1] as Side[]) {
+      // one tick per 1000 HP so damage reads at a glance
+      const bar = this.hpBoxes[side].querySelector('.hp-bar') as HTMLElement;
+      bar.style.setProperty('--tick', `${(1000 / m.fighters[side].maxHp) * 100}%`);
+    }
     this.rendered = [null, null, null];
     this.renderedNext = null;
     this.lag = [1, 1];
@@ -266,8 +280,9 @@ export class BattleHUD implements Screen {
       cardEl.classList.remove('shake');
       void cardEl.offsetWidth;
       cardEl.classList.add('shake');
+      if (res === 'energy') this.flashEnergyNeed(CARDS[card].cost);
       const msg: Record<string, string> = {
-        energy: `Нужно ${CARDS[card].cost} энергии`,
+        energy: '',
         stunned: 'Боец оглушён!',
         glitched: 'Система взломана!',
         busy: 'Боец занят',
@@ -275,6 +290,19 @@ export class BattleHUD implements Screen {
       };
       if (msg[res]) this.callout(0, msg[res], '#ff8a8a');
     }
+  }
+
+  /** Light up the segments the player is still missing. */
+  private flashEnergyNeed(cost: number): void {
+    const m = this.m;
+    if (!m) return;
+    const have = Math.floor(m.hands[0].energy);
+    const segs = this.energyBar.querySelectorAll('i');
+    segs.forEach((seg, i) => seg.classList.toggle('need', i >= have && i < cost));
+    this.energyBar.classList.remove('deny');
+    void this.energyBar.offsetWidth;
+    this.energyBar.classList.add('deny');
+    this.energyNeedT = 0.6;
   }
 
   private syncHand(force: boolean): void {
@@ -316,6 +344,7 @@ export class BattleHUD implements Screen {
       const f = m.fighters[side];
       const frac = f.hpFrac;
       this.hpVal[side].style.transform = `scaleX(${frac})`;
+      this.hpBoxes[side].classList.toggle('low', frac < 0.25 && !f.ko);
       this.lag[side] = this.lag[side] > frac ? damp(this.lag[side], frac, 3, dt) : frac;
       this.hpLag[side].style.transform = `scaleX(${this.lag[side]})`;
       const txt = `${Math.ceil(f.hp).toLocaleString('ru-RU')}`;
@@ -352,6 +381,15 @@ export class BattleHUD implements Screen {
     const rTxt = String(Math.round(this.displayRating));
     if (this.ratingNum.textContent !== rTxt) this.ratingNum.textContent = rTxt;
     this.ratingMeter.classList.toggle('hot', rt >= 75);
+    const tier = rt >= 75 ? 'РЕЙТИНГ · PRIME TIME' : rt >= 50 ? 'РЕЙТИНГ · ЖАРКО' : rt >= 32 ? 'РЕЙТИНГ · ИНТЕРЕСНО' : 'РЕЙТИНГ · ТИХО';
+    if (tier !== this.tierText) {
+      this.tierText = tier;
+      this.tierEl.textContent = tier;
+    }
+    if (this.energyNeedT > 0) {
+      this.energyNeedT -= dt;
+      if (this.energyNeedT <= 0) this.energyBar.querySelectorAll('i.need').forEach((s) => s.classList.remove('need'));
+    }
     const viewers = formatNumber(m.broadcast.viewers(m.cfg.fans));
     if (this.viewersEl.textContent !== viewers) this.viewersEl.textContent = viewers;
 
@@ -400,6 +438,7 @@ export class BattleHUD implements Screen {
     }
     const win = m.combos.windowLeft(0, m.time);
     this.comboStrip.classList.toggle('on', !!comboPrimed && win > 0);
+    this.comboStrip.classList.toggle('urgent', !!comboPrimed && win > 0 && win < 1);
     if (comboPrimed) {
       this.comboName.textContent = `КОМБО: ${comboPrimed}`;
       this.comboTrack.style.transform = `scaleX(${win / MATCH.comboWindow})`;
@@ -497,7 +536,8 @@ export class BattleHUD implements Screen {
   }
 
   private showBanner(b: Banner): void {
-    const e = el('div', `banner t${b.tier}${b.text.length > 14 ? ' long' : ''}`, `<span class="bt">${esc(b.text)}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}`);
+    const ultra = b.text === 'ELECTRO BLAST' || b.text === 'SUPERSTAR MOVE';
+    const e = el('div', `banner t${b.tier}${b.text.length > 12 ? ' long' : ''}${ultra ? ' ultra' : ''}`, `<span class="bt">${esc(b.text)}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}`);
     this.bannerZone.innerHTML = '';
     this.bannerZone.appendChild(e);
     this.bannerT = b.tier >= 3 ? 1.3 : 0.9;
@@ -627,6 +667,12 @@ export class BattleHUD implements Screen {
         if (e.side === 1) {
           const c = COMBOS.find((x) => x.id === e.combo)!;
           this.callout(1, c.name, '#ff8a7a');
+        } else {
+          const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
+          this.edgeGlow.className = 'edge-glow';
+          void this.edgeGlow.offsetWidth;
+          this.edgeGlow.className = 'edge-glow on' + (ultra ? ' ultra' : '');
+          vibrate(ultra ? [20, 40, 30] : 18);
         }
         break;
       case 'rating':

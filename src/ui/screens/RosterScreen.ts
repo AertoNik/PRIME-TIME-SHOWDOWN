@@ -131,8 +131,17 @@ export class RosterScreen implements Screen {
           : `<button class="btn teal wide" data-act="select">Выбрать бойца</button>`;
     } else {
       const c = g.career.canSign(id);
-      action = `<button class="btn wide ${c.ok ? '' : 'disabled'}" data-act="sign"><span class="shine"></span>Подписать контракт · $${f.contract!.cost}</button>
-        ${c.ok ? '' : `<div class="center muted" style="font-size:12px;margin-top:8px">${esc(c.reason)}</div>`}`;
+      const lvl = g.career.level().level;
+      const needLvl = f.contract!.level;
+      const cost = f.contract!.cost;
+      const lvlOk = lvl >= needLvl;
+      const moneyOk = s.money >= cost;
+      action = `<div class="req-list">
+          <span class="req ${lvlOk ? 'ok' : ''}">${lvlOk ? '✓' : '✗'} Уровень продюсера ${needLvl}${lvlOk ? '' : ` · у вас ${lvl}`}</span>
+          <span class="req ${moneyOk ? 'ok' : ''}">${moneyOk ? '✓' : '✗'} Бюджет $${cost}${moneyOk ? '' : ` · у вас $${Math.floor(s.money)}`}</span>
+        </div>
+        <button class="btn wide ${c.ok ? '' : 'disabled'}" data-act="sign"><span class="shine"></span>Подписать контракт · $${cost}</button>
+        ${c.ok ? '' : `<div class="center muted" style="font-size:11.5px;margin-top:8px">Побеждайте в эфирах, чтобы заработать репутацию и деньги</div>`}`;
     }
 
     this.el.innerHTML = `
@@ -153,10 +162,11 @@ export class RosterScreen implements Screen {
             <div class="fnick" style="color:${f.theme.accent}">«${esc(f.nickname)}»</div>
           </div>
           <div style="text-align:right">
-            <span class="chip ${fp.unlocked ? 'teal' : 'orange'}">${fp.unlocked ? 'В составе' : 'Свободный агент'}</span>
+            <span class="chip ${s.selected === id ? 'gold' : fp.unlocked ? 'teal' : 'orange'}">${s.selected === id ? '★ Выбран' : fp.unlocked ? 'В составе' : 'Свободный агент'}</span>
             <div class="label" style="margin-top:6px">${esc(f.style)}</div>
           </div>
         </div>
+        <div class="proscons">${f.strengths.map((x) => `<span class="pro">+ ${esc(x)}</span>`).join('')}${f.weaknesses.map((x) => `<span class="con">− ${esc(x)}</span>`).join('')}</div>
         <p>${esc(f.bio)}</p>
         <div class="stat-bars">${bars}</div>
         <div class="ability">

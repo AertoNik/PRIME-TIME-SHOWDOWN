@@ -27,6 +27,8 @@ export class Abilities {
         f.action = { kind: 'dash', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: t.distance / t.duration, style: f.def.dashStyle };
         f.invuln = Math.max(f.invuln, t.invuln);
         f.lastDash = m.time;
+        f.counterShots = f.stats.attack.alternate ? 2 : 1;
+        f.counterT = t.counterWindow;
         f.readDash =
           foe.action.kind === 'windup' ||
           foe.action.kind === 'rush' ||

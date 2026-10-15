@@ -33,6 +33,12 @@ export class CameraRig {
   private trauma = 0;
   private punch = 0;
   private t = 0;
+  private distGoal = 18;
+  /** 1 = full camera motion, 0.5 = reduced, 0 = no shake/kicks/accents. */
+  intensity = 1;
+  private accentT = 0;
+  private accentStrength = 0;
+  private accentPos = new Vector3();
 
   // showcase
   showcasePos = new Vector3(0, 0, 0);
@@ -63,14 +69,24 @@ export class CameraRig {
   snapBattle(a: Vector3, b: Vector3): void {
     this.bTarget.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2);
     this.bDist = this.requiredDistance(this.bTarget, [a, b]);
+    this.distGoal = this.bDist;
+    this.accentT = 0;
   }
 
   addTrauma(v: number): void {
-    this.trauma = Math.min(1, this.trauma + v);
+    this.trauma = Math.min(1, this.trauma + v * this.intensity);
   }
 
   kick(v: number): void {
-    this.punch = Math.min(1.5, this.punch + v);
+    this.punch = Math.min(1.5, this.punch + v * this.intensity);
+  }
+
+  /** Brief push toward a highlight (combo payoff). Fully skipped when motion is off. */
+  focusAccent(p: Vector3, strength: number): void {
+    if (this.intensity <= 0) return;
+    this.accentPos.copy(p);
+    this.accentStrength = strength * this.intensity;
+    this.accentT = 0.75;
   }
 
   /** Distance needed so both fighters (feet + heads) fit the HUD-safe area. */
@@ -115,13 +131,24 @@ export class CameraRig {
   }
 
   private battlePose(a: Vector3, b: Vector3, dt: number): Pose {
-    const tx = clamp((a.x + b.x) / 2, -3.2, 3.2);
-    const tz = clamp((a.z + b.z) / 2, -5.2, 5.2);
+    let tx = clamp((a.x + b.x) / 2, -3.2, 3.2);
+    let tz = clamp((a.z + b.z) / 2, -5.2, 5.2);
+    // combo accent: lean the frame toward the highlight for a beat
+    let accent = 0;
+    if (this.accentT > 0) {
+      this.accentT = Math.max(0, this.accentT - dt);
+      const p = 1 - this.accentT / 0.75;
+      accent = Math.sin(Math.min(1, p * 1.6) * Math.PI) * this.accentStrength;
+      tx += (this.accentPos.x - tx) * 0.3 * accent;
+      tz += (this.accentPos.z - tz) * 0.3 * accent;
+    }
     this.bTarget.x = damp(this.bTarget.x, tx, 2.6, dt);
     this.bTarget.z = damp(this.bTarget.z, tz, 2.6, dt);
     const req = this.requiredDistance(this.bTarget, [a, b]);
-    this.bDist = damp(this.bDist, req, req > this.bDist ? 3 : 0.9, dt);
-    const d = this.bDist;
+    // hysteresis: zoom out promptly, zoom in only for meaningful changes
+    if (req > this.distGoal || this.distGoal - req > 1.2) this.distGoal = req;
+    this.bDist = damp(this.bDist, this.distGoal, this.distGoal > this.bDist ? 3 : 0.8, dt);
+    const d = this.bDist * (1 - 0.1 * accent);
     return {
       pos: new Vector3(this.bTarget.x, Math.sin(PITCH) * d, this.bTarget.z + Math.cos(PITCH) * d),
       look: this.bTarget.clone(),

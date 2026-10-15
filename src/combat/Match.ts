@@ -1,7 +1,7 @@
 import { ARENA, BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
 import { CARDS } from '../config/cards';
 import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS } from '../config/fighters';
-import type { Behavior, CardId, ComboDef, Difficulty, DifficultyDef, FighterId, RivalDef, RivalId, Side } from '../config/types';
+import type { Behavior, CardId, ComboDef, ComboId, Difficulty, DifficultyDef, FighterId, RivalDef, RivalId, Side } from '../config/types';
 import { Rng } from '../core/math';
 import { Abilities } from './Abilities';
 import { BroadcastSystem, type BroadcastHost } from './BroadcastSystem';
@@ -66,6 +66,7 @@ export class Match implements BroadcastHost {
   private idSeq = 1;
   private countdown = 4;
   private deferred: [Deferred | null, Deferred | null] = [null, null];
+  private playerCombos: ComboId[] = [];
 
   constructor(cfg: MatchConfig) {
     this.cfg = cfg;
@@ -98,7 +99,11 @@ export class Match implements BroadcastHost {
           aimLead: PILOT.aimLead,
           aimError: PILOT.aimError,
           dodgeSkill: auto.dodge,
-          reaction: auto.reaction,
+          reactMin: auto.reaction * 0.7,
+          reactMax: auto.reaction * 1.2,
+          decideMin: auto.reaction,
+          decideMax: auto.reaction * 1.6,
+          comboPlanning: auto.smarts,
           cardSmarts: auto.smarts,
           usesCards: true,
           behavior: auto.eagerness
@@ -109,7 +114,11 @@ export class Match implements BroadcastHost {
           aimLead: PILOT.aimLead,
           aimError: PILOT.aimError,
           dodgeSkill: PILOT.dodgeSkill,
-          reaction: 0.4,
+          reactMin: 0.3,
+          reactMax: 0.5,
+          decideMin: 1,
+          decideMax: 1,
+          comboPlanning: 0,
           cardSmarts: 1,
           usesCards: false,
           behavior: BEHAVIORS.tactical,
@@ -118,7 +127,11 @@ export class Match implements BroadcastHost {
       aimLead: d.aimLead,
       aimError: d.aimError,
       dodgeSkill: d.dodgeSkill,
-      reaction: d.reaction,
+      reactMin: d.reactMin,
+      reactMax: d.reactMax,
+      decideMin: d.decideMin,
+      decideMax: d.decideMax,
+      comboPlanning: d.comboPlanning,
       cardSmarts: d.cardSmarts,
       usesCards: true,
       behavior: BEHAVIORS[this.rival.behavior],
@@ -135,6 +148,10 @@ export class Match implements BroadcastHost {
   emit(e: MatchEvent): void {
     this.events.push(e);
     this.broadcast.onEvent(e);
+    // Reading an attack with DASH pays back energy.
+    if (e.type === 'dodge' && e.perfect && this.time - this.fighters[e.side].lastDash < 1.0) {
+      this.hands[e.side].gain(CARD_TUNING.dash.perfectRefund);
+    }
   }
 
   drainEvents(): MatchEvent[] {
@@ -285,6 +302,7 @@ export class Match implements BroadcastHost {
     this.emit({ type: 'card', side, card, combo: combo?.id ?? null });
     if (combo) {
       f.m.combos++;
+      if (side === 0) this.playerCombos.push(combo.id);
       this.emit({ type: 'combo', side, combo: combo.id });
       if (f.def.passive === 'overclock') {
         hand.gain(PASSIVE_TUNING.overclock.energy);
@@ -401,6 +419,7 @@ export class Match implements BroadcastHost {
       avgRating: Math.round(this.broadcast.average),
       bestCombo: this.broadcast.bestCombo,
       combos: p.m.combos,
+      comboList: this.playerCombos.slice(),
       perfects: p.m.perfects,
       damageDealt: p.m.damageDealt,
       damageTaken: p.m.damageTaken,

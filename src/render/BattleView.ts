@@ -1,7 +1,9 @@
 import {
   AdditiveBlending,
   Color,
+  DoubleSide,
   Group,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
@@ -10,9 +12,10 @@ import {
   SpriteMaterial,
   Vector3,
 } from 'three';
+import { RECOIL } from '../config/animation';
 import { ARENA } from '../config/balance';
 import { CARDS } from '../config/cards';
-import type { Side } from '../config/types';
+import type { Side, WeaponType } from '../config/types';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
 import type { MatchEvent, Projectile } from '../combat/types';
@@ -22,7 +25,7 @@ import type { CameraRig } from './CameraRig';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache } from './ModelCache';
 import type { Renderer } from './Renderer';
-import { glowTexture, shadowTexture, teamRingTexture } from './textures';
+import { glowTexture, shadowTexture, streakTexture, teamRingTexture } from './textures';
 import type { FighterFX, VFX } from './VFX';
 
 export const TEAM_COLORS: [Color, Color] = [new Color(0x2ad8ff), new Color(0xff3a3a)];
@@ -37,6 +40,11 @@ interface ProjVis {
   group: Group;
   core: Mesh;
   coreMat: MeshBasicMaterial;
+  streak: Mesh;
+  streakMat: MeshBasicMaterial;
+  streakLen: number;
+  streakWidth: number;
+  flicker: boolean;
   glow: Sprite;
   glowMat: SpriteMaterial;
   ring: Sprite;
@@ -56,12 +64,17 @@ interface Slot {
   pos: Vector3;
   stunArcT: number;
   emberT: number;
+  trailT: number;
   koHandled: boolean;
   victoryDelay: number;
 }
 
 const _v = new Vector3();
 const _v2 = new Vector3();
+const _v3 = new Vector3();
+const _m4 = new Matrix4();
+const _xa = new Vector3();
+const _za = new Vector3();
 const _c = new Color();
 const rng = new Rng(99);
 
@@ -91,19 +104,33 @@ export class BattleView {
     this.timeFx = timeFx;
     r.scene.add(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
+    const streakGeo = new PlaneGeometry(1, 1);
+    streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
     for (let i = 0; i < 48; i++) {
       const g = new Group();
       g.visible = false;
       const coreMat = new MeshBasicMaterial({ color: 0xffffff });
       const core = new Mesh(coreGeo, coreMat);
       g.add(core);
+      const streakMat = new MeshBasicMaterial({
+        map: streakTexture(),
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+      const streak = new Mesh(streakGeo, streakMat);
+      streak.matrixAutoUpdate = false;
+      streak.frustumCulled = false;
+      streak.renderOrder = 6;
+      g.add(streak);
       const glowMat = new SpriteMaterial({ map: glowTexture(), blending: AdditiveBlending, depthWrite: false, transparent: true });
       const glow = new Sprite(glowMat);
       g.add(glow);
       const ring = new Sprite(new SpriteMaterial({ map: glowTexture(), blending: AdditiveBlending, depthWrite: false, transparent: true }));
       g.add(ring);
       this.root.add(g);
-      this.pvis.push({ group: g, core, coreMat, glow, glowMat, ring, id: -1, y: 1.1, used: false });
+      this.pvis.push({ group: g, core, coreMat, streak, streakMat, streakLen: 1, streakWidth: 0.15, flicker: false, glow, glowMat, ring, id: -1, y: 1.1, used: false });
     }
   }
 
@@ -147,7 +174,7 @@ export class BattleView {
       const input = defaultInput();
       input.combat = true;
       input.maxSpeed = f.stats.moveSpeed;
-      this.slots.push({
+      const slot: Slot = {
         side: f.side,
         model,
         fx,
@@ -158,9 +185,33 @@ export class BattleView {
         pos: new Vector3(f.x, 0, f.z),
         stunArcT: 0,
         emberT: 0,
+        trailT: 0,
         koHandled: false,
         victoryDelay: -1,
-      });
+      };
+      this.slots.push(slot);
+      fx.trail.color.copy(accent);
+      fx.trail.clear();
+      model.anim.events = {
+        onStep: () => this.vfx.stepDust(slot.pos.x, slot.pos.z),
+        onLand: (strength) => {
+          this.vfx.landImpact(slot.pos.x, slot.pos.z, strength, slot.accent);
+          if (strength > 0.6) {
+            this.vfx.scorch(slot.pos.x, slot.pos.z, 2.2, 3.5);
+            this.cam.addTrauma(0.3);
+          }
+        },
+        onFlourish: () => {
+          const p = slot.pos;
+          if (model.anim.victoryStyle === 'flex') {
+            this.vfx.landImpact(p.x, p.z, 1, _c.set(0xff7a1a));
+            this.cam.addTrauma(0.2);
+          } else {
+            this.vfx.burst(p.x, 1.6, p.z, slot.accent, 30, 5, 0.18, 0.5, 2.6, 0, 1);
+            this.vfx.rays(p.x, 1.3, p.z, slot.accent, 1, 3.2, 0.5, 1.6);
+          }
+        },
+      };
     }
     this.vfx.glitch[0].setColor(new Color(0xff4fd8));
     this.vfx.glitch[1].setColor(new Color(0xff4fd8));
@@ -179,6 +230,9 @@ export class BattleView {
 
   teardown(): void {
     for (const s of this.slots) {
+      s.model.anim.events = {};
+      s.fx.trail.clear();
+      s.fx.starsOn = 0;
       this.root.remove(s.model.rig.root);
       this.root.remove(s.teamRing);
       this.root.remove(s.shadow);
@@ -340,6 +394,29 @@ export class BattleView {
     const g = this.vfx.glitch[s.side];
     g.on = damp(g.on, f.glitch > 0 ? 1 : 0, 8, dt);
     g.update(this.t, x, z);
+    fx.starsOn = damp(fx.starsOn, f.stun > 0 && f.glitch <= 0 && !f.ko ? 1 : 0, 10, dt);
+
+    // motion trail: dashes, charges and speed buffs
+    if (s.trailT > 0) s.trailT -= dt;
+    const fast = Math.hypot(f.vx, f.vz) > f.stats.moveSpeed * 1.05;
+    const buffed = (f.overdrive > 0 || f.adrenaline > 0 || f.momentum > 0) && fast;
+    const emit = !f.ko && (s.trailT > 0 || f.action.kind === 'rush' || buffed);
+    const tr = fx.trail;
+    if (f.action.kind === 'rush') {
+      tr.width = 1.1;
+      tr.color.set(0xff5a2a);
+    } else if (s.trailT > 0) {
+      tr.width = 0.9;
+      tr.color.copy(s.accent);
+    } else if (f.overdrive > 0) {
+      tr.width = 0.5;
+      tr.color.set(0xff7a1a);
+    } else {
+      tr.width = 0.45;
+      tr.color.copy(s.accent);
+    }
+    _v3.set(x, 1.0, z);
+    tr.update(dt, _v3, emit, this.r.camera.position);
 
     // continuous emitters
     if (f.stun > 0 && !f.ko) {
@@ -370,33 +447,55 @@ export class BattleView {
     v.y = Math.max(0.7, Math.min(1.5, muzzle.y));
     const accent = s.accent;
     const enemy = p.owner === 1;
-    let r = p.radius;
-    let elong = 2.6;
-    if (p.kind === 'pellet') {
-      r = 0.12;
-      elong = 3.2;
-    } else if (p.kind === 'orb') {
-      r = 0.2;
-      elong = 1.2;
-    } else if (p.kind === 'power') {
-      r = 0.32;
-      elong = 1.6;
-    } else if (p.kind === 'adrenaline') {
-      r = 0.13;
-      elong = 4;
-    } else {
-      r = 0.11;
-      elong = 3.4;
+    // Per-weapon tracer identity: thin pistol needles, short hot pellets,
+    // flickering carbine bolts, fat power shots.
+    let r = 0.11;
+    let elong = 3.4;
+    v.flicker = false;
+    switch (p.kind) {
+      case 'pellet':
+        r = 0.1;
+        elong = 2.6;
+        v.streakLen = 0.8;
+        v.streakWidth = 0.17;
+        break;
+      case 'bolt':
+        r = 0.12;
+        elong = 2.2;
+        v.streakLen = 1.05;
+        v.streakWidth = 0.16;
+        v.flicker = true;
+        break;
+      case 'power':
+        r = 0.32;
+        elong = 1.6;
+        v.streakLen = 2.9;
+        v.streakWidth = 0.62;
+        break;
+      case 'adrenaline':
+        r = 0.12;
+        elong = 4;
+        v.streakLen = 2.2;
+        v.streakWidth = 0.2;
+        break;
+      default:
+        r = 0.095;
+        elong = 3.6;
+        v.streakLen = 1.6;
+        v.streakWidth = 0.14;
     }
     v.core.scale.set(r, r, r * elong);
     v.coreMat.color.copy(accent).lerp(_c.set(0xffffff), 0.55).multiplyScalar(p.kind === 'power' ? 4 : 3);
     _c.copy(accent);
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
-    v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.6);
-    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'orb' ? 1.1 : 0.75);
-    v.ring.visible = p.kind === 'power' || p.kind === 'orb';
+    if (p.electric) _c.set(0xffe14d);
+    v.streakMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.9);
+    v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.4);
+    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'pellet' ? 0.6 : 0.6);
+    v.ring.visible = p.kind === 'power';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
-    v.ring.scale.setScalar(p.kind === 'power' ? 3.2 : 1.6);
+    v.ring.scale.setScalar(3.2);
+    v.streak.visible = true;
   }
 
   private syncProjectile(v: ProjVis, p: Projectile, alpha: number, dt: number): void {
@@ -405,13 +504,23 @@ export class BattleView {
     v.y = damp(v.y, ARENA.shotHeight + (p.kind === 'power' ? 0.1 : 0), 6, dt);
     v.group.position.set(x, v.y, z);
     v.core.rotation.set(0, Math.atan2(p.vx, p.vz), 0);
-    if (p.kind === 'orb') {
-      const s = 1 + Math.sin(this.t * 30 + p.id) * 0.15;
-      v.glow.scale.setScalar(1.1 * s);
-    }
-    // trails
+
+    // camera-facing tracer streak oriented along travel
+    const sp = Math.hypot(p.vx, p.vz) || 1;
+    _v.set(p.vx / sp, 0, p.vz / sp);
+    _za.subVectors(this.r.camera.position, v.group.position);
+    _za.addScaledVector(_v, -_za.dot(_v)).normalize();
+    _xa.crossVectors(_v, _za).normalize();
+    const len = Math.min(v.streakLen, p.traveled + 0.25);
+    const w = v.streakWidth * (v.flicker ? 0.75 + 0.5 * Math.abs(Math.sin(this.t * 55 + p.id)) : 1);
+    _m4.makeBasis(_xa, _v, _za);
+    _m4.scale(_v2.set(w, len, 1));
+    v.streak.matrix.copy(_m4);
+    v.streak.matrixWorldNeedsUpdate = true;
+
+    // sparse particle wake (power shots and bolts only — tracers do the rest)
     const s = this.slots[p.owner];
-    const n = p.kind === 'power' ? 3 : p.kind === 'orb' ? 1 : rng.chance(0.6) ? 1 : 0;
+    const n = p.kind === 'power' ? 3 : p.kind === 'bolt' && rng.chance(0.5) ? 1 : 0;
     for (let i = 0; i < n; i++) {
       this.vfx.sparks.spawn(
         x - p.vx * 0.01 + rng.range(-0.05, 0.05),
@@ -420,8 +529,8 @@ export class BattleView {
         -p.vx * 0.05 + rng.range(-0.4, 0.4),
         rng.range(-0.2, 0.4),
         -p.vz * 0.05 + rng.range(-0.4, 0.4),
-        p.kind === 'power' ? 0.35 : 0.18,
-        p.kind === 'power' ? 0.45 : 0.18,
+        p.kind === 'power' ? 0.35 : 0.2,
+        p.kind === 'power' ? 0.45 : 0.14,
         0.02,
         p.electric ? _c.set(0xffe14d) : s.accent,
         2,
@@ -455,13 +564,16 @@ export class BattleView {
         s.model.anim.fire(e.muzzle, heavy);
         const mz = s.model.rig.muzzles[e.muzzle] ?? s.model.rig.muzzles[0];
         mz.getWorldPosition(_v);
-        this.vfx.muzzle(_v, e.dx, e.dz, s.accent, heavy, e.weapon === 'boom_cannon');
+        this.vfx.muzzleFor(e.weapon, _v, e.dx, e.dz, s.accent, heavy);
+        const rp = RECOIL[e.weapon];
         if (heavy) {
           this.cam.kick(0.4);
           this.cam.addTrauma(0.18);
           this.r.pulseFlash(s.accent.getHex(), 1.2);
+        } else if (rp.shake > 0) {
+          this.cam.addTrauma(rp.shake * (e.side === 0 ? 0.6 : 1));
+          if (e.weapon === 'boom_cannon') this.r.pulseFlash(0xffb060, 0.35);
         }
-        if (e.weapon === 'boom_cannon' && !heavy) this.cam.addTrauma(0.06);
         break;
       }
       case 'hit': {
@@ -474,7 +586,8 @@ export class BattleView {
           this.vfx.burst(p.x, p.y, p.z, _c.set(0xff4fd8), 4, 3, 0.12, 0.3, 2);
           break;
         }
-        this.vfx.impact(p.x + e.dx * -0.3, p.y, p.z + e.dz * -0.3, col, e.heavy, e.crit);
+        const weapon: WeaponType | null = e.kind === 'auto' || e.kind === 'adrenaline' ? src.model.rig.look.weapon : null;
+        this.vfx.impactFor(weapon, p.x + e.dx * -0.3, p.y, p.z + e.dz * -0.3, col, e.heavy, e.crit);
         if (e.electric) {
           for (let i = 0; i < 4; i++) {
             const a = rng.range(0, 6.28);
@@ -483,15 +596,15 @@ export class BattleView {
           }
         }
         if (e.heavy) {
-          this.cam.addTrauma(e.crit ? 0.55 : 0.42);
-          this.cam.kick(e.crit ? 1 : 0.6);
-          this.requestTime(0, e.crit ? 0.11 : 0.07);
-          this.r.pulseFlash(col.getHex(), e.crit ? 2.2 : 1.4);
+          this.cam.addTrauma(e.crit ? 0.5 : 0.36);
+          this.cam.kick(e.crit ? 0.9 : 0.55);
+          this.requestTime(0, e.crit ? 0.1 : 0.065);
+          this.r.pulseFlash(col.getHex(), e.crit ? 2 : 1.3);
           this.arena.hype(e.crit ? 0.8 : 0.4);
-        } else if (e.source === 0) {
-          this.cam.addTrauma(0.03);
+        } else if (weapon === 'boom_cannon') {
+          this.cam.addTrauma(0.025);
         } else {
-          this.cam.addTrauma(0.05);
+          this.cam.addTrauma(e.side === 0 ? 0.04 : 0.02);
         }
         break;
       }
@@ -499,9 +612,12 @@ export class BattleView {
         const s = this.slots[e.side];
         if (e.kind === 'wall') this.vfx.wallHit(e.x, e.z, s.accent, e.heavy);
         else if (e.kind === 'shield') {
-          const fx = this.slots[1 - e.side].fx;
-          fx.shieldMat.uniforms.uHit.value = 1;
+          const target = this.slots[1 - e.side];
+          const fx = target.fx;
+          fx.shieldMat.uniforms.uHit.value = e.heavy ? 1.3 : 0.9;
+          (fx.shieldMat.uniforms.uHitDir.value as Vector3).set(e.x - target.pos.x, 0.25, e.z - target.pos.z).normalize();
           this.vfx.burst(e.x, ARENA.shotHeight, e.z, _c.set(0x7ac8ff), e.heavy ? 22 : 8, e.heavy ? 8 : 4, 0.14, 0.35, 2.4);
+          this.vfx.flash(e.x, ARENA.shotHeight, e.z, _c.set(0x9ad8ff), 0.3, e.heavy ? 1.6 : 0.8, 0.12, 2.4);
         } else if (e.kind === 'decoy') {
           this.vfx.burst(e.x, 1.1, e.z, s.accent, 8, 4, 0.14, 0.3, 2);
         } else {
@@ -518,11 +634,19 @@ export class BattleView {
       }
       case 'combo': {
         const s = this.slots[e.side];
-        this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffd23a), 1, 6, 0.6, 3);
-        this.vfx.burst(s.pos.x, 1.2, s.pos.z, _c.set(0xffd23a), 30, 7, 0.2, 0.6, 2.6, 0, 2);
+        const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
+        const gold = _c.set(0xffd23a);
+        this.vfx.ring(s.pos.x, s.pos.z, gold, 1, ultra ? 7.5 : 6, 0.6, 3);
+        this.vfx.burst(s.pos.x, 1.2, s.pos.z, gold, ultra ? 46 : 30, ultra ? 9 : 7, 0.2, 0.6, 2.6, 0, 2);
+        this.vfx.rays(s.pos.x, 1.3, s.pos.z, gold, 1, ultra ? 6 : 4.2, ultra ? 0.7 : 0.5, 2.2);
+        if (ultra) {
+          this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xff4fd8), 0.6, 5.5, 0.55, 3);
+          this.vfx.rays(s.pos.x, 1.3, s.pos.z, _c.set(0xff4fd8), 0.6, 4.4, 0.6, 1.8);
+        }
         if (e.side === 0) {
-          this.requestTime(0.4, 0.35);
-          this.cam.kick(0.5);
+          this.requestTime(ultra ? 0.3 : 0.42, ultra ? 0.5 : 0.35);
+          this.cam.kick(ultra ? 0.8 : 0.5);
+          this.cam.focusAccent(s.pos, ultra ? 1 : 0.6);
           this.arena.hype(1);
         }
         break;
@@ -621,24 +745,12 @@ export class BattleView {
         const dz = e.toZ - e.fromZ;
         const l = Math.hypot(dx, dz) || 1;
         s.model.anim.dash(dx / l, dz / l);
+        s.trailT = 0.32;
         this.vfx.dust(e.fromX, e.fromZ, 8, dx / l, dz / l);
-        for (let i = 0; i < 14; i++) {
-          const t = i / 14;
-          this.vfx.sparks.spawn(
-            e.fromX + dx * t,
-            rng.range(0.4, 1.8),
-            e.fromZ + dz * t,
-            (dx / l) * 2,
-            0,
-            (dz / l) * 2,
-            0.25 + t * 0.15,
-            0.22,
-            0.02,
-            s.accent,
-            2,
-            4,
-            0,
-          );
+        this.vfx.ring(e.fromX, e.fromZ, s.accent, 0.4, 2.2, 0.3, 2);
+        for (let i = 0; i < 10; i++) {
+          const t = i / 10;
+          this.vfx.sparks.spawn(e.fromX + dx * t, rng.range(0.4, 1.8), e.fromZ + dz * t, (dx / l) * 2, 0, (dz / l) * 2, 0.22 + t * 0.15, 0.2, 0.02, s.accent, 2, 4, 0);
         }
         if (e.style === 'blink') {
           this.vfx.burst(e.fromX, 1.1, e.fromZ, s.accent, 20, 4, 0.2, 0.35, 2.6);
@@ -648,9 +760,9 @@ export class BattleView {
       }
       case 'rush': {
         const s = this.slots[e.side];
-        this.vfx.dust(e.x, e.z, 10, e.dx, e.dz);
-        this.vfx.ring(e.x, e.z, s.accent, 0.5, 2.5, 0.3, 2);
-        this.cam.addTrauma(0.12);
+        this.vfx.dust(e.x, e.z, 12, e.dx, e.dz);
+        this.vfx.ring(e.x, e.z, s.accent, 0.5, 2.8, 0.3, 2.2);
+        this.cam.addTrauma(0.14);
         break;
       }
       case 'whiff': {
@@ -745,7 +857,7 @@ export class BattleView {
         this.vfx.debrisBurst(s.pos.x, 1, s.pos.z, s.accent, 16);
         this.cam.addTrauma(0.8);
         this.cam.kick(1.4);
-        this.requestTime(0.22, 1.5);
+        this.requestTime(0.25, 1.15);
         this.r.pulseFlash(0xffffff, 3);
         this.arena.hype(1.5);
         this.cam.finishFocus.copy(s.pos);

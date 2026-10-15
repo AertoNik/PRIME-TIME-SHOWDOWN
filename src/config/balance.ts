@@ -6,7 +6,7 @@ export const MATCH = {
   /** Pre-fight intro / countdown length. */
   introTime: 3.4,
   /** Post-KO / time-up outro before results. */
-  outroTime: 3.2,
+  outroTime: 2.8,
   /** Fixed simulation step. */
   fixedStep: 1 / 60,
   maxEnergy: 10,
@@ -49,30 +49,32 @@ export const ARENA = {
 };
 
 export const CARD_TUNING = {
-  dash: { distance: 3.3, duration: 0.24, invuln: 0.45 },
+  /** A perfect dodge (reading the attack) refunds energy. */
+  /** perfectRefund: energy back on a read dodge. counter*: the next volley after a dash hits harder. */
+  dash: { distance: 3.3, duration: 0.24, invuln: 0.45, perfectRefund: 1, counterWindow: 1.6, counterMult: 1.6 },
   power_shot: {
     windup: 0.26,
     telegraph: 0.9,
     /** Fraction of the telegraph after which the AI locks its aim. */
     lockAt: 0.62,
-    damage: 720,
+    damage: 600,
     speed: 20,
     radius: 0.5,
     knockback: 3.2,
     range: 15,
   },
   shield: { duration: 2.8, absorb: 1100 },
-  smoke: { duration: 4.8, radius: 2.7, missChance: 0.5, aimError: 0.38, damageCut: 0.0 },
-  shock: { damage: 260, stun: 1.15, shieldStun: 0.6 },
-  overdrive: { duration: 5.5, fireRate: 1.6, damage: 1.15, speed: 1.22 },
-  adrenaline: { duration: 2.0, shots: 10, damage: 88, speed: 1.35 },
+  smoke: { duration: 5.2, radius: 2.7, missChance: 0.55, aimError: 0.38, damageCut: 0.3 },
+  shock: { damage: 220, stun: 1.0, shieldStun: 0.55 },
+  overdrive: { duration: 5.0, fireRate: 1.6, damage: 1.2, speed: 1.22 },
+  adrenaline: { duration: 2.2, shots: 12, damage: 80, speed: 1.35 },
   knockout: {
     windup: 0.3,
     telegraph: 0.85,
     lockAt: 0.6,
     rushDistance: 5.6,
     rushSpeed: 17,
-    damage: 950,
+    damage: 840,
     knockback: 8,
     stun: 0.55,
     hitRange: 1.45,
@@ -81,7 +83,7 @@ export const CARD_TUNING = {
     missRecover: 0.6,
   },
   system_overload: {
-    duration: 3.2,
+    duration: 2.8,
     damage: 180,
     dot: 75,
     dotInterval: 0.5,
@@ -94,7 +96,7 @@ export const CARD_TUNING = {
 
 export const COMBO_TUNING = {
   counterStrikeMult: 1.5,
-  electroBlastMult: 1.6,
+  electroBlastMult: 1.5,
   electroBlastStun: 0.9,
   ironRushDamage: 450,
   ironRushRadius: 3.4,
@@ -107,7 +109,7 @@ export const COMBO_TUNING = {
 export const PASSIVE_TUNING = {
   momentum: { duration: 2.2, speed: 1.35, fireRate: 1.25, cooldown: 3.5 },
   iron_skin: { threshold: 330, duration: 3.0, reduction: 0.4, cooldown: 7 },
-  overclock: { energy: 1.5, duration: 4.0, regenMult: 1.5 },
+  overclock: { energy: 1.0, duration: 3.0, regenMult: 1.3 },
 };
 
 export const BROADCAST = {
@@ -132,6 +134,8 @@ export const BROADCAST = {
   comeback: 5,
   wallSlam: 5,
   shockHit: 2,
+  /** Each ADRENALINE flurry hit is a small crowd-pleaser. */
+  flurryHit: 0.5,
   whiffPunish: 4,
   koWin: 10,
   finisherHeavy: 10,

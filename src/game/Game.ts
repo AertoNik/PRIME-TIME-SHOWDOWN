@@ -5,7 +5,7 @@ import { AudioSystem } from '../audio/AudioSystem';
 import { Match } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { CareerSystem } from '../meta/CareerSystem';
-import { SaveSystem } from '../meta/SaveSystem';
+import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
 import { Arena } from '../render/Arena';
 import { BattleView, type TimeFx } from '../render/BattleView';
 import { CameraRig } from '../render/CameraRig';
@@ -27,7 +27,19 @@ export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'batt
 
 const ALL_LOOKS = ['ray', 'bruno', 'nika', 'dex', 'tank', 'zoe'];
 
-const nextFrame = () => new Promise<void>((r) => (document.hidden ? setTimeout(r, 16) : requestAnimationFrame(() => r())));
+/** Next frame, with a timer fallback in case rAF is throttled or paused. */
+const nextFrame = () =>
+  new Promise<void>((r) => {
+    let done = false;
+    const go = () => {
+      if (!done) {
+        done = true;
+        r();
+      }
+    };
+    if (!document.hidden) requestAnimationFrame(go);
+    setTimeout(go, 40);
+  });
 
 /** Top-level state machine wiring simulation, rendering, UI, audio and career. */
 export class Game {
@@ -106,6 +118,7 @@ export class Game {
     await nextFrame();
     this.vfx = new VFX(this.renderer.scene);
     this.cam = new CameraRig(this.renderer);
+    this.applyCameraMotion(this.save.data.settings.camera);
     this.showcase = new Showcase(this.models);
     this.renderer.scene.add(this.showcase.group);
     this.battleView = new BattleView(this.renderer, this.arena, this.vfx, this.cam, this.models, this.timeFx);
@@ -343,6 +356,16 @@ export class Game {
     this.save.save();
   }
 
+  applyCameraMotion(c: CameraMotion): void {
+    this.cam.intensity = c === 'full' ? 1 : c === 'reduced' ? 0.45 : 0;
+  }
+
+  setCameraMotion(c: CameraMotion): void {
+    this.save.data.settings.camera = c;
+    this.save.save();
+    this.applyCameraMotion(c);
+  }
+
   setQuality(q: QualitySetting): void {
     this.save.data.settings.quality = q;
     this.save.save();
@@ -353,12 +376,15 @@ export class Game {
     const render = () => {
       const s = this.save.data.settings;
       const qBtn = (q: QualitySetting, label: string) => `<button class="${s.quality === q ? 'on' : ''}" data-q="${q}">${label}</button>`;
+      const camBtn = (c: CameraMotion, label: string) => `<button class="${s.camera === c ? 'on' : ''}" data-cam="${c}">${label}</button>`;
       this.ui.modal(
         `<div class="h1">Настройки</div>
          <div class="toggle-row"><span>Звук</span><button class="switch ${s.sound ? 'on' : ''}" data-t="sound"></button></div>
          <div class="toggle-row"><span>Музыка</span><button class="switch ${s.music ? 'on' : ''}" data-t="music"></button></div>
          <div style="padding:12px 0 4px" class="label">Качество графики</div>
          <div class="seg-control" style="grid-template-columns:repeat(4,1fr)">${qBtn('auto', 'Авто')}${qBtn('high', 'Высок.')}${qBtn('medium', 'Средн.')}${qBtn('low', 'Низк.')}</div>
+         <div style="padding:12px 0 4px" class="label">Движение камеры</div>
+         <div class="seg-control">${camBtn('full', 'Полное')}${camBtn('reduced', 'Сниженное')}${camBtn('off', 'Без тряски')}</div>
          <div class="muted" style="font-size:11px;margin-top:6px">Сейчас: ${this.renderer.quality === 'high' ? 'высокое' : this.renderer.quality === 'medium' ? 'среднее' : 'низкое'}${this.save.persistent ? '' : ' · ⚠ сохранения недоступны в этом режиме браузера'}</div>
          <div class="modal-actions">
            <button class="btn ghost wide" data-a="help">Как играть</button>
@@ -372,6 +398,13 @@ export class Game {
             if (tg) {
               if (tg.dataset.t === 'sound') this.toggleSound();
               else this.toggleMusic();
+              render();
+              return;
+            }
+            const cb = t.closest('[data-cam]') as HTMLElement | null;
+            if (cb) {
+              this.audio.ui('click');
+              this.setCameraMotion(cb.dataset.cam as CameraMotion);
               render();
               return;
             }
@@ -451,9 +484,24 @@ export class Game {
     const dtReal = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
     this.last = now;
     this.frame(dtReal, now / 1000);
-    if (document.hidden || this.debugTimer) setTimeout(this.loop, 16);
-    else requestAnimationFrame(this.loop);
+    this.scheduleNext();
   };
+
+  /** rAF when visible, with a watchdog timer so the game never freezes if rAF stalls. */
+  private scheduleNext(): void {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      this.loop();
+    };
+    if (document.hidden || this.debugTimer) {
+      setTimeout(run, 16);
+      return;
+    }
+    requestAnimationFrame(run);
+    setTimeout(run, 40);
+  }
 
   private frame(dtReal: number, nowSec: number): void {
     this.renderer.monitor(dtReal, nowSec);
@@ -535,7 +583,10 @@ export class Game {
         a.stun();
         break;
       case 'combo':
-        if (e.side === 0) a.combo();
+        if (e.side === 0) a.combo(e.combo === 'superstar' || e.combo === 'electro_blast');
+        break;
+      case 'impact':
+        if (e.kind === 'shield') a.deflect(e.heavy);
         break;
       case 'wallSlam':
         a.wallSlam();

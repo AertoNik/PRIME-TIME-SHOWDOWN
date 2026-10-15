@@ -85,6 +85,12 @@ export class FighterSim {
 
   fireTimer = 0.6;
   muzzleToggle = 0;
+  burstLeft = 0;
+  burstTimer = 0;
+  /** Empowered "counter" volleys left after a DASH, and their expiry timer. */
+  counterShots = 0;
+  counterT = 0;
+  burstCounter = false;
   action: Action = { kind: 'none' };
 
   // status timers

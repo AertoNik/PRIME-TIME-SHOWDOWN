@@ -27,7 +27,8 @@ import {
   type Texture,
 } from 'three';
 import { clamp01, ease, Rng } from '../core/math';
-import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, puffTexture, ringTexture } from './textures';
+import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, puffTexture, raysTexture, ringTexture, scorchTexture, starTexture } from './textures';
+import type { WeaponType } from '../config/types';
 
 const _v = new Vector3();
 const _v2 = new Vector3();
@@ -468,6 +469,7 @@ interface Puff {
 interface Cloud {
   group: Group;
   puffs: Puff[];
+  ring: Mesh;
   id: number;
   t: number;
   dur: number;
@@ -483,6 +485,14 @@ class SmokePool {
       const g = new Group();
       g.visible = false;
       const puffs: Puff[] = [];
+      const ring = new Mesh(
+        new PlaneGeometry(1, 1),
+        new MeshBasicMaterial({ map: ringTexture(), transparent: true, blending: AdditiveBlending, depthWrite: false, color: 0x9a90d8 }),
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.06;
+      ring.renderOrder = 3;
+      g.add(ring);
       for (let p = 0; p < 18; p++) {
         const mat = new SpriteMaterial({ map: tex, transparent: true, depthWrite: false, color: 0x8a86a8 });
         const s = new Sprite(mat);
@@ -491,7 +501,7 @@ class SmokePool {
         puffs.push({ sprite: s, ox: 0, oz: 0, oy: 0, spin: 0, scale: 1 });
       }
       group.add(g);
-      this.clouds.push({ group: g, puffs, id: -1, t: 0, dur: 1, active: false, radius: 1 });
+      this.clouds.push({ group: g, puffs, ring, id: -1, t: 0, dur: 1, active: false, radius: 1 });
     }
   }
   spawn(id: number, x: number, z: number, radius: number, dur: number, tint: Color): void {
@@ -503,9 +513,12 @@ class SmokePool {
     c.radius = radius;
     c.group.position.set(x, 0, z);
     c.group.visible = true;
+    c.ring.scale.setScalar(radius * 2.25);
+    (c.ring.material as MeshBasicMaterial).color.copy(tint).lerp(_c.set(0xb8b0ff), 0.5);
     for (const p of c.puffs) {
       const a = rng.range(0, Math.PI * 2);
-      const r = Math.sqrt(rng.next()) * radius * 0.8;
+      // bias puffs toward the rim so fighters inside stay readable
+      const r = (0.35 + 0.65 * Math.sqrt(rng.next())) * radius * 0.85;
       p.ox = Math.cos(a) * r;
       p.oz = Math.sin(a) * r;
       p.oy = rng.range(0.3, 2.0);
@@ -528,13 +541,14 @@ class SmokePool {
         c.group.visible = false;
         continue;
       }
+      (c.ring.material as MeshBasicMaterial).opacity = 0.55 * fadeIn * fadeOut * (0.8 + 0.2 * Math.sin(c.t * 6));
       for (const p of c.puffs) {
         const m = p.sprite.material as SpriteMaterial;
         m.rotation += p.spin * dt;
         const drift = c.t * 0.12;
         p.sprite.position.set(p.ox * (0.6 + 0.4 * fadeIn) + Math.sin(c.t + p.oy) * drift, p.oy + c.t * 0.08, p.oz * (0.6 + 0.4 * fadeIn));
         p.sprite.scale.setScalar(p.scale * (0.4 + 0.6 * fadeIn) * (1 + c.t * 0.05));
-        m.opacity = 0.62 * fadeIn * fadeOut;
+        m.opacity = 0.5 * fadeIn * fadeOut;
       }
     }
   }
@@ -627,6 +641,7 @@ function makeShieldMaterial(color: Color): ShaderMaterial {
       uColor: { value: color.clone() },
       uTime: { value: 0 },
       uHit: { value: 0 },
+      uHitDir: { value: new Vector3(0, 0, 1) },
       uAlpha: { value: 0 },
       uHex: { value: hexTexture() },
     },
@@ -634,8 +649,10 @@ function makeShieldMaterial(color: Color): ShaderMaterial {
       varying vec3 vN;
       varying vec3 vV;
       varying vec2 vUv;
+      varying vec3 vObj;
       void main() {
         vUv = uv;
+        vObj = normalize(position);
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         vV = -mv.xyz;
         vN = normalize(normalMatrix * normal);
@@ -645,18 +662,24 @@ function makeShieldMaterial(color: Color): ShaderMaterial {
       uniform vec3 uColor;
       uniform float uTime;
       uniform float uHit;
+      uniform vec3 uHitDir;
       uniform float uAlpha;
       uniform sampler2D uHex;
       varying vec3 vN;
       varying vec3 vV;
       varying vec2 vUv;
+      varying vec3 vObj;
       void main() {
         float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
         float fres = pow(f, 2.2);
         float hex = texture2D(uHex, vUv * vec2(6.0, 3.0) + vec2(uTime * 0.05, 0.0)).a;
         float scan = 0.5 + 0.5 * sin(vUv.y * 40.0 - uTime * 6.0);
-        float a = fres * 1.4 + hex * (0.18 + uHit * 0.9) * (0.4 + fres) + scan * 0.04;
-        gl_FragColor = vec4(uColor * a * uAlpha * (1.0 + uHit * 1.5), 1.0);
+        // ripple spreading from the impact point
+        float d = 1.0 - dot(vObj, normalize(uHitDir));
+        float wave = sin(d * 18.0 - (1.0 - uHit) * 22.0) * 0.5 + 0.5;
+        float ripple = smoothstep(1.2, 0.0, d) * uHit * (0.6 + wave * 0.8);
+        float a = fres * 1.3 + hex * (0.16 + ripple * 1.4) * (0.4 + fres) + scan * 0.04 + ripple * 0.9;
+        gl_FragColor = vec4(uColor * a * uAlpha, 1.0);
       }`,
     blending: AdditiveBlending,
     transparent: true,
@@ -707,6 +730,159 @@ function makeAuraMaterial(color: Color): ShaderMaterial {
   });
 }
 
+// ========================================================================== trails
+const TRAIL_N = 22;
+
+/** Camera-facing ribbon that follows a point (dash / rush / speed buffs). */
+export class Trail {
+  readonly mesh: Mesh;
+  private geo: BufferGeometry;
+  private pts: Vector3[] = [];
+  private ages: number[] = [];
+  private head = 0;
+  private count = 0;
+  private emitT = 0;
+  readonly color: Color;
+  width = 0.5;
+  life = 0.3;
+  intensity = 2.2;
+
+  constructor(group: Group, color: Color) {
+    this.color = color.clone();
+    for (let i = 0; i < TRAIL_N; i++) {
+      this.pts.push(new Vector3());
+      this.ages.push(99);
+    }
+    const geo = new BufferGeometry();
+    const pos = new BufferAttribute(new Float32Array(TRAIL_N * 2 * 3), 3);
+    const col = new BufferAttribute(new Float32Array(TRAIL_N * 2 * 3), 3);
+    pos.setUsage(DynamicDrawUsage);
+    col.setUsage(DynamicDrawUsage);
+    geo.setAttribute('position', pos);
+    geo.setAttribute('color', col);
+    const idx: number[] = [];
+    for (let i = 0; i < TRAIL_N - 1; i++) {
+      const a = i * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    geo.setIndex(idx);
+    this.geo = geo;
+    this.mesh = new Mesh(
+      geo,
+      new MeshBasicMaterial({ vertexColors: true, blending: AdditiveBlending, transparent: true, depthWrite: false, side: DoubleSide }),
+    );
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    this.mesh.renderOrder = 6;
+    group.add(this.mesh);
+  }
+
+  clear(): void {
+    for (let i = 0; i < TRAIL_N; i++) this.ages[i] = 99;
+    this.count = 0;
+    this.mesh.visible = false;
+  }
+
+  update(dt: number, at: Vector3, emit: boolean, camPos: Vector3): void {
+    for (let i = 0; i < TRAIL_N; i++) this.ages[i] += dt;
+    this.emitT -= dt;
+    if (emit && this.emitT <= 0) {
+      this.emitT = 0.016;
+      this.head = (this.head + 1) % TRAIL_N;
+      this.pts[this.head].copy(at);
+      this.ages[this.head] = 0;
+      this.count = Math.min(TRAIL_N, this.count + 1);
+    }
+    // collect live points newest -> oldest
+    let live = 0;
+    for (let k = 0; k < this.count; k++) {
+      const i = (this.head - k + TRAIL_N) % TRAIL_N;
+      if (this.ages[i] < this.life) live++;
+      else break;
+    }
+    this.mesh.visible = live >= 2;
+    if (!this.mesh.visible) return;
+    const pos = this.geo.getAttribute('position') as BufferAttribute;
+    const col = this.geo.getAttribute('color') as BufferAttribute;
+    const pa = pos.array as Float32Array;
+    const ca = col.array as Float32Array;
+    for (let k = 0; k < TRAIL_N; k++) {
+      const kk = Math.min(k, live - 1);
+      const i = (this.head - kk + TRAIL_N) % TRAIL_N;
+      const p = this.pts[i];
+      const next = this.pts[(this.head - Math.min(kk + 1, live - 1) + TRAIL_N) % TRAIL_N];
+      const prev = this.pts[(this.head - Math.max(kk - 1, 0) + TRAIL_N) % TRAIL_N];
+      _v.subVectors(prev, next);
+      if (_v.lengthSq() < 1e-8) _v.set(1, 0, 0);
+      _v.normalize();
+      _v2.subVectors(camPos, p).normalize();
+      _v.cross(_v2);
+      if (_v.lengthSq() < 1e-8) _v.set(0, 1, 0);
+      const fade = k < live ? 1 - this.ages[i] / this.life : 0;
+      const w = this.width * fade * (1 - kk / TRAIL_N) * 0.5;
+      _v.normalize().multiplyScalar(w);
+      pa[k * 6] = p.x - _v.x;
+      pa[k * 6 + 1] = p.y - _v.y;
+      pa[k * 6 + 2] = p.z - _v.z;
+      pa[k * 6 + 3] = p.x + _v.x;
+      pa[k * 6 + 4] = p.y + _v.y;
+      pa[k * 6 + 5] = p.z + _v.z;
+      const c = fade * fade * this.intensity;
+      for (const o of [0, 3]) {
+        ca[k * 6 + o] = this.color.r * c;
+        ca[k * 6 + o + 1] = this.color.g * c;
+        ca[k * 6 + o + 2] = this.color.b * c;
+      }
+    }
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+  }
+}
+
+// ========================================================================= scorches
+interface Scorch {
+  mesh: Mesh;
+  life: number;
+  max: number;
+}
+
+class ScorchPool {
+  private items: Scorch[] = [];
+  private next = 0;
+  constructor(group: Group, n: number) {
+    const geo = new PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    for (let i = 0; i < n; i++) {
+      const m = new Mesh(geo, new MeshBasicMaterial({ map: scorchTexture(), transparent: true, depthWrite: false }));
+      m.visible = false;
+      m.renderOrder = 1;
+      group.add(m);
+      this.items.push({ mesh: m, life: 0, max: 1 });
+    }
+  }
+  spawn(x: number, z: number, size: number, life: number): void {
+    const it = this.items[this.next];
+    this.next = (this.next + 1) % this.items.length;
+    it.mesh.position.set(x, 0.025 + this.next * 0.0008, z);
+    it.mesh.rotation.y = rng.range(0, Math.PI * 2);
+    it.mesh.scale.setScalar(size);
+    it.life = life;
+    it.max = life;
+    it.mesh.visible = true;
+  }
+  update(dt: number): void {
+    for (const it of this.items) {
+      if (it.life <= 0) continue;
+      it.life -= dt;
+      if (it.life <= 0) {
+        it.mesh.visible = false;
+        continue;
+      }
+      (it.mesh.material as MeshBasicMaterial).opacity = Math.min(1, it.life / (it.max * 0.4));
+    }
+  }
+}
+
 export class FighterFX {
   readonly shield: Mesh;
   readonly shieldMat: ShaderMaterial;
@@ -717,6 +893,10 @@ export class FighterFX {
   readonly ring: Mesh;
   readonly ringMat: MeshBasicMaterial;
   readonly charge: Sprite;
+  readonly stars: Sprite[] = [];
+  readonly trail: Trail;
+  starsOn = 0;
+  private shieldAge = 0;
   shieldOn = 0;
   auraOn = 0;
   laneOn = 0;
@@ -774,18 +954,42 @@ export class FighterFX {
     this.charge.visible = false;
     this.charge.renderOrder = 9;
     group.add(this.charge);
+
+    for (let i = 0; i < 3; i++) {
+      const st = new Sprite(new SpriteMaterial({ map: starTexture(), color: new Color(0xffe14d).multiplyScalar(1.6), transparent: true, depthWrite: false }));
+      st.visible = false;
+      st.renderOrder = 10;
+      group.add(st);
+      this.stars.push(st);
+    }
+    this.trail = new Trail(group, accent);
   }
 
   update(dt: number, t: number, x: number, z: number, aimX: number, aimZ: number, muzzle: Vector3): void {
-    // shield
+    // shield (pops in with overshoot, ripples where it is struck)
     this.shield.visible = this.shieldOn > 0.01;
     if (this.shield.visible) {
+      this.shieldAge += dt;
       this.shield.position.set(x, 1.05, z);
       this.shieldMat.uniforms.uTime.value = t;
       this.shieldMat.uniforms.uAlpha.value = this.shieldOn;
-      this.shieldMat.uniforms.uHit.value = Math.max(0, this.shieldMat.uniforms.uHit.value - dt * 3);
-      const s = 0.85 + this.shieldOn * 0.15;
+      this.shieldMat.uniforms.uHit.value = Math.max(0, this.shieldMat.uniforms.uHit.value - dt * 2.4);
+      const pop = ease.outBack(clamp01(this.shieldAge / 0.28));
+      const s = (0.55 + 0.45 * pop) * (0.85 + this.shieldOn * 0.15);
       this.shield.scale.set(s, s * 1.18, s);
+    } else {
+      this.shieldAge = 0;
+    }
+    // dizzy stars orbit the head while stunned
+    const showStars = this.starsOn > 0.02;
+    for (let i = 0; i < this.stars.length; i++) {
+      const st = this.stars[i];
+      st.visible = showStars;
+      if (!showStars) continue;
+      const a = t * 5 + (i / this.stars.length) * Math.PI * 2;
+      st.position.set(x + Math.cos(a) * 0.55, 2.62 + Math.sin(t * 7 + i) * 0.06, z + Math.sin(a) * 0.35);
+      st.scale.setScalar(0.32 * this.starsOn * (0.85 + 0.15 * Math.sin(t * 9 + i)));
+      (st.material as SpriteMaterial).rotation = t * 3 + i;
     }
     this.aura.visible = this.auraOn > 0.01;
     if (this.aura.visible) {
@@ -878,6 +1082,8 @@ export class VFX {
   readonly bolts: BoltPool;
   private smoke: SmokePool;
   private debris: DebrisPool;
+  private scorches: ScorchPool;
+  private raysPool: FlashPool;
   readonly fighterFX: FighterFX[] = [];
   readonly glitch: GlitchField[] = [];
   private t = 0;
@@ -892,6 +1098,8 @@ export class VFX {
     this.bolts = new BoltPool(this.group, 18);
     this.smoke = new SmokePool(this.group, 3);
     this.debris = new DebrisPool(this.group, 90);
+    this.scorches = new ScorchPool(this.group, 10);
+    this.raysPool = new FlashPool(this.group, 6, raysTexture());
     for (let i = 0; i < 2; i++) this.glitch.push(new GlitchField(this.group));
     scene.add(this.group);
   }
@@ -1030,6 +1238,84 @@ export class VFX {
     }
   }
 
+  /** Weapon-specific muzzle flash: crisp pistol pop, shotgun blast, rapid carbine flicker. */
+  muzzleFor(weapon: WeaponType, p: Vector3, dx: number, dz: number, color: Color, heavy: boolean): void {
+    if (heavy) {
+      this.muzzle(p, dx, dz, color, true, weapon === 'boom_cannon');
+      this.raysPool.spawn(p.x, p.y, p.z, color, 1.6, 0.6, 2.2, 0.18, 4);
+      return;
+    }
+    switch (weapon) {
+      case 'twin_blasters':
+        this.flashes.spawn(p.x, p.y, p.z, color, 2.6, 0.42, 0.75, 0.05);
+        this.glows.spawn(p.x, p.y, p.z, color, 1.4, 0.35, 0.9, 0.07);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 3, 7, 0.25, 0.1);
+        break;
+      case 'boom_cannon':
+        this.flashes.spawn(p.x, p.y, p.z, color, 3, 1.1, 2.1, 0.11);
+        this.glows.spawn(p.x, p.y, p.z, _c.set(0xffe0a0), 2, 0.8, 2, 0.12);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 14, 10, 0.55, 0.15);
+        for (let i = 0; i < 4; i++) {
+          this.soft.spawn(p.x + dx * 0.3, p.y, p.z + dz * 0.3, dx * 2 + rng.range(-0.6, 0.6), rng.range(0.2, 0.9), dz * 2 + rng.range(-0.6, 0.6), rng.range(0.5, 0.8), 0.4, 1.2, _c.set(0x6a6a80), 1, 3, -0.4);
+        }
+        break;
+      case 'tech_carbine':
+        this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
+        for (let i = 0; i < 2; i++) {
+          this.sparks.spawn(p.x, p.y, p.z, dx * 3 + rng.range(-1, 1), rng.range(-0.3, 1), dz * 3 + rng.range(-1, 1), 0.18, 0.12, 0.02, i ? _c.set(0x22f0e0) : color, 2.4, 6, 0);
+        }
+        break;
+    }
+  }
+
+  /** Weapon-specific impact. */
+  impactFor(weapon: WeaponType | null, x: number, y: number, z: number, color: Color, heavy: boolean, crit: boolean): void {
+    if (heavy || weapon === null) {
+      this.impact(x, y, z, color, heavy, crit);
+      if (heavy) {
+        this.scorches.spawn(x, z, crit ? 2.4 : 1.8, 3.2);
+        this.raysPool.spawn(x, y, z, crit ? _c.set(0xffd23a) : color, 1.8, 0.8, crit ? 3.6 : 2.6, 0.28, 3);
+      }
+      return;
+    }
+    switch (weapon) {
+      case 'twin_blasters':
+        this.flashes.spawn(x, y, z, color, 2.4, 0.45, 1.0, 0.08, 3);
+        this.burst(x, y, z, color, 8, 6, 0.13, 0.3, 2.4);
+        break;
+      case 'boom_cannon':
+        this.flashes.spawn(x, y, z, _c.set(0xffc070), 2.2, 0.5, 1.1, 0.09, 2);
+        this.burst(x, y, z, color, 6, 5, 0.15, 0.32, 2.4, 6);
+        break;
+      case 'tech_carbine':
+        this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);
+        for (let i = 0; i < 5; i++) {
+          this.sparks.spawn(x + rng.range(-0.2, 0.2), y + rng.range(-0.2, 0.3), z + rng.range(-0.2, 0.2), rng.range(-1.5, 1.5), rng.range(0.5, 2.5), rng.range(-1.5, 1.5), rng.range(0.2, 0.4), 0.16, 0.16, i % 2 ? _c.set(0x22f0e0) : color, 2.4, 4, 0);
+        }
+        break;
+    }
+  }
+
+  scorch(x: number, z: number, size: number, life = 3): void {
+    this.scorches.spawn(x, z, size, life);
+  }
+
+  rays(x: number, y: number, z: number, color: Color, s0: number, s1: number, life: number, intensity = 2): void {
+    this.raysPool.spawn(x, y, z, color, intensity, s0, s1, life, 1.5);
+  }
+
+  stepDust(x: number, z: number): void {
+    for (let i = 0; i < 3; i++) {
+      this.soft.spawn(x + rng.range(-0.25, 0.25), 0.08, z + rng.range(-0.25, 0.25), rng.range(-0.8, 0.8), rng.range(0.2, 0.6), rng.range(-0.8, 0.8), rng.range(0.35, 0.55), 0.22, 0.6, _c.set(0x6f7498), 1, 3, 0);
+    }
+  }
+
+  landImpact(x: number, z: number, strength: number, color: Color): void {
+    this.dust(x, z, Math.round(10 * strength));
+    this.rings.spawn(x, 0.06, z, color, 1.6 * strength, 0.5, 3.4 * strength, 0.4);
+    if (strength > 0.6) this.debris.spawn(x, 0.2, z, _c.set(0x2a3060), 6, 0.5);
+  }
+
   update(dt: number, cam: PerspectiveCamera): void {
     this.t += dt;
     this.sparks.update(dt);
@@ -1041,6 +1327,8 @@ export class VFX {
     this.bolts.update(dt);
     this.smoke.update(dt);
     this.debris.update(dt);
+    this.scorches.update(dt);
+    this.raysPool.update(dt);
   }
 
   get time(): number {

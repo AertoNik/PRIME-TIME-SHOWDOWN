@@ -4,7 +4,7 @@ export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
 export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'orb' | 'power' | 'adrenaline';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'power' | 'adrenaline';
 
 export interface Projectile {
   id: number;
@@ -162,6 +162,8 @@ export interface MatchResultData {
   avgRating: number;
   bestCombo: ComboId | null;
   combos: number;
+  /** Every combo the player landed, in order. */
+  comboList: ComboId[];
   perfects: number;
   damageDealt: number;
   damageTaken: number;

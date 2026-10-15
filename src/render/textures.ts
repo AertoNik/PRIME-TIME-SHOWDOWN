@@ -209,3 +209,95 @@ export function hexTexture(): Texture {
     return c;
   });
 }
+
+/** Tracer streak: bright head fading into a soft tail (head at v=1). */
+export function streakTexture(): Texture {
+  return cached('streak', () => {
+    const { c, g } = makeCanvas(64, 256);
+    const along = g.createLinearGradient(0, 256, 0, 0);
+    along.addColorStop(0, 'rgba(255,255,255,0)');
+    along.addColorStop(0.55, 'rgba(255,255,255,0.35)');
+    along.addColorStop(0.92, 'rgba(255,255,255,1)');
+    along.addColorStop(1, 'rgba(255,255,255,0.6)');
+    g.fillStyle = along;
+    g.fillRect(0, 0, 64, 256);
+    // soft edges across the width
+    g.globalCompositeOperation = 'destination-in';
+    const across = g.createLinearGradient(0, 0, 64, 0);
+    across.addColorStop(0, 'rgba(255,255,255,0)');
+    across.addColorStop(0.3, 'rgba(255,255,255,0.8)');
+    across.addColorStop(0.5, 'rgba(255,255,255,1)');
+    across.addColorStop(0.7, 'rgba(255,255,255,0.8)');
+    across.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = across;
+    g.fillRect(0, 0, 64, 256);
+    return c;
+  });
+}
+
+/** Radial light rays for big moments (combos, KO). */
+export function raysTexture(): Texture {
+  return cached('rays', () => {
+    const { c, g } = makeCanvas(256, 256);
+    g.translate(128, 128);
+    for (let i = 0; i < 18; i++) {
+      g.save();
+      g.rotate((i / 18) * Math.PI * 2 + (i % 2) * 0.08);
+      const len = i % 2 ? 110 : 128;
+      const grd = g.createLinearGradient(0, 0, len, 0);
+      grd.addColorStop(0, 'rgba(255,255,255,0.9)');
+      grd.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(len, -9);
+      g.lineTo(len, 9);
+      g.closePath();
+      g.fill();
+      g.restore();
+    }
+    const core = g.createRadialGradient(0, 0, 0, 0, 0, 40);
+    core.addColorStop(0, 'rgba(255,255,255,1)');
+    core.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = core;
+    g.beginPath();
+    g.arc(0, 0, 40, 0, Math.PI * 2);
+    g.fill();
+    return c;
+  });
+}
+
+/** Five-point cartoon star (dizzy stun). */
+export function starTexture(): Texture {
+  return cached('star', () => {
+    const { c, g } = makeCanvas(64, 64);
+    g.translate(32, 32);
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 11 : 27;
+      const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      if (i === 0) g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      else g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    g.closePath();
+    g.fillStyle = '#ffffff';
+    g.fill();
+    return c;
+  });
+}
+
+/** Burn mark with a hot rim, for heavy impacts on the floor. */
+export function scorchTexture(): Texture {
+  return cached('scorch', () => {
+    const { c, g } = makeCanvas(128, 128);
+    const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, 'rgba(10,6,20,0.85)');
+    grd.addColorStop(0.45, 'rgba(14,8,24,0.6)');
+    grd.addColorStop(0.7, 'rgba(255,140,60,0.35)');
+    grd.addColorStop(0.8, 'rgba(255,120,40,0.12)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+    return c;
+  });
+}

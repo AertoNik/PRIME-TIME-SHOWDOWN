@@ -35,7 +35,9 @@ export function portraitHTML(url: string | undefined, main: string, dark: string
 export function countUp(e: HTMLElement, from: number, to: number, dur: number, fmt: (n: number) => string, onTick?: () => void): void {
   const start = performance.now();
   let lastTick = 0;
-  const step = (now: number) => {
+  // timer-driven so it also completes when rAF is throttled
+  const step = () => {
+    const now = performance.now();
     const t = Math.min(1, (now - start) / (dur * 1000));
     const k = 1 - Math.pow(1 - t, 3);
     e.textContent = fmt(from + (to - from) * k);
@@ -43,13 +45,9 @@ export function countUp(e: HTMLElement, from: number, to: number, dur: number, f
       lastTick = now;
       onTick();
     }
-    if (t < 1) requestAnimationFrame(step);
+    if (t < 1) setTimeout(step, 16);
   };
-  if (document.hidden) {
-    e.textContent = fmt(to);
-    return;
-  }
-  requestAnimationFrame(step);
+  step();
 }
 
 export function vibrate(ms: number | number[]): void {

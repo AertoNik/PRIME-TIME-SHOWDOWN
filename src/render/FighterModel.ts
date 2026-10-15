@@ -303,8 +303,6 @@ export interface RigGeometry {
   /** Muzzle points in weapon space per weapon bone. */
   muzzleR: V3 | null;
   muzzleL: V3 | null;
-  /** Gauntlet: muzzle lives on the forearm. */
-  muzzleFore: V3 | null;
   weaponHand: V3;
 }
 
@@ -827,7 +825,6 @@ export function getRigGeometry(lookId: string): RigGeometry {
   // --------------------------------------------------------------- weapons
   let muzzleR: V3 | null = null;
   let muzzleL: V3 | null = null;
-  let muzzleFore: V3 | null = null;
   const wc = look.weaponColor;
   const wd = look.weaponDark;
   const gl = look.glow;
@@ -871,21 +868,29 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(rbox(0.305, 0.04, 0.3, 0.015), look.top.style === 'vest' ? look.top.main : look.top.accent, { p: [0, 0.2, 0.3] });
     muzzleR = [0, 0.15, 0.8];
   } else {
-    // gauntlet on right forearm (arm space: arm points -y)
-    const F = B.t('foreArmR');
+    // compact tech carbine held in the right hand, supported by the left (weapon space: barrel +Z)
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    W.add(rbox(0.12, 0.16, 0.5, 0.045), wc, { p: [0, 0.08, 0.12] });
+    W.add(rbox(0.09, 0.14, 0.26, 0.04), wd, { p: [0, 0.05, -0.22], r: [0.12, 0, 0] });
+    W.add(rbox(0.095, 0.095, 0.3, 0.03), wd, { p: [0, 0.09, 0.48] });
+    const tip = cyl(0.032, 0.038, 0.12, 12);
+    tip.rotateX(Math.PI / 2);
+    W.add(tip, wd, { p: [0, 0.09, 0.67] });
+    WG.add(tor(0.042, 0.012, Math.PI * 2, 16), gl, { p: [0, 0.09, 0.73] }, GLOW);
+    W.add(rbox(0.075, 0.19, 0.09, 0.025), wd, { p: [0, -0.07, 0.2], r: [0.28, 0, 0] });
+    WG.add(rbox(0.078, 0.11, 0.02, 0.008), gl, { p: [0, -0.06, 0.25], r: [0.28, 0, 0] }, GLOW * 0.8);
+    W.add(rbox(0.07, 0.15, 0.08, 0.025), wd, { p: [0, -0.04, -0.02], r: [-0.3, 0, 0] });
+    W.add(rbox(0.05, 0.12, 0.06, 0.02), wd, { p: [0, -0.03, 0.38] });
+    W.add(rbox(0.065, 0.05, 0.09, 0.015), wd, { p: [0, 0.185, 0.08] });
+    WG.add(rbox(0.05, 0.034, 0.012, 0.005), gl, { p: [0, 0.205, 0.13] }, GLOW);
+    for (const s of [1, -1]) WG.add(rbox(0.012, 0.022, 0.3, 0.008), gl, { p: [s * 0.062, 0.12, 0.12] }, GLOW);
+    muzzleR = [0, 0.09, 0.76];
+    // tech cuff on the right wrist
     const FG = B.g('foreArmR');
-    const ar = d.armR;
-    F.add(cyl(ar * 1.55, ar * 1.4, d.foreArm * 0.62, 18), wc, { p: [0, -d.foreArm * 0.55, 0] });
-    F.add(rbox(ar * 1.6, d.foreArm * 0.45, 0.06, 0.02), wd, { p: [0, -d.foreArm * 0.52, ar * 1.45] });
-    FG.add(rbox(ar * 0.9, d.foreArm * 0.3, 0.02, 0.008), gl, { p: [0, -d.foreArm * 0.52, ar * 1.5 + 0.03] }, GLOW);
-    const ring = tor(ar * 1.45, 0.025, Math.PI * 2, 22);
-    ring.rotateX(Math.PI / 2);
-    FG.add(ring, gl, { p: [0, -d.foreArm * 0.88, 0] }, GLOW);
-    const ring2 = tor(ar * 1.55, 0.02, Math.PI * 2, 22);
-    ring2.rotateX(Math.PI / 2);
-    FG.add(ring2, gl, { p: [0, -d.foreArm * 0.24, 0] }, GLOW);
-    F.add(sph(0.05, 10, 8), wd, { p: [ar * 1.5, -d.foreArm * 0.5, 0] });
-    muzzleFore = [0, -d.foreArm - d.handR * 1.9, 0.02];
+    const cuffRing = tor(d.armR * 1.25, 0.022, Math.PI * 2, 22);
+    cuffRing.rotateX(Math.PI / 2);
+    FG.add(cuffRing, gl, { p: [0, -d.foreArm * 0.8, 0] }, GLOW);
   }
 
   const geo: RigGeometry = {
@@ -902,7 +907,6 @@ export function getRigGeometry(lookId: string): RigGeometry {
     headCenterY: cy,
     muzzleR,
     muzzleL,
-    muzzleFore,
     weaponHand: [0, -d.foreArm - d.handR * 0.5, 0.0],
   };
   // Eye / mouth parts were authored relative to their pivots, so blink and
@@ -934,6 +938,8 @@ export interface FighterRig {
   weaponL: Group | null;
   /** [primary(right), secondary(left)] */
   muzzles: Object3D[];
+  /** Centre of the right hand (fist charge effects). */
+  handR: Object3D;
   eyes: Mesh;
   koEyes: Mesh;
   brows: Mesh;
@@ -1051,13 +1057,10 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     weaponL.add(mz);
     muzzles.push(mz);
   }
-  if (G.muzzleFore) {
-    const mz = new Object3D();
-    mz.position.set(...G.muzzleFore);
-    elbowR.add(mz);
-    muzzles.push(mz);
-  }
   if (muzzles.length === 1) muzzles.push(muzzles[0]);
+  const handR = new Object3D();
+  handR.position.set(...G.weaponHand);
+  elbowR.add(handR);
 
   return {
     look,
@@ -1080,6 +1083,7 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     weaponR,
     weaponL,
     muzzles,
+    handR,
     eyes,
     koEyes,
     brows,

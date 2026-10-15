@@ -4,6 +4,7 @@ import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 
 export type QualitySetting = 'auto' | 'high' | 'medium' | 'low';
+export type CameraMotion = 'full' | 'reduced' | 'off';
 
 export interface FighterProgress {
   unlocked: boolean;
@@ -41,15 +42,17 @@ export interface SaveData {
   selected: FighterId;
   difficulty: Difficulty;
   goals: Record<GoalId, GoalState>;
-  settings: { sound: boolean; music: boolean; quality: QualitySetting };
+  settings: { sound: boolean; music: boolean; quality: QualitySetting; camera: CameraMotion };
   nextRival: RivalId;
   lastRival: RivalId | null;
   seed: number;
   hintsSeen: boolean;
 }
 
+// The key never changes between versions so existing careers keep loading;
+// `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
-const VERSION = 1;
+const VERSION = 2;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -88,7 +91,7 @@ export function defaultSave(): SaveData {
     selected: 'ray',
     difficulty: 'rookie',
     goals,
-    settings: { sound: true, music: true, quality: 'auto' },
+    settings: { sound: true, music: true, quality: 'auto', camera: 'full' },
     nextRival: 'dex',
     lastRival: null,
     seed: Math.floor(Math.random() * 1e9),
@@ -149,6 +152,8 @@ export function sanitize(raw: unknown): SaveData {
     d.settings.sound = bool(s.sound, true);
     d.settings.music = bool(s.music, true);
     if (s.quality === 'auto' || s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') d.settings.quality = s.quality;
+    // v2: camera motion intensity (absent in Alpha 1.0 saves -> 'full')
+    if (s.camera === 'full' || s.camera === 'reduced' || s.camera === 'off') d.settings.camera = s.camera;
   }
   if (typeof r.nextRival === 'string' && RIVAL_ORDER.includes(r.nextRival as RivalId)) d.nextRival = r.nextRival as RivalId;
   if (typeof r.lastRival === 'string' && RIVAL_ORDER.includes(r.lastRival as RivalId)) d.lastRival = r.lastRival as RivalId;

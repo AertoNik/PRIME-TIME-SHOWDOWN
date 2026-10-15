@@ -13,7 +13,7 @@ export type CardId =
   | 'knockout'
   | 'system_overload';
 export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'glitch_gauntlet';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
 export type PassiveId = 'momentum' | 'iron_skin' | 'overclock';
@@ -45,6 +45,8 @@ export interface AttackStats {
   slow?: { amount: number; duration: number };
   /** Twin weapons alternate muzzles. */
   alternate?: boolean;
+  /** Burst fire: several shots per trigger pull (carbine). */
+  burst?: { count: number; gap: number };
 }
 
 export interface FighterStats {
@@ -74,6 +76,9 @@ export interface FighterDef {
   style: string;
   tagline: string;
   bio: string;
+  /** Short plain-language pros / cons shown on the roster. */
+  strengths: string[];
+  weaknesses: string[];
   stats: FighterStats;
   bars: StatBars;
   passive: PassiveId;
@@ -139,8 +144,16 @@ export interface DifficultyDef {
   hpMult: number;
   dmgMult: number;
   energyMult: number;
-  /** Seconds between AI card decisions. */
+  /** Legacy single reaction value (kept for reference/tools). */
   reaction: number;
+  /** Human-like reaction delay range to visible threats (seconds). */
+  reactMin: number;
+  reactMax: number;
+  /** Cadence of regular card decisions (seconds). */
+  decideMin: number;
+  decideMax: number;
+  /** How often the AI deliberately sets up its own combos (0..1). */
+  comboPlanning: number;
   /** 0..1 how well the AI leads moving targets. */
   aimLead: number;
   /** Extra random aim error (radians). */

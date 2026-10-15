@@ -2,13 +2,16 @@ import { FIGHTERS, RIVALS, BEHAVIORS } from '../../config/fighters';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
-import { el, esc, portraitHTML } from '../dom';
+import { CARDS, PASSIVES } from '../../config/cards';
+import { countUp, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
 export class MenuScreen implements Screen {
   readonly el: HTMLElement;
   private g: Game;
+  private shownMoney = -1;
+  private shownRep = -1;
 
   constructor(g: Game) {
     this.g = g;
@@ -36,8 +39,8 @@ export class MenuScreen implements Screen {
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">
         <div class="lvl-badge" title="Уровень продюсера">${lvl.level}</div>
-        <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span>${formatMoney(s.money)}</div>
-        <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span>${Math.floor(s.reputation)}</div>
+        <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
+        <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
       </div>
       <div class="menu-head">
         <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span></div>
@@ -53,6 +56,7 @@ export class MenuScreen implements Screen {
             <span class="chip gold">${UI_ICONS.fans.replace('<svg', '<svg width="11" height="11" style="color:#ff4fd8"')} ${formatNumber(fp.fans)} фанатов</span>
             <span class="chip">${esc(fameTier(fp.fans))}</span>
           </div>
+          <div class="plate-abilities"><span>◆ ${esc(PASSIVES[f.passive].name)}</span><span style="color:${CARDS[f.signature].color}">★ ${esc(CARDS[f.signature].name)}</span></div>
         </div>
       </div>
       <div class="next-bout">
@@ -69,5 +73,15 @@ export class MenuScreen implements Screen {
           <button class="icon-btn" data-act="settings" aria-label="Настройки" style="width:50px;height:46px">${UI_ICONS.gear}</button>
         </div>
       </div>`;
+    // currencies roll up to their new values after a match
+    const moneyEl = this.el.querySelector('[data-money]') as HTMLElement;
+    const repEl = this.el.querySelector('[data-rep]') as HTMLElement;
+    if (this.shownMoney >= 0 && this.shownMoney !== s.money) {
+      countUp(moneyEl, this.shownMoney, s.money, 0.9, (n) => formatMoney(n), () => g.audio.ui('coin'));
+      moneyEl.parentElement!.classList.add('bump');
+    }
+    if (this.shownRep >= 0 && this.shownRep !== s.reputation) countUp(repEl, this.shownRep, s.reputation, 0.9, (n) => String(Math.floor(n)));
+    this.shownMoney = s.money;
+    this.shownRep = s.reputation;
   }
 }
