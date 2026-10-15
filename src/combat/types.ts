@@ -2,9 +2,9 @@ import type { CardId, ComboId, DashStyle, PassiveId, Side, WeaponType } from '..
 
 export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
-export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst';
+export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'pulse';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'power' | 'adrenaline';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'disc' | 'power' | 'adrenaline';
 
 export interface Projectile {
   id: number;
@@ -108,8 +108,8 @@ export type MatchEvent =
   | { type: 'cardFail'; side: Side; card: CardId; reason: CardFailReason }
   /** BOSS FIGHT: the champion entered phase `phase` (2 or 3). */
   | { type: 'bossPhase'; phase: number }
-  /** BOSS FIGHT: a signature move outside the card system (ENCORE rush) or STAR POWER. */
-  | { type: 'bossMove'; move: 'encore' | 'star' }
+  /** BOSS FIGHT: STAR POWER at the start of a phase. */
+  | { type: 'bossMove'; move: 'star' }
   | { type: 'combo'; side: Side; combo: ComboId }
   | { type: 'dodge'; side: Side; x: number; z: number; perfect: boolean; heavy: boolean }
   | { type: 'miss'; side: Side; x: number; z: number }
@@ -119,7 +119,9 @@ export type MatchEvent =
   | { type: 'shieldBurst'; side: Side; x: number; z: number; hit: boolean }
   | { type: 'stun'; side: Side; duration: number }
   | { type: 'interrupt'; side: Side; by: Side }
-  | { type: 'telegraph'; side: Side; card: CardId; duration: number; lockAt: number; player: boolean }
+  | { type: 'telegraph'; side: Side; card: CardId; duration: number; lockAt: number; player: boolean; range?: number; angle?: number }
+  /** PRIME PULSE released: the shockwave sector (angle = half-width in radians). */
+  | { type: 'pulse'; side: Side; x: number; z: number; dx: number; dz: number; range: number; angle: number; hit: boolean; empowered: boolean }
   | { type: 'aimLock'; side: Side; dx: number; dz: number }
   | { type: 'release'; side: Side; card: CardId }
   | { type: 'dash'; side: Side; fromX: number; fromZ: number; toX: number; toZ: number; style: DashStyle }

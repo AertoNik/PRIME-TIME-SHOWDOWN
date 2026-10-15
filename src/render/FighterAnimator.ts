@@ -160,6 +160,10 @@ export class FighterAnimator {
   private flourishDone = false;
   private weaponBaseR = 0;
   private weaponBaseL = 0;
+  /** PRIME OSCILLATOR emitter rings: angular speed, post-pulse cool-down, last action. */
+  private ringSpeed = 2;
+  private ringCool = 0;
+  private prevAction = 'none';
 
   constructor(rig: FighterRig, idle: IdleStyle, dash: DashStyle, victory: VictoryStyle) {
     this.rig = rig;
@@ -200,6 +204,13 @@ export class FighterAnimator {
     rig.body.rotation.set(0, 0, 0);
     if (rig.weaponR) rig.weaponR.position.y = this.weaponBaseR;
     if (rig.weaponL) rig.weaponL.position.y = this.weaponBaseL;
+    this.ringSpeed = 2;
+    this.ringCool = 0;
+    this.prevAction = 'none';
+    if (rig.spinR) {
+      rig.spinR.rotation.z = 0;
+      rig.spinR.scale.setScalar(1);
+    }
   }
 
   // ----------------------------------------------------------- triggers
@@ -208,8 +219,10 @@ export class FighterAnimator {
     const k = heavy ? 2.4 : 1;
     if (muzzle === 1) this.recoilL.kick(r.kick * k);
     else this.recoilR.kick(r.kick * k);
-    // Two-handed weapons rock both arms.
-    if (this.rig.look.weapon !== 'twin_blasters') this.recoilL.kick(r.kick * 0.6 * k);
+    // Two-handed weapons rock both arms (the arm-mounted resonator only its own).
+    if (this.rig.look.weapon !== 'twin_blasters' && this.rig.look.weapon !== 'oscillator') this.recoilL.kick(r.kick * 0.6 * k);
+    // the resonator's rings flick round on every disc
+    if (this.rig.spinR) this.ringSpeed += heavy ? 14 : 7;
     this.recoilBody.kick((r.spine * 60 + (heavy ? 2.5 : 0)) * k);
     if (r.shove > 0 || heavy) this.shove.kick(-(r.shove + (heavy ? 3 : 0)));
     if (heavy) this.squash.kick(-2.5);
@@ -382,6 +395,12 @@ export class FighterAnimator {
       P.shLX = -0.75 - sinP * A * 0.08;
       P.shLZ = -0.5;
       P.elL = -0.85;
+    } else if (rig.look.weapon === 'oscillator') {
+      // resonator arm held forward and bent, showing the gauntlet; free fist swings a little
+      P.shRX = -0.45 + sinP * A * 0.12;
+      P.shRZ = -0.05;
+      P.elR = -1.25;
+      P.elL = -0.6 - A * 0.4;
     } else if (rig.look.weapon === 'tech_carbine') {
       P.shRX = -0.35 + sinP * A * 0.15;
       P.shRZ = 0.25;
@@ -505,6 +524,16 @@ export class FighterAnimator {
           P.spineRY += -0.08 * aw;
           P.headRX += 0.07 * aw;
           P.headRZ -= 0.06 * aw;
+          break;
+        case 'oscillator':
+          // resonator arm straight at the target, the free fist raised in a guard
+          lerpP('shRX', -1.45 + bob);
+          lerpP('shRZ', 0.1);
+          lerpP('elR', -0.12);
+          lerpP('shLX', -0.62 - bob * 0.5);
+          lerpP('shLZ', -0.32);
+          lerpP('elL', -1.7);
+          P.spineRY += -0.14 * aw;
           break;
         case 'tech_carbine':
           lerpP('shRX', -0.78 + bob * 0.5);
@@ -902,6 +931,20 @@ export class FighterAnimator {
     if (rig.weaponL) {
       rig.weaponL.position.y = this.weaponBaseL + clamp(rL * 0.012, -0.05, 0.2) * slide * 10;
       rig.weaponL.rotation.y = weaponSpin ? -weaponSpin : 0;
+    }
+    // PRIME OSCILLATOR: rings idle slowly, spin up while charging (PRIME PULSE / SPOTLIGHT SHOT),
+    // then wind down for a moment after the release
+    if (rig.spinR) {
+      const charging = inp.action === 'windup';
+      if (this.prevAction === 'windup' && !charging) this.ringCool = 0.9;
+      this.prevAction = inp.action;
+      if (this.ringCool > 0) this.ringCool -= dt;
+      const charge = charging ? clamp(inp.actionT / Math.max(0.05, inp.actionTotal), 0, 1) : 0;
+      const target = charging ? 10 + charge * 22 : this.ringCool > 0 ? 0.3 : 2;
+      this.ringSpeed = damp(this.ringSpeed, target, charging ? 5 : 2.5, dt);
+      rig.spinR.rotation.z += this.ringSpeed * dt;
+      const s = charging ? 1 + charge * 0.22 + Math.sin(this.t * 40) * 0.025 * charge : this.ringCool > 0 ? 0.9 : 1;
+      rig.spinR.scale.setScalar(damp(rig.spinR.scale.x, s, 12, dt));
     }
 
     const sqk = clamp(sq * 0.012, -0.12, 0.18);

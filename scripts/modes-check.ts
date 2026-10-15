@@ -281,28 +281,14 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   boss.hp = Math.round(boss.maxHp * 0.6);
   m.step(1 / 60);
   drain();
-  check('phase 2 at 65%: event, new deck, pressure AI, STAR POWER', m.boss!.phase === 2 && evs.includes('phase2') && evs.includes('star') && m.hands[1].deck.includes('knockout') && m.ais[1].profile.behavior.pressure > 0 && boss.overdrive > 0);
+  check('phase 2 at 65%: event, new deck, pressure AI, STAR POWER', m.boss!.phase === 2 && evs.includes('phase2') && evs.includes('star') && m.hands[1].deck.includes('prime_pulse') && m.ais[1].profile.behavior.pressure > 0 && boss.overdrive > 0);
   for (let i = 0; i < 120; i++) m.step(1 / 60);
   drain();
   check('phase 2 announced only once', evs.filter((x) => x === 'phase2').length === 1);
   boss.hp = Math.round(boss.maxHp * 0.25);
   m.step(1 / 60);
   drain();
-  check('phase 3 at 30%: FINAL BROADCAST with encore', m.boss!.phase === 3 && evs.includes('phase3') && def.phases[2].encore);
-  // phase 3: the champion's own PRIME RUSH is followed by exactly one re-telegraphed ENCORE
-  const rushes: number[] = [];
-  const encoreAt: number[] = [];
-  m.hands[1].energy = 10;
-  for (let i = 0; i < 60 * 12 && m.phase === 'fight' && (rushes.length < 3 || m.time - rushes[0] < 6); i++) {
-    if (m.fighters[0].hp < 3000) m.fighters[0].hp = 9000; // keep the (idle) player alive
-    m.step(1 / 60);
-    for (const e of m.drainEvents()) {
-      if (e.type === 'rush' && e.side === 1) rushes.push(m.time);
-      if (e.type === 'bossMove' && e.move === 'encore') encoreAt.push(m.time);
-    }
-  }
-  const inCd = encoreAt.filter((t) => t - (rushes[0] ?? 0) < def.encoreCooldown).length;
-  check('ENCORE: the first PRIME RUSH is followed by one telegraphed second rush, then a cooldown', rushes.length >= 2 && encoreAt.length >= 1 && encoreAt[0] > rushes[0] && rushes[1] > encoreAt[0] && inCd === 1);
+  check('phase 3 at 30%: FINAL BROADCAST with the stronger PRIME PULSE', m.boss!.phase === 3 && evs.includes('phase3') && !!def.phases[2].pulse);
   const two = mk(2);
   guard = 0;
   while (two.phase === 'intro' && guard++ < 2000) two.step(1 / 60);

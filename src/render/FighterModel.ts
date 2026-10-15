@@ -316,7 +316,9 @@ export type BoneName =
   | 'thighR'
   | 'shinR'
   | 'weaponR'
-  | 'weaponL';
+  | 'weaponL'
+  /** Spinning emitter rings of the boss's PRIME OSCILLATOR (rotated by the animator). */
+  | 'spinR';
 
 interface BoneGeo {
   toon: BufferGeometry | null;
@@ -374,6 +376,7 @@ class Bones {
       'shinR',
       'weaponR',
       'weaponL',
+      'spinR',
     ];
     const out = {} as Record<BoneName, BoneGeo>;
     for (const n of names) {
@@ -614,7 +617,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
         collar.rotateX(Math.PI / 2);
         collar.rotateY(Math.PI * 1.25);
         T.add(collar, top.trim, { p: [0, h * 0.95, -0.01], s: [1, 1.7, 0.95] });
-        TG.add(rbox(0.05, 0.05, 0.012, 0.006), look.glow, { p: [-0.15, h * 0.6, zf(h * 0.6) + 0.01], r: [0, -0.35, Math.PI / 4] }, GLOW);
+        TG.add(rbox(0.05, 0.05, 0.012, 0.006), top.trim, { p: [-0.15, h * 0.6, zf(h * 0.6) + 0.01], r: [0, -0.35, Math.PI / 4] }, GLOW);
         break;
       }
       case 'pads': {
@@ -1073,6 +1076,43 @@ export function getRigGeometry(lookId: string): RigGeometry {
     // stripe
     W.add(rbox(0.305, 0.04, 0.3, 0.015), look.top.style === 'vest' ? look.top.main : look.top.accent, { p: [0, 0.2, 0.3] });
     muzzleR = [0, 0.15, 0.8];
+  } else if (look.weapon === 'oscillator') {
+    // PRIME OSCILLATOR (Alpha 1.3.2, boss only): a resonator gauntlet strapped over the right
+    // forearm, firing through a ring emitter in front of the fist. Weapon space: +Z along the
+    // forearm towards the fist, +Y = top of the forearm. The emitter rings live on a separate
+    // bone ('spinR') so they can spin while charging.
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    const core = 0x46e8ff;
+    // gauntlet housing around the forearm
+    W.add(rbox(0.22, 0.19, 0.4, 0.06), wd, { p: [0, 0.02, -0.18] });
+    W.add(rbox(0.17, 0.05, 0.34, 0.02), wc, { p: [0, 0.125, -0.17] });
+    for (const s of [1, -1]) {
+      W.add(rbox(0.035, 0.13, 0.26, 0.015), wc, { p: [s * 0.122, 0.03, -0.16] });
+      WG.add(rbox(0.012, 0.03, 0.22, 0.006), core, { p: [s * 0.142, 0.05, -0.16] }, GLOW);
+    }
+    WG.add(rbox(0.022, 0.014, 0.28, 0.006), core, { p: [0, 0.153, -0.17] }, GLOW);
+    // front collar and the fixed outer emitter ring
+    const collar = cyl(0.125, 0.135, 0.09, 20);
+    collar.rotateX(Math.PI / 2);
+    W.add(collar, wc, { p: [0, 0.01, 0.05] });
+    W.add(tor(0.205, 0.034, Math.PI * 2, 28), wd, { p: [0, 0.01, 0.2] });
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + Math.PI / 2;
+      W.add(rbox(0.03, 0.03, 0.15, 0.01), wc, { p: [Math.cos(a) * 0.15, 0.01 + Math.sin(a) * 0.15, 0.13] });
+    }
+    // energy core in the middle of the emitter
+    WG.add(sph(0.075, 14, 10), core, { p: [0, 0.01, 0.2] }, GLOW * 1.4);
+    // spinning rings (own bone): gold outer ring with notches + a glowing inner ring
+    const S = B.t('spinR');
+    const SG = B.g('spinR');
+    S.add(tor(0.16, 0.026, Math.PI * 2, 26), wc);
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      S.add(rbox(0.05, 0.03, 0.04, 0.01), wc, { p: [Math.cos(a) * 0.185, Math.sin(a) * 0.185, 0], r: [0, 0, a] });
+    }
+    SG.add(tor(0.105, 0.016, Math.PI * 1.6, 22), core, {}, GLOW * 1.2);
+    muzzleR = [0, 0.01, 0.3];
   } else if (look.weapon === 'pulse_rifle') {
     // long marksman rifle with a scope (weapon space: barrel +Z), shouldered with both hands
     const W = B.t('weaponR');
@@ -1164,6 +1204,8 @@ export interface FighterRig {
   kneeR: Group;
   weaponR: Group | null;
   weaponL: Group | null;
+  /** PRIME OSCILLATOR emitter rings (spun while charging), null for other weapons. */
+  spinR: Group | null;
   /** [primary(right), secondary(left)] */
   muzzles: Object3D[];
   /** Centre of the right hand (fist charge effects). */
@@ -1267,6 +1309,7 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   const muzzles: Object3D[] = [];
   let weaponR: Group | null = null;
   let weaponL: Group | null = null;
+  let spinR: Group | null = null;
   if (G.bones.weaponR.toon) {
     weaponR = boneGroup('weaponR', elbowR, G.weaponHand);
     weaponR.rotation.x = Math.PI / 2;
@@ -1275,6 +1318,10 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     mz.position.set(...G.muzzleR!);
     weaponR.add(mz);
     muzzles.push(mz);
+    if (G.bones.spinR.toon || G.bones.spinR.glow) {
+      spinR = boneGroup('spinR', weaponR, [0, 0.01, 0.2]);
+      attach('spinR', spinR);
+    }
   }
   if (G.bones.weaponL.toon) {
     weaponL = boneGroup('weaponL', elbowL, G.weaponHand);
@@ -1310,6 +1357,7 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     kneeR,
     weaponR,
     weaponL,
+    spinR,
     muzzles,
     handR,
     eyes,

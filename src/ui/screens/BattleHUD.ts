@@ -138,8 +138,6 @@ export class BattleHUD implements Screen {
   private bossDef: BossDef | null = null;
   private bossWarnEl: HTMLElement | null = null;
   private bossWarnTimer: number | null = null;
-  /** The next PRIME RUSH telegraph is the ENCORE (second charge). */
-  private encoreNext = false;
 
   constructor(g: Game) {
     this.g = g;
@@ -368,7 +366,6 @@ export class BattleHUD implements Screen {
   private setupMode(mode: ModeSession): string {
     this.challenge = null;
     this.bossDef = null;
-    this.encoreNext = false;
     this.modeLive = null;
     this.modeLiveTxt = '';
     this.bossWarnEl?.remove();
@@ -917,14 +914,10 @@ export class BattleHUD implements Screen {
         if (e.hit) this.spawnFloater('ПРИМАНКА!', 'callout', e.x, 2.4, e.z, 0.9, 0.6);
         break;
       case 'telegraph':
-        if (e.side === 1 && this.bossDef && (e.card === 'knockout' || e.card === 'charged_shot')) {
-          const encore = this.encoreNext && e.card === 'knockout';
-          this.encoreNext = false;
-          const mv = this.bossDef.moves.find((x) => x.id === (encore ? 'encore' : e.card === 'knockout' ? 'rush' : 'spotlight'));
-          if (mv) {
-            const counter = encore ? 'Второй таран! Ещё один DASH или SHIELD' : e.card === 'knockout' ? 'DASH в сторону или SHIELD' : 'Уйдите с красной линии рывком DASH';
-            this.bossWarn(encore ? `${mv.name} · PRIME RUSH` : mv.name, counter, e.duration);
-          }
+        if (e.side === 1 && this.bossDef && (e.card === 'prime_pulse' || e.card === 'charged_shot')) {
+          const pulse = e.card === 'prime_pulse';
+          const mv = this.bossDef.moves.find((x) => x.id === (pulse ? 'pulse' : 'spotlight'));
+          if (mv) this.bossWarn(mv.name, pulse ? 'SHIELD сейчас или DASH, когда зона застынет' : 'Уйдите с красной линии рывком DASH', e.duration);
         }
         if (e.side === 1) {
           this.g.audio.telegraph();
@@ -995,9 +988,7 @@ export class BattleHUD implements Screen {
         break;
       }
       case 'bossMove':
-        // the ENCORE's own windup follows right away and gets the special warning
-        if (e.move === 'encore') this.encoreNext = true;
-        else if (e.move === 'star') this.callout(1, 'STAR POWER!', '#ffd76a');
+        if (e.move === 'star') this.callout(1, 'STAR POWER!', '#ffd76a');
         break;
       case 'cardFail':
         break;

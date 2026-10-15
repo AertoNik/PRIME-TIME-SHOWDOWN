@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
   SphereGeometry,
+  TorusGeometry,
   Sprite,
   SpriteMaterial,
   Vector3,
@@ -59,6 +60,9 @@ interface ProjVis {
   glow: Sprite;
   glowMat: SpriteMaterial;
   ring: Sprite;
+  /** RESONANCE DISC rim (PRIME OSCILLATOR shots), hidden for every other weapon. */
+  disc: Mesh;
+  discMat: MeshBasicMaterial;
   id: number;
   y: number;
   used: boolean;
@@ -118,6 +122,9 @@ export class BattleView {
     this.timeFx = timeFx;
     r.scene.add(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
+    // flat glowing ring for the boss's resonance discs (lies in the XZ plane)
+    const discGeo = new TorusGeometry(1, 0.16, 6, 28);
+    discGeo.rotateX(Math.PI / 2);
     const streakGeo = new PlaneGeometry(1, 1);
     streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
     for (let i = 0; i < 48; i++) {
@@ -143,8 +150,13 @@ export class BattleView {
       g.add(glow);
       const ring = new Sprite(new SpriteMaterial({ map: glowTexture(), blending: AdditiveBlending, depthWrite: false, transparent: true }));
       g.add(ring);
+      const discMat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: AdditiveBlending, depthWrite: false });
+      const disc = new Mesh(discGeo, discMat);
+      disc.visible = false;
+      disc.renderOrder = 7;
+      g.add(disc);
       this.root.add(g);
-      this.pvis.push({ group: g, core, coreMat, streak, streakMat, streakLen: 1, streakWidth: 0.15, flicker: false, glow, glowMat, ring, id: -1, y: 1.1, used: false });
+      this.pvis.push({ group: g, core, coreMat, streak, streakMat, streakLen: 1, streakWidth: 0.15, flicker: false, glow, glowMat, ring, disc, discMat, id: -1, y: 1.1, used: false });
     }
   }
 
@@ -487,7 +499,22 @@ export class BattleView {
         v.streakLen = 2.4;
         v.streakWidth = 0.11;
         break;
+      case 'disc':
+        // RESONANCE DISC: a flat bright lens inside a spinning ring, with a short wake
+        r = 0.2;
+        elong = 1;
+        v.streakLen = 0.9;
+        v.streakWidth = 0.22;
+        break;
       case 'power':
+        if (p.weapon === 'oscillator') {
+          // SPOTLIGHT SHOT from the resonator: a big, fast disc
+          r = 0.36;
+          elong = 1;
+          v.streakLen = 2.6;
+          v.streakWidth = 0.5;
+          break;
+        }
         if (p.weapon === 'pulse_rifle') {
           // CHARGED SHOT: a long white-hot rail beam
           r = 0.18;
@@ -513,7 +540,13 @@ export class BattleView {
         v.streakLen = 1.6;
         v.streakWidth = 0.14;
     }
-    v.core.scale.set(r, r, r * elong);
+    const isDisc = p.weapon === 'oscillator' && (p.kind === 'disc' || p.kind === 'power');
+    v.core.scale.set(r, isDisc ? r * 0.28 : r, r * elong);
+    v.disc.visible = isDisc;
+    if (isDisc) {
+      v.disc.scale.setScalar(r * 1.25);
+      v.discMat.color.copy(accent).lerp(_c.set(0xffffff), 0.25).multiplyScalar(p.kind === 'power' ? 3 : 2.4);
+    }
     v.coreMat.color.copy(accent).lerp(_c.set(0xffffff), 0.55).multiplyScalar(p.kind === 'power' ? 4 : 3);
     _c.copy(accent);
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
@@ -521,7 +554,7 @@ export class BattleView {
     v.streakMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.9);
     v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.4);
     v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'pellet' ? 0.6 : 0.6);
-    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle';
+    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle' && !isDisc;
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;
@@ -533,6 +566,11 @@ export class BattleView {
     v.y = damp(v.y, ARENA.shotHeight + (p.kind === 'power' ? 0.1 : 0), 6, dt);
     v.group.position.set(x, v.y, z);
     v.core.rotation.set(0, Math.atan2(p.vx, p.vz), 0);
+    if (v.disc.visible) {
+      // the disc spins flat and wobbles slightly so it reads as a resonance ring in flight
+      v.disc.rotation.set(Math.sin(this.t * 9 + p.id) * 0.18, this.t * 14 + p.id, 0);
+      v.core.rotation.y = this.t * 14 + p.id;
+    }
 
     // camera-facing tracer streak oriented along travel
     const sp = Math.hypot(p.vx, p.vz) || 1;

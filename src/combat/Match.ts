@@ -192,7 +192,6 @@ export class Match implements BroadcastHost {
   emit(e: MatchEvent): void {
     this.events.push(e);
     this.broadcast.onEvent(e);
-    this.boss?.onEvent(e);
     // Reading an attack with DASH pays back energy.
     if (e.type === 'dodge' && e.perfect && this.time - this.fighters[e.side].lastDash < 1.0) {
       this.hands[e.side].gain(CARD_TUNING.dash.perfectRefund);
@@ -254,7 +253,7 @@ export class Match implements BroadcastHost {
       this.ais[0].update(dt);
       this.ais[1].update(dt);
       this.runDeferred(dt);
-      this.boss?.update(dt);
+      this.boss?.update();
     }
 
     this.combat.updateFighter(this.fighters[0], dt);
@@ -329,7 +328,8 @@ export class Match implements BroadcastHost {
     if (hand.energy < CARDS[card].cost) return fail('energy');
     if (f.glitch > 0) return fail('glitched');
     if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return fail('stunned');
-    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot';
+    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'prime_pulse';
+    if (card === 'prime_pulse' && f.pulseCd > 0) return fail('cooldown');
     const a = f.action.kind;
     let defer = false;
     if (needsBody) {

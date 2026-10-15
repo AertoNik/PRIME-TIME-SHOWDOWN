@@ -106,6 +106,8 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   tech_carbine: { kick: 5, stiffness: 380, damping: 20, spine: 0.007, shove: 0.35, slide: 0.04, shake: 0 },
   // marksman rifle: one firm shouldered kick per shot, quick settle
   pulse_rifle: { kick: 8, stiffness: 430, damping: 22, spine: 0.014, shove: 0.3, slide: 0.08, shake: 0 },
+  // PRIME OSCILLATOR: a short forearm jolt, the resonator barely slides
+  oscillator: { kick: 7, stiffness: 400, damping: 20, spine: 0.012, shove: 0.25, slide: 0.03, shake: 0 },
 };
 
 export const HIT_REACTION = {

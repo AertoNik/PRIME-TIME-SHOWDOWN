@@ -1,6 +1,7 @@
 // BOSS FIGHT (Alpha 1.3.1): the legendary champion and his three phases.
 // Data only. The simulation side is src/combat/BossDirector.ts; rewards and
 // records live in src/meta/GameModes.ts. Guide: docs/GAME_MODES.md.
+import { CARD_TUNING } from './balance';
 import type { CosmeticId } from './cosmetics.config';
 import type { BehaviorDef, CardId, DifficultyDef, RivalId } from './types';
 
@@ -22,14 +23,14 @@ export interface BossPhase {
   starPower: number;
   /** Energy added on entering the phase. */
   energyBonus: number;
-  /** FINAL BROADCAST: a second, re-telegraphed PRIME RUSH right after the first. */
-  encore: boolean;
+  /** PRIME PULSE numbers for this phase (default: CARD_TUNING.prime_pulse). FINAL BROADCAST is stronger. */
+  pulse?: typeof CARD_TUNING.prime_pulse;
   /** Spotlight colours of the arena during this phase. */
   spots: [number, number, number, number];
 }
 
 export interface BossMove {
-  id: 'spotlight' | 'rush' | 'encore' | 'star';
+  id: 'spotlight' | 'pulse' | 'star' | 'finale';
   name: string;
   desc: string;
   /** Phase from which the move is used. */
@@ -55,9 +56,6 @@ export interface BossDef {
   moves: BossMove[];
   /** Names the HUD shows when the boss plays a card. */
   cardNames: Partial<Record<CardId, string>>;
-  /** Encore cooldown (s) so the double rush is a highlight, not a loop. */
-  encoreCooldown: number;
-  encoreDelay: number;
   rewards: {
     /** Difficulty used for the regular match purse (reward multiplier). */
     purseDifficulty: 'pro';
@@ -84,7 +82,7 @@ const PHASE_BEHAVIOR: Record<1 | 2 | 3, BehaviorDef> = {
     comboHunter: true,
     pressure: 0.15,
   },
-  // pressure: closes in, uses his rush in openings
+  // pressure: closes in and uses PRIME PULSE at mid range
   2: {
     id: 'aggressive',
     label: 'ДАВЛЕНИЕ',
@@ -102,7 +100,7 @@ const PHASE_BEHAVIOR: Record<1 | 2 | 3, BehaviorDef> = {
   3: {
     id: 'reckless',
     label: 'ФИНАЛ',
-    desc: 'Максимум шоу: постоянный напор и двойной таран.',
+    desc: 'Максимум шоу: постоянный напор и усиленная PRIME PULSE.',
     rangeMult: 0.62,
     strafe: 0.5,
     dodgeMult: 0.9,
@@ -120,7 +118,7 @@ export const BOSSES: Record<string, BossDef> = {
     rival: 'vale',
     title: 'LEGENDARY SHOWDOWN',
     kicker: 'Чемпион PRIME TIME',
-    tagline: 'Главный бой сезона: легендарный чемпион шоу выходит на арену. Три фазы, фирменные приёмы, победа только нокаутом.',
+    tagline: 'Главный бой сезона: легендарный чемпион шоу с резонатором PRIME OSCILLATOR. Три фазы, фирменная волна PRIME PULSE, победа только нокаутом.',
     duration: 120,
     introTime: 5.6,
     ai: {
@@ -149,40 +147,39 @@ export const BOSSES: Record<string, BossDef> = {
       {
         n: 1,
         title: 'SHOW OPENING',
-        desc: 'Чемпион работает технично: держит дистанцию, проверяет вашу защиту и бьёт SPOTLIGHT SHOT.',
+        desc: 'Чемпион работает технично: держит дистанцию, стреляет резонансными дисками и бьёт SPOTLIGHT SHOT.',
         at: 1,
         deck: ['dash', 'shield', 'overdrive', 'charged_shot'],
         behavior: PHASE_BEHAVIOR[1],
         energyMult: 1,
         starPower: 0,
         energyBonus: 0,
-        encore: false,
         spots: [0xffc23a, 0xfff1c0, 0xffa31a, 0xffffff],
       },
       {
         n: 2,
         title: 'PRIME PRESSURE',
-        desc: 'С 65% здоровья: STAR POWER, напор и таран PRIME RUSH.',
+        desc: 'С 65% здоровья: STAR POWER, напор и волна PRIME PULSE.',
         at: 0.65,
-        deck: ['dash', 'overdrive', 'knockout', 'charged_shot'],
+        deck: ['dash', 'overdrive', 'prime_pulse', 'charged_shot'],
         behavior: PHASE_BEHAVIOR[2],
         energyMult: 1.1,
         starPower: 4.5,
         energyBonus: 2,
-        encore: false,
         spots: [0xffc23a, 0xff3a4a, 0xffa31a, 0xff6a2a],
       },
       {
         n: 3,
         title: 'FINAL BROADCAST',
-        desc: 'С 30%: максимум шоу. Долгий STAR POWER и ENCORE — второй таран сразу после первого.',
+        desc: 'С 30%: максимум шоу. Долгий STAR POWER и усиленная PRIME PULSE: шире, дальше, сильнее и чаще.',
         at: 0.3,
-        deck: ['knockout', 'overdrive', 'charged_shot', 'dash'],
+        deck: ['prime_pulse', 'overdrive', 'charged_shot', 'dash'],
         behavior: PHASE_BEHAVIOR[3],
         energyMult: 1.25,
         starPower: 6,
         energyBonus: 3,
-        encore: true,
+        // FINAL BROADCAST: a longer, more visible charge for a wider and stronger wave
+        pulse: { ...CARD_TUNING.prime_pulse, telegraph: 1.45, range: 8.4, halfAngle: 0.6, damage: 1100, knockback: 4.5, stun: 0.4, recover: 0.6, cooldown: 5 },
         spots: [0xff2a3a, 0xffc23a, 0xc0102a, 0xff7a1a],
       },
     ],
@@ -195,11 +192,11 @@ export const BOSSES: Record<string, BossDef> = {
         counter: 'Красная линия — уйдите рывком DASH в сторону.',
       },
       {
-        id: 'rush',
-        name: 'PRIME RUSH',
-        desc: 'Таран с разгона: большой урон и отброс.',
+        id: 'pulse',
+        name: 'PRIME PULSE',
+        desc: 'Резонатор заряжается, перед чемпионом загорается красный сектор — и по нему проходит энергетическая волна.',
         from: 2,
-        counter: 'DASH в момент удара или SHIELD; промах оставляет его открытым.',
+        counter: 'SHIELD поглощает волну. DASH — когда сектор застынет. После волны чемпион открыт.',
       },
       {
         id: 'star',
@@ -209,21 +206,19 @@ export const BOSSES: Record<string, BossDef> = {
         counter: 'Переждите разгон: SHIELD, SMOKE или дистанция.',
       },
       {
-        id: 'encore',
-        name: 'ENCORE',
-        desc: 'В финальной фазе после тарана сразу идёт второй — с новой красной зоной.',
+        id: 'finale',
+        name: 'FINAL PULSE',
+        desc: 'В финальной фазе PRIME PULSE шире, дальше и сильнее, а перезаряжается быстрее.',
         from: 3,
-        counter: 'Сохраните энергию на второй DASH или держите SHIELD.',
+        counter: 'Держите энергию на SHIELD или DASH к каждой волне.',
       },
     ],
     cardNames: {
       charged_shot: 'SPOTLIGHT SHOT',
-      knockout: 'PRIME RUSH',
+      prime_pulse: 'PRIME PULSE',
       overdrive: 'STAR POWER',
       shield: 'CHAMPION GUARD',
     },
-    encoreCooldown: 9,
-    encoreDelay: 0.35,
     rewards: {
       purseDifficulty: 'pro',
       moneyMult: 1.25,

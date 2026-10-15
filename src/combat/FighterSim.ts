@@ -12,6 +12,8 @@ export interface WindupAction {
   dirZ: number;
   combo: ComboId | null;
   telegraph: boolean;
+  /** Match time when the aim froze (telegraphed windups). */
+  lockedAt?: number;
 }
 export interface DashAction {
   kind: 'dash';
@@ -95,6 +97,8 @@ export class FighterSim {
   burstCounter = false;
   /** DEADEYE passive: auto shots fired so far (every Nth is a marksman shot). */
   shotCount = 0;
+  /** Seconds until PRIME PULSE can be used again (boss only). */
+  pulseCd = 0;
   action: Action = { kind: 'none' };
 
   // status timers

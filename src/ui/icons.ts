@@ -62,6 +62,12 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M30 32 L62 32" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
      <path d="M48 24 L62 32 L48 40" fill="none" stroke="#bff4ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`,
   ),
+  prime_pulse: S(
+    `<path d="M10 32 L54 14 A40 40 0 0 1 54 50 Z" fill="#46e8ff" opacity=".25"/>
+     <path d="M30 20 A16 16 0 0 1 30 44 M40 14 A26 26 0 0 1 40 50 M50 9 A36 36 0 0 1 50 55" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+     <circle cx="14" cy="32" r="9" fill="none" stroke="#ffd76a" stroke-width="4"/>
+     <circle cx="14" cy="32" r="4" fill="#bff8ff"/>`,
+  ),
 };
 
 export const PASSIVE_ICONS: Record<PassiveId, string> = {

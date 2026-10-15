@@ -1306,6 +1306,10 @@ export class VFX {
     if (heavy) {
       this.muzzle(p, dx, dz, color, true, weapon === 'boom_cannon');
       this.raysPool.spawn(p.x, p.y, p.z, color, 1.6, 0.6, 2.2, 0.18, 4);
+      if (weapon === 'oscillator') {
+        this.rings.spawn(p.x, p.y, p.z, color, 2.6, 0.3, 1.5, 0.22, false);
+        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xffffff), 3, 0.45, 1.3, 0.1);
+      }
       if (weapon === 'pulse_rifle') {
         // CHARGED SHOT: a ring of frost sparks and a white-hot core
         this.flashes.spawn(p.x, p.y, p.z, _c.set(0xffffff), 3.4, 0.5, 1.6, 0.12);
@@ -1333,6 +1337,11 @@ export class VFX {
         this.flashes.spawn(p.x, p.y, p.z, color, 2.8, 0.35, 0.9, 0.05);
         this.glows.spawn(p.x, p.y, p.z, _c.set(0xffffff), 1.6, 0.25, 0.7, 0.06);
         this.cone(p.x, p.y, p.z, dx, dz, color, 4, 9, 0.12, 0.08);
+        break;
+      case 'oscillator':
+        // resonator pulse: a ring flares in front of the fist, small cyan flash
+        this.rings.spawn(p.x, p.y, p.z, color, 2.2, 0.2, 0.75, 0.14, false);
+        this.flashes.spawn(p.x, p.y, p.z, color, 2, 0.3, 0.6, 0.05);
         break;
       case 'tech_carbine':
         this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
@@ -1366,6 +1375,12 @@ export class VFX {
         this.flashes.spawn(x, y, z, color, 2.6, 0.35, 1.1, 0.07, 2);
         this.rings.spawn(x, y, z, color, 2, 0.15, 0.9, 0.18, false);
         this.burst(x, y, z, color, 6, 7, 0.11, 0.28, 2.6);
+        break;
+      case 'oscillator':
+        // disc hit: a vertical resonance ring and a light spark spray
+        this.rings.spawn(x, y, z, color, 2.2, 0.15, 1.0, 0.2, false);
+        this.flashes.spawn(x, y, z, color, 2, 0.3, 0.8, 0.06, 2);
+        this.burst(x, y, z, color, 5, 6, 0.1, 0.26, 2.4);
         break;
       case 'tech_carbine':
         this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);

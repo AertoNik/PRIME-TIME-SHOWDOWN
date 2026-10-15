@@ -892,8 +892,14 @@ export class Game {
         a.ooh();
         break;
       case 'telegraph':
-        // the champion's signature moves get their own warning sting
-        if (e.side === 1 && this.match?.boss && (e.card === 'knockout' || e.card === 'charged_shot')) a.bossWarn();
+        // the champion's signature moves get their own warning sting; PRIME PULSE charges audibly
+        if (e.side === 1 && this.match?.boss && (e.card === 'prime_pulse' || e.card === 'charged_shot')) a.bossWarn();
+        if (e.card === 'prime_pulse') a.pulseCharge(e.duration);
+        break;
+      case 'pulse':
+        a.pulseBlast(e.empowered);
+        this.cam.addTrauma(e.empowered ? 0.45 : 0.32);
+        this.cam.kick(e.empowered ? 0.8 : 0.55);
         break;
       case 'bossPhase': {
         const ph = this.match?.boss?.def.phases[e.phase - 1];
@@ -905,9 +911,6 @@ export class Game {
         if (ph) this.arena.setSpots(ph.spots);
         break;
       }
-      case 'bossMove':
-        if (e.move === 'encore') a.bossWarn();
-        break;
       default:
         break;
     }

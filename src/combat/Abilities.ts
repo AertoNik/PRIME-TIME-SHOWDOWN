@@ -62,6 +62,18 @@ export class Abilities {
         m.emit({ type: 'telegraph', side: f.side, card, duration: total, lockAt: telegraph ? t.lockAt : 1, player: !telegraph });
         break;
       }
+      case 'prime_pulse': {
+        // the resonator charges; the danger sector is telegraphed and its aim freezes at lockAt
+        const t = this.pulseTuning();
+        const telegraph = true;
+        const total = t.telegraph * m.difficulty.telegraphMult;
+        const dx = f.aimX - f.x;
+        const dz = f.aimZ - f.z;
+        const d = Math.hypot(dx, dz) || 1;
+        f.action = { kind: 'windup', card, t: 0, total, lockAt: t.lockAt, locked: false, dirX: dx / d, dirZ: dz / d, combo: comboId, telegraph };
+        m.emit({ type: 'telegraph', side: f.side, card, duration: total, lockAt: t.lockAt, player: false, range: t.range, angle: t.halfAngle });
+        break;
+      }
       case 'shield': {
         const t = CARD_TUNING.shield;
         f.shield = t.duration;
@@ -227,6 +239,10 @@ export class Abilities {
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
 
+    if (a.card === 'prime_pulse') {
+      this.releasePulse(f, a, dirX, dirZ);
+      return;
+    }
     if (a.card === 'power_shot' || a.card === 'charged_shot') {
       const charged = a.card === 'charged_shot';
       const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
@@ -260,6 +276,71 @@ export class Abilities {
       f.facing = Math.atan2(dirX, dirZ);
       m.emit({ type: 'rush', side: f.side, x: f.x, z: f.z, dx: dirX, dz: dirZ });
     }
+  }
+
+  /** PRIME PULSE numbers: the boss's current phase (FINAL BROADCAST is stronger), else the base tuning. */
+  pulseTuning(): typeof CARD_TUNING.prime_pulse {
+    return this.m.boss?.current.pulse ?? CARD_TUNING.prime_pulse;
+  }
+
+  /**
+   * The shockwave: everything inside the frozen sector is hit once. Fair answers:
+   * SHIELD absorbs it (a perfect block), a DASH started after the sector froze always
+   * carries the fighter out of the wave (perfect dodge), SHOCK interrupts the charge.
+   */
+  private releasePulse(f: FighterSim, a: WindupAction, dirX: number, dirZ: number): void {
+    const m = this.m;
+    const t = this.pulseTuning();
+    const foe = m.foe(f.side);
+    const empowered = t !== CARD_TUNING.prime_pulse;
+    const inSector = (x: number, z: number, r: number) => {
+      const dx = x - f.x;
+      const dz = z - f.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > t.range + r) return false;
+      if (dist < r + f.radius) return true;
+      const cos = (dx * dirX + dz * dirZ) / dist;
+      return Math.acos(Math.max(-1, Math.min(1, cos))) <= t.halfAngle + Math.atan(r / dist);
+    };
+    let hit = false;
+    for (const d of m.decoys) if (d.alive && d.owner !== f.side && inSector(d.x, d.z, 0.5)) m.popDecoy(d);
+    if (!foe.ko && inSector(foe.x, foe.z, foe.radius)) {
+      const dashedOut = a.lockedAt !== undefined && foe.lastDash >= a.lockedAt;
+      if (foe.invuln > 0 || dashedOut) {
+        foe.m.perfects++;
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
+        m.combat.onEvade(foe);
+      } else {
+        const r = m.combat.applyHit(foe, f, {
+          damage: t.damage * f.outgoingDamageMult(),
+          kind: 'pulse',
+          heavy: true,
+          crit: empowered,
+          electric: false,
+          combo: a.combo,
+          knockback: t.knockback,
+          stun: t.stun,
+          slowAmount: 0,
+          slowDuration: 0,
+          dx: dirX,
+          dz: dirZ,
+          sure: true,
+          projectile: null,
+        });
+        hit = r === 'hit';
+      }
+    } else if (!foe.ko && foe.readDash && a.lockedAt !== undefined && foe.lastDash >= a.lockedAt) {
+      // dashed clear of the wave on a read
+      foe.m.perfects++;
+      m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
+      m.combat.onEvade(foe);
+    }
+    // the wave cracks speaker stacks at the far end of the sector
+    m.hitProps(f.x + dirX * t.range * 0.85, f.z + dirZ * t.range * 0.85, true);
+    m.emit({ type: 'pulse', side: f.side, x: f.x, z: f.z, dx: dirX, dz: dirZ, range: t.range, angle: t.halfAngle, hit, empowered });
+    f.action = { kind: 'recover', t: 0, total: t.recover };
+    f.pulseCd = t.cooldown;
+    f.fireTimer = Math.max(f.fireTimer, t.recover);
   }
 
   updateRush(f: FighterSim, foe: FighterSim, a: RushAction): void {

@@ -32,6 +32,8 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
       return { right: 0.2, fwd: 1.05 };
     case 'pulse_rifle':
       return { right: 0.2, fwd: 1.32 };
+    case 'oscillator':
+      return { right: 0.3, fwd: 1.05 };
   }
 }
 
@@ -53,6 +55,7 @@ export class CombatSystem {
   // ------------------------------------------------------------------ timers
   tickStatuses(f: FighterSim, dt: number): void {
     if (f.stun > 0) f.stun = Math.max(0, f.stun - dt);
+    if (f.pulseCd > 0) f.pulseCd = Math.max(0, f.pulseCd - dt);
     if (f.shield > 0) {
       f.shield -= dt;
       if (f.shield <= 0) {
@@ -252,6 +255,7 @@ export class CombatSystem {
           a.dirZ = dz / d;
           if (a.telegraph && a.t >= a.total * a.lockAt) {
             a.locked = true;
+            a.lockedAt = m.time;
             m.emit({ type: 'aimLock', side: f.side, dx: a.dirX, dz: a.dirZ });
           }
         }
@@ -354,7 +358,15 @@ export class CombatSystem {
     }
     const dmg = atk.damage * f.outgoingDamageMult() * (counter ? CARD_TUNING.dash.counterMult : 1) * (deadeye ? PASSIVE_TUNING.deadeye.mult : 1);
     const kind: ProjectileKind =
-      atk.weapon === 'boom_cannon' ? 'pellet' : atk.weapon === 'tech_carbine' ? 'bolt' : atk.weapon === 'pulse_rifle' ? 'rail' : 'auto';
+      atk.weapon === 'boom_cannon'
+        ? 'pellet'
+        : atk.weapon === 'tech_carbine'
+          ? 'bolt'
+          : atk.weapon === 'pulse_rifle'
+            ? 'rail'
+            : atk.weapon === 'oscillator'
+              ? 'disc'
+              : 'auto';
     const n = atk.projectiles;
     for (let i = 0; i < n; i++) {
       const fan = n > 1 ? -atk.spread / 2 + (atk.spread * i) / (n - 1) : 0;

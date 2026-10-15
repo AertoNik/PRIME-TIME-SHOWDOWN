@@ -111,6 +111,18 @@ export const CARDS: Record<CardId, CardDef> = {
     exclusive: 'vega',
     heavy: true,
   },
+  // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
+  prime_pulse: {
+    id: 'prime_pulse',
+    name: 'PRIME PULSE',
+    cost: 5,
+    role: 'Чемпион',
+    short: 'Резонансная волна',
+    desc: `Резонатор заряжается, и в секторе перед чемпионом проходит волна: ${T.prime_pulse.damage} урона и отброс. SHIELD поглощает её, DASH после того, как зона застыла, уводит из волны.`,
+    color: '#46e8ff',
+    color2: '#7a5a10',
+    heavy: true,
+  },
 };
 
 export const UNIVERSAL_CARDS: CardId[] = ['dash', 'power_shot', 'shield', 'smoke', 'shock', 'overdrive'];

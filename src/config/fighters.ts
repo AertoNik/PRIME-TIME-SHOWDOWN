@@ -251,9 +251,20 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     behavior: 'tactical',
     look: 'vale',
     deck: ['dash', 'shield', 'overdrive', 'charged_shot'],
-    bio: 'Пятикратный чемпион PRIME TIME и лицо прайм-тайма. Золотая винтовка, фирменный таран и ни одного проигранного финала. Вживую его не видели уже два сезона.',
+    bio: 'Пятикратный чемпион PRIME TIME и лицо прайм-тайма. Резонатор PRIME OSCILLATOR, фирменная волна PRIME PULSE и ни одного проигранного финала.',
     theme: { main: '#ffc23a', accent: '#fff1b0', dark: '#2a1600' },
-    mods: { style: 'Чемпионская техника и шоу', hpMult: 1.75, speedMult: 1.04, fireRateMult: 1.0, idleStyle: 'poise', victoryStyle: 'flex', dashStyle: 'lunge' },
+    mods: {
+      style: 'Чемпионская техника и шоу',
+      hpMult: 1.75,
+      speedMult: 1.04,
+      fireRateMult: 1.0,
+      // Alpha 1.3.2: PRIME OSCILLATOR fires RESONANCE DISCS — same damage model as before,
+      // a little slower and wider so the discs read clearly on a phone
+      attack: { weapon: 'oscillator', speed: 24, radius: 0.24 },
+      idleStyle: 'poise',
+      victoryStyle: 'flex',
+      dashStyle: 'lunge',
+    },
   },
 };
 
@@ -275,7 +286,7 @@ export function rivalFighterDef(r: RivalDef): FighterDef {
       ...base.stats,
       maxHp: Math.round(base.stats.maxHp * (m.hpMult ?? 1)),
       moveSpeed: base.stats.moveSpeed * (m.speedMult ?? 1),
-      attack: { ...base.stats.attack, interval: base.stats.attack.interval / (m.fireRateMult ?? 1) },
+      attack: { ...base.stats.attack, ...m.attack, interval: (m.attack?.interval ?? base.stats.attack.interval) / (m.fireRateMult ?? 1) },
     },
     idleStyle: m.idleStyle ?? base.idleStyle,
     victoryStyle: m.victoryStyle ?? base.victoryStyle,

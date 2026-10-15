@@ -467,7 +467,7 @@ export class FighterAI {
     const b = this.profile.behavior;
     const hand = m.hands[this.side];
     const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
-    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0;
+    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('prime_pulse') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
     // Visible openings a pressure fighter jumps on: the foe just spent its DASH,
     // is slowed, or is committed to a charge of its own.
@@ -499,6 +499,18 @@ export class FighterAI {
         if (opening && dist < 5.2) s += 3;
         if (b.pressure > 0 && dist < 5.2) s += 2.5 * b.pressure;
         break;
+      case 'prime_pulse': {
+        // the champion's shockwave: only when the target is inside its reach and not protected
+        const reach = this.m.abilities.pulseTuning().range;
+        if (f.pulseCd > 0) s = -10;
+        else {
+          s = dist < reach * 0.85 ? 6.5 : dist < reach ? 3 : -4;
+          if (foeDisabled) s += 3;
+          if (opening) s += 2;
+          if (foe.shield > 0 || foe.invuln > 0) s -= 7;
+        }
+        break;
+      }
       case 'charged_shot':
         // pierces shields and hits harder from afar
         s = dist > 5 ? 6 : 4;

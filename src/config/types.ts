@@ -12,9 +12,11 @@ export type CardId =
   | 'adrenaline'
   | 'knockout'
   | 'system_overload'
-  | 'charged_shot';
+  | 'charged_shot'
+  /** Boss only (Alpha 1.3.2): the champion's PRIME OSCILLATOR shockwave. Never in a player deck. */
+  | 'prime_pulse';
 export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'oscillator';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
 export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye';
@@ -110,6 +112,8 @@ export interface RivalDef {
   mods?: {
     /** Style line shown on the prep screen (defaults to the archetype's). */
     style?: string;
+    /** Weapon / projectile overrides (the boss's PRIME OSCILLATOR). */
+    attack?: Partial<AttackStats>;
     hpMult?: number;
     speedMult?: number;
     fireRateMult?: number;

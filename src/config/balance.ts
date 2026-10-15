@@ -84,6 +84,27 @@ export const CARD_TUNING = {
   },
   // Vega's signature: a charged rail shot. Damage grows with distance travelled
   // (falloff > 1), and it punches through shields.
+  /**
+   * PRIME PULSE (boss only): the resonator charges, the danger sector is shown, its aim
+   * freezes at `lockAt`, then a shockwave hits everything inside the sector. Phase 3 of
+   * the boss fight overrides these numbers (boss.config.ts). Answers: SHIELD absorbs it,
+   * DASH started after the sector freezes always gets out of the wave, SHOCK interrupts.
+   */
+  prime_pulse: {
+    windup: 0.9,
+    telegraph: 1.3,
+    lockAt: 0.5,
+    range: 7.2,
+    /** Half-width of the sector (radians, ~27°). */
+    halfAngle: 0.48,
+    damage: 900,
+    knockback: 3.5,
+    stun: 0.3,
+    /** The champion holds still after the wave: an opening. */
+    recover: 0.75,
+    /** Seconds before the next PRIME PULSE. */
+    cooldown: 7,
+  },
   charged_shot: {
     windup: 0.42,
     telegraph: 0.95,

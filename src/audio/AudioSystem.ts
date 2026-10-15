@@ -233,6 +233,12 @@ export class AudioSystem {
         this.tone({ type: 'square', f0: 1900 + Math.random() * 150, f1: 420, dur: 0.12, gain: 0.08 * v, filter: { type: 'lowpass', f0: 6000 } });
         this.tone({ type: 'sine', f0: 2600, f1: 2200, dur: 0.16, gain: 0.03 * v });
         break;
+      case 'oscillator':
+        // resonance disc: a quick "wub" — two detuned sines sweeping down with a soft click
+        this.tone({ type: 'sine', f0: 620, f1: 180, dur: 0.16, gain: 0.1 * v });
+        this.tone({ type: 'triangle', f0: 1240, f1: 360, dur: 0.12, gain: 0.05 * v, detune: 18 });
+        this.noise({ dur: 0.04, gain: 0.04 * v, type: 'highpass', f0: 3000 });
+        break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst
         this.tone({ type: 'square', f0: 1100 + Math.random() * 120, f1: 520, dur: 0.06, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2200, q: 2 } });
@@ -460,12 +466,29 @@ export class AudioSystem {
     this.cheer(1.4);
   }
 
-  /** BOSS FIGHT signature move warning (PRIME RUSH / SPOTLIGHT SHOT / ENCORE). */
+  /** BOSS FIGHT signature move warning (PRIME PULSE / SPOTLIGHT SHOT). */
   bossWarn(): void {
     if (!this.throttle('bossWarn', 500)) return;
     this.tone({ type: 'square', f0: NOTE(76), dur: 0.12, gain: 0.07, filter: { type: 'lowpass', f0: 3000 } });
     this.tone({ type: 'square', f0: NOTE(83), dur: 0.16, gain: 0.07, delay: 0.12, filter: { type: 'lowpass', f0: 3000 } });
     this.tone({ type: 'sawtooth', f0: NOTE(47), dur: 0.35, gain: 0.08, filter: { type: 'lowpass', f0: 900 } });
+  }
+
+  /** PRIME PULSE charging: a resonance whine rising over the whole telegraph. */
+  pulseCharge(duration: number): void {
+    const d = Math.max(0.4, duration);
+    this.tone({ type: 'sawtooth', f0: 140, f1: 900, dur: d, gain: 0.06, attack: d * 0.6, filter: { type: 'lowpass', f0: 400, f1: 3200, q: 4 } });
+    this.tone({ type: 'sine', f0: 280, f1: 1800, dur: d, gain: 0.05, attack: d * 0.7, detune: 14 });
+    this.tone({ type: 'triangle', f0: 70, f1: 110, dur: d, gain: 0.08, attack: d * 0.5 });
+  }
+
+  /** PRIME PULSE released: deep resonant boom with a ringing tail. */
+  pulseBlast(empowered: boolean): void {
+    this.tone({ type: 'sine', f0: empowered ? 110 : 130, f1: 30, dur: 0.9, gain: 0.65 });
+    this.noise({ dur: 0.7, gain: 0.32, type: 'lowpass', f0: 3200, f1: 140 });
+    this.tone({ type: 'sawtooth', f0: 900, f1: 120, dur: 0.45, gain: 0.08, filter: { type: 'lowpass', f0: 4000, f1: 400 } });
+    [0, 7, 12].forEach((n, i) => this.tone({ type: 'sine', f0: NOTE((empowered ? 76 : 79) + n), dur: 0.8, gain: 0.03, delay: 0.05 + i * 0.03 }));
+    this.cheer(empowered ? 1 : 0.6);
   }
 
   /** Seasonal reward unlocked. */
