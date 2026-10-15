@@ -102,7 +102,7 @@ export class CareerScreen implements Screen {
       return `<div class="contract">
         ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
         <div class="cm">
-          <div class="gt" style="font-family:var(--font-display);font-weight:800;font-size:13px">${esc(f.name)} «${esc(f.nickname)}»</div>
+          <div class="gt" style="font-family:var(--font-display);font-weight:800;font-size:13px">${esc(f.name)} <span style="color:${f.theme.accent};font-size:10.5px;white-space:nowrap">«${esc(f.nickname)}»</span></div>
           <div class="gd" style="font-size:11.5px;color:var(--muted)">${fp.unlocked ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать')}</div>
         </div>
         ${right}

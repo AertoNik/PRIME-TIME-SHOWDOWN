@@ -21,6 +21,7 @@ export class RosterScreen implements Screen {
   private g: Game;
   private idx = 0;
   private dragId: number | null = null;
+  private backTo: 'menu' | 'prep' | 'career' = 'menu';
   private lastX = 0;
 
   constructor(g: Game) {
@@ -53,7 +54,9 @@ export class RosterScreen implements Screen {
     return FIGHTER_ORDER[this.idx];
   }
 
+  /** params: a fighter id (opened from a contract in Career) or { back: 'prep' }. */
   onShow(params?: unknown): void {
+    this.backTo = typeof params === 'string' ? 'career' : (params as { back?: 'prep' } | undefined)?.back === 'prep' ? 'prep' : 'menu';
     const id = (typeof params === 'string' ? params : this.g.save.data.selected) as FighterId;
     this.idx = Math.max(0, FIGHTER_ORDER.indexOf(id));
     this.render();
@@ -66,7 +69,7 @@ export class RosterScreen implements Screen {
     const g = this.g;
     if (act === 'back') {
       g.audio.ui('click');
-      g.goto('menu');
+      g.goto(this.backTo);
     } else if (act === 'tab') {
       g.audio.ui('swipe');
       this.idx = Number(t.dataset.i);

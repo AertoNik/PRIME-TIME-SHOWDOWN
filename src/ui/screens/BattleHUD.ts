@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { MATCH } from '../../config/balance';
-import { CARDS, COMBOS } from '../../config/cards';
+import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import type { CardId, Side } from '../../config/types';
 import type { Match } from '../../combat/Match';
@@ -16,6 +16,10 @@ interface Floater {
   /** Running total for aggregated rapid hits. */
   sum: number;
   side: number;
+  /** Fighter a text callout belongs to (-1 for damage numbers). */
+  callSide: number;
+  /** Extra px lift so stacked callouts don't overlap. */
+  lift: number;
   x: number;
   y: number;
   z: number;
@@ -29,8 +33,32 @@ interface Floater {
 interface Banner {
   text: string;
   sub?: string;
+  /** Combo explanation: which cards and what bonus. */
+  detail?: string;
   tier: number;
 }
+
+interface RatingPop {
+  el: HTMLElement;
+  label: string;
+  amount: number;
+  t: number;
+}
+
+/** Status chips under the health bars, most important first; only the top 3 show. */
+const STATUS_ORDER: { key: string; label: string; color: string }[] = [
+  { key: 'stun', label: 'ОГЛУШЁН', color: '#ffe14d' },
+  { key: 'glitch', label: 'ВЗЛОМ', color: '#ff4fd8' },
+  { key: 'shield', label: 'ЩИТ', color: '#9ad8ff' },
+  { key: 'overdrive', label: 'РАЗГОН', color: '#ffa060' },
+  { key: 'adrenaline', label: 'АДРЕНАЛИН', color: '#22f0e0' },
+  { key: 'smoke', label: 'В ДЫМУ', color: '#b8b0e0' },
+  { key: 'momentum', label: 'MOMENTUM', color: '#22f0e0' },
+  { key: 'ironSkin', label: 'IRON SKIN', color: '#c8d4ea' },
+  { key: 'overclock', label: 'OVERCLOCK', color: '#ff8ae6' },
+];
+const MAX_STATUS = 3;
+
 
 const _v = new Vector3();
 const _p = { x: 0, y: 0 };
@@ -63,8 +91,10 @@ export class BattleHUD implements Screen {
   private energyNum!: HTMLElement;
   private energyBar!: HTMLElement;
   private energySegs: HTMLElement[] = [];
+  private hudBottomEl!: HTMLElement;
+  /** px below the top bars; world-space labels never float above this line. */
+  private safeTop = 0;
   private comboStrip!: HTMLElement;
-  private comboName!: HTMLElement;
   private comboTrack!: HTMLElement;
   private fx!: HTMLElement;
   private bannerZone!: HTMLElement;
@@ -82,10 +112,17 @@ export class BattleHUD implements Screen {
   private floaters: Floater[] = [];
   private bannerQueue: Banner[] = [];
   private bannerT = 0;
+  private bannerTier = 0;
   private displayRating = 0;
   private lastSecond = -1;
   private flash = 0;
-  private hints = { start: false, telegraph: false, combo: false };
+  private hints = { start: false, telegraph: false, combo: false, opener: false };
+  private ratingPops: RatingPop[] = [];
+  /** Last card the player played (to explain combos). */
+  private prevCard: CardId | null = null;
+  private pendingCombo: { name: string; detail: string } | null = null;
+  private denyTips: (HTMLElement | null)[] = [null, null, null];
+  private lastPlayAt = [-1e9, -1e9, -1e9];
   private hintT = 0;
   private statusKey = ['', ''];
   private enemyWarn = false;
@@ -105,26 +142,30 @@ export class BattleHUD implements Screen {
       <div class="glitch-overlay"></div>
       <div class="hud-top">
         <div class="hp-box left">
-          <div data-portrait="0"></div>
-          <div class="hp-col">
-            <div class="hp-name" data-name="0"></div>
-            <div class="hp-bar"><div class="lag"></div><div class="val"></div></div>
-            <div class="hp-num" data-hp="0"></div>
-            <div class="status-row" data-status="0"></div>
+          <div class="hp-main">
+            <div data-portrait="0"></div>
+            <div class="hp-col">
+              <div class="hp-name" data-name="0"></div>
+              <div class="hp-bar"><div class="lag"></div><div class="val"></div></div>
+              <div class="hp-num" data-hp="0"></div>
+            </div>
           </div>
+          <div class="status-row" data-status="0"></div>
         </div>
         <div class="timer-box" data-act="pause">
           <span class="live">LIVE</span>
           <span class="time">1:15</span>
         </div>
         <div class="hp-box right">
-          <div data-portrait="1"></div>
-          <div class="hp-col">
-            <div class="hp-name" data-name="1"></div>
-            <div class="hp-bar"><div class="lag"></div><div class="val"></div></div>
-            <div class="hp-num" data-hp="1"></div>
-            <div class="status-row" data-status="1"></div>
+          <div class="hp-main">
+            <div data-portrait="1"></div>
+            <div class="hp-col">
+              <div class="hp-name" data-name="1"></div>
+              <div class="hp-bar"><div class="lag"></div><div class="val"></div></div>
+              <div class="hp-num" data-hp="1"></div>
+            </div>
           </div>
+          <div class="status-row" data-status="1"></div>
         </div>
       </div>
       <div class="rating-row">
@@ -132,7 +173,7 @@ export class BattleHUD implements Screen {
         <div class="rating-meter">
           <div class="fill" style="transform:scaleX(0.3)"></div>
           <div class="marks"><i style="left:50%"></i><i style="left:75%"></i><i style="left:90%"></i></div>
-          <div class="txt"><span data-tier>РЕЙТИНГ · ТИХО</span><span data-rating>30</span></div>
+          <div class="txt"><span class="tier"><span class="rt-pre">РЕЙТИНГ · </span><span data-tier>ТИХО</span></span><span data-rating>30</span></div>
         </div>
         <div class="viewers">${UI_ICONS.eye}<span data-viewers>0</span></div>
       </div>
@@ -140,7 +181,7 @@ export class BattleHUD implements Screen {
       <div class="banner-zone"></div>
       <div class="big-center"></div>
       <div class="hud-bottom">
-        <div class="combo-strip"><span class="cname"></span><div class="ctrack"><i></i></div></div>
+        <div class="combo-strip"><span class="cname">ВРЕМЯ НА КОМБО</span><div class="ctrack"><i></i></div></div>
         <div class="hand-row">
           <div class="next-slot"><div class="label" style="font-size:8px">ДАЛЕЕ</div><div data-next style="width:100%"></div></div>
           <div class="hand-slot" data-slot="0"></div>
@@ -177,19 +218,19 @@ export class BattleHUD implements Screen {
     this.bannerZone = q('.banner-zone');
     this.bigCenter = q('.big-center');
     this.comboStrip = q('.combo-strip');
-    this.comboName = q('.combo-strip .cname');
     this.comboTrack = q('.combo-strip .ctrack i');
     this.nextSlot = q('[data-next]');
     this.energyNum = q('.energy-num');
     this.energyBar = q('.energy-bar');
     this.energySegs = Array.from(this.energyBar.querySelectorAll('b')) as HTMLElement[];
     this.slots = [0, 1, 2].map((i) => q(`[data-slot="${i}"]`));
+    this.hudBottomEl = q('.hud-bottom');
 
     for (let i = 0; i < 28; i++) {
       const e = el('div', 'dmg');
       e.style.display = 'none';
       this.fx.appendChild(e);
-      this.floaters.push({ el: e, sum: 0, side: -1, x: 0, y: 0, z: 0, t: 0, life: 1, ox: 0, rise: 1, active: false });
+      this.floaters.push({ el: e, sum: 0, side: -1, callSide: -1, lift: 0, x: 0, y: 0, z: 0, t: 0, life: 1, ox: 0, rise: 1, active: false });
     }
     for (const side of [0, 1]) {
       const tag = el('div', `head-tag p${side}`, `<div class="ht-warn">!</div><div class="ht-bar"><i></i></div>`);
@@ -237,9 +278,14 @@ export class BattleHUD implements Screen {
     this.bigCenter.innerHTML = '';
     this.pops.innerHTML = '';
     this.statusKey = ['', ''];
-    this.hints = { start: false, telegraph: false, combo: false };
+    this.hints = { start: false, telegraph: false, combo: false, opener: false };
     this.hintEl?.remove();
     this.hintEl = null;
+    this.ratingPops = [];
+    this.prevCard = null;
+    this.pendingCombo = null;
+    this.denyTips.forEach((t) => t?.remove());
+    this.denyTips = [null, null, null];
     for (const f of this.floaters) {
       f.active = false;
       f.el.style.display = 'none';
@@ -255,14 +301,32 @@ export class BattleHUD implements Screen {
     setTimeout(() => intro.remove(), 3100);
   }
 
+  /**
+   * Screen fractions covered by the HUD: top bars and the hand at the bottom.
+   * The battle camera frames the fighters inside what is left.
+   */
+  measureInsets(): { top: number; bottom: number } | null {
+    const root = this.el.getBoundingClientRect();
+    if (root.height < 100) return null;
+    const top = (this.el.querySelector('.rating-row') as HTMLElement).getBoundingClientRect().bottom - root.top;
+    const bottom = root.bottom - this.hudBottomEl.getBoundingClientRect().top;
+    this.safeTop = top;
+    return { top: Math.min(0.4, top / root.height), bottom: Math.min(0.45, bottom / root.height) };
+  }
+
   tapCard(i: number): void {
     const m = this.m;
     if (!m || this.g.paused) return;
+    // Real-time double-tap guard: the card that slides into this slot must not
+    // be played by the second half of an accidental double tap.
+    const now = performance.now();
+    if (now - this.lastPlayAt[i] < 280) return;
     const card = m.hands[0].hand[i];
     const res = this.g.playCard(i);
     const slot = this.slots[i];
     const cardEl = slot.firstElementChild as HTMLElement | null;
     if (res === null) {
+      this.lastPlayAt[i] = now;
       vibrate(12);
       if (cardEl) {
         const ghost = cardEl.cloneNode(true) as HTMLElement;
@@ -276,20 +340,33 @@ export class BattleHUD implements Screen {
         setTimeout(() => ghost.remove(), 350);
       }
       this.syncHand(false);
-    } else if (cardEl && res !== 'phase') {
+    } else if (cardEl && res !== 'phase' && res !== 'cooldown') {
+      // 'cooldown' is the short guard after a play: it only swallows accidental double taps.
       cardEl.classList.remove('shake');
       void cardEl.offsetWidth;
       cardEl.classList.add('shake');
       if (res === 'energy') this.flashEnergyNeed(CARDS[card].cost);
+      const need = Math.ceil(CARDS[card].cost - m.hands[0].energy);
       const msg: Record<string, string> = {
-        energy: '',
-        stunned: 'Боец оглушён!',
-        glitched: 'Система взломана!',
+        energy: `Ещё ${Math.max(1, need)} ⚡`,
+        stunned: 'Боец оглушён',
+        glitched: 'Система взломана',
         busy: 'Боец занят',
-        cooldown: '',
       };
-      if (msg[res]) this.callout(0, msg[res], '#ff8a8a');
+      if (msg[res]) this.denyTip(i, msg[res]);
     }
+  }
+
+  /** Short reason above a card that could not be played. */
+  private denyTip(i: number, text: string): void {
+    this.denyTips[i]?.remove();
+    const tip = el('div', 'deny-tip', esc(text));
+    this.slots[i].appendChild(tip);
+    this.denyTips[i] = tip;
+    setTimeout(() => {
+      tip.remove();
+      if (this.denyTips[i] === tip) this.denyTips[i] = null;
+    }, 950);
   }
 
   /** Light up the segments the player is still missing. */
@@ -318,7 +395,10 @@ export class BattleHUD implements Screen {
           const wrap = document.createElement('div');
           wrap.innerHTML = cardHTML(c, 'hand-card enter', false);
           const cardEl = wrap.firstElementChild as HTMLElement;
-          cardEl.insertAdjacentHTML('beforeend', `<div class="drain"></div><div class="combo-ribbon">COMBO</div><div class="lock-overlay"></div>`);
+          cardEl.insertAdjacentHTML(
+            'beforeend',
+            `<div class="drain"></div><div class="combo-ribbon">COMBO</div><div class="combo-link">КОМБО ▸</div><div class="lock-overlay"></div>`,
+          );
           this.slots[i].prepend(cardEl);
           setTimeout(() => cardEl.classList.remove('enter'), 320);
         }
@@ -349,17 +429,22 @@ export class BattleHUD implements Screen {
       this.hpLag[side].style.transform = `scaleX(${this.lag[side]})`;
       const txt = `${Math.ceil(f.hp).toLocaleString('ru-RU')}`;
       if (this.hpNum[side].textContent !== txt) this.hpNum[side].textContent = txt;
-      // statuses
+      // statuses: only the most important few, so the top bar stays readable
+      const on: Record<string, boolean> = {
+        stun: f.stun > 0,
+        glitch: f.glitch > 0,
+        shield: f.shield > 0,
+        overdrive: f.overdrive > 0,
+        adrenaline: f.adrenaline > 0,
+        smoke: m.inOwnSmoke(f),
+        momentum: f.momentum > 0,
+        ironSkin: f.ironSkin > 0,
+        overclock: f.overclock > 0,
+      };
       const st: string[] = [];
-      if (f.shield > 0) st.push('<span class="st" style="color:#9ad8ff">ЩИТ</span>');
-      if (f.overdrive > 0) st.push('<span class="st" style="color:#ffa060">РАЗГОН</span>');
-      if (f.adrenaline > 0) st.push('<span class="st" style="color:#22f0e0">АДРЕНАЛИН</span>');
-      if (f.stun > 0) st.push('<span class="st" style="color:#ffe14d">ОГЛУШЁН</span>');
-      if (f.glitch > 0) st.push('<span class="st" style="color:#ff4fd8">ВЗЛОМ</span>');
-      if (f.momentum > 0) st.push('<span class="st" style="color:#22f0e0">MOMENTUM</span>');
-      if (f.ironSkin > 0) st.push('<span class="st" style="color:#c8d4ea">IRON SKIN</span>');
-      if (f.overclock > 0) st.push('<span class="st" style="color:#ff8ae6">OVERCLOCK</span>');
-      if (m.inOwnSmoke(f)) st.push('<span class="st" style="color:#b8b0e0">В ДЫМУ</span>');
+      for (const s of STATUS_ORDER) {
+        if (on[s.key] && st.length < MAX_STATUS) st.push(`<span class="st" style="color:${s.color}">${s.label}</span>`);
+      }
       const key = st.join('');
       if (key !== this.statusKey[side]) {
         this.statusKey[side] = key;
@@ -381,7 +466,7 @@ export class BattleHUD implements Screen {
     const rTxt = String(Math.round(this.displayRating));
     if (this.ratingNum.textContent !== rTxt) this.ratingNum.textContent = rTxt;
     this.ratingMeter.classList.toggle('hot', rt >= 75);
-    const tier = rt >= 75 ? 'РЕЙТИНГ · PRIME TIME' : rt >= 50 ? 'РЕЙТИНГ · ЖАРКО' : rt >= 32 ? 'РЕЙТИНГ · ИНТЕРЕСНО' : 'РЕЙТИНГ · ТИХО';
+    const tier = rt >= 75 ? 'PRIME TIME' : rt >= 50 ? 'ЖАРКО' : rt >= 32 ? 'ИНТЕРЕСНО' : 'ТИХО';
     if (tier !== this.tierText) {
       this.tierText = tier;
       this.tierEl.textContent = tier;
@@ -406,6 +491,8 @@ export class BattleHUD implements Screen {
     }
     this.energyBar.classList.toggle('full', energy >= MATCH.maxEnergy - 0.01);
     let comboPrimed: string | null = null;
+    const primedNow = m.phase === 'fight' && hand.hand.some((c) => !!c && !!m.combos.wouldCombo(0, c, m.time));
+    let openers = 0;
     for (let i = 0; i < 3; i++) {
       const c = hand.hand[i];
       const cardEl = this.slots[i].querySelector('.hand-card:not(.played)') as HTMLElement | null;
@@ -423,6 +510,11 @@ export class BattleHUD implements Screen {
       drain.style.transform = `scaleY(${can ? 0 : 1 - energy / cost})`;
       const combo = m.phase === 'fight' ? m.combos.wouldCombo(0, c, m.time) : null;
       cardEl.classList.toggle('combo-ready', !!combo);
+      // Chain badge: this card opens a combo with another card already in hand
+      // (same rules as ComboSystem). Hidden while a combo is primed.
+      const opener = m.phase === 'fight' && !primedNow && hand.hand.some((o, j) => j !== i && !!o && !!comboFor(c, o));
+      cardEl.classList.toggle('opener', opener);
+      if (opener) openers++;
       if (combo) {
         const rib = cardEl.querySelector('.combo-ribbon') as HTMLElement;
         if (rib.textContent !== combo.name) rib.textContent = combo.name;
@@ -440,12 +532,14 @@ export class BattleHUD implements Screen {
     this.comboStrip.classList.toggle('on', !!comboPrimed && win > 0);
     this.comboStrip.classList.toggle('urgent', !!comboPrimed && win > 0 && win < 1);
     if (comboPrimed) {
-      this.comboName.textContent = `КОМБО: ${comboPrimed}`;
       this.comboTrack.style.transform = `scaleX(${win / MATCH.comboWindow})`;
       if (!this.hints.combo && !g.save.data.hintsSeen) {
         this.hints.combo = true;
-        this.showHint('<b>КОМБО ГОТОВО</b><br/>Золотая карта сработает как комбо — сыграйте её, пока не истёк таймер!');
+        this.showHint(`<b>КОМБО ГОТОВО</b><br/>Золотая карта сработает как комбо — сыграйте её за ${MATCH.comboWindow} с, пока идёт полоска!`);
       }
+    } else if (openers > 0 && !this.hints.opener && !this.hintEl && m.time > 8 && !g.save.data.hintsSeen) {
+      this.hints.opener = true;
+      this.showHint('<b><span class="hint-link">КОМБО ▸</span> ПОДСКАЗКА</b><br/>Карта с этой меткой начинает комбо. Сыграйте её — и вторая карта пары засветится золотом.', 5);
     }
     this.glitchEl.classList.toggle('on', p.glitch > 0);
     const lowHp = p.hpFrac < 0.25 && !p.ko && m.phase === 'fight';
@@ -470,9 +564,11 @@ export class BattleHUD implements Screen {
       }
       view.project(f.x, f.y, f.z, _p);
       const k = f.t / f.life;
-      const rise = f.rise * (1 - Math.pow(1 - k, 3)) * 60;
+      const rise = f.rise * (1 - Math.pow(1 - k, 3)) * 60 + f.lift;
       const sc = k < 0.15 ? 0.5 + (k / 0.15) * 0.8 : k < 0.3 ? 1.3 - ((k - 0.15) / 0.15) * 0.3 : 1;
-      f.el.style.transform = `translate3d(${_p.x + f.ox}px, ${_p.y - rise}px, 0) translate(-50%, -50%) scale(${sc})`;
+      // keep clear of the top bars and the rating pops right under them
+      const y = Math.max(this.safeTop + 40, _p.y - rise);
+      f.el.style.transform = `translate3d(${_p.x + f.ox}px, ${y}px, 0) translate(-50%, -50%) scale(${sc})`;
       f.el.style.opacity = String(k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1);
     }
     // head tags
@@ -481,7 +577,8 @@ export class BattleHUD implements Screen {
       const tag = this.headTags[side];
       view.headPos(side, _v);
       view.project(_v.x, _v.y, _v.z, _p);
-      tag.style.transform = `translate3d(${_p.x}px, ${_p.y}px, 0) translate(-50%, -100%)`;
+      const minY = this.safeTop + (side === 1 && this.enemyWarn ? 36 : 10);
+      tag.style.transform = `translate3d(${_p.x}px, ${Math.max(minY, _p.y)}px, 0) translate(-50%, -100%)`;
       tag.style.display = f.ko || m.phase !== 'fight' ? 'none' : '';
       this.headBars[side].style.transform = `scaleX(${f.hpFrac})`;
       const warn = side === 1 && f.action.kind === 'windup';
@@ -491,6 +588,15 @@ export class BattleHUD implements Screen {
       }
     }
 
+    // rating pops age out
+    for (let i = this.ratingPops.length - 1; i >= 0; i--) {
+      const p = this.ratingPops[i];
+      p.t += dt;
+      if (p.t > 1.25) {
+        p.el.remove();
+        this.ratingPops.splice(i, 1);
+      }
+    }
     // banners
     if (this.bannerT > 0) this.bannerT -= dt;
     if (this.bannerT <= 0 && this.bannerQueue.length) {
@@ -519,6 +625,8 @@ export class BattleHUD implements Screen {
     f.z = z;
     f.ox = (Math.random() - 0.5) * 34;
     f.rise = rise;
+    f.lift = 0;
+    f.callSide = -1;
     f.el.className = cls;
     f.el.textContent = text;
     f.el.style.color = '';
@@ -528,20 +636,36 @@ export class BattleHUD implements Screen {
     return f;
   }
 
+  /** Text above a fighter. At most two per fighter, stacked instead of overlapping. */
   callout(side: Side, text: string, color = '#fff'): void {
     const m = this.m;
     if (!m) return;
     const f = m.fighters[side];
-    this.spawnFloater(text, 'callout', f.x, 2.9, f.z, 1.1, 0.6).el.style.color = color;
+    const mine = this.floaters.filter((q) => q.active && q.callSide === side).sort((a, b) => b.t - a.t);
+    if (mine.length >= 2) {
+      mine[0].active = false;
+      mine[0].el.style.display = 'none';
+      mine.shift();
+    }
+    const c = this.spawnFloater(text, 'callout', f.x, 2.9, f.z, 1.1, 0.6);
+    c.el.style.color = color;
+    c.callSide = side;
+    c.ox = 0;
+    c.lift = mine.length ? Math.max(...mine.map((q) => q.lift)) + 22 : 0;
   }
 
   private showBanner(b: Banner): void {
     const ultra = b.text === 'ELECTRO BLAST' || b.text === 'SUPERSTAR MOVE';
-    const e = el('div', `banner t${b.tier}${b.text.length > 12 ? ' long' : ''}${ultra ? ' ultra' : ''}`, `<span class="bt">${esc(b.text)}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}`);
+    const e = el(
+      'div',
+      `banner t${b.tier}${b.text.length > 12 ? ' long' : ''}${ultra ? ' ultra' : ''}${b.detail ? ' has-detail' : ''}`,
+      `<span class="bt">${esc(b.text)}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}${b.detail ? `<span class="bd">${esc(b.detail)}</span>` : ''}`,
+    );
     this.bannerZone.innerHTML = '';
     this.bannerZone.appendChild(e);
     this.bannerT = b.tier >= 3 ? 1.3 : 0.9;
-    setTimeout(() => e.remove(), 1750);
+    this.bannerTier = b.tier;
+    setTimeout(() => e.remove(), b.detail ? 2300 : 1750);
     this.g.audio.reaction(b.tier);
   }
 
@@ -549,6 +673,8 @@ export class BattleHUD implements Screen {
     if (b.tier >= 3) {
       this.bannerQueue = this.bannerQueue.filter((x) => x.tier >= 3);
       this.bannerQueue.push(b);
+      // A big moment cuts a minor banner short instead of waiting behind it.
+      if (this.bannerTier < 3) this.bannerT = 0;
     } else if (this.bannerQueue.length < 2) {
       this.bannerQueue.push(b);
     }
@@ -563,18 +689,31 @@ export class BattleHUD implements Screen {
     this.flashEl.style.opacity = String(this.flash);
   }
 
+  /** Tutorial hint, docked just above the hand so it never covers the cards. */
   private showHint(html: string, dur = 4.5): void {
     this.hintEl?.remove();
     this.hintEl = el('div', 'hint', html);
-    this.el.appendChild(this.hintEl);
+    this.hudBottomEl.appendChild(this.hintEl);
     this.hintT = dur;
   }
 
+  /** Rating changes under the meter: same reasons merge, at most two at once. */
   private ratingPop(amount: number, label: string): void {
-    const e = el('div', 'rating-pop' + (amount < 0 ? ' neg' : ''), `${amount > 0 ? '+' : ''}${amount} ${esc(label)}`);
-    e.style.left = `${40 + Math.random() * 20}%`;
+    const same = this.ratingPops.find((p) => p.label === label && p.t < 0.9 && Math.sign(p.amount) === Math.sign(amount));
+    if (same) {
+      same.amount += amount;
+      same.t = 0;
+      same.el.textContent = `${same.amount > 0 ? '+' : ''}${same.amount} ${label}`;
+      same.el.style.animation = 'none';
+      void same.el.offsetWidth;
+      same.el.style.animation = '';
+      return;
+    }
+    if (this.ratingPops.length >= 2) this.ratingPops.shift()!.el.remove();
+    const e = el('div', 'rating-pop' + (amount < 0 ? ' neg' : ''));
+    e.textContent = `${amount > 0 ? '+' : ''}${amount} ${label}`;
     this.pops.appendChild(e);
-    setTimeout(() => e.remove(), 1250);
+    this.ratingPops.push({ el: e, label, amount, t: 0 });
   }
 
   onEvent(e: MatchEvent): void {
@@ -630,8 +769,9 @@ export class BattleHUD implements Screen {
         this.spawnFloater('МИМО', 'dmg miss', e.x, 2.3, e.z, 0.7, 0.8);
         break;
       case 'dodge':
-        if (e.perfect) this.callout(e.side, 'PERFECT DODGE', '#9af6ff');
-        else if (e.heavy) this.callout(e.side, 'НА ВОЛОСОК', '#c8d4ff');
+        // The player's perfect dodge already gets a banner and a rating pop.
+        if (e.perfect && e.side === 1) this.callout(1, 'PERFECT DODGE', '#9af6ff');
+        else if (!e.perfect && e.heavy) this.callout(e.side, 'НА ВОЛОСОК', '#c8d4ff');
         break;
       case 'stun':
         this.callout(e.side, 'ОГЛУШЕНИЕ', '#ffe14d');
@@ -643,7 +783,7 @@ export class BattleHUD implements Screen {
         this.callout(e.side, 'ПРОМАХ!', '#c8c0ff');
         break;
       case 'passive':
-        this.callout(e.side, e.passive === 'momentum' ? 'MOMENTUM' : e.passive === 'iron_skin' ? 'IRON SKIN' : 'OVERCLOCK', '#22f0e0');
+        // Passives show as status chips under the health bar (less overlap over the fighters).
         break;
       case 'shieldBreak':
         this.callout(e.side, 'ЩИТ СЛОМАН', '#9ad8ff');
@@ -664,10 +804,7 @@ export class BattleHUD implements Screen {
         }
         break;
       case 'combo':
-        if (e.side === 1) {
-          const c = COMBOS.find((x) => x.id === e.combo)!;
-          this.callout(1, c.name, '#ff8a7a');
-        } else {
+        if (e.side === 0) {
           const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
           this.edgeGlow.className = 'edge-glow';
           void this.edgeGlow.offsetWidth;
@@ -678,9 +815,13 @@ export class BattleHUD implements Screen {
       case 'rating':
         if (e.label && Math.abs(e.amount) >= 1) this.ratingPop(e.amount, e.label);
         break;
-      case 'reaction':
-        this.queueBanner({ text: e.text, sub: e.sub, tier: e.tier });
+      case 'reaction': {
+        const pc = this.pendingCombo;
+        const detail = pc && pc.name === e.text ? pc.detail : undefined;
+        if (detail) this.pendingCombo = null;
+        this.queueBanner({ text: e.text, sub: e.sub, tier: e.tier, detail });
         break;
+      }
       case 'ko':
         this.big('K.O.!', 'fight ko');
         this.screenFlash(0.8);
@@ -691,7 +832,20 @@ export class BattleHUD implements Screen {
         break;
       case 'card': {
         const c = CARDS[e.card];
-        this.callout(e.side, c.name + (e.side === 1 ? '!' : ''), e.side === 0 ? c.color : '#ff8a7a');
+        if (e.side === 0) {
+          if (e.combo && this.prevCard) {
+            // Explain the payoff: which two cards made it and what it gives.
+            const def = COMBOS.find((x) => x.id === e.combo)!;
+            this.pendingCombo = { name: def.name, detail: `${CARDS[this.prevCard].name} → ${c.name} · ${def.bonus}` };
+          }
+          this.prevCard = e.card;
+          // The combo banner already names the move; skip the duplicate card callout.
+          if (!e.combo) this.callout(0, c.name, c.color);
+        } else {
+          // Rival combos name the combo instead of the card (one label, not two).
+          const rc = e.combo ? COMBOS.find((x) => x.id === e.combo)! : null;
+          this.callout(1, (rc ? rc.name : c.name) + '!', '#ff8a7a');
+        }
         break;
       }
       case 'cardFail':

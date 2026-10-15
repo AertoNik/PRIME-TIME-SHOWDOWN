@@ -1,4 +1,5 @@
-// Verifies that an Alpha 1.0 save (schema v1) loads into the current schema without losing progress.
+// Verifies that Alpha 1.0 (schema v1) and Alpha 1.1 (schema v2) saves load into the
+// current schema without losing progress.
 import { sanitize } from '../src/meta/SaveSystem';
 
 const alpha10 = {
@@ -19,7 +20,19 @@ const alpha10 = {
   settings: { sound: false, music: true, quality: 'medium' }, // no `camera` in 1.0
   nextRival: 'zoe', lastRival: 'dex', seed: 12345, hintsSeen: true,
 };
+// Alpha 1.1 save: schema v2 with the camera setting and Nika signed.
+const alpha11 = {
+  ...alpha10,
+  version: 2,
+  money: 9870,
+  reputation: 640,
+  fighters: { ...alpha10.fighters, nika: { ...alpha10.fighters.nika, unlocked: true, fans: 3300, wins: 4, matches: 5 } },
+  selected: 'nika',
+  difficulty: 'champion',
+  settings: { sound: true, music: false, quality: 'low', camera: 'reduced' },
+};
 const s = sanitize(JSON.parse(JSON.stringify(alpha10)));
+const s11 = sanitize(JSON.parse(JSON.stringify(alpha11)));
 const checks: [string, boolean][] = [
   ['money kept', s.money === 2345],
   ['reputation kept', s.reputation === 180],
@@ -31,6 +44,10 @@ const checks: [string, boolean][] = [
   ['new camera setting defaulted', s.settings.camera === 'full'],
   ['decks kept', s.fighters.ray.deck.join() === 'dash,power_shot,shield,adrenaline'],
   ['corrupt input safe', sanitize('not json' as unknown).money === 150],
+  ['1.1: money and reputation kept', s11.money === 9870 && s11.reputation === 640],
+  ['1.1: nika signed and selected', s11.fighters.nika.unlocked && s11.fighters.nika.fans === 3300 && s11.selected === 'nika'],
+  ['1.1: difficulty kept', s11.difficulty === 'champion'],
+  ['1.1: camera/sound/quality kept', s11.settings.camera === 'reduced' && s11.settings.music === false && s11.settings.quality === 'low'],
 ];
 let ok = true;
 for (const [name, pass] of checks) {

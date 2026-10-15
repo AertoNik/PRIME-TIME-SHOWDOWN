@@ -129,6 +129,8 @@ export interface ComboDef {
   second: CardId[];
   rating: number;
   desc: string;
+  /** Short payoff shown when the combo lands ("×1.5 урона"). */
+  bonus: string;
 }
 
 export interface PassiveDef {

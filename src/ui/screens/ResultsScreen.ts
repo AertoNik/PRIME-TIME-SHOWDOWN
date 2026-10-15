@@ -41,6 +41,9 @@ export class ResultsScreen implements Screen {
       } else if (act === 'prep') {
         this.g.audio.ui('click');
         this.g.goto('prep');
+      } else if (act === 'roster') {
+        this.g.audio.ui('click');
+        this.g.goto('roster', { back: 'prep' });
       } else if (act === 'career') {
         this.g.audio.ui('click');
         this.g.goto('career');
@@ -91,6 +94,13 @@ export class ResultsScreen implements Screen {
       })
       .join('');
     const delayAfterLines = T0 + 0.3 + o.rewards.lines.length * STEP;
+    // One concrete way to raise the show rating next time.
+    let tip = '';
+    if (r.rating < 70) {
+      if (r.combos === 0) tip = '<b>Совет:</b> карта с меткой «КОМБО ▸» начинает комбо — затем сыграйте засветившуюся золотом карту. Комбо дают больше всего рейтинга.';
+      else if (r.perfects === 0) tip = '<b>Совет:</b> когда под соперником красная зона, сыграйте DASH или SHIELD — идеальная реакция поднимает рейтинг.';
+      else tip = '<b>Совет:</b> не копите энергию до упора и чередуйте разные карты — зрители не любят простой и повторы.';
+    }
 
     this.el.classList.remove('instant');
     this.el.innerHTML = `
@@ -113,6 +123,7 @@ export class ResultsScreen implements Screen {
             <div class="label" style="margin-top:3px">Урон ${formatNumber(r.damageDealt)} · Идеальных реакций ${r.perfects}</div>
           </div>
         </div>
+        ${tip ? `<div class="result-tip">${tip}</div>` : ''}
         <div class="section panel combos-panel">
           <div class="section-title"><span class="h2">Комбо эфира · ${r.combos}</span><span class="label">${r.bestCombo ? 'лучшее — золотом' : ''}</span></div>
           <div class="combo-chips">${comboChips || '<span class="muted" style="font-size:12px">Без комбо. Золотая подсветка карты подскажет момент.</span>'}</div>
@@ -139,8 +150,9 @@ export class ResultsScreen implements Screen {
         <button class="btn ghost" data-act="menu">Главное меню</button>
         <button class="btn" data-act="again"><span class="shine"></span>Ещё бой</button>
       </div>
-      <div class="center" style="margin-top:10px">
-        <button class="label" data-act="prep" style="color:var(--teal);padding:6px 10px">Изменить колоду / сложность</button>
+      <div class="result-links">
+        <button class="label" data-act="prep">Колода и сложность</button>
+        <button class="label" data-act="roster">Сменить бойца</button>
       </div>`;
 
     const ratingEl = this.el.querySelector('[data-rating]') as HTMLElement;

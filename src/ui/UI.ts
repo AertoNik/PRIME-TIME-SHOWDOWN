@@ -26,7 +26,14 @@ export class UIManager {
     this.soundFab.setAttribute('aria-label', 'Звук');
     this.soundFab.addEventListener('click', () => this.onSoundToggle());
     root.appendChild(this.soundFab);
-    const rotate = el('div', 'rotate-note', '<div>ПОВЕРНИТЕ ТЕЛЕФОН ВЕРТИКАЛЬНО</div><div class="muted" style="font-size:11px">Игра создана для портретного режима</div>');
+    const rotate = el(
+      'div',
+      'rotate-note',
+      `<svg class="rot-ico" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="15" y="6" width="18" height="32" rx="4"/><path d="M21 33h6"/><path d="M38 20a14 14 0 0 1-4 14M34 34l-1-5M34 34l5-1"/></svg>
+       <div class="rn-touch">ПОВЕРНИТЕ ТЕЛЕФОН ВЕРТИКАЛЬНО</div>
+       <div class="rn-desk">УВЕЛИЧЬТЕ ВЫСОТУ ОКНА</div>
+       <div class="muted" style="font-size:11px;letter-spacing:.02em">Игра создана для портретного режима. Если шёл бой — он на паузе.</div>`,
+    );
     document.body.appendChild(rotate);
   }
 

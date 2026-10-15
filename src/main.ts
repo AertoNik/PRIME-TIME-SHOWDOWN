@@ -11,6 +11,7 @@ import '@fontsource/rubik/latin-700.css';
 import '@fontsource/rubik/cyrillic-700.css';
 import './styles/main.css';
 import { Game } from './game/Game';
+import { installViewport } from './ui/viewport';
 
 function showFatal(msg: string): void {
   const d = document.createElement('div');
@@ -28,6 +29,8 @@ function webglAvailable(): boolean {
     return false;
   }
 }
+
+installViewport();
 
 const stage = document.getElementById('stage');
 const ui = document.getElementById('ui');

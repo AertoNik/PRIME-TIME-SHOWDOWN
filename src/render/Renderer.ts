@@ -22,15 +22,17 @@ export type QualitySetting = 'auto' | QualityLevel;
 
 interface QualityProfile {
   pixelRatio: number;
+  /** Upper bound on rendered pixels (megapixels) so big tablets/desktops don't overdraw. */
+  maxMegapixels: number;
   bloom: boolean;
   shadows: boolean;
   shadowSize: number;
 }
 
 const PROFILES: Record<QualityLevel, QualityProfile> = {
-  high: { pixelRatio: 2, bloom: true, shadows: true, shadowSize: 2048 },
-  medium: { pixelRatio: 1.5, bloom: true, shadows: true, shadowSize: 1024 },
-  low: { pixelRatio: 1, bloom: false, shadows: false, shadowSize: 512 },
+  high: { pixelRatio: 2, maxMegapixels: 2.4, bloom: true, shadows: true, shadowSize: 2048 },
+  medium: { pixelRatio: 1.5, maxMegapixels: 1.5, bloom: true, shadows: true, shadowSize: 1024 },
+  low: { pixelRatio: 1, maxMegapixels: 0.9, bloom: false, shadows: false, shadowSize: 512 },
 };
 
 /**
@@ -61,6 +63,9 @@ export class Renderer {
   private frameTimes: number[] = [];
   private lastAdjust = 0;
   private flashIntensity = 0;
+  private observer: ResizeObserver | null = null;
+  /** Called after the drawing buffer changed size (layout-dependent framing). */
+  onResize: (() => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -121,15 +126,26 @@ export class Renderer {
     this.scene.add(this.flash);
 
     this.applyQuality('high');
-    window.addEventListener('resize', this.onResize);
-    window.visualViewport?.addEventListener('resize', this.onResize);
-    this.onResize();
+    window.addEventListener('resize', this.resize);
+    window.visualViewport?.addEventListener('resize', this.resize);
+    // The frame can change size without a window resize (address bar, CSS var updates).
+    if (typeof ResizeObserver !== 'undefined') {
+      this.observer = new ResizeObserver(() => this.resize());
+      this.observer.observe(container);
+    }
+    this.resize();
   }
 
-  private onResize = (): void => {
+  private resize = (): void => {
     const r = this.container.getBoundingClientRect();
-    this.width = Math.max(1, Math.round(r.width));
-    this.height = Math.max(1, Math.round(r.height));
+    const w = Math.max(1, Math.round(r.width));
+    const h = Math.max(1, Math.round(r.height));
+    const dpr = this.targetPixelRatio(w, h);
+    if (w === this.width && h === this.height && dpr === this.renderer.getPixelRatio() && this.sized) return;
+    this.sized = true;
+    this.width = w;
+    this.height = h;
+    this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(this.width, this.height, false);
     this.renderer.domElement.style.width = this.width + 'px';
     this.renderer.domElement.style.height = this.height + 'px';
@@ -140,7 +156,18 @@ export class Renderer {
       this.composer.setPixelRatio(this.renderer.getPixelRatio());
     }
     this.bloom?.resolution.set(this.width, this.height);
+    this.onResize?.();
   };
+
+  private sized = false;
+
+  /** Device pixel ratio capped by the quality profile and a total pixel budget. */
+  private targetPixelRatio(w: number, h: number): number {
+    const p = PROFILES[this.quality];
+    const budget = Math.sqrt((p.maxMegapixels * 1e6) / Math.max(1, w * h));
+    const dpr = Math.min(window.devicePixelRatio || 1, p.pixelRatio, Math.max(1, budget));
+    return Math.round(dpr * 100) / 100;
+  }
 
   get size(): { w: number; h: number } {
     return { w: this.width, h: this.height };
@@ -164,8 +191,6 @@ export class Renderer {
   applyQuality(q: QualityLevel): void {
     this.quality = q;
     const p = PROFILES[q];
-    const dpr = Math.min(window.devicePixelRatio || 1, p.pixelRatio);
-    this.renderer.setPixelRatio(dpr);
     this.renderer.shadowMap.enabled = p.shadows;
     this.key.castShadow = p.shadows;
     if (p.shadows && this.key.shadow.mapSize.x !== p.shadowSize) {
@@ -186,12 +211,20 @@ export class Renderer {
       this.bloom?.dispose();
       this.bloom = null;
     }
-    this.onResize();
+    this.sized = false;
+    this.resize();
+  }
+
+  /** Forget frame-time history (e.g. after the tab was in the background). */
+  resetMonitor(now: number): void {
+    this.frameTimes = [];
+    this.lastAdjust = now;
   }
 
   /** Feed real frame times; drops quality when the device struggles. */
   monitor(dtReal: number, now: number): void {
-    if (this.setting !== 'auto') return;
+    // Background tabs run on throttled timers: those frame times say nothing about the GPU.
+    if (this.setting !== 'auto' || document.hidden) return;
     this.frameTimes.push(dtReal);
     if (this.frameTimes.length > 90) this.frameTimes.shift();
     if (now - this.lastAdjust < 3 || this.frameTimes.length < 90) return;
@@ -222,8 +255,9 @@ export class Renderer {
   }
 
   dispose(): void {
-    window.removeEventListener('resize', this.onResize);
-    window.visualViewport?.removeEventListener('resize', this.onResize);
+    window.removeEventListener('resize', this.resize);
+    window.visualViewport?.removeEventListener('resize', this.resize);
+    this.observer?.disconnect();
     this.composer?.dispose();
     this.renderer.dispose();
   }

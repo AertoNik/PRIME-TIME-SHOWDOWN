@@ -22,6 +22,7 @@ import { ResultsScreen } from '../ui/screens/ResultsScreen';
 import { RosterScreen } from '../ui/screens/RosterScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
+import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
 export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'battle' | 'results';
 
@@ -94,7 +95,27 @@ export class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.screen === 'battle' && this.match?.phase === 'fight' && !this.paused) this.pause();
       if (!this.debugTimer) this.audio.setHidden(document.hidden);
+      if (!document.hidden) this.onReturn();
     });
+    // Coming back from the bfcache (iOS back/forward, app switcher) may skip visibilitychange.
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) {
+        this.audio.setHidden(false);
+        this.onReturn();
+      }
+    });
+    // Phone turned sideways: the rotate overlay covers the game, so stop the fight.
+    onLandscapeChange((blocked) => {
+      if (blocked && this.screen === 'battle' && this.match?.phase === 'fight' && !this.paused) this.pause();
+    });
+  }
+
+  /** Tab/app is visible again: fresh frame timing and quality stats, re-fit the layout. */
+  private onReturn(): void {
+    this.last = performance.now();
+    if (!this.bootDone) return;
+    this.renderer.resetMonitor(this.last / 1000);
+    this.updateLayoutFraming();
   }
 
   // ------------------------------------------------------------------ boot
@@ -132,6 +153,7 @@ export class Game {
     await nextFrame();
 
     this.hud = new BattleHUD(this);
+    this.renderer.onResize = () => this.updateLayoutFraming();
     this.ui.register('menu', new MenuScreen(this));
     this.ui.register('roster', new RosterScreen(this));
     this.ui.register('prep', new PrepScreen(this));
@@ -200,6 +222,32 @@ export class Game {
     this.audio.setCrowd(0.12);
     this.ui.showSoundFab(true);
     this.ui.show(name, param);
+    this.frameShowcase();
+  }
+
+  /**
+   * Fit the 3D fighter into the free gap of the menu/roster layout, so it is
+   * neither hidden behind panels on short phones nor tiny on tall ones.
+   */
+  private frameShowcase(): void {
+    const sel = this.screen === 'menu' ? '.menu .fill.pass' : this.screen === 'roster' ? '.roster .drag-zone' : null;
+    const gap = sel ? (this.ui.root.querySelector(sel) as HTMLElement | null) : null;
+    const h = this.renderer.size.h;
+    if (!gap || h < 100) return;
+    // offsetTop is relative to the screen (= frame) and ignores the slide-in transform.
+    const top = gap.offsetTop;
+    const gh = gap.offsetHeight;
+    const CHAR_H = 2.35; // world units, feet to hair
+    const LOOK_H = this.cam.showcaseHeight;
+    const K = 1.58; // px per world unit = K * h / distance (fov 34)
+    const fill = this.screen === 'roster' ? 0.86 : 0.9;
+    const charPx = Math.min(h * 0.46, Math.max(gh * fill, h * 0.2));
+    const dist = Math.min(18, Math.max(6.5, (K * h * CHAR_H) / charPx));
+    const ppu = (K * h) / dist;
+    const feetY = top + (gh + CHAR_H * ppu) / 2;
+    const lookY = feetY - LOOK_H * ppu;
+    this.cam.showcaseDist = dist;
+    this.cam.showcaseShift = Math.max(-0.2, Math.min(0.4, 0.5 - lookY / h));
   }
 
   private endBattleView(): void {
@@ -211,6 +259,17 @@ export class Game {
     this.timeFx.hitstop = 0;
     this.timeFx.slowmo = 0;
     this.timeFx.slowScale = 1;
+  }
+
+  /** Re-fit the camera to the HUD after layout changes (rotation, address bar, window resize). */
+  private updateLayoutFraming(): void {
+    if (!this.hud) return;
+    if (this.screen === 'menu' || this.screen === 'roster') this.frameShowcase();
+    const ins = this.hud.measureInsets();
+    if (ins) {
+      this.cam.hudTop = ins.top;
+      this.cam.hudBottom = ins.bottom;
+    }
   }
 
   rivalName(id: RivalId): string {
@@ -249,8 +308,11 @@ export class Game {
     this.screen = 'battle';
     this.ui.showSoundFab(false);
     this.ui.show('battle');
+    this.updateLayoutFraming();
     this.audio.playTrack('battle');
     this.audio.cheer(1);
+    // Started while the phone is sideways (overlay visible): wait paused.
+    if (isBlockedLandscape()) this.pause();
   }
 
   playCard(index: number): CardFailReason | null {
@@ -438,10 +500,11 @@ export class Game {
   openHelp(back: () => void): void {
     this.ui.modal(
       `<div class="h1">Как играть</div>
-       <div class="scroll" style="max-height:52vh;font-size:13px;line-height:1.45;color:#c8d0f4">
+       <div class="scroll" style="max-height:calc(var(--app-h) * 0.52);font-size:13px;line-height:1.45;color:#c8d0f4">
          <p><b style="color:var(--teal)">Вы — продюсер.</b> Боец сам двигается, стреляет и уклоняется. Вы управляете тактикой с помощью карт.</p>
          <p><b style="color:var(--teal)">Энергия</b> копится сама (≈1 в 1.25 с, максимум 10). Карты стоят 2–6. В руке 3 карты, четвёртая ждёт в очереди.</p>
-         <p><b style="color:var(--gold)">Комбо:</b> сыграйте вторую карту в течение 3 секунд после первой — карта засветится золотом. DASH → POWER SHOT, SHOCK → POWER SHOT, SHIELD → OVERDRIVE, SMOKE → DASH, OVERDRIVE → фирменная.</p>
+         <p><b style="color:var(--gold)">Комбо:</b> карта с меткой «КОМБО ▸» начинает связку. Сыграйте её, и вторая карта засветится золотом — успейте сыграть её за ${MATCH.comboWindow} секунды. DASH → POWER SHOT, SHOCK → POWER SHOT, SHIELD → OVERDRIVE, SMOKE → DASH, OVERDRIVE → фирменная.</p>
+         <p><b style="color:#ff8a8a">Карта не сработала?</b> Над ней появится причина: не хватает энергии, боец оглушён или занят.</p>
          <p><b style="color:#ff8a7a">Красная зона</b> — соперник заряжает мощный удар. DASH уклоняется, SHIELD блокирует, SHOCK прерывает заряд. Удачные реакции дают бонус рейтинга.</p>
          <p><b style="color:var(--pink)">Рейтинг шоу</b> растёт за комбо, идеальные уклонения и блоки, мощные попадания, разнообразие приёмов и эффектный финиш. Простой и бездействие снижают его. Рейтинг определяет гонорар и новых фанатов.</p>
          <p><b style="color:var(--teal)">Карьера:</b> зарабатывайте деньги и репутацию, подписывайте новых бойцов, открывайте сложность «Профи» и «Чемпион».</p>
@@ -547,7 +610,8 @@ export class Game {
     this.vfx.update(dt === 0 && m ? 0 : m ? dt : dtReal, this.renderer.camera);
     this.vfx.setViewport(this.renderer.size.h * this.renderer.renderer.getPixelRatio(), this.renderer.camera.fov);
     this.ui.update(dtReal);
-    this.renderer.render(dtReal);
+    // Nothing to see in a background tab: skip the GPU work.
+    if (!document.hidden) this.renderer.render(dtReal);
   }
 
   private handleEvent(e: MatchEvent): void {

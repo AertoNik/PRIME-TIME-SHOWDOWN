@@ -63,7 +63,8 @@ export class AudioSystem {
       this.ctx = new Ctor();
       this.build();
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    // iOS reports 'interrupted' after calls/app switches; any non-running state needs a resume.
+    if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') void this.ctx.resume().catch(() => {});
   }
 
   private build(): void {
@@ -113,9 +114,9 @@ export class AudioSystem {
   /** Pause all audio while the page is in the background. */
   setHidden(hidden: boolean): void {
     if (!this.ctx) return;
-    if (hidden) void this.ctx.suspend();
+    if (hidden) void this.ctx.suspend().catch(() => {});
     else {
-      void this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
       this.nextNoteTime = this.ctx.currentTime + 0.05;
     }
   }
@@ -470,6 +471,8 @@ export class AudioSystem {
     if (!ctx) return;
     const bpm = this.track === 'battle' ? 124 : 96;
     const stepDur = 60 / bpm / 4;
+    // After a background stall, skip the missed notes instead of firing them all at once.
+    if (this.nextNoteTime < ctx.currentTime - 0.2) this.nextNoteTime = ctx.currentTime + 0.05;
     while (this.nextNoteTime < ctx.currentTime + 0.12) {
       const delay = Math.max(0, this.nextNoteTime - ctx.currentTime);
       if (this.musicOn && this.soundOn) {

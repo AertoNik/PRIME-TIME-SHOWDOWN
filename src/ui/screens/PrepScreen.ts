@@ -39,6 +39,11 @@ export class PrepScreen implements Screen {
       g.goto('menu');
       return;
     }
+    if (act === 'roster') {
+      g.audio.ui('click');
+      g.goto('roster', { back: 'prep' });
+      return;
+    }
     if (act === 'diff') {
       const d = t.dataset.d as Difficulty;
       if (!g.career.difficultyUnlocked(d)) {
@@ -127,10 +132,10 @@ export class PrepScreen implements Screen {
       </div>
       <div class="fill scroll" style="padding-bottom:10px">
         <div class="matchup panel">
-          <div class="mside a">
+          <div class="mside a" data-act="roster" style="cursor:pointer">
             ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
             <div class="mname">${esc(f.name)}</div>
-            <span class="chip teal">ВАШ БОЕЦ</span>
+            <button class="chip teal" aria-label="Сменить бойца">⇄ Сменить</button>
           </div>
           <div class="vs">VS</div>
           <div class="mside b">

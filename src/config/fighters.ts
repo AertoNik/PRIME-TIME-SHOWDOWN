@@ -188,10 +188,12 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
   rookie: {
     id: 'rookie',
     label: 'НОВИЧОК',
-    desc: 'Дневной эфир. Соперник медлителен и предсказуем, бьёт слабее.',
-    hpMult: 0.95,
-    dmgMult: 0.72,
-    energyMult: 0.6,
+    desc: 'Дневной эфир. Соперник медлителен и предсказуем, бьёт чуть слабее (−5% урона). Но без ваших карт боец часто проигрывает.',
+    // 1.1.1: was hp 0.95 / dmg 0.72 / energy 0.6 / dodge 0.2 — the fighter
+    // won on autopilot. Any active play still wins comfortably (npm run sim).
+    hpMult: 1.0,
+    dmgMult: 0.95,
+    energyMult: 0.75,
     reaction: 1.1,
     reactMin: 0.55,
     reactMax: 0.95,
@@ -200,7 +202,7 @@ export const DIFFICULTIES: Record<Difficulty, DifficultyDef> = {
     comboPlanning: 0.1,
     aimLead: 0.3,
     aimError: 0.13,
-    dodgeSkill: 0.2,
+    dodgeSkill: 0.3,
     cardSmarts: 0.3,
     telegraphMult: 1.25,
     rewardMult: 1,

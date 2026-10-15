@@ -111,6 +111,7 @@ export const COMBOS: ComboDef[] = [
     second: ['power_shot', 'knockout'],
     rating: 12,
     desc: `DASH → POWER SHOT / KNOCKOUT: контратака ×${CT.counterStrikeMult} урона.`,
+    bonus: `урон ×${CT.counterStrikeMult}`,
   },
   {
     id: 'electro_blast',
@@ -119,6 +120,7 @@ export const COMBOS: ComboDef[] = [
     second: ['power_shot', 'knockout'],
     rating: 15,
     desc: `SHOCK → POWER SHOT / KNOCKOUT: ×${CT.electroBlastMult} урона, электровзрыв продлевает оглушение.`,
+    bonus: `урон ×${CT.electroBlastMult} + оглушение`,
   },
   {
     id: 'iron_rush',
@@ -127,6 +129,7 @@ export const COMBOS: ComboDef[] = [
     second: ['overdrive'],
     rating: 12,
     desc: `SHIELD → OVERDRIVE: щит взрывается ударной волной (${CT.ironRushDamage} урона), разгон длится в ${CT.ironRushDurationMult} раза дольше.`,
+    bonus: `волна ${CT.ironRushDamage} урона + долгий разгон`,
   },
   {
     id: 'phantom_step',
@@ -135,6 +138,7 @@ export const COMBOS: ComboDef[] = [
     second: ['dash'],
     rating: 11,
     desc: 'SMOKE → DASH: на месте рывка остаётся голограмма-приманка, которая забирает огонь соперника.',
+    bonus: 'голограмма-приманка',
   },
   {
     id: 'superstar',
@@ -143,6 +147,7 @@ export const COMBOS: ComboDef[] = [
     second: ['adrenaline', 'knockout', 'system_overload'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
+    bonus: `фирменный приём +${pct(CT.superstarMult)}`,
   },
 ];
 
