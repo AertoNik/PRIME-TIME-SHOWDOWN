@@ -198,6 +198,23 @@ export class FighterAI {
     }
     let tanX = -uz * this.strafeDir;
     let tanZ = ux * this.strafeDir;
+    // BOSS FIGHT: backing away from a fighter who is too close, the champion circles towards
+    // open floor instead of retreating into the barrier (where brawlers pin him)
+    const retreating = !!b.holdRange && radial < 0;
+    if (retreating) {
+      const edge = Math.max(Math.abs(f.x) / ARENA.halfX, Math.abs(f.z) / ARENA.halfZ);
+      if (edge > 0.5 && tanX * -f.x + tanZ * -f.z < 0) {
+        this.strafeDir *= -1;
+        this.strafeTimer = m.rng.range(0.8, 1.6);
+        tanX = -tanX;
+        tanZ = -tanZ;
+      }
+      this.strafeAmt = Math.max(this.strafeAmt, 1);
+      // near the barrier: circle round the opponent instead of backing further into the wall
+      const wallK = clamp((edge - 0.55) / 0.35, 0, 1);
+      radial *= 1 - 0.75 * wallK;
+      strafe = Math.max(strafe, b.strafe) * (1 + 0.6 * wallK);
+    }
     const aheadX = f.x + tanX * 1.5;
     const aheadZ = f.z + tanZ * 1.5;
     if (Math.abs(aheadX) > ARENA.halfX - 0.4 || Math.abs(aheadZ) > ARENA.halfZ - 0.4) {
@@ -213,8 +230,10 @@ export class FighterAI {
     this.updateDodge(f);
     if (this.dodgeT > 0) {
       this.dodgeT -= dt;
-      mx = this.dodgeX + mx * 0.15;
-      mz = this.dodgeZ + mz * 0.15;
+      // the champion keeps repositioning while he sidesteps (a shotgun spray up close cannot be dodged anyway)
+      const keep = retreating ? 0.8 : 0.15;
+      mx = this.dodgeX * (retreating ? 0.5 : 1) + mx * keep;
+      mz = this.dodgeZ * (retreating ? 0.5 : 1) + mz * keep;
     }
 
     // Soft walls, plus a stronger pull out of corners.

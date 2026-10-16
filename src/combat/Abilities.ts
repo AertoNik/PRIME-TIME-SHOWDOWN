@@ -188,7 +188,7 @@ export class Abilities {
           target.shieldHp = 0;
           m.emit({ type: 'shieldBreak', side: target.side, x: target.x, z: target.z });
         }
-        target.glitch = t.duration * mult;
+        target.glitch = t.duration * mult * (target.side === 1 && m.boss ? m.boss.def.poise.glitchMult : 1);
         target.glitchDot = t.dotInterval;
         if (target.action.kind === 'windup' || target.action.kind === 'cut') {
           m.emit({ type: 'interrupt', side: target.side, by: f.side });

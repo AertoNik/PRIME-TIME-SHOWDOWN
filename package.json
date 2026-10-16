@@ -1,8 +1,8 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.3.3-alpha",
-  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.3.3: Champion Overhaul)",
+  "version": "1.3.4-alpha",
+  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.3.4: Balance Refinement)",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

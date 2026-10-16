@@ -260,8 +260,10 @@ export const RIVALS: Record<RivalId, RivalDef> = {
       fireRateMult: 1.0,
       // Alpha 1.3.3: PRIME BREAKER — CHAMPION BURST. Short controlled bursts of three heavy
       // slugs with a pause between them; reaches past the marksmen (Vega 10.5, Nika 9.5), no
-      // homing, no distance bonus. Tuned with `npm run modes` (boss balance report).
-      attack: { weapon: 'breaker', interval: 2.2, damage: 90, speed: 26, range: 12, radius: 0.2, falloff: 1, inaccuracy: 0.03, homing: 0, burst: { count: 3, gap: 0.11 } },
+      // homing, no distance bonus. Alpha 1.3.4: heavy slugs fly slower (26 → 19) so agile
+      // fighters can sidestep them — chip damage is no longer near-certain at mid range.
+      // Tuned with `npm run modes` (boss balance report).
+      attack: { weapon: 'breaker', interval: 2.2, damage: 90, speed: 19, range: 12, radius: 0.2, falloff: 1, inaccuracy: 0.03, homing: 0, burst: { count: 3, gap: 0.11 } },
       idleStyle: 'poise',
       victoryStyle: 'flex',
       dashStyle: 'lunge',

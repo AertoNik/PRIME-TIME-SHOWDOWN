@@ -7,7 +7,7 @@ import { CHALLENGES, PERKS, SURVIVAL, challengeById } from '../src/config/modes.
 import { BOSSES } from '../src/config/boss.config';
 import { CARD_TUNING } from '../src/config/balance';
 import { FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../src/config/fighters';
-import type { FighterId } from '../src/config/types';
+import type { CardId, FighterId } from '../src/config/types';
 import { Match } from '../src/combat/Match';
 import type { MatchResultData } from '../src/combat/types';
 import { CareerSystem } from '../src/meta/CareerSystem';
@@ -581,6 +581,38 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
     const evs = run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'phase' && x.phase === 'over'), 1200);
     check('the shot that knocks the player out ends the cut and the match (no shots after)', m.result?.outcome === 'loss' && shots(evs).length === 1 && evs.some((x) => x.type === 'cutEnd'));
   }
+  // Alpha 1.3.4: champion's poise and planted stance
+  {
+    const m = setup(21);
+    place(m, 0, -4, 0, 4);
+    const b = m.fighters[1];
+    const p = m.fighters[0];
+    const poise = BOSSES.vale.poise;
+    m.combat.applyStun(b, CARD_TUNING.shock.stun, 0);
+    const stunned = b.stun;
+    b.stun = 0;
+    m.hands[0].energy = 10;
+    m.hands[0].lockout = 0;
+    m.hands[0].hand[0] = 'system_overload';
+    m.playCard(0, 0);
+    check('boss poise: stuns and SYSTEM OVERLOAD last half as long on the champion', Math.abs(stunned - CARD_TUNING.shock.stun * poise.stunMult) < 1e-9 && Math.abs(b.glitch - CARD_TUNING.system_overload.duration * poise.glitchMult) < 1e-9 && poise.stunMult < 1);
+    const classic = new Match({ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck, rival: 'dex', difficulty: 'pro', seed: 5, fans: 0 });
+    classic.combat.applyStun(classic.fighters[1], 1, 0);
+    check('poise exists only in BOSS FIGHT (Classic rivals are stunned as before)', classic.fighters[1].stun === 1);
+    b.glitch = 0;
+    cast(m);
+    run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'cutAim'));
+    const hp0 = b.hp;
+    m.combat.applyHit(b, p, { damage: 500, kind: 'power', heavy: true, crit: false, electric: false, combo: null, knockback: 3.2, stun: 0, slowAmount: 0, slowDuration: 0, dx: 0, dz: -1, sure: true, projectile: null });
+    check("knockback does not stop or move the champion during DIRECTOR'S CUT (damage still lands)", b.action.kind === 'cut' && b.knockback === 0 && b.hp < hp0);
+    m.combat.applyStun(b, 1, 0);
+    check("a stun still breaks DIRECTOR'S CUT", b.action.kind !== 'cut');
+    b.stun = 0;
+    m.combat.applyHit(b, p, { damage: 100, kind: 'power', heavy: true, crit: false, electric: false, combo: null, knockback: 3.2, stun: 0, slowAmount: 0, slowDuration: 0, dx: 0, dz: -1, sure: true, projectile: null });
+    check('outside the cut the champion is knocked back as usual', b.knockback > 0);
+    const def = BOSSES.vale;
+    check('STAR POWER: on phase entry; as a card only in the final phase; no CHAMPION GUARD card', !def.phases[0].deck.includes('overdrive') && !def.phases[1].deck.includes('overdrive') && def.phases[2].deck.includes('overdrive') && def.phases.every((ph) => !ph.deck.includes('shield')) && def.phases[1].starPower > 0 && def.phases[2].starPower > 0);
+  }
   {
     // the line tracks the player while aiming
     const m = setup(20);
@@ -647,20 +679,26 @@ if (N > 0) {
   }
 
   console.log(`\nBOSS FIGHT vs ${RIVALS.vale.fullName}: ${N} fights per cell, default decks (idle = no cards, mash = random cards, combo = deliberate)`);
-  console.log("fighter  player  win%  avgDur  phase 1/2/3  bossHp@loss  hp@win  taken  burst  cut  cuts  DIRECTOR'S CUT shots: hit/dodged/blocked/missed");
+  console.log("fighter  player  win%  timeUp  avgDur  phase 1/2/3  bossHp@loss  hp@win  taken  burst  cut  cuts  DIRECTOR'S CUT shots: hit/dodged/blocked/missed   (ray* = DASH/POWER SHOT/SHIELD/OVERDRIVE)");
   const bd = BOSSES.vale;
-  for (const f of fighters) {
+  // Ray is also run with the deck the prep screen recommends against the champion (OVERDRIVE instead of ADRENALINE)
+  const bossRows: { label: string; f: FighterId; deck?: CardId[] }[] = [
+    ...fighters.map((f) => ({ label: f, f })),
+    { label: 'ray*', f: 'ray' as FighterId, deck: ['dash', 'power_shot', 'shield', 'overdrive'] as CardId[] },
+  ];
+  for (const { label, f, deck } of bossRows) {
     for (const mode of ['idle', 'mash', 'combo'] as Mode[]) {
-      let win = 0, dur = 0, left = 0, hpWin = 0, taken = 0, burst = 0, cut = 0, cuts = 0;
+      let win = 0, dur = 0, left = 0, hpWin = 0, taken = 0, burst = 0, cut = 0, cuts = 0, timeUp = 0;
       const ph = [0, 0, 0, 0];
       const sh = { hit: 0, dodged: 0, blocked: 0, miss: 0 };
       for (let i = 0; i < N; i++) {
-        const { m, events } = runMatch(f, 'vale', 'pro', mode, 5000 + i * 7919, undefined, { duration: bd.duration, introTime: bd.introTime, timeUpRule: 'rival' }, 'vale');
+        const { m, events } = runMatch(f, 'vale', 'pro', mode, 5000 + i * 7919, deck, { duration: bd.duration, introTime: bd.introTime, timeUpRule: 'rival' }, 'vale');
         const r = m.result!;
         if (r.outcome === 'win') {
           win++;
           hpWin += r.playerHpFrac;
         } else left += r.enemyHpFrac;
+        if (r.method === 'time') timeUp++;
         dur += r.duration;
         ph[r.bossPhase ?? 1]++;
         taken += m.fighters[0].m.damageTaken;
@@ -673,7 +711,7 @@ if (N > 0) {
       const shots = sh.hit + sh.dodged + sh.blocked + sh.miss || 1;
       const pc = (v: number) => `${Math.round((v / shots) * 100)}%`;
       console.log(
-        `${f.padEnd(8)} ${mode.padEnd(7)} ${String(Math.round((win / N) * 100)).padStart(4)}%  ${(dur / N).toFixed(0).padStart(5)}s  ${`${ph[1]}/${ph[2]}/${ph[3]}`.padStart(9)}    ${lost ? String(Math.round((left / lost) * 100)).padStart(3) + '%' : '   -'}        ${win ? String(Math.round((hpWin / win) * 100)).padStart(3) + '%' : '   -'}  ${(taken / N).toFixed(0).padStart(5)}  ${(burst / N).toFixed(0).padStart(5)} ${(cut / N).toFixed(0).padStart(4)}  ${(cuts / N).toFixed(1).padStart(4)}  ${[pc(sh.hit), pc(sh.dodged), pc(sh.blocked), pc(sh.miss)].join('/')}`,
+        `${label.padEnd(8)} ${mode.padEnd(7)} ${String(Math.round((win / N) * 100)).padStart(4)}%  ${String(Math.round((timeUp / N) * 100)).padStart(5)}%  ${(dur / N).toFixed(0).padStart(5)}s  ${`${ph[1]}/${ph[2]}/${ph[3]}`.padStart(9)}    ${lost ? String(Math.round((left / lost) * 100)).padStart(3) + '%' : '   -'}        ${win ? String(Math.round((hpWin / win) * 100)).padStart(3) + '%' : '   -'}  ${(taken / N).toFixed(0).padStart(5)}  ${(burst / N).toFixed(0).padStart(5)} ${(cut / N).toFixed(0).padStart(4)}  ${(cuts / N).toFixed(1).padStart(4)}  ${[pc(sh.hit), pc(sh.dodged), pc(sh.blocked), pc(sh.miss)].join('/')}`,
       );
     }
   }

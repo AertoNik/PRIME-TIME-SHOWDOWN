@@ -54,6 +54,11 @@ export interface BossDef {
   ai: DifficultyDef;
   /** Access: Classic Duel wins needed with the selected fighter (a fighter who already beat the boss keeps access). */
   unlock: { classicWins: number };
+  /**
+   * Champion's poise (Alpha 1.3.4): stuns (SHOCK, KNOCKOUT, wall slams) and SYSTEM OVERLOAD last
+   * this fraction of their usual time on the boss. They still interrupt DIRECTOR'S CUT.
+   */
+  poise: { stunMult: number; glitchMult: number };
   phases: BossPhase[];
   moves: BossMove[];
   /** Names the HUD shows when the boss plays a card. */
@@ -121,6 +126,7 @@ const PHASE_BEHAVIOR: Record<1 | 2 | 3, BehaviorDef> = {
 /**
  * FINAL BROADCAST DIRECTOR'S CUT: brighter lines that lead the target further, slightly
  * shorter windows (still above human reaction time), a wider and stronger third shot.
+ * Alpha 1.3.4: +20% damage, cooldown 7.5 → 6 s.
  */
 const CUT_P3: CutTuning = {
   ...CARD_TUNING.directors_cut,
@@ -130,12 +136,12 @@ const CUT_P3: CutTuning = {
   gap: 0.28,
   halfWidth: [0.6, 0.6, 0.95],
   length: [12, 12, 13],
-  damage: [900, 900, 1620],
+  damage: [1080, 1080, 1944],
   knockback: [1.2, 1.2, 5.5],
   stun: [0, 0, 0.4],
   lead: 0.5,
   recover: 0.85,
-  cooldown: 7.5,
+  cooldown: 6,
 };
 
 export const BOSSES: Record<string, BossDef> = {
@@ -148,13 +154,14 @@ export const BOSSES: Record<string, BossDef> = {
     duration: 120,
     introTime: 5.6,
     unlock: { classicWins: 5 },
+    poise: { stunMult: 0.5, glitchMult: 0.5 },
     ai: {
       id: 'champion',
       label: 'ЛЕГЕНДА',
       desc: 'Чемпион шоу: тяжёлые очереди, быстрые реакции и фирменные приёмы, но каждый мощный выстрел он честно показывает линией прицела.',
       hpMult: 1,
-      // tuned with `npm run modes` (Alpha 1.3.3): 23 800 HP (Vega base ×1.75 in fighters.ts), 86% damage
-      dmgMult: 0.86,
+      // tuned with `npm run modes` (Alpha 1.3.4): 23 800 HP (Vega base ×1.75 in fighters.ts), 96% damage
+      dmgMult: 0.96,
       energyMult: 1,
       reaction: 0.4,
       reactMin: 0.3,
@@ -176,7 +183,9 @@ export const BOSSES: Record<string, BossDef> = {
         title: 'SHOW OPENING',
         desc: 'Чемпион работает технично: держит дистанцию и бьёт тяжёлыми очередями CHAMPION BURST. Только очереди, без фирменных приёмов.',
         at: 1,
-        deck: ['dash', 'shield', 'overdrive'],
+        // Alpha 1.3.4: no CHAMPION GUARD / STAR POWER cards here — fights used to drag into
+        // time-outs and STAR POWER was up half the fight (unavoidable chip damage)
+        deck: ['dash'],
         behavior: PHASE_BEHAVIOR[1],
         energyMult: 1,
         starPower: 0,
@@ -188,7 +197,8 @@ export const BOSSES: Record<string, BossDef> = {
         title: 'PRIME PRESSURE',
         desc: 'С 65% здоровья: STAR POWER и DIRECTOR\'S CUT — три выстрела по линиям прицела.',
         at: 0.65,
-        deck: ['dash', 'overdrive', 'directors_cut', 'charged_shot'],
+        // STAR POWER only on entering the phase (Alpha 1.3.4); the energy goes to signature moves
+        deck: ['dash', 'directors_cut', 'charged_shot'],
         behavior: PHASE_BEHAVIOR[2],
         energyMult: 1.1,
         starPower: 4.5,
@@ -222,7 +232,7 @@ export const BOSSES: Record<string, BossDef> = {
         name: 'DIRECTOR\'S CUT',
         desc: 'Чемпион вскидывает винтовку и делает три мощных выстрела. Перед каждым — красная линия: сначала следит за вами, потом застывает, и выстрел идёт ровно по ней.',
         from: 2,
-        counter: 'Застывшая линия — сигнал: DASH уводит из неё, SHIELD гасит урон, SHOCK срывает серию. После третьего выстрела чемпион открыт.',
+        counter: 'Застывшая линия — сигнал: DASH уводит из неё, SHIELD гасит урон, SHOCK или SYSTEM OVERLOAD срывают серию (отброс — нет). После третьего выстрела чемпион открыт.',
       },
       {
         id: 'spotlight',
@@ -234,7 +244,7 @@ export const BOSSES: Record<string, BossDef> = {
       {
         id: 'star',
         name: 'STAR POWER',
-        desc: 'В начале 2-й и 3-й фазы чемпион входит в разгон: стреляет чаще и сильнее.',
+        desc: 'В начале 2-й и 3-й фазы чемпион входит в разгон: стреляет чаще и сильнее. В финальной фазе он может включить разгон снова.',
         from: 2,
         counter: 'Переждите разгон: SHIELD, SMOKE или дистанция.',
       },
@@ -250,7 +260,6 @@ export const BOSSES: Record<string, BossDef> = {
       charged_shot: 'SPOTLIGHT SHOT',
       directors_cut: 'DIRECTOR\'S CUT',
       overdrive: 'STAR POWER',
-      shield: 'CHAMPION GUARD',
     },
     rewards: {
       purseDifficulty: 'pro',

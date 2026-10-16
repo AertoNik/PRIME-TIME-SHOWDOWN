@@ -73,7 +73,7 @@ export interface CutTuning {
   cooldown: number;
 }
 
-/** Phase 2 DIRECTOR'S CUT (the base card numbers). */
+/** Phase 2 DIRECTOR'S CUT (the base card numbers; Alpha 1.3.4: +20% damage, cooldown 9 → 7 s). */
 const CUT_P2: CutTuning = {
   prep: 0.55,
   aim: [0.7, 0.55, 0.7],
@@ -81,12 +81,12 @@ const CUT_P2: CutTuning = {
   gap: 0.32,
   halfWidth: [0.55, 0.55, 0.78],
   length: [11, 11, 12],
-  damage: [840, 840, 1380],
+  damage: [1008, 1008, 1656],
   knockback: [1, 1, 4.5],
   stun: [0, 0, 0.3],
   lead: 0.3,
   recover: 1.0,
-  cooldown: 9,
+  cooldown: 7,
 };
 
 export const CARD_TUNING = {

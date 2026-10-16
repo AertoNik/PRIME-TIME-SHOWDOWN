@@ -620,6 +620,8 @@ export class CombatSystem {
   // ------------------------------------------------------------------ damage
   applyStun(target: FighterSim, duration: number, by: Side): void {
     if (target.ko || duration <= 0) return;
+    // BOSS FIGHT: the champion shakes stuns off faster (poise), they still interrupt him
+    if (target.side === 1 && this.m.boss) duration *= this.m.boss.def.poise.stunMult;
     if (target.action.kind === 'windup' || target.action.kind === 'rush' || target.action.kind === 'cut') {
       this.m.emit({ type: 'interrupt', side: target.side, by });
       if (by !== target.side) this.m.fighters[by].m.perfects++;
@@ -704,13 +706,14 @@ export class CombatSystem {
       return 'hit';
     }
 
-    if (h.knockback > 0) {
+    // DIRECTOR'S CUT: the champion stands his ground — knockback neither moves nor stops him
+    // (stuns and SYSTEM OVERLOAD still break the series)
+    if (h.knockback > 0 && target.action.kind !== 'cut') {
       target.kbX = h.dx * h.knockback * 2.6;
       target.kbZ = h.dz * h.knockback * 2.6;
       target.knockback = Math.min(0.7, 0.15 + h.knockback * 0.06);
-      if (target.action.kind === 'windup' || target.action.kind === 'cut') {
+      if (target.action.kind === 'windup') {
         m.emit({ type: 'interrupt', side: target.side, by: source.side });
-        m.abilities.cancelCut(target);
         target.action = { kind: 'none' };
       }
     }

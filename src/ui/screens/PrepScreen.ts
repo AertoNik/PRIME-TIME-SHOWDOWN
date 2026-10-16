@@ -209,6 +209,7 @@ export class PrepScreen implements Screen {
             <ul class="mode-rules">
               <li>Бой длится ${Math.floor(def.duration / 60)}:${String(def.duration % 60).padStart(2, '0')}. Победа — только нокаутом: если время выйдет, титул останется у чемпиона.</li>
               <li>Каждый мощный выстрел чемпион показывает линией прицела и предупреждением на экране: линия следит за бойцом, застывает — и выстрел идёт ровно по ней.</li>
+              <li>Легенда держит удар: оглушение и SYSTEM OVERLOAD действуют на чемпиона вдвое короче, а отброс не прерывает DIRECTOR'S CUT — серию срывают только оглушение и SYSTEM OVERLOAD.</li>
             </ul>
             <div class="label bp-label">Фирменные приёмы</div>
             <div class="bp-moves">${moves}</div>
