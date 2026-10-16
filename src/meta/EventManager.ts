@@ -128,9 +128,16 @@ export class EventManager {
     return this.active?.themeId ?? 'default';
   }
 
-  /** Has quests/currency (winter preview is theme-only). */
+  /**
+   * Has quests/currency (winter preview is theme-only). A manual preview pays only
+   * inside the event's real dates, unless the dev build asked for preview rewards.
+   * Arena availability and the theme follow `themeId`, never this flag.
+   */
   get playable(): boolean {
-    return !!this.active && this.active.quests.length > 0 && !!this.active.currency;
+    const e = this.active;
+    if (!e || e.quests.length === 0 || !e.currency) return false;
+    if (this.settings.mode === 'manual' && !this.settings.previewRewards && !this.isRunning(e)) return false;
+    return true;
   }
 
   /** ms until the active event ends (Infinity for manual previews without dates). */

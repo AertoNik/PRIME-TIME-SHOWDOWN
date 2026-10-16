@@ -1,4 +1,5 @@
-import { ARENA, BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
+import { BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
+import { arenaById, type ArenaId } from '../config/arenas.config';
 import { bossById } from '../config/boss.config';
 import { CARDS } from '../config/cards';
 import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
@@ -28,6 +29,8 @@ export interface MatchConfig {
   mods?: MatchMods;
   /** BOSS FIGHT: id from src/config/boss.config.ts (the rival must be that boss). */
   boss?: string;
+  /** Alpha 1.4: studio set (only its set pieces matter to the simulation). Default: the original arena. */
+  arena?: ArenaId;
 }
 
 /**
@@ -180,7 +183,22 @@ export class Match implements BroadcastHost {
       behavior: BEHAVIORS[this.rival.behavior],
     };
     this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, enemyProfile)];
-    this.props = ARENA.props.map((p) => ({ x: p.x, z: p.z, alive: true, respawn: 0 }));
+    // Alpha 1.4: the stage's set pieces (Classic default: the original studio's speaker stacks)
+    this.props = arenaById(cfg.arena).props.map((p) => ({
+      kind: p.kind,
+      x: p.x,
+      z: p.z,
+      alive: true,
+      respawn: 0,
+      hp: p.hp,
+      maxHp: p.hp,
+      respawnTime: p.respawn,
+      radius: p.radius ?? null,
+      reactive: !!p.reactive,
+      cooldown: p.cooldown ?? 0,
+      cool: 0,
+      hits: 0,
+    }));
     if (bossDef) this.boss = new BossDirector(this, bossDef);
   }
 
@@ -304,10 +322,12 @@ export class Match implements BroadcastHost {
     this.decoys = this.decoys.filter((d) => d.alive);
     for (let i = 0; i < this.props.length; i++) {
       const p = this.props[i];
+      if (p.cool > 0) p.cool -= dt;
       if (p.alive) continue;
       p.respawn -= dt;
       if (p.respawn <= 0) {
         p.alive = true;
+        p.hp = p.maxHp;
         this.emit({ type: 'propRespawn', index: i });
       }
     }
@@ -389,16 +409,33 @@ export class Match implements BroadcastHost {
     this.emit({ type: 'decoyPop', side: d.owner, id: d.id, x: d.x, z: d.z, hit: true });
   }
 
+  /**
+   * A shot hit the barrier at (x, z): set pieces within reach react. Purely
+   * visual — no damage, no rating, no random numbers — and a broken piece never
+   * reacts again until it is rebuilt, so nothing can be farmed.
+   */
   hitProps(x: number, z: number, heavy: boolean): void {
-    const r = heavy ? 1.7 : 0.95;
     for (let i = 0; i < this.props.length; i++) {
       const p = this.props[i];
       if (!p.alive) continue;
-      if (Math.hypot(p.x - x, p.z - z) < r) {
-        p.alive = false;
-        p.respawn = ARENA.propRespawn;
-        this.emit({ type: 'propBreak', index: i, x: p.x, z: p.z });
+      const r = p.radius !== null ? (heavy ? p.radius * 1.25 : p.radius) : heavy ? 1.7 : 0.95;
+      if (Math.hypot(p.x - x, p.z - z) >= r) continue;
+      if (p.reactive) {
+        if (p.cool > 0) continue;
+        p.cool = p.cooldown;
+        p.hits++;
+        this.emit({ type: 'propHit', index: i, x: p.x, z: p.z, hp: -1, heavy });
+        continue;
       }
+      p.hits++;
+      p.hp--;
+      if (p.hp > 0) {
+        this.emit({ type: 'propHit', index: i, x: p.x, z: p.z, hp: p.hp, heavy });
+        continue;
+      }
+      p.alive = false;
+      p.respawn = p.respawnTime > 0 ? p.respawnTime : Infinity;
+      this.emit({ type: 'propBreak', index: i, x: p.x, z: p.z });
     }
   }
 

@@ -1,9 +1,11 @@
+import { arenaById } from '../../config/arenas.config';
 import { GOALS } from '../../config/career';
 import { DIFFICULTIES, FIGHTERS, RIVALS } from '../../config/fighters';
 import { PERKS, SURVIVAL, type PerkId } from '../../config/modes.config';
 import type { MatchResultData } from '../../combat/types';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
+import { arenaAvailable } from '../../meta/ArenaSelection';
 import type { SurvivalSummary, WaveOutcome } from '../../meta/GameModes';
 import type { SurvivalRun } from '../../meta/SaveSystem';
 import { countUp, el, esc, portraitHTML } from '../dom';
@@ -187,6 +189,7 @@ export class SurvivalScreen implements Screen {
             <div class="label">${setup.final ? 'Финальная волна' : `Волна ${setup.index + 1} из ${total}`}</div>
             <div class="sv-next-name">VS ${esc(nextRival.name)} «${esc(nextRival.nickname)}»</div>
             <div class="muted sv-next-meta">ИИ: ${esc(DIFFICULTIES[setup.difficulty].label.toLowerCase())}${setup.mods.rivalHpMult && setup.mods.rivalHpMult > 1 ? ` · +${Math.round((setup.mods.rivalHpMult - 1) * 100)}% здоровья` : ''}</div>
+            <div class="muted sv-next-meta">Павильон марафона: ${esc(arenaById(arenaAvailable(arenaById(run.arena), g.events.themeId) ? run.arena : 'original').name)}</div>
           </div>
           ${setup.final ? '<span class="chip red">FINAL</span>' : ''}
         </div>

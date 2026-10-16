@@ -28,45 +28,17 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA } from '../config/balance';
 import type { AmbientKind, DecorKind } from '../config/themes.config';
 import { Rng } from '../core/math';
+import type { DecorLayout, DecorSpot } from './stages/StageKit';
 import { canvasTexture, makeCanvas } from './textures';
 
-// Seasonal 3D decoration for the existing arena. Everything sits outside the
-// fighting area (beyond the barrier, on the stands, around the big screens), so
-// collisions, camera framing and fighter visibility are untouched. A few pieces
-// stand next to the menu pedestal and are shown only on menu screens.
-// One instanced mesh per object type keeps the extra draw calls to a handful.
+// Seasonal 3D decoration layered over the current studio set. Everything sits
+// outside the fighting area at anchors the set provides (DecorLayout: barrier
+// corners, gaps beside the barrier, around its screens), so collisions, camera
+// framing and fighter visibility are untouched. A few pieces stand next to the
+// menu pedestal and are shown only on menu screens. One instanced mesh per object
+// type keeps the extra draw calls to a handful.
 
-type Spot = [x: number, y: number, z: number, scale: number];
-
-// Barrier corners (on the wall cap), the gaps between barrier and side stands, and the stands.
-const ARENA_SPOTS: Spot[] = [
-  // on the barrier top, along the rounded corners
-  [-4.3, 0.6, -7.22, 0.3],
-  [4.3, 0.6, -7.22, 0.34],
-  [-5.2, 0.6, 6.31, 0.28],
-  [5.2, 0.6, 6.31, 0.3],
-  [-7.2, -0.36, -6.4, 0.55],
-  [-7.35, -0.36, -2.0, 0.42],
-  [-7.1, -0.36, 2.6, 0.5],
-  [7.25, -0.36, -5.6, 0.5],
-  [7.1, -0.36, -1.4, 0.58],
-  [7.3, -0.36, 3.2, 0.44],
-  [-9.6, 0.3, -9.25, 0.42],
-  [9.4, 0.3, -9.25, 0.46],
-  [-3.4, 1.4, -11.5, 0.4],
-  [3.8, 1.4, -11.5, 0.38],
-  [-10.9, 1.4, -2.5, 0.45],
-  [10.9, 1.4, 1.8, 0.45],
-  [-1.4, 0.85, -10.35, 0.34],
-  [6.3, 0.85, -10.35, 0.36],
-];
-// Around the showcase pedestal at the arena centre (menu screens only).
-const MENU_SPOTS: Spot[] = [
-  [-1.95, 0, 0.55, 0.42],
-  [1.85, 0, 0.95, 0.32],
-  [-1.35, 0, -1.25, 0.28],
-  [1.5, 0, -1.0, 0.24],
-];
+type Spot = DecorSpot;
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -217,11 +189,11 @@ function webTexture(): CanvasTexture {
 }
 
 /** Crimson title banner with a gold border, crown and the boss monogram (BOSS FIGHT). */
-function bannerTexture(): CanvasTexture {
+function bannerTexture(halloween = false): CanvasTexture {
   const { c, g } = makeCanvas(160, 416);
   const W = 160;
   const H = 416;
-  g.fillStyle = '#8a0f22';
+  g.fillStyle = halloween ? '#3a0f5a' : '#8a0f22';
   g.beginPath();
   g.moveTo(0, 0);
   g.lineTo(W, 0);
@@ -230,10 +202,10 @@ function bannerTexture(): CanvasTexture {
   g.lineTo(0, H - 40);
   g.closePath();
   g.fill();
-  g.strokeStyle = '#ffd76a';
+  g.strokeStyle = halloween ? '#ff9a2a' : '#ffd76a';
   g.lineWidth = 8;
   g.stroke();
-  g.strokeStyle = 'rgba(255, 215, 106, 0.5)';
+  g.strokeStyle = halloween ? 'rgba(255, 154, 42, 0.55)' : 'rgba(255, 215, 106, 0.5)';
   g.lineWidth = 2;
   g.strokeRect(16, 16, W - 32, H - 90);
   // crown
@@ -253,8 +225,24 @@ function bannerTexture(): CanvasTexture {
   g.font = 'italic 900 64px Unbounded, "Arial Black", sans-serif';
   g.fillText('VV', W / 2, 160);
   g.font = '900 20px Unbounded, "Arial Black", sans-serif';
-  g.fillStyle = '#fff1c0';
+  g.fillStyle = halloween ? '#ffd9a0' : '#fff1c0';
   ['L', 'E', 'G', 'E', 'N', 'D'].forEach((ch, i) => g.fillText(ch, W / 2, 214 + i * 26));
+  if (halloween) {
+    // a small jack-o'-lantern under the letters: HALLOWEEN SPECIAL edition
+    g.fillStyle = '#ff8a1f';
+    g.beginPath();
+    g.ellipse(W / 2, H - 70, 22, 17, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#3a0f5a';
+    for (const dx of [-8, 8]) {
+      g.beginPath();
+      g.moveTo(W / 2 + dx - 4, H - 72);
+      g.lineTo(W / 2 + dx + 4, H - 72);
+      g.lineTo(W / 2 + dx, H - 79);
+      g.fill();
+    }
+    g.fillRect(W / 2 - 9, H - 64, 18, 3);
+  }
   return canvasTexture(c);
 }
 
@@ -268,12 +256,13 @@ function floorDecal(kind: DecorKind): Mesh {
   const W = 512;
   const H = Math.round((W * hz) / hx);
   const { c, g } = makeCanvas(W, H);
+  const mixed = kind === 'championHalloween';
   const halloween = kind === 'pumpkins';
-  const champion = kind === 'champion';
+  const champion = kind === 'champion' || mixed;
   const edge = halloween ? '150, 60, 255' : champion ? '255, 190, 60' : '150, 215, 255';
   const grd = g.createRadialGradient(W / 2, H / 2, H * 0.22, W / 2, H / 2, H * 0.62);
   grd.addColorStop(0, `rgba(${edge}, 0)`);
-  grd.addColorStop(0.7, `rgba(${edge}, 0.10)`);
+  grd.addColorStop(0.7, `rgba(${mixed ? '170, 70, 255' : edge}, 0.10)`);
   grd.addColorStop(1, `rgba(${edge}, 0.34)`);
   g.fillStyle = grd;
   g.fillRect(0, 0, W, H);
@@ -425,12 +414,28 @@ export class SeasonalDecor {
   private glowMats: MeshStandardMaterial[] = [];
   private t = 0;
 
-  constructor(kind: DecorKind, ambient: AmbientKind, ambientColors: number[], lowQuality: boolean) {
+  private layout: DecorLayout;
+
+  /**
+   * @param layout anchors of the current studio set
+   * @param native the set already dresses itself for this season (HAUNTED PRIME SET at
+   *   Halloween): only ambience and BOSS FIGHT pieces are added, no second set of pumpkins
+   */
+  constructor(kind: DecorKind, ambient: AmbientKind, ambientColors: number[], lowQuality: boolean, layout: DecorLayout, native = false) {
+    this.layout = layout;
     this.group.add(this.menuGroup);
-    if (kind === 'pumpkins') this.buildHalloween();
+    if (kind === 'pumpkins' && !native) this.buildHalloween(layout.spots);
     else if (kind === 'frost') this.buildFrost();
-    else if (kind === 'champion') this.buildChampion();
-    if (kind !== 'none') this.group.add(floorDecal(kind));
+    else if (kind === 'champion') this.buildChampion(layout.spots, false);
+    else if (kind === 'championHalloween') {
+      // BOSS FIGHT during Halloween: champion pylons and banners in the season's colours,
+      // with jack-o'-lanterns between the pylons
+      const even = layout.spots.filter((_, i) => i % 2 === 0);
+      const odd = layout.spots.filter((_, i) => i % 2 === 1);
+      this.buildChampion(native ? layout.spots : even, true);
+      if (!native) this.buildHalloween(odd);
+    }
+    if (kind !== 'none' && !native) this.group.add(floorDecal(kind));
     if (ambient !== 'none') {
       this.ambientCount = ambient === 'snow' ? 120 : 70;
       this.ambient = ambientPoints(ambient, ambientColors, this.ambientCount);
@@ -445,7 +450,8 @@ export class SeasonalDecor {
     this.ambient.geometry.setDrawRange(0, low ? Math.round(this.ambientCount * 0.4) : this.ambientCount);
   }
 
-  private buildHalloween(): void {
+  private buildHalloween(spots: Spot[]): void {
+    const L = this.layout;
     const rng = new Rng(31);
     const geo = pumpkinGeometry();
     const face = pumpkinFaceTexture();
@@ -458,13 +464,13 @@ export class SeasonalDecor {
       emissiveIntensity: 2.6,
     });
     this.glowMats.push(mat);
-    const arena = new InstancedMesh(geo, mat, ARENA_SPOTS.length);
-    placeInstances(arena, ARENA_SPOTS, true, rng);
+    const arena = new InstancedMesh(geo, mat, spots.length);
+    placeInstances(arena, spots, true, rng);
     arena.castShadow = false;
     this.group.add(arena);
-    const menu = new InstancedMesh(geo, mat, MENU_SPOTS.length);
+    const menu = new InstancedMesh(geo, mat, L.menuSpots.length);
     // menu pumpkins look toward the camera side
-    MENU_SPOTS.forEach(([x, y, z, s], i) => {
+    L.menuSpots.forEach(([x, y, z, s], i) => {
       _q.setFromAxisAngle(_up, Math.atan2(-x * 0.4, 6 - z) + rng.range(-0.3, 0.3));
       _m.compose(_p.set(x, y, z), _q, _s.setScalar(s));
       menu.setMatrixAt(i, _m);
@@ -479,10 +485,10 @@ export class SeasonalDecor {
     this.bats.frustumCulled = false;
     for (let i = 0; i < 7; i++) {
       this.batData.push({
-        r: rng.range(4, 9),
-        h: rng.range(6.5, 10),
-        cx: rng.range(-6, 6),
-        cz: rng.range(-15, -11),
+        r: rng.range(L.bats.r[0], L.bats.r[1]),
+        h: rng.range(L.bats.h[0], L.bats.h[1]),
+        cx: rng.range(L.bats.cx[0], L.bats.cx[1]),
+        cz: rng.range(L.bats.cz[0], L.bats.cz[1]),
         speed: rng.range(0.25, 0.45) * (rng.chance(0.5) ? 1 : -1),
         phase: rng.range(0, 6.28),
         size: rng.range(0.7, 1.1),
@@ -508,8 +514,8 @@ export class SeasonalDecor {
         webs.push(p);
       }
     };
-    addWebs(0, 4.6, -16.5, -0.18, 0, 10.6, 5.6, 0.23, 2.3);
-    for (const sx of [-1, 1]) addWebs(sx * 11.5, 4.2, -11, -0.15, -sx * 0.7, 5.4, 3, 0.18, 1.3);
+    for (const f of L.screens) addWebs(f.x, f.y, f.z, f.rx, f.ry, f.w, f.h, f.front, f.size);
+    if (!webs.length) return;
     const webGeo = mergeGeometries(webs)!;
     webs.forEach((w) => w.dispose());
     const webMat = new MeshBasicMaterial({ map: webTexture(), color: 0xd8c8ff, transparent: true, opacity: 0.5, depthWrite: false, side: DoubleSide });
@@ -522,8 +528,8 @@ export class SeasonalDecor {
     const mound = new SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
     mound.scale(1.3, 0.55, 1.1);
     const snowMat = new MeshLambertMaterial({ color: 0xf2f8ff, emissive: new Color(0x2a4a78), emissiveIntensity: 0.6 });
-    const mounds = new InstancedMesh(mound, snowMat, ARENA_SPOTS.length);
-    placeInstances(mounds, ARENA_SPOTS, false, rng);
+    const mounds = new InstancedMesh(mound, snowMat, this.layout.spots.length);
+    placeInstances(mounds, this.layout.spots, false, rng);
     this.group.add(mounds);
 
     // little pine trees in the gaps beside the barrier, with glowing star toppers
@@ -539,14 +545,7 @@ export class SeasonalDecor {
     const treeGeo = mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
     parts.forEach((p) => p.dispose());
     const treeMat = new MeshLambertMaterial({ vertexColors: true });
-    const treeSpots: Spot[] = [
-      [-7.3, -0.36, -4.2, 1.1],
-      [7.3, -0.36, -3.6, 1.15],
-      [-7.2, -0.36, 1.2, 0.9],
-      [7.25, -0.36, 1.9, 0.95],
-      [-10.5, 0.3, -9.4, 1],
-      [10.4, 0.3, -9.4, 1],
-    ];
+    const treeSpots: Spot[] = this.layout.trees ?? this.layout.spots.filter((p) => p[1] <= 0).slice(0, 6).map(([x, y, z]) => [x, y, z, 1] as Spot);
     const trees = new InstancedMesh(treeGeo, treeMat, treeSpots.length);
     placeInstances(trees, treeSpots, false, rng);
     this.group.add(trees);
@@ -586,7 +585,7 @@ export class SeasonalDecor {
    * BOSS FIGHT dressing: golden light pylons around the barrier (where seasonal
    * props stand) and four crimson-gold title banners above the stands.
    */
-  private buildChampion(): void {
+  private buildChampion(spots: Spot[], halloween: boolean): void {
     const rng = new Rng(71);
     const parts: BufferGeometry[] = [];
     const base = new CylinderGeometry(0.42, 0.52, 0.5, 10);
@@ -600,33 +599,29 @@ export class SeasonalDecor {
     parts.push(colorAttr(cupGeo, new Color(0xd8a23a)));
     const pylonGeo = mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
     parts.forEach((p) => p.dispose());
-    const pylons = new InstancedMesh(pylonGeo, new MeshLambertMaterial({ vertexColors: true, emissive: new Color(0x2a1a08) }), ARENA_SPOTS.length);
-    placeInstances(pylons, ARENA_SPOTS, false, rng);
+    const pylons = new InstancedMesh(pylonGeo, new MeshLambertMaterial({ vertexColors: true, emissive: new Color(halloween ? 0x24102e : 0x2a1a08) }), spots.length);
+    placeInstances(pylons, spots, false, rng);
     this.group.add(pylons);
     // glowing gold "flame" on top of each pylon (breathes with the crowd)
-    const glowMat = new MeshStandardMaterial({ color: 0x3a2408, emissive: new Color(1, 0.72, 0.22), emissiveIntensity: 2.4, roughness: 0.6 });
+    // Halloween edition: the flames burn orange and violet instead of gold
+    const glowMat = new MeshStandardMaterial({ color: 0x3a2408, emissive: halloween ? new Color(1, 0.5, 0.12) : new Color(1, 0.72, 0.22), emissiveIntensity: 2.4, roughness: 0.6 });
     this.glowMats.push(glowMat);
     const flame = new OctahedronGeometry(0.3, 0);
     flame.scale(1, 1.6, 1);
-    const flames = new InstancedMesh(flame, glowMat, ARENA_SPOTS.length);
-    ARENA_SPOTS.forEach(([x, y, z, s], i) => {
+    const flames = new InstancedMesh(flame, glowMat, spots.length);
+    spots.forEach(([x, y, z, s], i) => {
       _m.compose(_p.set(x, y + 2.15 * s, z), _q.setFromAxisAngle(_up, i * 0.7), _s.setScalar(s));
       flames.setMatrixAt(i, _m);
     });
     flames.instanceMatrix.needsUpdate = true;
     this.group.add(flames);
     // title banners above the stands, either side of the big screens
-    const tex = bannerTexture();
+    const tex = bannerTexture(halloween);
     const bannerMat = new MeshBasicMaterial({ map: tex, side: DoubleSide, transparent: true, toneMapped: false });
     const bannerGeo = new PlaneGeometry(1.7, 4.4);
-    const spots: [number, number, number, number][] = [
-      [-7.6, 6.6, -15.6, 0],
-      [7.6, 6.6, -15.6, 0],
-      [-13.6, 6, -8.2, 0.75],
-      [13.6, 6, -8.2, -0.75],
-    ];
-    const banners = new InstancedMesh(bannerGeo, bannerMat, spots.length);
-    spots.forEach(([x, y, z, yaw], i) => {
+    const bannerSpots = this.layout.banners;
+    const banners = new InstancedMesh(bannerGeo, bannerMat, bannerSpots.length);
+    bannerSpots.forEach(([x, y, z, yaw], i) => {
       _m.compose(_p.set(x, y, z), _q.setFromAxisAngle(_up, yaw), _s.setScalar(1));
       banners.setMatrixAt(i, _m);
     });

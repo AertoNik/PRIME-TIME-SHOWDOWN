@@ -1,3 +1,4 @@
+import type { ArenaId } from '../config/arenas.config';
 import { bossById, type BossDef } from '../config/boss.config';
 import { REWARDS } from '../config/career';
 import { COSMETICS, type CosmeticId } from '../config/cosmetics.config';
@@ -180,7 +181,7 @@ export class GameModes {
     return out;
   }
 
-  startRun(fighter: FighterId, deck: CardId[], eventId: string | null, seed: number): SurvivalRun {
+  startRun(fighter: FighterId, deck: CardId[], eventId: string | null, seed: number, arena: ArenaId = 'original'): SurvivalRun {
     const run: SurvivalRun = {
       id: Math.floor(this.clock()) * 10 + (Math.abs(Math.floor(seed)) % 10),
       fighter,
@@ -193,6 +194,7 @@ export class GameModes {
       pendingPerk: false,
       eventId,
       startedAt: this.clock(),
+      arena,
     };
     this.survival.active = run;
     this.store.save();

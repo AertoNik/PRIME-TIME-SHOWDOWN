@@ -1,3 +1,4 @@
+import type { PropKind } from '../config/arenas.config';
 import type { CardId, WeaponType } from '../config/types';
 
 type Wave = OscillatorType;
@@ -333,6 +334,86 @@ export class AudioSystem {
   shieldBreak(): void {
     this.noise({ dur: 0.5, gain: 0.32, type: 'highpass', f0: 1500 });
     for (let i = 0; i < 6; i++) this.tone({ type: 'triangle', f0: 1200 + Math.random() * 2000, dur: 0.18, gain: 0.05, delay: i * 0.03 });
+  }
+
+  /**
+   * Alpha 1.4 studio-set pieces: each kind has its own sound. `broke` = the piece was
+   * destroyed (or reached its damaged state), otherwise it took a hit / reacted.
+   */
+  prop(kind: PropKind, broke: boolean, heavy: boolean): void {
+    if (!this.throttle(`prop-${kind}`, broke ? 60 : 110)) return;
+    const k = heavy ? 1.2 : 1;
+    switch (kind) {
+      case 'speaker':
+        this.shieldBreak();
+        return;
+      case 'chips':
+        // a stack of clay chips tumbling: quick bright clicks
+        for (let i = 0; i < (broke ? 9 : 3); i++) this.tone({ type: 'triangle', f0: 2400 + Math.random() * 1600, dur: 0.05, gain: 0.05 * k, delay: i * 0.035 + Math.random() * 0.02 });
+        this.noise({ dur: 0.18, gain: 0.08, type: 'highpass', f0: 3500 });
+        return;
+      case 'neonSign':
+        // electric buzz + spark crackle; the outage pops
+        this.tone({ type: 'sawtooth', f0: 120, dur: 0.25, gain: 0.06, filter: { type: 'bandpass', f0: 900, q: 4 } });
+        this.noise({ dur: 0.12, gain: 0.14 * k, type: 'highpass', f0: 4000 });
+        if (broke) {
+          this.noise({ dur: 0.08, gain: 0.25, type: 'highpass', f0: 2000, delay: 0.12 });
+          this.tone({ type: 'sine', f0: 900, f1: 120, dur: 0.3, gain: 0.08, delay: 0.12 });
+        }
+        return;
+      case 'roulette':
+        // the wheel spins up with a ticking ball
+        for (let i = 0; i < 8; i++) this.tone({ type: 'square', f0: 2600, dur: 0.02, gain: 0.03, delay: i * (0.05 + i * 0.012), filter: { type: 'lowpass', f0: 5000 } });
+        this.tone({ type: 'sine', f0: 300, f1: 520, dur: 0.6, gain: 0.04, attack: 0.1 });
+        return;
+      case 'propWall':
+      case 'crate':
+        // plywood / wood: a dry crack and a hollow thud
+        this.noise({ dur: broke ? 0.35 : 0.15, gain: (broke ? 0.3 : 0.16) * k, type: 'bandpass', f0: 900, f1: 300, q: 1.2 });
+        this.tone({ type: 'sine', f0: kind === 'crate' ? 160 : 110, f1: 50, dur: 0.3, gain: 0.3 * k });
+        if (broke) for (let i = 0; i < 4; i++) this.noise({ dur: 0.06, gain: 0.08, type: 'bandpass', f0: 1200 + i * 300, q: 2, delay: 0.12 + i * 0.07 });
+        return;
+      case 'spotlight':
+        // the lamp swings with a metallic clank; broken: a pop and a buzzing filament
+        this.tone({ type: 'triangle', f0: 620, f1: 410, dur: 0.25, gain: 0.08 * k });
+        this.tone({ type: 'sine', f0: 1310, dur: 0.18, gain: 0.03 });
+        if (broke) {
+          this.noise({ dur: 0.1, gain: 0.25, type: 'highpass', f0: 2500 });
+          this.tone({ type: 'sawtooth', f0: 100, dur: 0.5, gain: 0.04, delay: 0.1, filter: { type: 'bandpass', f0: 700, q: 5 } });
+        }
+        return;
+      case 'clapper':
+        // the clapperboard snap
+        this.noise({ dur: 0.04, gain: 0.32, type: 'highpass', f0: 2500 });
+        this.tone({ type: 'square', f0: 1400, f1: 900, dur: 0.05, gain: 0.07 });
+        if (broke) this.tone({ type: 'sine', f0: 140, f1: 60, dur: 0.25, gain: 0.25, delay: 0.25 });
+        return;
+      case 'pumpkin':
+        // a soft wet pop, never gory: thump + bright splash + spooky whiff
+        this.tone({ type: 'sine', f0: 220, f1: 70, dur: 0.25, gain: 0.4 * k });
+        this.noise({ dur: 0.3, gain: 0.18, type: 'bandpass', f0: 1400, f1: 500, q: 1.5 });
+        this.tone({ type: 'sine', f0: NOTE(81), f1: NOTE(76), dur: 0.5, gain: 0.03, delay: 0.1, attack: 0.05, detune: 10 });
+        return;
+      case 'gravestone':
+        // stone: a gritty crack; the fall ends with a heavy thud
+        this.noise({ dur: 0.2, gain: 0.22 * k, type: 'bandpass', f0: 2200, f1: 700, q: 1.4 });
+        this.tone({ type: 'triangle', f0: 260, f1: 180, dur: 0.12, gain: 0.08 });
+        if (broke) {
+          this.tone({ type: 'sine', f0: 90, f1: 30, dur: 0.5, gain: 0.45, delay: 0.42 });
+          this.noise({ dur: 0.4, gain: 0.2, type: 'lowpass', f0: 900, f1: 100, delay: 0.42 });
+        }
+        return;
+      case 'lantern':
+        // glass tinkle and the flame snuffed out
+        for (let i = 0; i < 5; i++) this.tone({ type: 'sine', f0: 3000 + Math.random() * 2500, dur: 0.12, gain: 0.03, delay: i * 0.03 });
+        this.noise({ dur: 0.3, gain: 0.08, type: 'lowpass', f0: 600, f1: 150, delay: 0.08 });
+        return;
+      case 'fogGate':
+        // the fog machine hisses, the gate creaks
+        this.noise({ dur: 0.9, gain: 0.12, type: 'bandpass', f0: 3000, f1: 1200, q: 0.8, attack: 0.08 });
+        this.tone({ type: 'sawtooth', f0: 180, f1: 130, dur: 0.6, gain: 0.03, filter: { type: 'bandpass', f0: 800, q: 6 } });
+        return;
+    }
   }
 
   wallSlam(): void {

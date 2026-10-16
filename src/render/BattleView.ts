@@ -159,6 +159,7 @@ export class BattleView {
   setup(match: Match): void {
     this.teardown();
     this.match = match;
+    this.arena.resetProps();
     this.finishTimer = -1;
     for (const f of match.fighters) {
       const model = this.models.get(f.look);
@@ -1010,20 +1011,20 @@ export class BattleView {
         }
         break;
       }
+      case 'propHit': {
+        // a set piece took a hit but still stands (or a reactive piece answered)
+        this.arena.propHit(e.index, e.hp, e.heavy, e.x, e.z);
+        break;
+      }
       case 'propBreak': {
-        this.arena.breakProp(e.index);
-        const col = e.z < 0 ? _c.set(0xff5a2a) : _c.set(0x22d8ff);
-        this.vfx.debrisBurst(e.x, 0.5, e.z, _c.set(0x1a1f3d), 10);
-        this.vfx.debrisBurst(e.x, 0.9, e.z, col, 5);
-        this.vfx.flash(e.x, 0.8, e.z, col, 1, 3, 0.3, 3);
-        this.vfx.burst(e.x, 0.8, e.z, col, 30, 7, 0.16, 0.5, 2.4, 8, 2);
+        // each stage stages its own break (speaker blast, chip shower, pumpkin burst…)
+        this.arena.propBreak(e.index, e.x, e.z);
         this.cam.addTrauma(0.15);
         break;
       }
       case 'propRespawn': {
-        this.arena.respawnProp(e.index);
-        const p = ARENA.props[e.index];
-        this.vfx.ring(p.x, p.z, _c.set(0x22f0e0), 0.3, 2, 0.4, 2);
+        const p = this.match?.props[e.index];
+        if (p) this.arena.propRespawn(e.index, p.x, p.z);
         break;
       }
       case 'reaction': {

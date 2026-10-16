@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { arenaById } from '../../config/arenas.config';
 import { MATCH } from '../../config/balance';
 import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
@@ -10,6 +11,7 @@ import type { MatchEvent } from '../../combat/types';
 import { damp, formatNumber } from '../../core/math';
 import type { Game, ModeSession } from '../../game/Game';
 import { cardHTML, el, esc, portraitHTML, vibrate } from '../dom';
+import { ICONS } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { PERK_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
@@ -271,7 +273,11 @@ export class BattleHUD implements Screen {
   }
 
   // --------------------------------------------------------------- setup
-  setup(m: Match, mode: ModeSession = { kind: 'classic' }): void {
+  /**
+   * @param dress Alpha 1.4 broadcast dressing: `stage` shows the TV caption of the
+   * studio set (NEXT BROADCAST — …), `halloween` gives BOSS FIGHT its HALLOWEEN SPECIAL card.
+   */
+  setup(m: Match, mode: ModeSession = { kind: 'classic' }, dress: { stage?: boolean; halloween?: boolean } = {}): void {
     this.m = m;
     const g = this.g;
     const pf = FIGHTERS[m.cfg.fighter];
@@ -311,20 +317,28 @@ export class BattleHUD implements Screen {
     }
     this.syncHand(true);
     const caption = this.setupMode(mode);
+    // TV transition: which studio set the broadcast comes from
+    const set = arenaById(m.cfg.arena);
+    const [capHead, capSet] = set.caption.includes(' — ') ? set.caption.split(' — ') : ['NEXT BROADCAST', set.name];
+    const stageCap = dress.stage ? `<div class="mi-stage st-${set.id}"><i>${esc(capHead)}</i><b>${esc(capSet)}</b><span>${esc(set.show)}</span></div>` : '';
     // Matchup intro (modes add a TV caption: wave number or challenge name)
     const sides = `<span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span>`;
     if (this.bossDef) {
       // BOSS FIGHT: a short championship presentation instead of the plain VS card
+      // (LEGENDARY SHOWDOWN — CHAMPIONSHIP EDITION, or its HALLOWEEN SPECIAL in season)
       const def = this.bossDef;
+      const hw = !!dress.halloween;
       const intro = el(
         'div',
-        'boss-intro',
+        'boss-intro' + (hw ? ' halloween' : ''),
         `<div class="bi-card">
            <div class="bi-kicker">${esc(def.title)}</div>
+           <div class="bi-edition">${hw ? `<i>${ICONS.pumpkin}</i>HALLOWEEN SPECIAL<i>${ICONS.pumpkin}</i>` : '★ CHAMPIONSHIP EDITION ★'}</div>
            <div class="bi-face">${portraitHTML(g.portraits[rv.look], rv.theme.main, rv.theme.dark)}</div>
            <div class="bi-name">${esc(rv.fullName)}</div>
            <div class="bi-sub">${esc(def.kicker)} · 3 фазы · только нокаут</div>
            <div class="bi-vs"><span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span></div>
+           <div class="bi-stage">LIVE FROM ${esc(set.name)}</div>
          </div>`,
       );
       this.el.appendChild(intro);
@@ -334,7 +348,7 @@ export class BattleHUD implements Screen {
     const intro = el(
       'div',
       'matchup-intro',
-      caption ? `<div class="mi mi-col">${caption}<div class="mi-row">${sides}</div></div>` : `<div class="mi">${sides}</div>`,
+      caption || stageCap ? `<div class="mi mi-col">${stageCap}${caption}<div class="mi-row">${sides}</div></div>` : `<div class="mi">${sides}</div>`,
     );
     this.el.appendChild(intro);
     setTimeout(() => intro.remove(), 3100);

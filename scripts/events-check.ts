@@ -117,8 +117,14 @@ check('after the event: cosmetics stay owned and equipped', em.owns('card_pumpki
 // --------------------------------------------------------------- manual
 const winter = new EventManager(new MemSave() as unknown as SaveSystem, { clock, settings: { mode: 'manual', forcedEventId: 'winter-preview' } });
 check('manual winter preview: winter theme, no quests', winter.themeId === 'winter' && !winter.playable && winter.pending() === 0);
-const forced = new EventManager(new MemSave() as unknown as SaveSystem, { clock: () => T('2026-01-01T00:00:00Z'), settings: { mode: 'manual', forcedEventId: 'halloween-2026' } });
-check('manual Halloween works outside its dates', forced.themeId === 'halloween' && forced.playable);
+const forced = new EventManager(new MemSave() as unknown as SaveSystem, { clock: () => T('2026-01-01T00:00:00Z'), settings: { mode: 'manual', forcedEventId: 'halloween-2026', previewRewards: true } });
+check('manual Halloween (dev preview rewards) works outside its dates', forced.themeId === 'halloween' && forced.playable);
+// 1.4: a manual preview without the dev flag shows the theme (and opens the seasonal arena) but pays nothing outside the dates
+const preview = new EventManager(new MemSave() as unknown as SaveSystem, { clock: () => T('2026-01-01T00:00:00Z'), settings: { mode: 'manual', forcedEventId: 'halloween-2026' } });
+// (the game records a match for the event only while `playable`, so no currency can flow)
+check('manual Halloween preview outside its dates: theme only, no quests / shop / currency', preview.themeId === 'halloween' && !preview.playable && preview.claimQuest('first_night') === null && !preview.buy('frame_spooky').ok && !preview.canClaimGrand());
+const inDates = new EventManager(new MemSave() as unknown as SaveSystem, { clock: () => T('2026-10-25T12:00:00Z'), settings: { mode: 'manual', forcedEventId: 'halloween-2026' } });
+check('manual Halloween inside its real dates stays playable', inDates.playable);
 const broken = new EventManager(new MemSave() as unknown as SaveSystem, { clock, settings: { mode: 'manual', forcedEventId: 'no-such-event' } });
 check('unknown event id falls back to the standard theme', broken.themeId === 'default' && broken.active === null);
 

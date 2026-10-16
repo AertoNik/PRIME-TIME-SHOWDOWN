@@ -11,6 +11,8 @@ import type { Difficulty } from './types';
 //   forcedEventId: 'none' (standard look), 'halloween-2026', 'winter-preview'.
 // In `npm run dev` you can also add ?event=halloween-2026 (or ?event=none) and
 // ?now=2026-10-25 to the address. Those URL switches are ignored in the published build.
+// A manual preview outside the event's dates is theme-only (no quests or currency)
+// unless `previewRewards: true` — the dev URL switch sets it, a published build never does.
 export const eventSettings: EventSettings = {
   mode: 'auto',
   forcedEventId: 'halloween-2026',
@@ -19,6 +21,12 @@ export const eventSettings: EventSettings = {
 export interface EventSettings {
   mode: 'auto' | 'manual';
   forcedEventId: string;
+  /**
+   * Manual mode only: also run quests and pay seasonal currency outside the event's
+   * real dates. Off by default, so a manual theme preview never pays players by
+   * accident; only the `?event=` switch of `npm run dev` turns it on (Alpha 1.4).
+   */
+  previewRewards?: boolean;
 }
 
 // ------------------------------------------------------------------ types

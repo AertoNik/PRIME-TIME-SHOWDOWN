@@ -3,10 +3,10 @@
 // ThemeManager (src/game/ThemeManager.ts) applies it; nothing else needs to change
 // to add a new look. See docs/SEASONAL_EVENTS.md.
 
-export type ThemeId = 'default' | 'halloween' | 'winter' | 'champion';
+export type ThemeId = 'default' | 'halloween' | 'winter' | 'champion' | 'champion_halloween';
 
 /** 3D decoration sets built by render/SeasonalDecor.ts. */
-export type DecorKind = 'none' | 'pumpkins' | 'frost' | 'champion';
+export type DecorKind = 'none' | 'pumpkins' | 'frost' | 'champion' | 'championHalloween';
 /** Floating ambient particles in the arena. */
 export type AmbientKind = 'none' | 'spirits' | 'snow';
 /** DOM decoration on menu screens (corners + a few floating glyphs). */
@@ -69,7 +69,8 @@ const DEFAULT_ARENA: ArenaTheme = {
   ambientColors: [],
 };
 
-export const THEMES: Record<ThemeId, ThemeDef> = {
+// champion_halloween is added below (it is built from the champion look)
+const BASE_THEMES: Record<Exclude<ThemeId, 'champion_halloween'>, ThemeDef> = {
   default: {
     id: 'default',
     label: 'PRIME TIME',
@@ -225,7 +226,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
   // Applied only for the boss fight and its results; the season theme returns afterwards.
   champion: {
     id: 'champion',
-    label: 'LEGENDARY SHOWDOWN',
+    label: 'LEGENDARY SHOWDOWN · CHAMPIONSHIP EDITION',
     css: {
       '--bg': '#07060a',
       '--navy-950': '#0d0b10',
@@ -287,7 +288,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
         colorB: '#ff3a4a',
         bgTop: '#2a1a08',
         bgBottom: '#0a0608',
-        fightHeadline: 'VICTOR VALE · TITLE FIGHT',
+        fightHeadline: 'CHAMPIONSHIP EDITION · TITLE FIGHT',
       },
       decor: 'champion',
       ambient: 'spirits',
@@ -298,6 +299,95 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     sting: 'champion',
   },
 };
+
+// Alpha 1.4: BOSS FIGHT during Halloween Premiere — LEGENDARY SHOWDOWN · HALLOWEEN SPECIAL.
+// The championship stays in charge (gold, crimson, crowns, title banners) and the season
+// adds its accents: violet and pumpkin-orange light, jack-o'-lanterns, festive screens.
+const CHAMPION_HALLOWEEN: ThemeDef = {
+  id: 'champion_halloween',
+  label: 'LEGENDARY SHOWDOWN · HALLOWEEN SPECIAL',
+  css: {
+    ...BASE_THEMES.champion.css,
+    '--navy-950': '#0f0a14',
+    '--navy-900': '#17101f',
+    '--navy-850': '#1e1428',
+    '--navy-800': '#281a34',
+    '--navy-700': '#342242',
+    '--line': 'rgba(255, 170, 90, 0.2)',
+    '--muted': '#d2b496',
+    '--panel-a': 'rgba(46, 28, 44, 0.95)',
+    '--panel-b': 'rgba(18, 11, 20, 0.97)',
+    '--surface-a': 'rgba(78, 48, 62, 0.92)',
+    '--surface-b': 'rgba(30, 18, 30, 0.96)',
+    '--app-glow-1': 'rgba(255, 170, 50, 0.18)',
+    '--app-glow-2': 'rgba(150, 60, 255, 0.2)',
+    '--rating-grad': 'linear-gradient(90deg, #ffe08a, #ff9a2a 40%, #c04dff 75%, #8a2bff)',
+    '--live-bg': '#ff6a1a',
+    '--season-a': '#ffd76a',
+    '--season-b': '#b45cff',
+  },
+  arena: {
+    ...BASE_THEMES.champion.arena,
+    lights: { hemiSky: 0xf0c8ff, hemiGround: 0x2a1028, fillA: 0xffb43a, fillB: 0xa64dff, rim: 0xffa040, fog: 0x0c0712 },
+    spots: [0xffc23a, 0xa64dff, 0xff7a1a, 0xfff1c0],
+    sticks: [0xffd76a, 0xff8a1f, 0xb45cff, 0xffffff, 0xffb43a],
+    neon: { main: ['LEGENDARY', '#ffd76a'], side: ['HALLOWEEN', '#ff8a1f'], live: ['● TITLE FIGHT', '#c070ff'] },
+    sponsors: [
+      { text: 'CHAMPION GOLD', bg: '#1a1208', fg: '#ffd76a' },
+      { text: 'PUMPKIN COLA', bg: '#ff7a1a', fg: '#1a0a24' },
+      { text: 'LEGENDARY SHOWDOWN', bg: '#ffd76a', fg: '#1a1208' },
+      { text: 'HALLOWEEN SPECIAL', bg: '#5a1fa8', fg: '#ffd27a' },
+    ],
+    boardLive: ['TITLE FIGHT', 'HALLOWEEN SPECIAL'],
+    screen: {
+      title: 'LEGENDARY',
+      subtitle: 'HALLOWEEN SPECIAL',
+      colorA: '#ffd76a',
+      colorB: '#ff8a1f',
+      bgTop: '#2a1030',
+      bgBottom: '#0a0610',
+      fightHeadline: 'HALLOWEEN SPECIAL · TITLE FIGHT',
+    },
+    decor: 'championHalloween',
+    ambient: 'spirits',
+    ambientColors: [0xffd76a, 0xff8a1f, 0xb45cff],
+  },
+  vfx: { combo: [0xffd23a, 0xff8a1f, 0xb45cff], confetti: [0xffd76a, 0xff8a1f, 0xb45cff, 0xffffff, 0x1a1208] },
+  ui: { decor: 'none', particleColors: [] },
+  sting: 'champion',
+};
+
+export const THEMES: Record<ThemeId, ThemeDef> = { ...BASE_THEMES, champion_halloween: CHAMPION_HALLOWEEN };
+
+/**
+ * The BOSS FIGHT look for the season that is running: the championship edition
+ * by default, its HALLOWEEN SPECIAL during Halloween. A future season adds its own
+ * entry here (falls back to the plain championship look until then).
+ */
+export function championThemeFor(seasonThemeId: string): ThemeId {
+  return seasonThemeId === 'halloween' ? 'champion_halloween' : 'champion';
+}
+
+/**
+ * BOSS FIGHT phase spotlights. The championship keeps the boss config's colours;
+ * the HALLOWEEN SPECIAL swaps in violet / pumpkin palettes that heat up per phase.
+ */
+const HALLOWEEN_PHASE_SPOTS: [number, number, number, number][] = [
+  [0xffc23a, 0xa64dff, 0xff7a1a, 0xfff1c0],
+  [0xff7a1a, 0xa64dff, 0xffc23a, 0xd04dff],
+  [0xa64dff, 0xff3a1a, 0x7a2aff, 0xff7a1a],
+];
+
+export function bossPhaseSpots(themeId: ThemeId, phaseIndex: number, base: number[]): number[] {
+  if (themeId !== 'champion_halloween') return base;
+  return HALLOWEEN_PHASE_SPOTS[Math.max(0, Math.min(HALLOWEEN_PHASE_SPOTS.length - 1, phaseIndex))];
+}
+
+/** Screen flash when the champion enters a new phase. */
+export function bossPhaseFlash(themeId: ThemeId, phase: number): number {
+  if (themeId === 'champion_halloween') return phase >= 3 ? 0xa64dff : 0xff8a1f;
+  return phase >= 3 ? 0xff3a4a : 0xffc23a;
+}
 
 export function themeById(id: string | null | undefined): ThemeDef {
   return (id && THEMES[id as ThemeId]) || THEMES.default;

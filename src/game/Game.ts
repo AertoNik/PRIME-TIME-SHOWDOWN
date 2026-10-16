@@ -1,12 +1,16 @@
+import { arenaById, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import { challengeById, SURVIVAL } from '../config/modes.config';
 import { bossById } from '../config/boss.config';
+import { bossPhaseFlash, bossPhaseSpots, championThemeFor } from '../config/themes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
 import { Match, type MatchMods } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
+import { Rng } from '../core/math';
+import { arenaAvailable, resolveArena, validArenaPref } from '../meta/ArenaSelection';
 import { CareerSystem } from '../meta/CareerSystem';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
@@ -59,11 +63,12 @@ interface LaunchSpec {
  * The published build ignores them, so players cannot change seasons.
  */
 function devEventOverrides(): { settings: EventSettings; clock?: () => number } {
-  if (!import.meta.env.DEV) return { settings: eventSettings };
+  // published build: the config as written, and never preview rewards
+  if (!import.meta.env.DEV) return { settings: { ...eventSettings, previewRewards: false } };
   const qs = new URLSearchParams(location.search);
   const ev = qs.get('event');
   const now = qs.get('now');
-  const settings: EventSettings = ev ? { mode: 'manual', forcedEventId: ev } : eventSettings;
+  const settings: EventSettings = ev ? { mode: 'manual', forcedEventId: ev, previewRewards: true } : eventSettings;
   const t = now ? Date.parse(now.length <= 10 ? now + 'T12:00:00Z' : now) : NaN;
   return Number.isFinite(t) ? { settings, clock: () => t + (performance.now() - bootT) } : { settings };
 }
@@ -189,11 +194,12 @@ export class Game {
     await nextFrame();
     this.renderer = new Renderer(this.stage);
     this.renderer.setQualitySetting(this.save.data.settings.quality);
-    this.arena = new Arena();
+    this.arena = new Arena(this.renderer);
     this.renderer.scene.add(this.arena.group);
     this.title.setProgress(0.35);
     await nextFrame();
     this.vfx = new VFX(this.renderer.scene);
+    this.arena.vfx = this.vfx;
     this.cam = new CameraRig(this.renderer);
     this.applyCameraMotion(this.save.data.settings.camera);
     this.showcase = new Showcase(this.models);
@@ -202,6 +208,8 @@ export class Game {
     this.themes = new ThemeManager({ renderer: this.renderer, arena: this.arena, battleView: this.battleView, audio: this.audio, uiRoot: this.ui.root });
     this.themes.apply(this.events.themeId);
     this.themes.setMotion(this.cam.intensity);
+    // the menu studio shows the preferred set (a seasonal one only while its season runs)
+    this.syncArenaPref();
     this.applyCosmetics();
     this.renderer.onQuality = (q) => this.themes?.setLowQuality(q === 'low');
     for (let i = 0; i < ALL_LOOKS.length; i++) {
@@ -323,6 +331,7 @@ export class Game {
 
   private endBattleView(): void {
     this.battleView.teardown();
+    this.arena.resetProps();
     this.match = null;
     this.matchMeta = null;
     this.paused = false;
@@ -339,6 +348,7 @@ export class Game {
   refreshSeason(): boolean {
     if (!this.events.refresh()) return false;
     this.themes?.apply(this.events.themeId);
+    if (this.arena) this.syncArenaPref();
     const e = this.events.active;
     if (this.bootDone) {
       this.ui.toast(e ? `${e.title}: событие началось!` : 'Сезонное событие завершилось. Награды остаются в коллекции.', !!e);
@@ -353,8 +363,50 @@ export class Game {
    */
   private setChampionStage(on: boolean): void {
     if (!this.themes) return;
-    if (on) this.themes.apply('champion');
-    else if (this.themes.id === 'champion') this.themes.apply(this.events.themeId);
+    // layered on top of whichever studio set hosts the fight: base set + championship + season
+    if (on) this.themes.apply(championThemeFor(this.events.themeId));
+    else if (this.themes.id === 'champion' || this.themes.id === 'champion_halloween') this.themes.apply(this.events.themeId);
+  }
+
+  // ---------------------------------------------------------------- arenas
+  /** The studio-set preference that can be honoured right now (RANDOM, or an open set). */
+  get arenaPref(): ArenaPref {
+    return validArenaPref(this.save.data.arena, this.events.themeId);
+  }
+
+  /** Arena picker: remember the choice; the menu studio switches to it as a live preview. */
+  setArenaPref(pref: ArenaPref): void {
+    const p = validArenaPref(pref, this.events.themeId);
+    this.save.data.arena = p;
+    this.save.save();
+    if (p !== 'random') this.arena.setStage(p);
+  }
+
+  /**
+   * A seasonal set chosen during its season falls back to the original studio when
+   * the season is over (the preference is rewritten, nothing else changes). The menu
+   * studio follows the preference; RANDOM keeps the current set if it is still open.
+   */
+  private syncArenaPref(): void {
+    const season = this.events.themeId;
+    const p = validArenaPref(this.save.data.arena, season);
+    if (p !== this.save.data.arena) {
+      this.save.data.arena = p;
+      this.save.save();
+    }
+    const cur = this.arena.stageId;
+    this.arena.setStage(p !== 'random' ? p : arenaAvailable(arenaById(cur), season) ? cur : 'original');
+  }
+
+  /** Which set broadcasts this fight: Survival keeps its run's set, the rest follow the preference. */
+  private stageFor(mode: ModeSession, seed: number): ArenaId {
+    const season = this.events.themeId;
+    if (mode.kind === 'survival') {
+      const run = this.modes.activeRun;
+      return run && arenaAvailable(arenaById(run.arena), season) ? run.arena : 'original';
+    }
+    const rng = new Rng(seed ^ 0x51ed27);
+    return resolveArena(this.save.data.arena, season, () => rng.next());
   }
 
   /** Push equipped cosmetics to the UI and the battle renderer. */
@@ -395,7 +447,11 @@ export class Game {
     const left = this.modes.closeAbandoned();
     if (left) this.ui.toast(`Прошлый марафон закрыт: волн пройдено ${left.cleared}/${SURVIVAL.waves.length}`);
     const eventId = this.events.playable ? this.events.active!.id : null;
-    this.modes.startRun(fighter, s.fighters[fighter].deck, eventId, (s.seed + s.matches * 131 + Math.floor(performance.now())) >>> 0);
+    const seed = (s.seed + s.matches * 131 + Math.floor(performance.now())) >>> 0;
+    // the set is picked once per attempt (RANDOM too) and kept for every wave
+    const rng = new Rng(seed ^ 0x51ed27);
+    const arena = resolveArena(s.arena, this.events.themeId, () => rng.next());
+    this.modes.startRun(fighter, s.fighters[fighter].deck, eventId, seed, arena);
     this.startSurvivalWave();
   }
 
@@ -438,25 +494,30 @@ export class Game {
       { fighter, deck: s.fighters[fighter].deck.slice(), rival: def.rival, difficulty: def.rewards.purseDifficulty, mods: this.modes.bossMods(def), boss: def.id },
       { kind: 'boss', id: def.id },
     );
-    this.arena.setSpots(def.phases[0].spots);
+    this.arena.setSpots(bossPhaseSpots(this.themes.id, 0, def.phases[0].spots));
     this.arena.setScreen({ headline: def.title });
     this.audio.sting('champion');
   }
 
   private launch(spec: LaunchSpec, mode: ModeSession): void {
     if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
-    this.setChampionStage(mode.kind === 'boss');
     const s = this.save.data;
     const { fighter, rival, difficulty } = spec;
+    const seed = (s.seed + s.matches * 7919 + Math.floor(performance.now())) >>> 0;
+    // studio set first, then the BOSS FIGHT / season dressing on top of it
+    const stage = this.stageFor(mode, seed);
+    const switched = this.arena.setStage(stage);
+    this.setChampionStage(mode.kind === 'boss');
     const match = new Match({
       fighter,
       deck: spec.deck,
       rival,
       difficulty,
-      seed: (s.seed + s.matches * 7919 + Math.floor(performance.now())) >>> 0,
+      seed,
       fans: s.fighters[fighter].fans,
       mods: spec.mods,
       boss: spec.boss,
+      arena: stage,
     });
     this.match = match;
     this.matchMeta = { fighter, rival, difficulty, mode };
@@ -470,7 +531,9 @@ export class Game {
     this.timeFx.slowScale = 1;
     this.showcase.hide();
     this.battleView.setup(match);
-    this.hud.setup(match, mode);
+    // TV caption of the set: when it changes, and on every new set except between Survival waves
+    const showStage = switched || (stage !== 'original' && !(mode.kind === 'survival' && mode.wave.index > 0));
+    this.hud.setup(match, mode, { stage: showStage, halloween: this.themes.id === 'champion_halloween' });
     this.cam.setMode('battle', 1.9);
     this.cam.finishShift = 0.04;
     this.cam.finishDist = 7.5;
@@ -858,9 +921,15 @@ export class Game {
         a.block(e.perfect);
         break;
       case 'shieldBreak':
-      case 'propBreak':
         a.shieldBreak();
         break;
+      case 'propBreak':
+      case 'propHit': {
+        // studio-set pieces: each kind sounds like what it is (chips, plywood, stone…)
+        const p = this.match?.props[e.index];
+        if (p) a.prop(p.kind, e.type === 'propBreak', e.type === 'propHit' && e.heavy);
+        break;
+      }
       case 'dodge':
         a.dodge(e.perfect);
         if (e.perfect && e.side === 0) a.cheer(0.6);
@@ -920,9 +989,9 @@ export class Game {
         a.bossPhase(e.phase);
         this.timeFx.slowmo = 0.9;
         this.timeFx.slowScale = 0.35;
-        this.renderer.pulseFlash(e.phase >= 3 ? 0xff3a4a : 0xffc23a, 4);
+        this.renderer.pulseFlash(bossPhaseFlash(this.themes.id, e.phase), 4);
         this.cam.addTrauma(0.5);
-        if (ph) this.arena.setSpots(ph.spots);
+        if (ph) this.arena.setSpots(bossPhaseSpots(this.themes.id, e.phase - 1, ph.spots));
         break;
       }
       default:

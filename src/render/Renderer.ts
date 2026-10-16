@@ -242,13 +242,27 @@ export class Renderer {
     }
   }
 
-  /** Seasonal light colours (intensities untouched, no extra lights). */
-  applyLights(l: { hemiSky: number; hemiGround: number; fillA: number; fillB: number; rim: number; fog: number }): void {
+  /**
+   * Studio light colours (seasons) and, per studio set (Alpha 1.4), the key colour
+   * and intensities. Never adds lights: the same five directional/hemisphere lights.
+   */
+  applyLights(
+    l: { hemiSky: number; hemiGround: number; fillA: number; fillB: number; rim: number; fog: number; key?: number },
+    intensity?: { hemi: number; key: number; fill: number; rim: number },
+  ): void {
     this.hemi.color.setHex(l.hemiSky);
     this.hemi.groundColor.setHex(l.hemiGround);
     this.fillA.color.setHex(l.fillA);
     this.fillB.color.setHex(l.fillB);
     this.rim.color.setHex(l.rim);
+    if (l.key !== undefined) this.key.color.setHex(l.key);
+    if (intensity) {
+      this.hemi.intensity = intensity.hemi;
+      this.key.intensity = intensity.key;
+      this.fillA.intensity = intensity.fill;
+      this.fillB.intensity = intensity.fill;
+      this.rim.intensity = intensity.rim;
+    }
     (this.scene.fog as Fog).color.setHex(l.fog);
     (this.scene.background as Color).setHex(l.fog);
   }

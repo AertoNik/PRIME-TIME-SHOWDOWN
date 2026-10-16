@@ -258,7 +258,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.2.5 save gets empty mode records', m.modes.survival.runs === 0 && m.modes.survival.active === null && Object.keys(m.modes.challenges).length === 0);
   const junk = sanitize({ modes: { survival: { bestWave: 99, runs: -3, active: { fighter: 'nobody', rivals: [] } }, challenges: { spotlight: { attempts: 'x', clears: 4, firstClearAt: 5 } } } });
   check('corrupt mode data is cleaned', junk.modes.survival.bestWave === 5 && junk.modes.survival.runs === 0 && junk.modes.survival.active === null && junk.modes.challenges.spotlight.attempts === 4);
-  check('save version is 6', defaultSave().version === 6);
+  check('save version is 7 (1.4: arena preference)', defaultSave().version === 7);
 }
 
 // ----------------------------------------------------------------- boss fight
@@ -362,7 +362,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   const accL = legacy.modes.bossAccess('vale', 'vega');
   check('a fighter who already beat the champion keeps access (legacy)', accL.open && accL.legacy && !legacy.modes.bossAccess('vale', 'nika').open);
   const after = sanitize(JSON.parse(JSON.stringify(a.store.data)));
-  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 6);
+  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 7);
 }
 
 // ----------------------------------------------------------- DIRECTOR'S CUT

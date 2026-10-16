@@ -53,9 +53,8 @@ export class ThemeManager {
     root.dataset.theme = t.id;
     const meta = document.querySelector('meta[name="theme-color"]');
     meta?.setAttribute('content', t.css['--bg'] ?? '#070816');
-    // 3D scene
-    this.r.applyLights(t.arena.lights);
-    this.arena.applyTheme(t.arena, this.r.quality === 'low');
+    // 3D scene: the arena mixes the theme's light colours into the current studio set's lighting
+    this.arena.applyTheme(t, this.r.quality === 'low');
     this.battle.style.combo = t.vfx.combo;
     this.battle.style.confetti = t.vfx.confetti;
     // menu decoration
@@ -71,6 +70,10 @@ export class ThemeManager {
   /** Camera "без тряски" also calms the decorative animations. */
   setMotion(intensity: number): void {
     document.documentElement.dataset.motion = intensity <= 0 ? 'off' : intensity < 1 ? 'reduced' : 'full';
+    // studio sets (swinging lamps, bats, fog drift, roulette spin): the camera setting,
+    // further calmed when the system asks for reduced motion
+    const sys = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.arena.setMotion(sys ? Math.min(intensity, 0.3) : intensity);
   }
 
   sting(): void {

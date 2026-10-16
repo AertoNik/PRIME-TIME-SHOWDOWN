@@ -1,3 +1,4 @@
+import { ARENA_ORDER, arenaById, type ArenaPref } from '../../config/arenas.config';
 import { CARDS, COMBOS } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
@@ -5,7 +6,9 @@ import { bossById } from '../../config/boss.config';
 import { COSMETICS } from '../../config/cosmetics.config';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
+import { arenaAvailable, availableArenas } from '../../meta/ArenaSelection';
 import { formatChallengeValue } from '../../meta/GameModes';
+import { ARENA_ART } from '../arenaArt';
 import { cardHTML, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
@@ -57,6 +60,11 @@ export class PrepScreen implements Screen {
       g.audio.ui('click');
       if (this.mode.kind === 'classic') g.goto('menu');
       else g.goto('modes');
+      return;
+    }
+    if (act === 'arena') {
+      g.audio.ui('click');
+      this.openArenaPicker();
       return;
     }
     if (act === 'roster') {
@@ -128,6 +136,95 @@ export class PrepScreen implements Screen {
       g.save.save();
       g.startMatch();
     }
+  }
+
+  // ------------------------------------------------------------ arenas (1.4)
+  /** The studio set for the broadcast: the current choice and the way to the picker. */
+  private arenaSection(): string {
+    const g = this.g;
+    const pref = g.arenaPref;
+    const def = pref === 'random' ? null : arenaById(pref);
+    const n = availableArenas(g.events.themeId).length;
+    const halloween = g.events.themeId === 'halloween';
+    const note =
+      this.mode.kind === 'survival'
+        ? 'Павильон выбирается при старте марафона и остаётся на все 5 волн.'
+        : this.mode.kind === 'challenge'
+          ? 'Правила испытания одинаковы в любом павильоне.'
+          : this.mode.kind === 'boss'
+            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.`
+            : 'Павильон меняет только оформление: размеры арены, правила и баланс везде одинаковы.';
+    return `<div class="section panel arena-pick" data-act="arena" role="button" aria-label="Выбрать павильон эфира">
+        <div class="ap-thumb">${ARENA_ART[pref]}</div>
+        <div class="ap-info">
+          <span class="label">Павильон эфира</span>
+          <b>${def ? esc(def.name) : 'СЛУЧАЙНЫЙ ПАВИЛЬОН'}</b>
+          <span class="ap-show">${def ? esc(def.show) : `любой из ${n} доступных`}</span>
+          <span class="chip teal ap-btn">⇄ Сменить</span>
+        </div>
+        <div class="ap-note">${esc(note)}</div>
+      </div>`;
+  }
+
+  /** Arena picker: every set with its preview, type and availability, plus RANDOM. */
+  private openArenaPicker(): void {
+    const g = this.g;
+    const season = g.events.themeId;
+    const cur = g.arenaPref;
+    const card = (id: ArenaPref): string => {
+      const def = id === 'random' ? null : arenaById(id);
+      const open = !def || arenaAvailable(def, season);
+      const seasonal = def?.availability.kind === 'seasonal' ? def.availability : null;
+      const type = !def
+        ? '<span class="chip">Случайный</span>'
+        : seasonal
+          ? `<span class="chip orange">Сезонная · ${esc(seasonal.event)}</span>`
+          : '<span class="chip teal">Постоянная</span>';
+      const status = !open
+        ? `<span class="ac-lock">${UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')} Доступна только во время ${esc(seasonal!.event)}</span>`
+        : id === cur
+          ? `<span class="ac-on">${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} Выбрано</span>`
+          : '<span class="ac-pick">Выбрать</span>';
+      const desc = def ? def.description : `Каждый бой — один из доступных павильонов (сейчас: ${availableArenas(season).length}). Сезонные — только во время своего события.`;
+      return `<button class="arena-card ${id === cur ? 'on' : ''} ${open ? '' : 'locked'} ac-${id}" data-arena="${id}" ${open ? '' : 'aria-disabled="true"'}>
+          <span class="ac-thumb">${ARENA_ART[id]}</span>
+          <span class="ac-body">
+            <span class="ac-name">${def ? esc(def.name) : 'СЛУЧАЙНЫЙ ПАВИЛЬОН'}</span>
+            <span class="ac-show">${def ? esc(def.show) : 'RANDOM ARENA'}</span>
+            <span class="ac-desc">${esc(desc)}</span>
+            <span class="ac-foot">${type}${status}</span>
+          </span>
+        </button>`;
+    };
+    g.ui.modal(
+      `<div class="arena-picker">
+         <div class="h1">Павильон эфира</div>
+         <div class="ap-list">${[...ARENA_ORDER, 'random' as const].map(card).join('')}</div>
+         <div class="modal-actions"><button class="btn ghost wide" data-a="close">Готово</button></div>
+       </div>`,
+      (root, close) => {
+        root.querySelector('[data-a="close"]')!.addEventListener('click', () => {
+          g.audio.ui('click');
+          close();
+        });
+        root.querySelectorAll<HTMLElement>('[data-arena]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const id = b.dataset.arena as ArenaPref;
+            const def = id === 'random' ? null : arenaById(id);
+            if (def && !arenaAvailable(def, g.events.themeId)) {
+              g.audio.ui('deny');
+              g.ui.toast(`${def.name} открывается только во время ${def.availability.kind === 'seasonal' ? def.availability.event : 'события'}`);
+              return;
+            }
+            g.audio.ui('confirm');
+            g.setArenaPref(id);
+            close();
+            g.ui.toast(def ? def.caption : 'RANDOM ARENA — павильон выберется перед боем', true);
+            this.render();
+          }),
+        );
+      },
+    );
   }
 
   /** Right side of the matchup and the middle section for the game modes. */
@@ -306,6 +403,7 @@ export class PrepScreen implements Screen {
           <div class="center rival-note" style="grid-column:1/-1;max-width:none;margin-top:6px">${mp ? mp.note : `«${esc(rival.nickname)}» · стиль: ${esc(rf.style.toLowerCase())}. ${esc(rival.bio)}`}</div>
         </div>
         ${mp ? mp.section : ''}
+        ${this.arenaSection()}
         ${this.mode.kind === 'survival' || this.mode.kind === 'boss' ? '' : diffSection}
         <div class="section panel">
           <div class="section-title"><span class="h2">Колода · ${this.deck.length}/4</span><span class="label">3 в руке + 1 в очереди</span></div>

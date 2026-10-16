@@ -1,3 +1,4 @@
+import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { CAREER_START, GOALS, type GoalId } from '../config/career';
 import { UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
@@ -90,6 +91,8 @@ export interface SurvivalRun {
   /** Seasonal event running when the attempt started (gets the result once). */
   eventId: string | null;
   startedAt: number;
+  /** v7 (1.4): the studio set chosen at the start; every wave is broadcast from it. */
+  arena: ArenaId;
 }
 
 export interface SurvivalRecords {
@@ -188,14 +191,16 @@ export interface SaveData {
   cosmetics: CosmeticsState;
   /** v4 (1.3): Survival records and Prime Challenge progress. */
   modes: ModesState;
+  /** v7 (1.4): preferred studio set (an arena id or 'random'). */
+  arena: ArenaPref;
 }
 
 // The key never changes between versions so existing careers keep loading;
 // `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
 // v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes. v5 (1.3.1): boss fight.
-// v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access).
-const VERSION = 6;
+// v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access). v7 (1.4): arena preference.
+const VERSION = 7;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -243,6 +248,7 @@ export function defaultSave(): SaveData {
     events: {},
     cosmetics: { owned: [], equipped: {}, history: [] },
     modes: emptyModes(),
+    arena: 'original',
   };
 }
 
@@ -365,6 +371,8 @@ function sanitizeRun(raw: unknown): SurvivalRun | null {
     pendingPerk: bool(r.pendingPerk, false),
     eventId: typeof r.eventId === 'string' ? r.eventId.slice(0, 64) : null,
     startedAt: num(r.startedAt, 0),
+    // v7: runs started before 1.4 were broadcast from the original studio
+    arena: isArenaId(r.arena) ? r.arena : 'original',
   };
 }
 
@@ -505,6 +513,9 @@ export function sanitize(raw: unknown): SaveData {
   d.cosmetics = sanitizeCosmetics(r.cosmetics);
   // v4: game modes (absent before Alpha 1.3 -> empty records)
   d.modes = sanitizeModes(r.modes);
+  // v7: arena preference by id (absent before 1.4 -> the original studio). Whether a
+  // seasonal set is still open is checked by the game against the running season.
+  d.arena = r.arena === 'random' || isArenaId(r.arena) ? r.arena : 'original';
   // v6: Classic Duel wins per fighter. Older saves did not keep them apart, so they are
   // estimated as all of the fighter's wins minus their BOSS FIGHT wins (before 1.3 every
   // win was a Classic one; Prime Challenge wins from 1.3–1.3.2 cannot be told apart and count).

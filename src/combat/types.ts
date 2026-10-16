@@ -1,3 +1,4 @@
+import type { PropKind } from '../config/arenas.config';
 import type { CardId, ComboId, DashStyle, PassiveId, Side, WeaponType } from '../config/types';
 
 export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
@@ -67,11 +68,25 @@ export interface Decoy {
   alive: boolean;
 }
 
+/** A set piece on the barrier (Alpha 1.4: per stage, see src/config/arenas.config.ts). Visual only. */
 export interface PropState {
+  kind: PropKind;
   x: number;
   z: number;
   alive: boolean;
+  /** Seconds until it is rebuilt (Infinity = stays broken until the next fight). */
   respawn: number;
+  hp: number;
+  maxHp: number;
+  /** Rebuild delay after breaking (0 = never during this fight). */
+  respawnTime: number;
+  radius: number | null;
+  /** Reactive pieces never break; they react to each hit once `cool` has run out. */
+  reactive: boolean;
+  cooldown: number;
+  cool: number;
+  /** Hits taken so far (reactive pieces show wear). */
+  hits: number;
 }
 
 export type MatchEvent =
@@ -163,6 +178,8 @@ export type MatchEvent =
   | { type: 'rating'; amount: number; label: string }
   | { type: 'reaction'; text: string; tier: 1 | 2 | 3; sub?: string }
   | { type: 'propBreak'; index: number; x: number; z: number }
+  /** A set piece was hit but holds (hp left), or a reactive piece reacted (hp = -1). */
+  | { type: 'propHit'; index: number; x: number; z: number; hp: number; heavy: boolean }
   | { type: 'propRespawn'; index: number };
 
 export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase';
