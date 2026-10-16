@@ -793,6 +793,7 @@ export class BattleView {
       }
       case 'combo': {
         const s = this.slots[e.side];
+        s.model.anim.cue('combo');
         const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
         const gold = _c.set(0xffd23a);
         this.vfx.ring(s.pos.x, s.pos.z, gold, 1, ultra ? 7.5 : 6, 0.6, 3);
@@ -816,6 +817,7 @@ export class BattleView {
       case 'dodge': {
         const s = this.slots[e.side];
         if (e.perfect) {
+          s.model.anim.evade();
           this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffffff), 0.6, 3.5, 0.35, 2.5);
           this.vfx.glow(s.pos.x, 1.2, s.pos.z, s.accent, 1, 3, 0.25, 1.6);
           if (e.side === 0 && e.heavy) this.requestTime(0.35, 0.4);
@@ -830,6 +832,7 @@ export class BattleView {
       case 'block': {
         const s = this.slots[e.side];
         s.fx.shieldMat.uniforms.uHit.value = e.perfect ? 1.6 : 0.8;
+        if (e.perfect) s.model.anim.cue('brace');
         if (e.perfect) {
           this.vfx.ring(s.pos.x, s.pos.z, _c.set(0x7ac8ff), 1, 4.5, 0.4, 3);
           this.cam.addTrauma(0.25);
@@ -1135,6 +1138,7 @@ export class BattleView {
       }
       case 'trickShot': {
         const s = this.slots[e.side];
+        s.model.anim.cue('trick');
         this.vfx.rays(e.x, ARENA.shotHeight, e.z, _c.set(0xffb070), 1, 3.4, 0.4, 2);
         this.vfx.ring(e.x, e.z, s.accent, 0.5, 3, 0.4, 2.2);
         this.arena.hype(0.8);
@@ -1156,6 +1160,7 @@ export class BattleView {
       }
       case 'feintCounter': {
         const s = this.slots[e.side];
+        s.model.anim.cue('counter');
         const p = this.chest(e.side, _v);
         this.vfx.flash(p.x, p.y, p.z, s.accent, 1.2, 3, 0.25, 2.6);
         this.vfx.rays(p.x, p.y, p.z, _c.set(0xffe3c2), 1, 3, 0.35, 2);

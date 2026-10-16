@@ -3,6 +3,7 @@
 // animator with fight-like input: stable numbers, state priorities, smooth transitions,
 // three victory routines per style with no immediate repeat, weapon fire styles.
 import { FIRE_STYLE, VICTORY_SETS } from '../src/config/animation';
+import { Vector3 } from 'three';
 import { Rng, wrapAngle } from '../src/core/math';
 import { defaultInput, type AnimInput } from '../src/render/FighterAnimator';
 import { ModelCache } from '../src/render/ModelCache';
@@ -168,6 +169,72 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
   anim.fire(0, false);
   const second = peak() - base;
   check(`Bruno standing: the legs soak the blast, the opening shot harder than the follow-up (${first.toFixed(3)} > ${second.toFixed(3)} > 0)`, first > second && second > 0);
+}
+
+// Alpha 1.5.6 — silhouette-scale motion, sized for the battle camera (~40 px per metre on a phone)
+{
+  const { rig, anim } = models.get('bruno');
+  anim.reset(0);
+  const inp = defaultInput();
+  inp.combat = true;
+  for (let i = 0; i < 90; i++) anim.update(DT, inp);
+  const head0 = rig.head.getWorldPosition(new Vector3());
+  const foot0 = rig.kneeR.getWorldPosition(new Vector3());
+  const footL0 = rig.kneeL.getWorldPosition(new Vector3());
+  let headMax = 0;
+  let footLMax = 0;
+  anim.fire(0, false);
+  for (let i = 0; i < 40; i++) {
+    anim.update(DT, inp);
+    rig.root.updateMatrixWorld(true);
+    headMax = Math.max(headMax, rig.head.getWorldPosition(new Vector3()).distanceTo(head0));
+    footLMax = Math.max(footLMax, rig.kneeL.getWorldPosition(new Vector3()).distanceTo(footL0));
+  }
+  check(`Bruno: a cannon shot rocks the upper body visibly (${headMax.toFixed(2)} m ≥ 0.15 m ≈ 6 px) but not wildly (< 0.6 m)`, headMax >= 0.15 && headMax < 0.6);
+  check(`Bruno: the knee of the planted leg barely moves while the body rocks (${footLMax.toFixed(3)} m < 0.12 m)`, footLMax < 0.12);
+  let stepMax = 0;
+  for (let i = 0; i < 60; i++) anim.update(DT, inp);
+  const k0 = rig.kneeR.getWorldPosition(new Vector3());
+  anim.fire(0, true);
+  for (let i = 0; i < 30; i++) {
+    anim.update(DT, inp);
+    rig.root.updateMatrixWorld(true);
+    stepMax = Math.max(stepMax, rig.kneeR.getWorldPosition(new Vector3()).distanceTo(k0));
+  }
+  check(`heavy shot: a foot steps back to catch the weight (${stepMax.toFixed(2)} m)`, stepMax > 0.08);
+  void foot0;
+}
+{
+  // a light weapon still reads: Nika's carbine moves the gun arm noticeably
+  const { rig, anim } = models.get('nika');
+  anim.reset(0);
+  const inp = defaultInput();
+  inp.combat = true;
+  for (let i = 0; i < 90; i++) anim.update(DT, inp);
+  const m0 = rig.muzzles[0].getWorldPosition(new Vector3());
+  let mMax = 0;
+  anim.fire(0, false);
+  for (let i = 0; i < 30; i++) {
+    anim.update(DT, inp);
+    rig.root.updateMatrixWorld(true);
+    mMax = Math.max(mMax, rig.muzzles[0].getWorldPosition(new Vector3()).distanceTo(m0));
+  }
+  check(`Nika: the carbine kicks visibly but stays compact (${mMax.toFixed(2)} m, 0.12–0.45 m)`, mMax > 0.12 && mMax < 0.45);
+}
+{
+  // reactions never play over a knockout
+  const { rig, anim } = models.get('kai');
+  anim.reset(0);
+  const inp = defaultInput();
+  inp.combat = true;
+  for (let i = 0; i < 30; i++) anim.update(DT, inp);
+  anim.ko();
+  for (let i = 0; i < 50; i++) anim.update(DT, inp);
+  const before = rig.spine.rotation.y;
+  anim.evade();
+  anim.cue('trick');
+  for (let i = 0; i < 10; i++) anim.update(DT, inp);
+  check('KO beats show reactions: no dodge hop or trick-shot flourish on a knocked-out fighter', Math.abs(rig.spine.rotation.y - before) < 0.02);
 }
 
 let ok = true;

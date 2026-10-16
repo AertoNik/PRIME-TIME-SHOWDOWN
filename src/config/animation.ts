@@ -210,23 +210,33 @@ export interface FireStyle {
   brace: number;
   /** How deep that settle goes (0..1): lower stance, steadier arms. */
   braceAmt: number;
+  // Alpha 1.5.6 — silhouette-scale recoil, sized for the battle camera (a fighter is ~85 px tall
+  // on a 390×844 phone, ~40 px per metre). Peaks of a standing opening shot:
+  /** Muzzle climb: the gun arm kicks up and comes back down (rad). */
+  climb: number;
+  /** The upper body rocks back from the shot, feet planted (rad). */
+  lean: number;
+  /** Weight thrown back on the heels (m) — heavy shots also take a step back. */
+  push: number;
+  /** Mass of the weapon: >1 slower, heavier return to the stance; <1 snappier. */
+  weight: number;
 }
 
 export const FIRE_STYLE: Record<WeaponType, FireStyle> = {
   // Ray (and Dex): quick, confident pistols — alternating hands, the torso snaps to each side, no wind-up
-  twin_blasters: { firstShot: 1.3, series: [1, 0.85, 0.95, 0.8], twist: 0.07, chest: 0.03, dip: 0.04, nod: 0.03, sway: 0.025, brace: 0, braceAmt: 0 },
+  twin_blasters: { firstShot: 1.35, series: [1, 0.8, 0.95, 0.75], twist: 0.1, chest: 0.04, dip: 0.05, nod: 0.03, sway: 0.035, brace: 0, braceAmt: 0, climb: 0.16, lean: 0.065, push: 0.035, weight: 0.75 },
   // Bruno (Tank, Crash): a heavy cannon — sinks into the stance before the blast, the whole body takes it
-  boom_cannon: { firstShot: 1.25, series: [1, 0.9], twist: 0.06, chest: 0.12, dip: 0.17, nod: 0.08, sway: 0.04, brace: 0.16, braceAmt: 1 },
+  boom_cannon: { firstShot: 1.3, series: [1, 0.85], twist: 0.07, chest: 0.13, dip: 0.18, nod: 0.08, sway: 0.04, brace: 0.16, braceAmt: 1, climb: 0.18, lean: 0.075, push: 0.08, weight: 1.35 },
   // Nika (Zoe): compact, technical carbine — tight and economical, almost no body follow
-  tech_carbine: { firstShot: 1.15, series: [1, 0.7, 0.8, 0.7], twist: 0.02, chest: 0.025, dip: 0.025, nod: 0.015, sway: 0.01, brace: 0.06, braceAmt: 0.4 },
+  tech_carbine: { firstShot: 1.2, series: [1, 0.7, 0.8, 0.7], twist: 0.035, chest: 0.035, dip: 0.03, nod: 0.02, sway: 0.012, brace: 0.06, braceAmt: 0.4, climb: 0.11, lean: 0.06, push: 0.03, weight: 0.85 },
   // Vega: the marksman — holds her breath before the shot (steady arms), one clean kick into the shoulder
-  pulse_rifle: { firstShot: 1.2, series: [1], twist: 0.01, chest: 0.045, dip: 0.03, nod: 0.05, sway: 0, brace: 0.22, braceAmt: 0.8 },
+  pulse_rifle: { firstShot: 1.2, series: [1], twist: 0.02, chest: 0.05, dip: 0.04, nod: 0.06, sway: 0, brace: 0.22, braceAmt: 0.8, climb: 0.095, lean: 0.07, push: 0.05, weight: 1.05 },
   // Victor: PRIME BREAKER — braced, heavy and controlled: every slug of the burst rocks him, never sways him
-  breaker: { firstShot: 1.2, series: [1, 0.85, 0.92], twist: 0.04, chest: 0.1, dip: 0.12, nod: 0.05, sway: 0, brace: 0.2, braceAmt: 1 },
+  breaker: { firstShot: 1.25, series: [1, 0.8, 0.9], twist: 0.045, chest: 0.11, dip: 0.13, nod: 0.05, sway: 0, brace: 0.2, braceAmt: 1, climb: 0.125, lean: 0.065, push: 0.06, weight: 1.45 },
   // Kai: the showman — a flick of the wrist, the shoulders play to the camera, a varied rhythm
-  ricochet: { firstShot: 1.35, series: [1, 0.85, 1.1, 0.8], twist: 0.09, chest: 0.05, dip: 0.03, nod: 0.04, sway: 0.05, brace: 0.1, braceAmt: 0.3 },
+  ricochet: { firstShot: 1.4, series: [1, 0.8, 1.1, 0.75], twist: 0.13, chest: 0.06, dip: 0.035, nod: 0.05, sway: 0.07, brace: 0.1, braceAmt: 0.3, climb: 0.13, lean: 0.055, push: 0.03, weight: 0.9 },
   // Rina: a sharp double tap — quick in, quick out, ready to step
-  stinger: { firstShot: 1.1, series: [1, 0.75], twist: 0.05, chest: 0.02, dip: 0.05, nod: 0.02, sway: 0.03, brace: 0, braceAmt: 0 },
+  stinger: { firstShot: 1.15, series: [1, 0.7], twist: 0.08, chest: 0.03, dip: 0.06, nod: 0.025, sway: 0.04, brace: 0, braceAmt: 0, climb: 0.16, lean: 0.06, push: 0.03, weight: 0.7 },
 };
 
 export const HIT_REACTION = {
