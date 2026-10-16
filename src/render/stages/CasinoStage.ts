@@ -37,6 +37,7 @@ import {
   GROUND_Y,
   insetPath,
   landingY,
+  surfaceY,
   makeSpotCone,
   merge,
   neonMaterial,
@@ -47,6 +48,7 @@ import {
   swingCones,
   tint,
   WALL_TOP,
+  type DebrisShape,
   type DecorLayout,
   type SpotCone,
   type StageShared,
@@ -60,6 +62,11 @@ import {
 // wheels spin up when something lands nearby.
 
 const DEF = arenaById('casino');
+/** Height of the gold rail on the velvet barrier (the barrier top is WALL_TOP + CAP_H). */
+const CAP_H = 0.07;
+/** Chip size (radius, half thickness) — shared by the geometry and the landing. */
+const CHIP_R = 0.24;
+const CHIP_HALF = 0.035;
 const _m = new Matrix4();
 const _c = new Color();
 const GOLD = 0xe0b04a;
@@ -426,6 +433,20 @@ export class CasinoStage extends Stage {
   private stacks: ChipStack[] = [];
   private wheels: Wheel[] = [];
   private pieces = new Pieces();
+  /** A chip lands on the floor plate, the barrier's gold rail, a stack base or the carpet. */
+  private chipShape: DebrisShape = {
+    half: [CHIP_R, CHIP_HALF, CHIP_R],
+    round: true,
+    surface: (x, z) => {
+      let y = surfaceY(x, z, WALL_TOP + CAP_H);
+      for (const st of this.stacks) {
+        const dx = x - st.x;
+        const dz = z - st.z;
+        if (dx * dx + dz * dz < 0.64 * 0.64) y = Math.max(y, st.base.position.y + 0.07 * st.base.scale.y);
+      }
+      return y;
+    },
+  };
   private sign!: {
     group: Group;
     high: MeshBasicMaterial;
@@ -468,7 +489,7 @@ export class CasinoStage extends Stage {
     wall.receiveShadow = true;
     this.group.add(wall);
     // gold rail on top and a thin gold strip near the floor
-    const cap = flatExtrude(ringShape(ARENA.wallX + 0.02, ARENA.wallZ + 0.02, ARENA.wallCorner + 0.02, 0.42), 0.07);
+    const cap = flatExtrude(ringShape(ARENA.wallX + 0.02, ARENA.wallZ + 0.02, ARENA.wallCorner + 0.02, 0.42), CAP_H);
     cap.translate(0, h, 0);
     this.group.add(new Mesh(cap, this.gold));
     const strip = flatExtrude(ringShape(ARENA.wallX - 0.01, ARENA.wallZ - 0.01, ARENA.wallCorner - 0.01, 0.03), 0.05);
@@ -704,7 +725,7 @@ export class CasinoStage extends Stage {
 
   // --------------------------------------------------------------------- props
   private buildProps(): void {
-    const chipGeo = new CylinderGeometry(0.24, 0.24, 0.07, 22);
+    const chipGeo = new CylinderGeometry(CHIP_R, CHIP_R, CHIP_HALF * 2, 22);
     const sideMat = new MeshStandardMaterial({ map: chipSideTexture(false), emissiveMap: chipSideTexture(true), emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.45 });
     const faceMat = new MeshStandardMaterial({ map: chipFaceTexture(false), emissiveMap: chipFaceTexture(true), emissive: 0xffffff, emissiveIntensity: 0.45, roughness: 0.45 });
     const PER = 12;
@@ -912,9 +933,9 @@ export class CasinoStage extends Stage {
       const out = 1.6 + (k % 4) * 0.5;
       const vx = Math.cos(a) * out - (ox / ol) * 1.2;
       const vz = Math.sin(a) * out - (oz / ol) * 1.2;
-      const land = landingY(o.position.x + vx * 0.45, o.position.z + vz * 0.45);
-      // chips are medium debris: they lie 6–8 s (staggered), then shrink away
-      this.pieces.launch(o, [vx, 3.2 + (k % 3) * 0.9, vz], [6 + k, 3, 5 - k], land + 0.035, 'medium', (k % 5) / 4);
+      // chips tumble in the air, land on whatever is really under them and settle flat (1.4.2);
+      // they are medium debris: they lie 6–8 s (staggered), then shrink away
+      this.pieces.launch(o, [vx, 3.2 + (k % 3) * 0.9, vz], [6 + k, 3, 5 - k], this.chipShape, 'medium', (k % 5) / 4);
     });
     st.base.scale.set(1, 0.6, 1);
     if (vfx) {

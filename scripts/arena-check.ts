@@ -16,8 +16,8 @@ import { CareerSystem } from '../src/meta/CareerSystem';
 import { EventManager } from '../src/meta/EventManager';
 import { GameModes } from '../src/meta/GameModes';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
-import { Object3D } from 'three';
-import { DEBRIS, Pieces } from '../src/render/stages/StageKit';
+import { Matrix4, Object3D } from 'three';
+import { DEBRIS, FLOOR_TOP, GROUND_Y, Pieces, WALL_TOP, surfaceY, type DebrisShape } from '../src/render/stages/StageKit';
 import { AUTO } from './bots';
 
 const BOSS = Object.values(BOSSES)[0];
@@ -234,6 +234,75 @@ function debrisRun(size: 'medium' | 'large', vary: number) {
   r.pcs.clear();
   r.pcs.launch(r.o, [0, 2, 0], [0, 0, 0], 0, 'medium', 0);
   check('a piece re-launched after a reset keeps its original size', r.o.scale.y === 2 && r.o.visible);
+}
+
+// ---------------------------------------- flat debris landing (1.4.2)
+/** Throw many flat pieces from the barrier top in all directions; check how they come to rest. */
+function landingRun(shape: DebrisShape, startY: number) {
+  const pcs = new Pieces();
+  const objs: Object3D[] = [];
+  for (let k = 0; k < 48; k++) {
+    const o = new Object3D();
+    const a = (k / 48) * Math.PI * 2;
+    o.position.set(-ARENA.wallX - 0.2, startY + (k % 4) * 0.07, (k % 12) * 0.5 - 3);
+    o.rotation.set(k * 0.3, k * 0.7, k * 0.5);
+    pcs.launch(o, [Math.cos(a) * (1.6 + (k % 4) * 0.5), 3 + (k % 3), Math.sin(a) * 2], [6 + (k % 5), 3, 5 - (k % 7)], shape, 'medium', 0);
+    objs.push(o);
+  }
+  // fly until every piece rests (well before the 6 s rest timer runs out)
+  for (let i = 0; i < 60 * 5; i++) pcs.update(1 / 60);
+  const m4 = new Matrix4();
+  let maxGap = 0;
+  let maxTilt = 0;
+  const surfaces = new Set<number>();
+  const [hx, hy, hz] = shape.half;
+  const thin = hy <= hx && hy <= hz ? 1 : hx <= hz ? 0 : 2;
+  for (const o of objs) {
+    const e = m4.makeRotationFromQuaternion(o.quaternion).elements;
+    const ext = shape.round ? Math.abs(e[5]) * hy + Math.sqrt(Math.max(0, 1 - e[5] * e[5])) * hx : Math.abs(e[1]) * hx + Math.abs(e[5]) * hy + Math.abs(e[9]) * hz;
+    const surf = shape.surface(o.position.x, o.position.z);
+    surfaces.add(surf);
+    maxGap = Math.max(maxGap, Math.abs(o.position.y - ext - surf));
+    maxTilt = Math.max(maxTilt, Math.acos(Math.min(1, Math.abs(e[thin * 4 + 1]))) * (180 / Math.PI));
+  }
+  const yaws = new Set(objs.map((o) => Math.round(Math.atan2(2 * (o.quaternion.w * o.quaternion.y + o.quaternion.x * o.quaternion.z), 1 - 2 * (o.quaternion.y ** 2 + o.quaternion.z ** 2)) * 10)));
+  return { pcs, objs, maxGap, maxTilt, surfaces, yaws: yaws.size };
+}
+{
+  const capTop = WALL_TOP + 0.07;
+  const chip = landingRun({ half: [0.24, 0.035, 0.24], round: true, surface: (x, z) => surfaceY(x, z, capTop) }, capTop + 0.2);
+  check(`casino chips rest exactly on the surface (max gap ${chip.maxGap.toFixed(4)} m)`, chip.maxGap < 1e-6);
+  check(`casino chips lie flat (max tilt ${chip.maxTilt.toFixed(2)}°)`, chip.maxTilt < 0.01);
+  check('chips land on the floor top, the barrier rail and the studio ground — whatever is really under them', chip.surfaces.has(FLOOR_TOP) && chip.surfaces.has(GROUND_Y));
+  const before = chip.objs.map((o) => o.position.toArray().join() + o.quaternion.toArray().join());
+  chip.pcs.update(1 / 60);
+  check('chips lie still at full size after landing (resting, fade not started yet)', chip.objs.every((o, i) => o.position.toArray().join() + o.quaternion.toArray().join() === before[i] && o.visible && o.scale.x === 1));
+  const plankShape: DebrisShape = { half: [0.375, 0.03, 0.08], surface: (x, z) => surfaceY(x, z, WALL_TOP + 0.05) };
+  const plank = landingRun(plankShape, WALL_TOP + 0.3);
+  check(`backlot planks rest exactly on the surface (max gap ${plank.maxGap.toFixed(4)} m)`, plank.maxGap < 1e-6);
+  check(`backlot planks lie on their broad side (max tilt ${plank.maxTilt.toFixed(2)}°)`, plank.maxTilt < 0.01);
+  check(`planks keep different horizontal turns (${plank.yaws} distinct yaws of 48)`, plank.yaws > 20);
+  const chunk = landingRun({ half: [0.44, 0.33, 0.025], surface: (x, z) => surfaceY(x, z, WALL_TOP + 0.05) }, WALL_TOP + 0.5);
+  check(`plywood chunks (thin along their own Z) lie on their broad side (gap ${chunk.maxGap.toFixed(4)} m, tilt ${chunk.maxTilt.toFixed(2)}°)`, chunk.maxGap < 1e-6 && chunk.maxTilt < 0.01);
+  // never inside a surface during the flight either
+  const pcs = new Pieces();
+  const o = new Object3D();
+  o.position.set(-2, 1.5, 0);
+  o.rotation.set(0.4, 0.2, 1.1);
+  const sh: DebrisShape = { half: [0.375, 0.03, 0.08], surface: (x, z) => surfaceY(x, z, WALL_TOP + 0.05) };
+  pcs.launch(o, [0.5, 1, 0], [7, 3, 9], sh, 'medium', 0);
+  const m4 = new Matrix4();
+  let worst = 0;
+  for (let i = 0; i < 240; i++) {
+    pcs.update(1 / 60);
+    const e = m4.makeRotationFromQuaternion(o.quaternion).elements;
+    const ext = Math.abs(e[1]) * 0.375 + Math.abs(e[5]) * 0.03 + Math.abs(e[9]) * 0.08;
+    worst = Math.min(worst, o.position.y - ext - sh.surface(o.position.x, o.position.z));
+  }
+  check(`a tumbling plank never dips into the floor while bouncing (deepest ${worst.toFixed(4)} m)`, worst > -1e-6);
+  // the 1.4.1 fade still applies after a flat landing
+  for (let i = 0; i < 60 * 12; i++) pcs.update(1 / 60);
+  check('after resting, a flat piece still fades out and hides (1.4.1 rules)', !o.visible && !pcs.busy);
 }
 
 // ---------------------------------------------------- BOSS FIGHT layering

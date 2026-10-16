@@ -1,8 +1,8 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.4.1-alpha",
-  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.4.1: Destruction Polish)",
+  "version": "1.4.2-alpha",
+  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.4.2: Visual Polish)",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

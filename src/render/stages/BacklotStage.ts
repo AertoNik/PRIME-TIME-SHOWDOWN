@@ -12,6 +12,7 @@ import {
   MeshLambertMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
+  ShaderMaterial,
   RepeatWrapping,
   SphereGeometry,
   Vector3,
@@ -32,6 +33,8 @@ import {
   GROUND_Y,
   insetPath,
   landingY,
+  surfaceY,
+  FLOOR_TOP,
   makeSpotCone,
   merge,
   neonMaterial,
@@ -42,6 +45,7 @@ import {
   swingCones,
   tint,
   WALL_TOP,
+  type DebrisShape,
   type DecorLayout,
   type SpotCone,
   type StageShared,
@@ -56,7 +60,71 @@ import {
 // swing, flicker and finally droop.
 
 const DEF = arenaById('backlot');
+/** Height of the hazard-striped cap on the concrete barrier (the barrier top is WALL_TOP + CAP_H). */
+const CAP_H = 0.05;
+
+/** What a wooden fragment lands on: the street floor, the barrier cap or the studio floor. */
+const woodSurface = (x: number, z: number): number => surfaceY(x, z, WALL_TOP + CAP_H);
+
+/** Landing shape of a box-shaped wooden fragment (real size, settles on its broad side). */
+function woodShape(m: Mesh): DebrisShape {
+  const { width, height, depth } = (m.geometry as BoxGeometry).parameters;
+  return { half: [(width * m.scale.x) / 2, (height * m.scale.y) / 2, (depth * m.scale.z) / 2], surface: woodSurface };
+}
 const _c = new Color();
+const _lp = new Vector3();
+const _ld = new Vector3();
+
+/** Soft light beam of a studio lamp: brightest near the lens, fading to nothing along its length and towards its edges. */
+const BEAM_START = 0.3;
+const BEAM_LEN = 2.0;
+function beamMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: { uColor: { value: new Color(0xffd2a0) }, uIntensity: { value: 0.2 }, uStart: { value: BEAM_START }, uLen: { value: BEAM_LEN } },
+    vertexShader: /* glsl */ `
+      uniform float uStart;
+      uniform float uLen;
+      varying float vT;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        vT = clamp((position.z - uStart) / uLen, 0.0, 1.0);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vV = -mv.xyz;
+        vN = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uIntensity;
+      varying float vT;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        float edge = abs(dot(normalize(vN), normalize(vV)));
+        float along = pow(1.0 - vT, 2.5) * smoothstep(0.0, 0.12, vT);
+        gl_FragColor = vec4(uColor * (edge * edge * along * uIntensity), 1.0);
+      }`,
+    blending: AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+}
+
+/** Soft warm pool a lamp throws on the floor (radial falloff, no hard edge). */
+function poolTexture(): CanvasTexture {
+  return paintTexture(128, 128, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    const grd = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    grd.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grd.addColorStop(0.4, 'rgba(255, 255, 255, 0.55)');
+    grd.addColorStop(0.75, 'rgba(255, 255, 255, 0.15)');
+    grd.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, w, h);
+  });
+}
 const FONT = 'Unbounded, "Arial Black", sans-serif';
 
 // ------------------------------------------------------------------ textures
@@ -392,7 +460,10 @@ interface Crate {
 interface Lamp {
   pivot: Group;
   head: Group;
-  beam: MeshBasicMaterial;
+  beam: ShaderMaterial;
+  /** Soft light pool on the floor where the lamp points (follows its swing). */
+  pool: Mesh;
+  poolMat: MeshBasicMaterial;
   lens: MeshBasicMaterial;
   swing: number;
   vel: number;
@@ -455,6 +526,7 @@ export class BacklotStage extends Stage {
   readonly layout = LAYOUT;
   private cones: SpotCone[] = [];
   private pieces = new Pieces();
+  private poolTex: CanvasTexture | null = null;
   private walls: PropWall[] = [];
   private crates: Crate[] = [];
   private lamps: Lamp[] = [];
@@ -495,7 +567,7 @@ export class BacklotStage extends Stage {
     wall.castShadow = true;
     wall.receiveShadow = true;
     this.group.add(wall);
-    const cap = flatExtrude(ringShape(ARENA.wallX + 0.03, ARENA.wallZ + 0.03, ARENA.wallCorner + 0.03, 0.39), 0.05);
+    const cap = flatExtrude(ringShape(ARENA.wallX + 0.03, ARENA.wallZ + 0.03, ARENA.wallCorner + 0.03, 0.39), CAP_H);
     cap.translate(0, WALL_TOP, 0);
     this.group.add(new Mesh(cap, new MeshStandardMaterial({ map: hazardTexture(), roughness: 0.7 })));
     // bollards with reflective bands and red studio tally lights
@@ -885,15 +957,21 @@ export class BacklotStage extends Stage {
     const l = new Mesh(new CylinderGeometry(0.24, 0.24, 0.03, 12).rotateX(Math.PI / 2), lens);
     l.position.z = 0.29;
     head.add(l);
-    // its light beam (additive, short so it never washes over the fighters)
-    const beamGeo = new CylinderGeometry(0.22, 1.1, 3.2, 16, 1, true);
-    beamGeo.rotateX(Math.PI / 2);
-    beamGeo.translate(0, 0, 1.9);
-    const beam = new MeshBasicMaterial({ color: new Color(0xffd8a0).multiplyScalar(0.35), transparent: true, blending: AdditiveBlending, depthWrite: false, side: DoubleSide });
+    // its light beam (1.4.2): narrow at the lens, widening, soft-edged and fading out within
+    // 2 m — it stays over the barrier corner and never paints a solid shape over the fighters
+    const beamGeo = new CylinderGeometry(0.23, 0.85, BEAM_LEN, 20, 1, true);
+    beamGeo.rotateX(-Math.PI / 2); // narrow end towards the lens
+    beamGeo.translate(0, 0, BEAM_START + BEAM_LEN / 2);
+    const beam = beamMaterial();
     head.add(new Mesh(beamGeo, beam));
     pivot.add(head);
     this.group.add(pivot);
-    return { pivot, head, beam, lens, swing: 0, vel: 0, hits: 0, flicker: 0, baseTilt };
+    // the light it throws on the floor (placed every frame where the lamp points)
+    const poolMat = new MeshBasicMaterial({ map: (this.poolTex ??= poolTexture()), color: new Color(0xffc890).multiplyScalar(0.3), transparent: true, blending: AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const pool = new Mesh(new PlaneGeometry(1.7, 2.6).rotateX(-Math.PI / 2), poolMat);
+    pool.renderOrder = 1;
+    this.group.add(pool);
+    return { pivot, head, beam, pool, poolMat, lens, swing: 0, vel: 0, hits: 0, flicker: 0, baseTilt };
   }
 
   private buildClapper(x: number, z: number): Clapper {
@@ -984,9 +1062,9 @@ export class BacklotStage extends Stage {
         const side = k % 2 ? 1 : -1;
         const tx = Math.cos(w.yaw) * side * 1.1;
         const tz = -Math.sin(w.yaw) * side * 1.1;
-        const land = landingY(c.position.x + back[0] * 0.5, c.position.z + back[1] * 0.5);
-        // plywood chunks are large debris: ~10 s on the set, then shrink away (the frame stays)
-        this.pieces.launch(c, [back[0] + tx, 2.6 + (k >> 1) * 1.4, back[1] + tz], [2 + k, 1.5 * side, 3 * side], land + 0.03, 'large', k / 3);
+        // plywood chunks tumble, land on the real surface and settle on their broad side (1.4.2);
+        // they are large debris: ~10 s on the set, then shrink away (the frame stays)
+        this.pieces.launch(c, [back[0] + tx, 2.6 + (k >> 1) * 1.4, back[1] + tz], [2 + k, 1.5 * side, 3 * side], woodShape(c), 'large', k / 3);
       });
       if (vfx) {
         for (let k = 0; k < 6; k++) vfx.soft.spawn(x + (k - 2.5) * 0.25, 0.9, z, (k - 2.5) * 0.4, 0.8, 0, 1.1, 0.5, 1.6, _c.set(0x9a8a78), 1, 2.4, -0.25);
@@ -1002,9 +1080,9 @@ export class BacklotStage extends Stage {
         p.position.copy(c.home[k].p);
         p.rotation.set(...c.home[k].r);
         const a = (k / c.planks.length) * Math.PI * 2;
-        const land = landingY(p.position.x + Math.cos(a) * 0.8, p.position.z + Math.sin(a) * 0.8);
-        // planks are medium debris: 6–8 s on the set, then shrink away
-        this.pieces.launch(p, [Math.cos(a) * 2.2 + back[0] * 0.6, 3 + (k % 3), Math.sin(a) * 2.2 + back[1] * 0.6], [5, 2 + k, 4], land + 0.03, 'medium', k / (c.planks.length - 1));
+        // planks tumble, land on the real surface and settle on their broad side (1.4.2);
+        // they are medium debris: 6–8 s on the set, then shrink away
+        this.pieces.launch(p, [Math.cos(a) * 2.2 + back[0] * 0.6, 3 + (k % 3), Math.sin(a) * 2.2 + back[1] * 0.6], [5, 2 + k, 4], woodShape(p), 'medium', k / (c.planks.length - 1));
       });
       if (vfx) {
         vfx.debrisBurst(x, 0.8, z, _c.set(0x8a5a2a), 10);
@@ -1080,8 +1158,22 @@ export class BacklotStage extends Stage {
       const broken = L.hits >= 3;
       // fast flicker only with full motion; reduced motion: a slow pulse
       const on = L.flicker > 0 ? Math.sin(t * (mo > 0.5 ? 70 : 6)) > 0 : broken ? Math.sin(t * (mo > 0.5 ? 9 : 2)) > 0.7 : true;
-      L.beam.color.setHex(0xffd8a0).multiplyScalar(on ? (broken ? 0.18 : 0.35) : 0.03);
+      const lit = on ? (broken ? 0.45 : 1) : 0.08;
+      L.beam.uniforms.uIntensity.value = 0.2 * lit;
       L.lens.color.setHex(0xfff0d0).multiplyScalar(on ? (broken ? 1.4 : 3) : 0.3);
+      // floor pool where the lamp points; hidden when it points off the floor (drooped lamp)
+      L.pivot.updateMatrixWorld(true);
+      L.head.getWorldPosition(_lp);
+      L.head.getWorldDirection(_ld);
+      const reach = _ld.y < -0.15 ? (FLOOR_TOP + 0.01 - _lp.y) / _ld.y : -1;
+      const hx = _lp.x + _ld.x * reach;
+      const hz = _lp.z + _ld.z * reach;
+      L.pool.visible = reach > 0 && surfaceY(hx, hz, WALL_TOP + CAP_H) === FLOOR_TOP;
+      if (L.pool.visible) {
+        L.pool.position.set(hx, FLOOR_TOP + 0.01, hz);
+        L.pool.rotation.y = Math.atan2(_ld.x, _ld.z);
+        L.poolMat.color.setHex(0xffc890).multiplyScalar(0.3 * lit);
+      }
     }
 
     // clapperboard: an idle clap now and then; when broken it snaps shut and topples back

@@ -16,6 +16,7 @@ import {
   MeshLambertMaterial,
   MeshStandardMaterial,
   Points,
+  Quaternion,
   Shape,
   ShaderMaterial,
   SphereGeometry,
@@ -439,6 +440,44 @@ export type DebrisSize = keyof typeof DEBRIS;
 /** How far a piece sinks into the floor while it shrinks away. */
 const DEBRIS_SINK = 0.06;
 
+/**
+ * Alpha 1.4.2: a flat piece (chip, plank, plywood chunk) that lands on the real
+ * surface under it and settles on its broadest face instead of stopping on an edge.
+ */
+export interface DebrisShape {
+  /** Half sizes along the piece's own X, Y, Z. It comes to rest with its thinnest axis vertical. */
+  half: [number, number, number];
+  /** A disc around its own Y axis (casino chip): exact contact height instead of the box estimate. */
+  round?: boolean;
+  /** Height of whatever is under (x, z): floor plate, barrier cap, studio ground… */
+  surface: (x: number, z: number) => number;
+}
+
+/** Seconds a flat piece takes to tip over onto its broad face after the last bounce. */
+const SETTLE_TIME = 0.28;
+const _rm = new Matrix4();
+const _ax = new Vector3();
+const _up = new Vector3();
+const _qa = new Quaternion();
+
+/** Vertical half-extent of the oriented piece: how far its lowest point is below its centre. */
+function halfHeight(q: Quaternion, sh: DebrisShape): number {
+  const e = _rm.makeRotationFromQuaternion(q).elements; // column-major: e[1], e[5], e[9] = world Y of the local X, Y, Z axes
+  const [hx, hy, hz] = sh.half;
+  if (sh.round) return Math.abs(e[5]) * hy + Math.sqrt(Math.max(0, 1 - e[5] * e[5])) * hx;
+  return Math.abs(e[1]) * hx + Math.abs(e[5]) * hy + Math.abs(e[9]) * hz;
+}
+
+/** Same orientation turned the shortest way so the thinnest axis points straight up or down (yaw kept). */
+function flatTarget(q: Quaternion, sh: DebrisShape, out: Quaternion): Quaternion {
+  const [hx, hy, hz] = sh.half;
+  const i = hy <= hx && hy <= hz ? 1 : hx <= hz ? 0 : 2;
+  _ax.set(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyQuaternion(q);
+  _up.set(0, _ax.y >= 0 ? 1 : -1, 0);
+  _qa.setFromUnitVectors(_ax, _up);
+  return out.copy(q).premultiply(_qa);
+}
+
 /** One loose piece of a broken set piece (simple ballistic flight, bounces, rests, fades). */
 interface Piece {
   obj: Object3D;
@@ -449,7 +488,9 @@ interface Piece {
   sy: number;
   sz: number;
   ground: number;
-  phase: 'idle' | 'fly' | 'rest' | 'fade' | 'gone';
+  /** Flat piece landing on real surfaces (1.4.2); null = the 1.4 behaviour (fixed landing height). */
+  shape: DebrisShape | null;
+  phase: 'idle' | 'fly' | 'settle' | 'rest' | 'fade' | 'gone';
   /** Seconds left in the rest / fade phase. */
   t: number;
   rest: number;
@@ -458,6 +499,9 @@ interface Piece {
   base: Vector3;
   /** Resting height (the piece sinks from here while fading). */
   y0: number;
+  /** Settling onto the broad face: from / to orientation. */
+  qFrom: Quaternion;
+  qTo: Quaternion;
 }
 
 /**
@@ -471,11 +515,15 @@ interface Piece {
 export class Pieces {
   private list: Piece[] = [];
 
-  /** `vary` (0..1) spreads the resting time inside the size's range so pieces do not all vanish at once. */
-  launch(obj: Object3D, v: [number, number, number], spin: [number, number, number], ground: number, size: DebrisSize = 'medium', vary = 0.5): void {
+  /**
+   * `ground`: a fixed landing height, or (1.4.2) the shape of a flat piece that lands on
+   * the real surface under it and settles on its broad face.
+   * `vary` (0..1) spreads the resting time inside the size's range so pieces do not all vanish at once.
+   */
+  launch(obj: Object3D, v: [number, number, number], spin: [number, number, number], ground: number | DebrisShape, size: DebrisSize = 'medium', vary = 0.5): void {
     let p = this.list.find((q) => q.obj === obj);
     if (!p) {
-      p = { obj, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0, ground, phase: 'idle', t: 0, rest: 0, fade: 1, base: new Vector3(), y0: 0 };
+      p = { obj, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0, ground: 0, shape: null, phase: 'idle', t: 0, rest: 0, fade: 1, base: new Vector3(), y0: 0, qFrom: new Quaternion(), qTo: new Quaternion() };
       this.list.push(p);
     }
     if (p.phase === 'idle') p.base.copy(obj.scale);
@@ -490,13 +538,14 @@ export class Pieces {
     p.sx = spin[0];
     p.sy = spin[1];
     p.sz = spin[2];
-    p.ground = ground;
+    p.shape = typeof ground === 'number' ? null : ground;
+    p.ground = typeof ground === 'number' ? ground : 0;
     p.phase = 'fly';
   }
 
   /** Something is still flying, resting or fading (the stage keeps calling update). */
   get busy(): boolean {
-    return this.list.some((p) => p.phase === 'fly' || p.phase === 'rest' || p.phase === 'fade');
+    return this.list.some((p) => p.phase === 'fly' || p.phase === 'settle' || p.phase === 'rest' || p.phase === 'fade');
   }
 
   /** Advance all pieces. Returns true if any piece moved or changed size this frame. */
@@ -505,7 +554,13 @@ export class Pieces {
     let changed = false;
     for (const p of this.list) {
       const o = p.obj;
-      if (p.phase === 'fly') {
+      if (p.phase === 'fly' && p.shape) {
+        changed = true;
+        this.flyFlat(p, dt);
+      } else if (p.phase === 'settle') {
+        changed = true;
+        this.settle(p, dt);
+      } else if (p.phase === 'fly') {
         changed = true;
         p.vy -= 9.8 * dt;
         o.position.x += p.vx * dt;
@@ -553,6 +608,80 @@ export class Pieces {
     return changed;
   }
 
+  /** Flight of a flat piece: lands on the real surface under it using its real oriented size. */
+  private flyFlat(p: Piece, dt: number): void {
+    const o = p.obj;
+    const sh = p.shape!;
+    const px = o.position.x;
+    const pz = o.position.z;
+    const prevBottom = o.position.y - halfHeight(o.quaternion, sh);
+    const prevSurf = sh.surface(px, pz);
+    p.vy -= 9.8 * dt;
+    o.position.x += p.vx * dt;
+    o.position.y += p.vy * dt;
+    o.position.z += p.vz * dt;
+    o.rotation.x += p.sx * dt;
+    o.rotation.y += p.sy * dt;
+    o.rotation.z += p.sz * dt;
+    let surf = sh.surface(o.position.x, o.position.z);
+    if (surf > prevSurf + 0.01 && surf > prevBottom + 0.01) {
+      // flew into the side of something taller (the barrier): knocked back, keeps falling
+      o.position.x = px;
+      o.position.z = pz;
+      p.vx *= -0.35;
+      p.vz *= -0.35;
+      surf = prevSurf;
+    }
+    const ext = halfHeight(o.quaternion, sh);
+    if (o.position.y - ext > surf) return;
+    o.position.y = surf + ext; // never inside the surface
+    if (p.vy > 0) return; // still rising (e.g. launched from inside the stack)
+    if (p.vy < -1.2) {
+      p.vy = -p.vy * 0.32;
+      p.vx *= 0.55;
+      p.vz *= 0.55;
+      p.sx *= 0.5;
+      p.sy *= 0.5;
+      p.sz *= 0.5;
+      return;
+    }
+    // last touch: tip over onto the broad face, then lie still
+    p.phase = 'settle';
+    p.t = 0;
+    p.ground = surf;
+    p.vx *= 0.5;
+    p.vz *= 0.5;
+    p.qFrom.copy(o.quaternion);
+    flatTarget(o.quaternion, sh, p.qTo);
+  }
+
+  /** Smoothly lay a flat piece on its broad face, resting exactly on the surface (no sinking, no hovering). */
+  private settle(p: Piece, dt: number): void {
+    const o = p.obj;
+    const sh = p.shape!;
+    p.t = Math.min(SETTLE_TIME, p.t + dt);
+    const k = p.t / SETTLE_TIME;
+    const e = k * k * (3 - 2 * k);
+    // a short slide that dies out
+    o.position.x += p.vx * dt * (1 - k);
+    o.position.z += p.vz * dt * (1 - k);
+    const surf = sh.surface(o.position.x, o.position.z);
+    if (surf < p.ground - 0.05) {
+      // slid off an edge (barrier top): fall again and land below
+      p.phase = 'fly';
+      p.vy = 0;
+      return;
+    }
+    o.quaternion.slerpQuaternions(p.qFrom, p.qTo, e);
+    o.position.y = surf + halfHeight(o.quaternion, sh);
+    if (k >= 1) {
+      o.quaternion.copy(p.qTo);
+      o.position.y = surf + halfHeight(o.quaternion, sh);
+      p.phase = 'rest';
+      p.t = p.rest;
+    }
+  }
+
   /** New fight / Survival wave / leaving the battle: every piece back to its pre-break scale and visible. */
   clear(): void {
     for (const p of this.list) {
@@ -573,6 +702,16 @@ export const WALL_TOP = 0.6;
 export function landingY(x: number, z: number): number {
   if (insideRounded(x, z, ARENA.wallX - 0.05, ARENA.wallZ - 0.05, ARENA.wallCorner - 0.05)) return 0;
   if (insideRounded(x, z, ARENA.wallX + 0.45, ARENA.wallZ + 0.45, ARENA.wallCorner + 0.45)) return WALL_TOP;
+  return GROUND_Y;
+}
+
+/** Top of the bevelled floor plate built by floorMesh() (resting debris lies here, not at y = 0). */
+export const FLOOR_TOP = 0.04;
+
+/** Surface under (x, z) for resting debris: floor plate top, barrier top (`wallTop`, incl. its cap), studio ground. */
+export function surfaceY(x: number, z: number, wallTop: number): number {
+  if (insideRounded(x, z, ARENA.wallX - 0.05, ARENA.wallZ - 0.05, ARENA.wallCorner - 0.05)) return FLOOR_TOP;
+  if (insideRounded(x, z, ARENA.wallX + 0.45, ARENA.wallZ + 0.45, ARENA.wallCorner + 0.45)) return wallTop;
   return GROUND_Y;
 }
 
