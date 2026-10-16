@@ -1,5 +1,5 @@
 // Verifies that Alpha 1.0 (schema v1) and Alpha 1.1 (schema v2) saves load into the
-// current schema (v7, Alpha 1.4) without losing progress.
+// current schema (v8, Alpha 1.5) without losing progress.
 import { sanitize } from '../src/meta/SaveSystem';
 
 const alpha10 = {
@@ -83,10 +83,22 @@ const checks: [string, boolean][] = [
   })()],
   ['1.3.3: corrupt counter falls back to the estimate', sanitize({ ...alpha11, fighters: { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, classicWins: 'x' } } }).fighters.ray.classicWins === 5],
   ['1.3.3: new fighters start with 0 Classic wins', s.fighters.vega.classicWins === 0],
-  ['1.4: older saves start in the original studio (schema v7)', s.arena === 'original' && s11.arena === 'original' && s.version === 7],
+  ['1.4: older saves start in the original studio (now schema v8)', s.arena === 'original' && s11.arena === 'original' && s.version === 8],
   ['1.4: progress untouched by the arena migration', s11.money === 9870 && s11.fighters.nika.unlocked && s11.settings.camera === 'reduced'],
   ['1.4: arena preference round-trips by id (and RANDOM)', sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 7, arena: 'backlot' }))).arena === 'backlot' && sanitize({ ...alpha11, arena: 'random' }).arena === 'random'],
   ['1.4: unknown arena id falls back to the original studio', sanitize({ ...alpha11, arena: 'space_station' }).arena === 'original'],
+  // Alpha 1.5: new fighters join locked, MY COLLECTION "seen" marks, claimed career stages
+  ['1.5: Kai and Rina added to old saves, locked, with default decks', !s.fighters.kai.unlocked && !s.fighters.rina.unlocked && s.fighters.kai.deck.includes('bank_shot') && s11.fighters.rina.deck.includes('false_start') && s.fighters.kai.fans > 0],
+  ['1.5: items owned before MY COLLECTION are not flagged new', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 7, cosmetics: { owned: ['card_pumpkin', 'title_prime_legend'], equipped: { cardStyle: 'card_pumpkin' } } })));
+    return v.cosmetics.seen.length === 2 && v.cosmetics.owned.length === 2 && v.cosmetics.equipped.cardStyle === 'card_pumpkin';
+  })()],
+  ['1.5: no career stage reward counted as paid on old saves', s.careerClaimed.length === 0 && s11.careerClaimed.length === 0],
+  ['1.5: claimed career stages round-trip', sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 8, careerClaimed: ['rising', 'star'] }))).careerClaimed.join() === 'rising,star'],
+  ['1.5: Rina progress round-trips', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 8, selected: 'rina', fighters: { ...alpha11.fighters, rina: { unlocked: true, fans: 3100, wins: 4, losses: 2, draws: 0, matches: 6, bestRating: 77, deck: ['dash', 'false_start', 'shield', 'overdrive'] } } })));
+    return v.selected === 'rina' && v.fighters.rina.fans === 3100 && v.fighters.rina.deck.includes('false_start');
+  })()],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
 let ok = true;

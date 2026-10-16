@@ -162,6 +162,21 @@ export class BroadcastSystem {
       case 'whiff':
         if (e.side === 1) this.add(BROADCAST.whiffPunish, 'ПРОМАХ СОПЕРНИКА');
         break;
+      // Alpha 1.5: the new signature moves are TV moments
+      case 'trickShot':
+        if (e.side === 0) {
+          this.add(BROADCAST.trickShot, 'TRICK SHOT');
+          this.host.emit({ type: 'reaction', text: 'TRICK SHOT!', tier: 3, sub: 'RICOCHET!' });
+          this.reactionCd = 1.4;
+        }
+        break;
+      case 'feintCounter':
+        if (e.side === 0) {
+          this.add(BROADCAST.feintRead, 'ОБМАННЫЙ МАНЁВР');
+          this.host.emit({ type: 'reaction', text: 'FALSE START!', tier: 3, sub: 'COUNTER!' });
+          this.reactionCd = 1.4;
+        }
+        break;
       case 'ko':
         if (e.side === 1) {
           this.add(BROADCAST.koWin, 'НОКАУТ');

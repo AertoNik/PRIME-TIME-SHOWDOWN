@@ -32,6 +32,7 @@ export class MenuScreen implements Screen {
       else if (act === 'career') this.g.goto('career');
       else if (act === 'settings') this.g.openSettings();
       else if (act === 'events') this.g.goto('events');
+      else if (act === 'collection') this.g.goto('collection');
     });
   }
 
@@ -60,9 +61,8 @@ export class MenuScreen implements Screen {
       entry = `<button class="event-entry" data-act="events"><span class="ee-ico">${currencyIcon(ev)}</span><span class="ee-text"><b>${esc(ev.title)}</b><small>${esc(ev.subtitle)}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
     } else if (em.upcoming) {
       entry = `<button class="event-entry soon" data-act="events"><span class="ee-ico">${ICONS.calendar}</span><span class="ee-text"><b>Скоро: ${esc(em.upcoming.title)}</b><small>Премьера через ${formatSpan(em.timeToStart(em.upcoming))}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
-    } else if (s.cosmetics.owned.length) {
-      entry = `<button class="event-entry" data-act="events"><span class="ee-ico">${ICONS.star}</span><span class="ee-text"><b>Коллекция</b><small>Сезонные награды: ${s.cosmetics.owned.length}</small></span><span class="ee-go">${UI_ICONS.next}</span></button>`;
     }
+    const freshItems = g.collection.freshCount();
     // game modes entry (Alpha 1.3): Survival record and cleared challenges at a glance
     const sv = s.modes.survival;
     const chDone = CHALLENGES.filter((c) => (s.modes.challenges[c.id]?.firstClearAt ?? 0) > 0).length;
@@ -115,6 +115,7 @@ export class MenuScreen implements Screen {
         <div class="menu-nav">
           <button class="btn ghost" data-act="roster">${UI_ICONS.users.replace('<svg', '<svg width="18" height="18"')} Бойцы</button>
           <button class="btn ghost" data-act="career" style="position:relative">${UI_ICONS.career.replace('<svg', '<svg width="18" height="18"')} Карьера${unclaimed ? `<span class="badge-dot">${unclaimed}</span>` : ''}</button>
+          <button class="btn ghost" data-act="collection" style="position:relative" aria-label="Моя коллекция">${UI_ICONS.archive.replace('<svg', '<svg width="18" height="18"')} Коллекция${freshItems ? `<span class="badge-dot">${freshItems}</span>` : ''}</button>
           <button class="icon-btn" data-act="settings" aria-label="Настройки" style="width:50px;height:46px">${UI_ICONS.gear}</button>
         </div>
       </div>`;

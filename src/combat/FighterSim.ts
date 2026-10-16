@@ -33,6 +33,17 @@ export interface RushAction {
   speed: number;
   combo: ComboId | null;
   dodged: boolean;
+  /** Alpha 1.5: the target read this charge with FALSE START — it cannot land any more. */
+  feinted?: boolean;
+}
+/** Alpha 1.5 — FALSE START: a short feint step (no invulnerability; the read window is `feint`). */
+export interface FeintAction {
+  kind: 'feint';
+  t: number;
+  total: number;
+  dirX: number;
+  dirZ: number;
+  speed: number;
 }
 export interface RecoverAction {
   kind: 'recover';
@@ -62,7 +73,7 @@ export interface CutAction {
   tune: CutTuning;
   empowered: boolean;
 }
-export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction;
+export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction | FeintAction;
 
 export interface FighterMatchStats {
   damageDealt: number;
@@ -122,6 +133,13 @@ export class FighterSim {
   shotCount = 0;
   /** Seconds until DIRECTOR'S CUT can be used again (boss only). */
   cutCd = 0;
+  /** Alpha 1.5 — FALSE START: seconds left in the read window, and its SUPERSTAR boost. */
+  feint = 0;
+  feintMult = 1;
+  /** Alpha 1.5 — RIPOSTE (Rina): an empowered volley is ready / cooldown. */
+  riposte = false;
+  riposteCd = 0;
+  burstRiposte = false;
   /** What this fighter's brain currently sees of the opponent (decoys and smoke included). */
   seenX = 0;
   seenZ = 0;

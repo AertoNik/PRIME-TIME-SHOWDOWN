@@ -46,15 +46,19 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
       const di = h.hand.indexOf('dash');
       const si = h.hand.indexOf('shield');
       const shi = h.hand.indexOf('shock');
+      // Alpha 1.5: FALSE START reads a locked line / charge like a dodge would
+      const fi = h.hand.indexOf('false_start');
       if (fa.kind === 'cut') {
         if (fa.stage === 'prep' && shi >= 0 && h.energy >= 4) m.playCard(0, shi);
         else if (cutLane && di >= 0 && h.energy >= 2) m.playCard(0, di);
+        else if (cutLane && fi >= 0 && h.energy >= 3 && me.feint <= 0) m.playCard(0, fi);
         else if (cutLane && si >= 0 && h.energy >= 3 && me.shield <= 0) m.playCard(0, si);
         return;
       }
       const locked = fa.kind === 'rush' || (fa.kind === 'windup' && fa.locked);
       if (fa.kind === 'windup' && !fa.locked && shi >= 0 && h.energy >= 4) m.playCard(0, shi);
       else if (locked && di >= 0 && h.energy >= 2) m.playCard(0, di);
+      else if (locked && fi >= 0 && h.energy >= 3 && me.feint <= 0) m.playCard(0, fi);
       else if (locked && si >= 0 && h.energy >= 3) m.playCard(0, si);
       return;
     }

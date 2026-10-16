@@ -15,6 +15,7 @@ import { formatChallengeValue, type BossOutcome, type ChallengeOutcome } from '.
 import { MODE_ICONS } from '../modeArt';
 import { countUp, el, esc } from '../dom';
 import { UI_ICONS } from '../icons';
+import { stageNoticeHTML } from '../stageNotice';
 import type { Screen } from '../UI';
 
 export interface ResultsParams {
@@ -109,7 +110,7 @@ export class ResultsScreen implements Screen {
         const g = GOALS.find((x) => x.id === id)!;
         return `<div class="goal-done">${UI_ICONS.star}<div class="fill"><div class="h2" style="font-size:12px">Цель выполнена: ${esc(g.title)}</div><div class="muted" style="font-size:11px">Заберите $${g.reward.money} и +${g.reward.rep}★ в разделе «Карьера»</div></div></div>`;
       })
-      .join('');
+      .join('') + stageNoticeHTML(o.newStage);
     // combos landed this match, best first
     const counts = new Map<string, number>();
     for (const c of r.comboList) counts.set(c, (counts.get(c) ?? 0) + 1);

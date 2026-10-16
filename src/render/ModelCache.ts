@@ -19,6 +19,7 @@ export function defForLook(look: string): FighterDef {
 export class ModelCache {
   private map = new Map<string, CachedFighter>();
   private holo = new Map<string, CachedFighter>();
+  private ghost = new Map<string, CachedFighter>();
 
   get(look: string): CachedFighter {
     let c = this.map.get(look);
@@ -38,6 +39,21 @@ export class ModelCache {
       const rig = createFighterRig(look, true);
       c = { rig, anim: new FighterAnimator(rig, def.idleStyle, def.dashStyle, def.victoryStyle) };
       this.holo.set(look, c);
+    }
+    return c;
+  }
+
+  /**
+   * Alpha 1.5: a second hologram twin used for short visual afterimages (FALSE START), so it
+   * never fights the PHANTOM STEP decoy for the same rig. Built once per look and reused.
+   */
+  getGhost(look: string): CachedFighter {
+    let c = this.ghost.get(look);
+    if (!c) {
+      const def = defForLook(look);
+      const rig = createFighterRig(look, true);
+      c = { rig, anim: new FighterAnimator(rig, def.idleStyle, def.dashStyle, def.victoryStyle) };
+      this.ghost.set(look, c);
     }
     return c;
   }

@@ -1,10 +1,10 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto';
 export type PantsStyle = 'track' | 'cargo' | 'jogger';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic';
-export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt';
+export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -170,6 +170,52 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x1a2a42,
     glow: 0x5fd8ff,
     rim: 0xa8ecff,
+  },
+  // Alpha 1.5 — Kai «Trickshot»: early-2000s showman. Cropped navy track jacket with a
+  // turquoise yoke and copper piping, a popped collar, late-90s curtain hair with copper
+  // frosted tips, retro shades pushed up into the hair and a long copper trick pistol.
+  kai: {
+    id: 'kai',
+    body: 'lean',
+    skin: 0xd9a27a,
+    hair: { style: 'curtain', color: 0x2a1a14, color2: 0xe0904a },
+    top: { style: 'track', main: 0x10264a, accent: 0x13b5a6, trim: 0xe0904a, inner: 0xeef2f6 },
+    pants: { style: 'track', main: 0x152033, accent: 0xe0904a },
+    shoes: { main: 0xf4f6fa, accent: 0x13b5a6, sole: 0xe0904a },
+    gloves: 0x16202e,
+    fingerless: true,
+    eyes: 0x4a2a18,
+    brow: 'cocky',
+    mouth: 'smile',
+    accessories: ['shades', 'earring', 'wristbands'],
+    weapon: 'ricochet',
+    weaponColor: 0xd8843a,
+    weaponDark: 0x1c2433,
+    glow: 0x3df0dc,
+    rim: 0x8ff7ec,
+  },
+  // Alpha 1.5 — Rina «Mirage»: cropped cream moto jacket with coral panels and an
+  // asymmetric zip, graphite joggers, a sharp asymmetric bob with a coral streak,
+  // a choker, and a compact twin-barrel blaster held close.
+  rina: {
+    id: 'rina',
+    body: 'slim',
+    skin: 0xf5d2bc,
+    hair: { style: 'bob', color: 0x1e1d26, color2: 0xff6f61 },
+    top: { style: 'moto', main: 0xf1e3cc, accent: 0xff6f61, trim: 0x2a2b33, inner: 0x2a2b33 },
+    pants: { style: 'jogger', main: 0x2a2b33, accent: 0xff6f61 },
+    shoes: { main: 0x26272e, accent: 0xff6f61, sole: 0xf1e3cc },
+    gloves: 0x2a2b33,
+    fingerless: false,
+    eyes: 0x7a3e2a,
+    brow: 'sly',
+    mouth: 'smirk',
+    accessories: ['choker', 'earring', 'blush'],
+    weapon: 'stinger',
+    weaponColor: 0x30313a,
+    weaponDark: 0x17181d,
+    glow: 0xff7a6a,
+    rim: 0xffb8a8,
   },
   // Crash: heavy brawler in a sleeveless black jersey with big pink shoulder pads
   // and a tall hot-pink quiff — a different silhouette from Bruno and Tank.

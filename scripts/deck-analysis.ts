@@ -2,7 +2,7 @@
 // the deliberate bot on Pro. Compares results with and without each card.
 // Usage: npm run decks [runsPerDeck]
 import { UNIVERSAL_CARDS } from '../src/config/cards';
-import { FIGHTERS, RIVAL_ORDER } from '../src/config/fighters';
+import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../src/config/fighters';
 import type { CardId, FighterId } from '../src/config/types';
 import { runMatch } from './bots';
 
@@ -16,7 +16,8 @@ function combos4<T>(arr: T[]): T[][] {
   return out;
 }
 
-for (const f of ['ray', 'bruno', 'nika', 'vega'] as FighterId[]) {
+// Alpha 1.5: every playable fighter (Kai and Rina appended; the earlier rows are unchanged)
+for (const f of FIGHTER_ORDER as FighterId[]) {
   const pool: CardId[] = [...UNIVERSAL_CARDS, FIGHTERS[f].signature];
   const decks = combos4(pool);
   const results: { deck: CardId[]; win: number; rating: number; dur: number }[] = [];

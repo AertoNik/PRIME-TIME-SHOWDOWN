@@ -1,5 +1,5 @@
 // Animation feel parameters (render-side only; never affects the simulation).
-import type { IdleStyle, WeaponType } from './types';
+import type { IdleStyle, VictoryStyle, WeaponType } from './types';
 
 /** How a fighter carries their weight while moving. */
 export interface GaitProfile {
@@ -68,6 +68,62 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.02,
     turnRate: 14,
   },
+  // Alpha 1.5 — Kai: a showman's swagger: loose shoulders, confident medium stride, bank into turns.
+  showman: {
+    strideLength: 2.2,
+    legSwing: 0.8,
+    kneeLift: 1.3,
+    bob: 0.06,
+    sway: 0.06,
+    lean: 0.16,
+    accelLean: 0.08,
+    turnBank: 0.11,
+    armBob: 0.08,
+    contactSquash: 0.04,
+    turnRate: 16,
+  },
+  // Alpha 1.5 — Rina: light, low, quick stance changes; short quick steps.
+  feint: {
+    strideLength: 1.85,
+    legSwing: 0.8,
+    kneeLift: 1.4,
+    bob: 0.045,
+    sway: 0.05,
+    lean: 0.2,
+    accelLean: 0.1,
+    turnBank: 0.08,
+    armBob: 0.05,
+    contactSquash: 0.035,
+    turnRate: 20,
+  },
+  // Alpha 1.5 — Crash: impulsive, forward-leaning, heavy stomps with a jerky upper body.
+  brawler: {
+    strideLength: 1.9,
+    legSwing: 0.75,
+    kneeLift: 1.15,
+    bob: 0.075,
+    sway: 0.08,
+    lean: 0.26,
+    accelLean: 0.1,
+    turnBank: 0.06,
+    armBob: 0.1,
+    contactSquash: 0.06,
+    turnRate: 13,
+  },
+  // Alpha 1.5 — Victor: calm and heavy, long unhurried strides, the chest leads.
+  champion: {
+    strideLength: 2.35,
+    legSwing: 0.66,
+    kneeLift: 1.0,
+    bob: 0.035,
+    sway: 0.05,
+    lean: 0.1,
+    accelLean: 0.04,
+    turnBank: 0.035,
+    armBob: 0.03,
+    contactSquash: 0.03,
+    turnRate: 10,
+  },
   // Vega: composed and economical — long smooth strides, minimal bob, snaps onto targets.
   poise: {
     strideLength: 2.3,
@@ -109,6 +165,10 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   // PRIME BREAKER (boss): a heavy rifle — every slug of the burst rocks the shoulders and the
   // body, the gun slides hard into the stance; a light camera tremor sells the weight
   breaker: { kick: 10, stiffness: 300, damping: 17, spine: 0.026, shove: 0.75, slide: 0.1, shake: 0.018 },
+  // Alpha 1.5 — Kai's trick pistol: a snappy wrist flick with a showy follow-through
+  ricochet: { kick: 12, stiffness: 360, damping: 15, spine: 0.012, shove: 0.25, slide: 0.07, shake: 0 },
+  // Alpha 1.5 — Rina's compact twin-barrel: crisp light double-tap, almost no body follow
+  stinger: { kick: 7, stiffness: 560, damping: 28, spine: 0.005, shove: 0.12, slide: 0.045, shake: 0 },
 };
 
 export const HIT_REACTION = {
@@ -118,3 +178,30 @@ export const HIT_REACTION = {
   staggerTime: 0.5,
   heavy: 2.4,
 };
+
+/**
+ * Alpha 1.5: victory routines. Every victory style has three; one is picked at random
+ * for each win (never the same one twice in a row for the same fighter). Rivals use
+ * the set of their victory style (Dex — Ray's, Tank — Bruno's, Zoe — Nika's; Crash and
+ * Victor have their own).
+ */
+export const VICTORY_SETS = {
+  // Ray: jump with a pistol twirl / pumping both blasters to the crowd / a spin into a double point skyward
+  hype: ['hype_jump', 'hype_crowd', 'hype_spin'],
+  // Bruno: double biceps with a stomp / cannon hoisted overhead and slammed onto the shoulder / chest thumps and a roar
+  flex: ['flex_double', 'flex_cannon', 'flex_roar'],
+  // Nika: spin and a peace sign / a wave with the rifle on the shoulder / happy hops with arms up
+  peace: ['peace_sign', 'peace_wave', 'peace_hop'],
+  // Vega: present arms and a crisp nod / carbine on the shoulder, calm look around / a last scan down the sights
+  precise: ['precise_present', 'precise_shoulder', 'precise_check'],
+  // Kai: revolver spin and a hat-tip / a theatrical bow and a point / blowing the smoke off the barrel
+  showman: ['show_twirl', 'show_bow', 'show_smoke'],
+  // Rina: a pirouette into a pose / dropping to one knee / a two-finger salute
+  graceful: ['grace_pirouette', 'grace_kneel', 'grace_salute'],
+  // Crash: fists up and a roar / stomp-stomp-stomp / a "come on" taunt
+  brawler: ['brawl_roar', 'brawl_stomp', 'brawl_taunt'],
+  // Victor (dignified): the rifle grounded and a measured wave / PRIME BREAKER raised like a trophy / fist over the heart, a bow of the head
+  champion: ['champ_salute', 'champ_raise', 'champ_heart'],
+} as const satisfies Record<VictoryStyle, readonly string[]>;
+
+export type VictoryMove = (typeof VICTORY_SETS)[VictoryStyle][number];

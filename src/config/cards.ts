@@ -111,6 +111,31 @@ export const CARDS: Record<CardId, CardDef> = {
     exclusive: 'vega',
     heavy: true,
   },
+  // Alpha 1.5: Kai's signature — one controlled ricochet off a straight barrier wall
+  bank_shot: {
+    id: 'bank_shot',
+    name: 'BANK SHOT',
+    cost: 4,
+    role: 'Фирменная',
+    short: 'Выстрел с рикошетом',
+    desc: `Кай отправляет медный снаряд в борт так, чтобы после ОДНОГО рикошета он прилетел туда, куда движется соперник. Попадание после отскока — TRICK SHOT: ${T.bank_shot.damage} урона и +${T.bank_shot.energyRefund} энергии. Прямое попадание до отскока — только ${Math.round(T.bank_shot.directMult * 100)}% урона. Снаряд можно увидеть, уклониться от него или заблокировать.`,
+    color: '#ff9a4a',
+    color2: '#0e7c86',
+    exclusive: 'kai',
+    heavy: true,
+  },
+  // Alpha 1.5: Rina's signature — a feint that evades one attack and fires back
+  false_start: {
+    id: 'false_start',
+    name: 'FALSE START',
+    cost: 3,
+    role: 'Фирменная',
+    short: 'Обманный манёвр',
+    desc: `Рина делает ложный шаг и на ${T.false_start.window} с «читает» соперника: первая подходящая атака (выстрелы, POWER / CHARGED / BANK SHOT, таран KNOCKOUT, выстрел DIRECTOR'S CUT) проходит мимо, а Рина сразу стреляет в ответ (${T.false_start.counterDamage} урона). SHOCK и SYSTEM OVERLOAD так не обмануть. Если атаки не было — окно просто закрывается.`,
+    color: '#ff6f61',
+    color2: '#2a2b33',
+    exclusive: 'rina',
+  },
   // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
   directors_cut: {
     id: 'directors_cut',
@@ -132,18 +157,18 @@ export const COMBOS: ComboDef[] = [
     id: 'counter_strike',
     name: 'COUNTER STRIKE',
     first: ['dash'],
-    second: ['power_shot', 'knockout', 'charged_shot'],
+    second: ['power_shot', 'knockout', 'charged_shot', 'bank_shot'],
     rating: 12,
-    desc: `DASH → POWER SHOT / KNOCKOUT / CHARGED SHOT: контратака ×${CT.counterStrikeMult} урона.`,
+    desc: `DASH → POWER SHOT / KNOCKOUT / CHARGED SHOT / BANK SHOT: контратака ×${CT.counterStrikeMult} урона.`,
     bonus: `урон ×${CT.counterStrikeMult}`,
   },
   {
     id: 'electro_blast',
     name: 'ELECTRO BLAST',
     first: ['shock', 'system_overload'],
-    second: ['power_shot', 'knockout', 'charged_shot'],
+    second: ['power_shot', 'knockout', 'charged_shot', 'bank_shot'],
     rating: 15,
-    desc: `SHOCK → POWER SHOT / KNOCKOUT / CHARGED SHOT: ×${CT.electroBlastMult} урона, электровзрыв продлевает оглушение.`,
+    desc: `SHOCK → POWER SHOT / KNOCKOUT / CHARGED SHOT / BANK SHOT: ×${CT.electroBlastMult} урона, электровзрыв продлевает оглушение.`,
     bonus: `урон ×${CT.electroBlastMult} + оглушение`,
   },
   {
@@ -168,7 +193,7 @@ export const COMBOS: ComboDef[] = [
     id: 'superstar',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
-    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot'],
+    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
@@ -195,6 +220,16 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
     id: 'deadeye',
     name: 'DEADEYE',
     desc: `Каждый ${PT.deadeye.every}-й выстрел Веги — снайперский: +${pct(PT.deadeye.mult)} урона.`,
+  },
+  crossfire: {
+    id: 'crossfire',
+    name: 'CROSSFIRE',
+    desc: `Выстрелы Кая на ходу вбок от цели (стрейф) наносят +${pct(PT.crossfire.mult)} урона: правильный угол — половина трюка.`,
+  },
+  riposte: {
+    id: 'riposte',
+    name: 'RIPOSTE',
+    desc: `После любого удачного уклонения следующая очередь Рины сильнее на ${pct(PT.riposte.mult)} (не чаще раза в ${PT.riposte.cooldown} с).`,
   },
 };
 

@@ -348,17 +348,20 @@ export class Match implements BroadcastHost {
     if (hand.energy < CARDS[card].cost) return fail('energy');
     if (f.glitch > 0) return fail('glitched');
     if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return fail('stunned');
-    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'directors_cut';
+    const needsBody =
+      card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'directors_cut' || card === 'bank_shot' || card === 'false_start';
     if (card === 'directors_cut' && f.cutCd > 0) return fail('cooldown');
     const a = f.action.kind;
     let defer = false;
     if (needsBody) {
       if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut') return fail('busy');
-      if (a === 'dash') {
-        if (card === 'dash' || this.deferred[side]) return fail('busy');
+      if (a === 'dash' || a === 'feint') {
+        if (card === 'dash' || card === 'false_start' || this.deferred[side]) return fail('busy');
         defer = true;
       }
     }
+    // one read window at a time
+    if (card === 'false_start' && f.feint > 0) return fail('busy');
     if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut')) return fail('busy');
 
     hand.consume(index);

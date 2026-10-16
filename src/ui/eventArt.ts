@@ -57,7 +57,7 @@ export const ICONS = {
 export type QuestIcon = 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv';
 
 /** Large preview art for reward cards. */
-export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt', string> = {
+export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio', string> = {
   card: S(
     `<rect x="16" y="6" width="40" height="54" rx="7" fill="#24123c" stroke="#ff8a1f" stroke-width="3" transform="rotate(10 36 33)"/>
      <rect x="8" y="8" width="40" height="54" rx="7" fill="#6a2ab8" stroke="#ffb347" stroke-width="3"/>
@@ -101,6 +101,22 @@ export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crow
      <circle cx="32" cy="33" r="4.5" fill="#e8202a" stroke="#7a0a10" stroke-width="1.2"/>
      <rect x="8" y="29" width="7" height="8" rx="2" fill="#d8a23a"/><rect x="49" y="29" width="7" height="8" rx="2" fill="#d8a23a"/>
      <path d="M24 14 L27 6 L32 12 L37 6 L40 14 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="1.5" stroke-linejoin="round"/>`,
+  ),
+  // Alpha 1.5: PRIME TIME STAR title (career) — a neon star on a broadcast plate
+  star: S(
+    `<circle cx="32" cy="32" r="28" fill="#0d1440" stroke="#22f0e0" stroke-width="2.5"/>
+     <path d="M32 9 L38.5 24 L54 25 L42 35 L46 51 L32 42.5 L18 51 L22 35 L10 25 L25.5 24 Z" fill="#ffd23a" stroke="#ff4fd8" stroke-width="2" stroke-linejoin="round"/>
+     <path d="M32 18 L35.5 26.5 L44 27 L37.5 32.5 L39.5 41 L32 36.5 L24.5 41 L26.5 32.5 L20 27 L28.5 26.5 Z" fill="#fff3b0"/>
+     <rect x="14" y="52" width="36" height="7" rx="3.5" fill="#22f0e0"/><path d="M20 55.5 H44" stroke="#0d1440" stroke-width="2"/>`,
+  ),
+  // Alpha 1.5: LEGENDARY PRODUCTION frame (career) — gold studio corners around a screen
+  studio: S(
+    `<rect x="6" y="10" width="52" height="40" rx="5" fill="#1a1208"/>
+     <path d="M6 22 V10 H18 M46 10 H58 V22 M58 38 V50 H46 M18 50 H6 V38" stroke="#ffd23a" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+     <rect x="21" y="15" width="22" height="9" rx="3" fill="#ffc23a"/><circle cx="25" cy="19.5" r="2" fill="#e8202a"/>
+     <path d="M29 18 H39 M29 21 H35" stroke="#1a1208" stroke-width="1.6"/>
+     <path d="M22 44 L26 33 L32 40 L38 33 L42 44 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="1.2" stroke-linejoin="round"/>
+     <circle cx="32" cy="30" r="2.2" fill="#fff1b0"/>`,
   ),
 };
 

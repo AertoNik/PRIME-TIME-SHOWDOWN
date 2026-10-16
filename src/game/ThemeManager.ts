@@ -87,9 +87,11 @@ export class ThemeManager {
     if (card === 'card_pumpkin') root.dataset.cardStyle = 'pumpkin';
     else delete root.dataset.cardStyle;
     if (equipped.broadcastFrame === 'frame_spooky') root.dataset.frame = 'spooky';
+    else if (equipped.broadcastFrame === 'frame_legendary') root.dataset.frame = 'legendary';
     else delete root.dataset.frame;
     if (equipped.title === 'title_halloween_champion') root.dataset.title = 'halloween-champion';
     else if (equipped.title === 'title_prime_legend') root.dataset.title = 'prime-legend';
+    else if (equipped.title === 'title_prime_star') root.dataset.title = 'prime-star';
     else delete root.dataset.title;
     this.battle.style.dashFx = equipped.dashFx === 'dash_phantom' ? 'phantom' : null;
     this.battle.style.victoryFx = equipped.victoryFx === 'victory_pumpkin' ? 'pumpkin' : null;

@@ -1,11 +1,12 @@
 import { ARENA, CARD_TUNING, COMBO_TUNING, type CutTuning } from '../config/balance';
 import type { CardId, ComboDef } from '../config/types';
 import { clampRoundedRect, type ClampResult } from '../core/math';
-import { lineReach } from './CombatSystem';
+import { lineReach, type BankSolution } from './CombatSystem';
 import type { CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
 import type { Match } from './Match';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
+const bank: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
 
 /** Card effects. Every card changes the simulation state — nothing is cosmetic only. */
 export class Abilities {
@@ -42,12 +43,20 @@ export class Abilities {
       }
       case 'power_shot':
       case 'charged_shot':
+      case 'bank_shot':
       case 'knockout': {
-        const t = card === 'power_shot' ? CARD_TUNING.power_shot : card === 'charged_shot' ? CARD_TUNING.charged_shot : CARD_TUNING.knockout;
+        const t =
+          card === 'power_shot' ? CARD_TUNING.power_shot : card === 'charged_shot' ? CARD_TUNING.charged_shot : card === 'bank_shot' ? CARD_TUNING.bank_shot : CARD_TUNING.knockout;
         const telegraph = f.side === 1;
         const total = telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup;
-        const dx = f.aimX - f.x;
-        const dz = f.aimZ - f.z;
+        let dx = f.aimX - f.x;
+        let dz = f.aimZ - f.z;
+        if (card === 'bank_shot') {
+          // the line points at the bounce point on the barrier, not at the target
+          m.combat.bankAim(f, bank);
+          dx = bank.dirX;
+          dz = bank.dirZ;
+        }
         const d = Math.hypot(dx, dz) || 1;
         f.action = {
           kind: 'windup',
@@ -74,6 +83,17 @@ export class Abilities {
         f.action = { kind: 'cut', stage: 'prep', shot: 0, t: 0, total: t.prep, dirX: dx / d, dirZ: dz / d, lockedAt: -1, inLaneAtLock: false, tune: t, empowered };
         f.cutCd = t.cooldown + this.cutLength(t);
         m.emit({ type: 'cutStart', side: f.side, prep: t.prep, empowered });
+        break;
+      }
+      case 'false_start': {
+        // a short feint step sideways (no invulnerability) and the read window
+        const t = CARD_TUNING.false_start;
+        const mult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        const dir = this.chooseDashDir(f, foe);
+        f.action = { kind: 'feint', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: t.distance / t.duration };
+        f.feint = t.window * (mult > 1 ? 1.2 : 1);
+        f.feintMult = mult;
+        m.emit({ type: 'feint', side: f.side, x: f.x, z: f.z, dx: dir.x, dz: dir.z, window: f.feint });
         break;
       }
       case 'shield': {
@@ -242,7 +262,24 @@ export class Abilities {
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
 
-    if (a.card === 'power_shot' || a.card === 'charged_shot') {
+    if (a.card === 'bank_shot') {
+      // re-solve the bank path from where Kai stands now (the AI's telegraph keeps its locked line)
+      if (!a.locked) {
+        m.combat.bankAim(f, bank);
+        dirX = bank.dirX;
+        dirZ = bank.dirZ;
+      } else {
+        dirX = a.dirX;
+        dirZ = a.dirZ;
+      }
+      m.combat.fireBank(f, dirX, dirZ, CARD_TUNING.bank_shot.damage * mult * f.outgoingDamageMult(), {
+        crit: a.combo !== null,
+        electric: a.combo === 'electro_blast',
+        stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+        combo: a.combo,
+      });
+      f.fireTimer = Math.max(f.fireTimer, 0.35);
+    } else if (a.card === 'power_shot' || a.card === 'charged_shot') {
       const charged = a.card === 'charged_shot';
       const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
       m.combat.firePower(
@@ -478,7 +515,7 @@ export class Abilities {
       }
     }
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
-    if (!foe.ko && dist < t.hitRange) {
+    if (!foe.ko && dist < t.hitRange && !a.feinted) {
       if (foe.invuln > 0) {
         if (!a.dodged) {
           a.dodged = true;
@@ -500,7 +537,7 @@ export class Abilities {
         const kl = Math.hypot(kx, kz) || 1;
         kx /= kl;
         kz /= kl;
-        m.combat.applyHit(foe, f, {
+        const r = m.combat.applyHit(foe, f, {
           damage: t.damage * mult * f.outgoingDamageMult(),
           kind: 'knockout',
           heavy: true,
@@ -516,10 +553,16 @@ export class Abilities {
           sure: true,
           projectile: null,
         });
-        f.action = { kind: 'recover', t: 0, total: 0.25 };
-        f.vx *= 0.2;
-        f.vz *= 0.2;
-        return;
+        if (r === 'dodged') {
+          // FALSE START read the charge: it rushes on past her
+          a.feinted = true;
+          a.dodged = true;
+        } else {
+          f.action = { kind: 'recover', t: 0, total: 0.25 };
+          f.vx *= 0.2;
+          f.vz *= 0.2;
+          return;
+        }
       }
     }
     if (a.t >= a.total) {

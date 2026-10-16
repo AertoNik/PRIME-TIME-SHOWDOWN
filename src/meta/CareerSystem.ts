@@ -1,8 +1,11 @@
-import { FAME_TIERS, GOALS, LEVEL_THRESHOLDS, LEVEL_TITLES, REWARDS, type GoalDef, type GoalId } from '../config/career';
+import { FAME_TIERS, GOALS, LEVEL_THRESHOLDS, LEVEL_TITLES, REWARDS, type GoalDef, type GoalId, type StageId } from '../config/career';
+import type { CosmeticId } from '../config/cosmetics.config';
 import { COMBOS, UNIVERSAL_CARDS } from '../config/cards';
 import { DIFFICULTIES, FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import type { MatchResultData } from '../combat/types';
+import { careerStages, currentStage, type StageView } from './careerStages';
+import { Collection } from './Collection';
 import type { SaveData, SaveSystem } from './SaveSystem';
 
 export interface RewardLine {
@@ -26,6 +29,8 @@ export interface MatchOutcome {
   repBefore: number;
   newGoals: GoalId[];
   fighterFansBefore: number;
+  /** Alpha 1.5: a producer career stage reached by this result (its reward waits in «Карьера»). */
+  newStage: StageId | null;
 }
 
 /** Options for matches played inside a game mode (Prime Challenge). */
@@ -47,6 +52,8 @@ export interface GrantOutcome {
   repBefore: number;
   newGoals: GoalId[];
   fighterFansBefore: number;
+  /** Alpha 1.5: a producer career stage reached by this payout. */
+  newStage: StageId | null;
 }
 
 export interface LevelInfo {
@@ -222,6 +229,7 @@ export class CareerSystem {
   applyMatch(r: MatchResultData, fighter: FighterId, diff: Difficulty, rival: RivalId, opts: MatchApplyOptions = {}): MatchOutcome {
     const s = this.s;
     const rewards = this.computeRewards(r, fighter, diff, opts);
+    const stageBefore = this.stage().index;
     const levelBefore = this.level().level;
     const repBefore = s.reputation;
     const fp = s.fighters[fighter];
@@ -257,7 +265,7 @@ export class CareerSystem {
     }
     s.seed = (s.seed * 1103515245 + 12345) % 2147483647;
     this.store.save();
-    return { rewards, levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore };
+    return { rewards, levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore, newStage: this.newStageSince(stageBefore) };
   }
 
   /**
@@ -267,6 +275,7 @@ export class CareerSystem {
    */
   grant(reward: { money: number; fans: number; rep: number }, fighter: FighterId): GrantOutcome {
     const s = this.s;
+    const stageBefore = this.stage().index;
     const levelBefore = this.level().level;
     const repBefore = s.reputation;
     const fp = s.fighters[fighter];
@@ -280,7 +289,7 @@ export class CareerSystem {
     s.fansEarned += fans;
     fp.fans += fans;
     const newGoals = this.refreshGoals();
-    return { levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore };
+    return { levelBefore, levelAfter: this.level().level, repBefore, newGoals, fighterFansBefore, newStage: this.newStageSince(stageBefore) };
   }
 
   goalProgress(g: GoalDef): number {
@@ -318,8 +327,48 @@ export class CareerSystem {
     return fresh;
   }
 
+  /** Goals and career stages whose reward is waiting (menu badge). */
   unclaimed(): number {
-    return GOALS.filter((g) => this.s.goals[g.id].done && !this.s.goals[g.id].claimed).length;
+    return GOALS.filter((g) => this.s.goals[g.id].done && !this.s.goals[g.id].claimed).length + this.stages().filter((st) => st.reached && !st.claimed).length;
+  }
+
+  // ------------------------------------------------------------ career stages
+  /** Alpha 1.5: ROOKIE PRODUCER → RISING BROADCAST → PRIME TIME STAR → LEGENDARY PRODUCTION. */
+  stages(): StageView[] {
+    return careerStages(this.s);
+  }
+
+  stage(): StageView {
+    return currentStage(this.s);
+  }
+
+  /** The stage reached now if it is higher than stage `index` (for "new stage" notices), else null. */
+  newStageSince(index: number): StageId | null {
+    const st = this.stage();
+    return st.index > index ? st.def.id : null;
+  }
+
+  /** The first stage not reached yet (null at the top). */
+  nextStage(): StageView | null {
+    return this.stages().find((st) => !st.reached) ?? null;
+  }
+
+  /**
+   * Pays a reached stage's reward once: money, reputation and (stages 3 and 4) a
+   * cosmetic that goes straight into MY COLLECTION. A second claim does nothing.
+   */
+  claimStage(id: StageId): { money: number; rep: number; cosmetic: CosmeticId | null; cosmeticNew: boolean } | null {
+    const st = this.stages().find((x) => x.def.id === id);
+    if (!st || !st.reached || st.claimed || !st.def.reward) return null;
+    const r = st.def.reward;
+    this.s.careerClaimed.push(id);
+    this.s.money += r.money;
+    this.s.reputation += r.rep;
+    let cosmeticNew = false;
+    if (r.cosmetic) cosmeticNew = new Collection(this.store).grant(r.cosmetic, `career-${id}`);
+    this.refreshGoals();
+    this.store.save();
+    return { money: r.money, rep: r.rep, cosmetic: r.cosmetic ?? null, cosmeticNew };
   }
 
   claim(id: GoalId): { money: number; rep: number } | null {

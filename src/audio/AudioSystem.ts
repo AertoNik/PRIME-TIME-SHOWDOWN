@@ -241,6 +241,17 @@ export class AudioSystem {
         this.tone({ type: 'square', f0: 820 + Math.random() * 90, f1: 210, dur: 0.07, gain: 0.07 * v, filter: { type: 'lowpass', f0: 4200 } });
         this.tone({ type: 'triangle', f0: 1650, f1: 1400, dur: 0.06, gain: 0.025 * v, delay: 0.05 });
         break;
+      case 'ricochet':
+        // Alpha 1.5 — Kai: a bright revolver crack with a little metallic "ting" off the fins
+        this.noise({ dur: 0.06, gain: 0.1 * v, type: 'highpass', f0: 2600 });
+        this.tone({ type: 'square', f0: 1300 + Math.random() * 120, f1: 300, dur: 0.1, gain: 0.08 * v, filter: { type: 'lowpass', f0: 5200 } });
+        this.tone({ type: 'triangle', f0: 3200, f1: 2900, dur: 0.09, gain: 0.03 * v, delay: 0.03 });
+        break;
+      case 'stinger':
+        // Alpha 1.5 — Rina: a tight snappy pop, one per barrel of the double tap
+        this.tone({ type: 'square', f0: 1700 + Math.random() * 200, f1: 600, dur: 0.05, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2600, q: 1.6 } });
+        this.noise({ dur: 0.03, gain: 0.06 * v, type: 'highpass', f0: 3800 });
+        break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst
         this.tone({ type: 'square', f0: 1100 + Math.random() * 120, f1: 520, dur: 0.06, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2200, q: 2 } });
@@ -299,6 +310,17 @@ export class AudioSystem {
         this.tone({ type: 'sawtooth', f0: 60, f1: 180, dur: 0.35, gain: 0.18, filter: { type: 'lowpass', f0: 300, f1: 1500 } });
         this.noise({ dur: 0.35, gain: 0.18, type: 'lowpass', f0: 400, f1: 1800 });
         break;
+      case 'bank_shot':
+        // Alpha 1.5: the drum spins up with a rising ratchet
+        for (let i = 0; i < 5; i++) this.tone({ type: 'square', f0: 900 + i * 180, dur: 0.035, gain: 0.05, delay: i * 0.035, filter: { type: 'lowpass', f0: 4000 } });
+        this.tone({ type: 'sawtooth', f0: 160, f1: 700, dur: 0.25, gain: 0.08, filter: { type: 'lowpass', f0: 500, f1: 3500 } });
+        break;
+      case 'false_start':
+        // Alpha 1.5: a quick hushed feint whoosh with a sly two-note tag
+        this.noise({ dur: 0.18, gain: 0.22, type: 'bandpass', f0: 2600, f1: 900, q: 2.6 });
+        this.tone({ type: 'triangle', f0: NOTE(79), dur: 0.08, gain: 0.05 });
+        this.tone({ type: 'triangle', f0: NOTE(74), dur: 0.1, gain: 0.05, delay: 0.07 });
+        break;
       case 'system_overload':
         for (let i = 0; i < 10; i++) {
           this.tone({ type: 'square', f0: 200 + Math.random() * 1800, dur: 0.05, gain: 0.06, delay: i * 0.04 });
@@ -307,6 +329,28 @@ export class AudioSystem {
         this.tone({ type: 'sawtooth', f0: 1200, f1: 80, dur: 0.6, gain: 0.08, filter: { type: 'bandpass', f0: 800, q: 4 } });
         break;
     }
+  }
+
+  /** Alpha 1.5 — BANK SHOT ricochet: a metallic ping off the barrier. */
+  bank(): void {
+    if (!this.throttle('bank', 60)) return;
+    this.tone({ type: 'triangle', f0: 2400, f1: 1500, dur: 0.22, gain: 0.12 });
+    this.tone({ type: 'sine', f0: 3600, f1: 3300, dur: 0.3, gain: 0.04, delay: 0.02 });
+    this.noise({ dur: 0.05, gain: 0.12, type: 'highpass', f0: 3000 });
+  }
+
+  /** Alpha 1.5 — a BANK SHOT landed after the ricochet: a short brass "ta-da" over the crowd. */
+  trickShot(): void {
+    [0, 4, 7].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(79 + n), dur: 0.12, gain: 0.05, delay: 0.04 + i * 0.06, filter: { type: 'lowpass', f0: 4000 } }));
+    this.cheer(0.7);
+  }
+
+  /** Alpha 1.5 — FALSE START read an attack: a whip-crack snap and a rising sting. */
+  feintCounter(): void {
+    this.noise({ dur: 0.05, gain: 0.26, type: 'highpass', f0: 2800 });
+    this.tone({ type: 'sawtooth', f0: 400, f1: 1800, dur: 0.18, gain: 0.08, filter: { type: 'lowpass', f0: 5000 } });
+    this.tone({ type: 'sine', f0: NOTE(86), dur: 0.25, gain: 0.05, delay: 0.08 });
+    this.cheer(0.6);
   }
 
   electric(dur = 0.5, gain = 0.3): void {

@@ -11,6 +11,7 @@ import type { SurvivalRun } from '../../meta/SaveSystem';
 import { countUp, el, esc, portraitHTML } from '../dom';
 import { ICONS } from '../eventArt';
 import { UI_ICONS } from '../icons';
+import { stageNoticeHTML } from '../stageNotice';
 import { MODE_ICONS, PERK_ICONS } from '../modeArt';
 import { currencyIcon } from './EventsScreen';
 import type { Screen } from '../UI';
@@ -238,7 +239,7 @@ export class SurvivalScreen implements Screen {
         const goal = GOALS.find((x) => x.id === id)!;
         return `<div class="goal-done">${UI_ICONS.star}<div class="fill"><div class="h2" style="font-size:12px">Цель выполнена: ${esc(goal.title)}</div><div class="muted" style="font-size:11px">Заберите $${goal.reward.money} и +${goal.reward.rep}★ в разделе «Карьера»</div></div></div>`;
       })
-      .join('');
+      .join('') + stageNoticeHTML(s.grant.newStage);
     let eventBlock = '';
     const eo = s.event;
     const ev = eo ? g.events.find(eo.eventId) : null;

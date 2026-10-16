@@ -179,13 +179,105 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
     startFans: 2200,
     contract: { cost: 1300, level: 4 },
     dashStyle: 'roll',
-    victoryStyle: 'peace',
+    victoryStyle: 'precise',
     idleStyle: 'poise',
     theme: { main: '#1aa7e8', accent: '#9ff0ff', dark: '#06273d' },
   },
+  // Alpha 1.5: trick-shot showman. Mid range, quick repositioning, moderate damage;
+  // shines when he plays angles (CROSSFIRE) and lands BANK SHOT ricochets.
+  kai: {
+    id: 'kai',
+    name: 'КАЙ',
+    nickname: 'ТРИКШОТ',
+    fullName: 'Кай «Трикшот» Сантос',
+    style: 'Углы и рикошеты',
+    tagline: 'Прямой выстрел — для скучных шоу.',
+    bio: 'Бывший уличный артист из шоу трюковой стрельбы. Кай никогда не бьёт по прямой, если можно попасть красиво — от борта, с разворота и под аплодисменты.',
+    strengths: ['Стрельба в движении', 'Неожиданные углы', 'Рикошет BANK SHOT'],
+    weaknesses: ['Средний урон без трюков', 'Нужно держать позицию'],
+    stats: {
+      maxHp: 14400,
+      moveSpeed: 4.45,
+      armor: 0,
+      attack: {
+        weapon: 'ricochet',
+        interval: 0.55,
+        damage: 75,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.035,
+        speed: 21,
+        range: 9.0,
+        radius: 0.24,
+        homing: 0,
+        falloff: 1,
+      },
+      preferredRange: 5.2,
+      evasion: 0.75,
+    },
+    bars: { health: 3, damage: 3, speed: 4, range: 4, control: 3 },
+    passive: 'crossfire',
+    signature: 'bank_shot',
+    look: 'kai',
+    // tuned with headless fights (Alpha 1.5): SHIELD → OVERDRIVE → BANK SHOT is his natural line
+    defaultDeck: ['dash', 'shield', 'overdrive', 'bank_shot'],
+    startFans: 1800,
+    contract: { cost: 1500, level: 4 },
+    dashStyle: 'spin',
+    victoryStyle: 'showman',
+    idleStyle: 'showman',
+    theme: { main: '#13b5a6', accent: '#ff9a4a', dark: '#0a2238' },
+  },
+  // Alpha 1.5: counter-attacking star. Short-to-mid range, fast feints, moderate damage
+  // and a little less health; lives on reading the opponent (FALSE START, RIPOSTE).
+  rina: {
+    id: 'rina',
+    name: 'РИНА',
+    nickname: 'МИРАЖ',
+    fullName: 'Рина «Мираж» Корса',
+    style: 'Финты и контратаки',
+    tagline: 'Вы видели меня там. Зря.',
+    bio: 'Звезда уличной лиги, которая выигрывает до того, как соперник поймёт, что промахнулся. Рина дразнит камеру, делает ложный шаг — и отвечает быстрее, чем гаснет вспышка.',
+    strengths: ['Скорость и уклонения', 'Контратака FALSE START', 'Сильнее после уклонения'],
+    weaknesses: ['Мало здоровья', 'Короткая дистанция', 'Нужен точный тайминг'],
+    stats: {
+      maxHp: 13600,
+      moveSpeed: 4.6,
+      armor: 0,
+      attack: {
+        weapon: 'stinger',
+        interval: 0.62,
+        damage: 50,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.04,
+        speed: 22,
+        range: 8.0,
+        radius: 0.21,
+        homing: 0,
+        falloff: 1,
+        burst: { count: 2, gap: 0.07 },
+      },
+      preferredRange: 4.0,
+      // 0.85 made her too slippery for the champion's slugs (boss sims): 0.7
+      evasion: 0.7,
+    },
+    bars: { health: 3, damage: 3, speed: 5, range: 3, control: 4 },
+    passive: 'riposte',
+    signature: 'false_start',
+    look: 'rina',
+    // tuned with headless fights (Alpha 1.5): OVERDRIVE → FALSE START is a SUPERSTAR read
+    defaultDeck: ['dash', 'shield', 'overdrive', 'false_start'],
+    startFans: 2000,
+    contract: { cost: 1800, level: 5 },
+    dashStyle: 'slide',
+    victoryStyle: 'graceful',
+    idleStyle: 'feint',
+    theme: { main: '#ff6f61', accent: '#ffe3c2', dark: '#22232a' },
+  },
 };
 
-export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega'];
+export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina'];
 
 export const RIVALS: Record<RivalId, RivalDef> = {
   dex: {
@@ -237,7 +329,8 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     deck: ['dash', 'overdrive', 'power_shot', 'knockout'],
     bio: 'Идёт напролом ради рейтинга и не даёт перевести дух. Держите дистанцию, SHIELD гасит его тараны, а промах оставляет его открытым.',
     theme: { main: '#ff2f6e', accent: '#ffd23a', dark: '#2a0814' },
-    mods: { style: 'Напор и ближний бой', hpMult: 0.85, speedMult: 1.08, fireRateMult: 1.05, idleStyle: 'bouncy', victoryStyle: 'hype' },
+    // Alpha 1.5: his own impulsive body language (render only)
+    mods: { style: 'Напор и ближний бой', hpMult: 0.85, speedMult: 1.08, fireRateMult: 1.05, idleStyle: 'brawler', victoryStyle: 'brawler' },
   },
   // Alpha 1.3.1: the first BOSS — legendary champion of the show. Fought only in
   // BOSS FIGHT (src/config/boss.config.ts drives his three phases); he is not
@@ -264,8 +357,9 @@ export const RIVALS: Record<RivalId, RivalDef> = {
       // fighters can sidestep them — chip damage is no longer near-certain at mid range.
       // Tuned with `npm run modes` (boss balance report).
       attack: { weapon: 'breaker', interval: 2.2, damage: 90, speed: 19, range: 12, radius: 0.2, falloff: 1, inaccuracy: 0.03, homing: 0, burst: { count: 3, gap: 0.11 } },
-      idleStyle: 'poise',
-      victoryStyle: 'flex',
+      // Alpha 1.5: calm, heavy champion body language (render only)
+      idleStyle: 'champion',
+      victoryStyle: 'champion',
       dashStyle: 'lunge',
     },
   },

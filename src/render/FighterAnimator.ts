@@ -1,7 +1,7 @@
 import type { MeshBasicMaterial } from 'three';
-import { GAITS, HIT_REACTION, RECOIL, type GaitProfile, type RecoilProfile } from '../config/animation';
+import { GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
 import type { CardId, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
-import { clamp, clamp01, damp, dampAngle, ease, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
+import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
 import type { FighterRig } from './FighterModel';
 import { toonUniforms } from './materials';
 
@@ -13,7 +13,7 @@ export interface AnimInput {
   facing: number;
   maxSpeed: number;
   combat: boolean;
-  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut';
+  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut' | 'feint';
   /** DIRECTOR'S CUT stage while action === 'cut'. */
   cutStage: 'prep' | 'aim' | 'lock' | 'gap' | null;
   actionCard: CardId | null;
@@ -27,6 +27,8 @@ export interface AnimInput {
   victory: boolean;
   glitch: boolean;
   overdrive: boolean;
+  /** Alpha 1.5 — FALSE START read window is open (coiled, ready to counter). */
+  reading: boolean;
 }
 
 export function defaultInput(): AnimInput {
@@ -51,6 +53,7 @@ export function defaultInput(): AnimInput {
     victory: false,
     glitch: false,
     overdrive: false,
+    reading: false,
   };
 }
 
@@ -89,22 +92,30 @@ function zeroPose(): Pose {
   return p;
 }
 
+/** Last victory routine per fighter look, so the same one never plays twice in a row. */
+const lastVictory = new Map<string, number>();
+
+/** Victory routines that begin with a full turn on the spot. */
+const SPIN_START: ReadonlySet<VictoryMove> = new Set<VictoryMove>(['peace_sign', 'hype_spin', 'grace_pirouette']);
+
 /** Callbacks the battle view uses to spawn world effects in sync with animation beats. */
 export interface AnimEvents {
   /** A heavy footfall (dust / tiny shake). */
   onStep?: (heavy: boolean) => void;
   /** KO body hits the floor. */
   onLand?: (strength: number) => void;
-  /** Victory stomp / flourish beat. */
-  onFlourish?: () => void;
+  /** Victory flourish beat: `heavy` = a stomp / slam, otherwise a sparkle. */
+  onFlourish?: (heavy: boolean) => void;
 }
 
 /**
  * Procedural animation for one fighter rig. Layered: gait-driven locomotion
- * (stride-matched so feet don't skate), idle, weapon aim pose, actions,
- * spring reactions (recoil, hits, stagger), and terminal states (KO /
- * victory). All motion is delta-time based and never feeds back into the
- * simulation.
+ * (stride-matched so feet don't skate, strafing legs, turn steps and a settle
+ * after stopping), a living idle (breathing, weight shifts, glances and a style
+ * of its own), weapon aim pose and shot flourishes, actions, spring reactions
+ * (recoil, hits, stagger), and terminal states (KO / one of three victory
+ * routines). All motion is delta-time based, allocation-free per frame and never
+ * feeds back into the simulation.
  */
 export class FighterAnimator {
   readonly rig: FighterRig;
@@ -130,6 +141,8 @@ export class FighterAnimator {
   private accZ = 0;
   private cur = zeroPose();
   private tgt = zeroPose();
+  /** Blend weight used by `to()` (victory / flair / stagger mixes). */
+  private w = 1;
 
   private recoilR: Spring;
   private recoilL: Spring;
@@ -140,6 +153,9 @@ export class FighterAnimator {
   private headRoll = new Spring(320, 14);
   private squash = new Spring(230, 12);
   private shove = new Spring(140, 12);
+  /** Alpha 1.5: the little sway when a run stops (fore-aft and sideways). */
+  private settle = new Spring(70, 7);
+  private settleSide = new Spring(70, 7);
   private flash = 0;
   private blinkT = 2;
   private blinkDur = 0;
@@ -148,6 +164,8 @@ export class FighterAnimator {
   private koYaw = 0;
   private koLanded = 0;
   private victoryT = -1;
+  private victoryMove: VictoryMove = 'hype_jump';
+  private beatN = 0;
   private dashT = -1;
   private dashYaw = 0;
   private dashLanded = false;
@@ -163,6 +181,34 @@ export class FighterAnimator {
   private flourishDone = false;
   private weaponBaseR = 0;
   private weaponBaseL = 0;
+  /** The weapon groups' own tilt from the model (the hand grip), kept under any flourish spin. */
+  private weaponTiltR = 0;
+  private weaponTiltL = 0;
+  // living idle
+  private breathRate: number;
+  private shift = 0;
+  private shiftTarget = 0;
+  private shiftT = 2 + Math.random() * 3;
+  private glance = 0;
+  private glanceTarget = 0;
+  private glanceT = 1.5 + Math.random() * 2;
+  // locomotion memory
+  private stopArmed = false;
+  private lastLX = 0;
+  private lastLZ = 1;
+  private turnPh = 0;
+  // shot flourishes
+  private shotN = 0;
+  private twirlT = -1;
+  private pumpT = -1;
+  private tapT = -1;
+  // per-frame outputs (reset at the top of update)
+  private wSpin = 0;
+  private wFlip = 0;
+  private yawAdd = 0;
+  private sx = 1;
+  private sy = 1;
+  private sz = 1;
 
   constructor(rig: FighterRig, idle: IdleStyle, dash: DashStyle, victory: VictoryStyle) {
     this.rig = rig;
@@ -175,6 +221,9 @@ export class FighterAnimator {
     this.recoilL = new Spring(this.recoil.stiffness, this.recoil.damping);
     this.weaponBaseR = rig.weaponR?.position.y ?? 0;
     this.weaponBaseL = rig.weaponL?.position.y ?? 0;
+    this.weaponTiltR = rig.weaponR?.rotation.x ?? 0;
+    this.weaponTiltL = rig.weaponL?.rotation.x ?? 0;
+    this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : 1.7;
   }
 
   reset(yaw: number): void {
@@ -184,6 +233,7 @@ export class FighterAnimator {
     this.dashT = -1;
     this.spinT = -1;
     this.staggerT = -1;
+    this.twirlT = this.pumpT = this.tapT = -1;
     this.flash = 0;
     this.flourishDone = false;
     this.yaw = yaw;
@@ -192,7 +242,8 @@ export class FighterAnimator {
     this.yawInit = true;
     this.aimW = 0;
     this.accX = this.accZ = 0;
-    for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove]) s.reset();
+    this.stopArmed = false;
+    for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide]) s.reset();
     this.cur = zeroPose();
     const rig = this.rig;
     rig.body.visible = true;
@@ -201,8 +252,14 @@ export class FighterAnimator {
     rig.body.scale.set(1, 1, 1);
     rig.body.position.set(0, 0, 0);
     rig.body.rotation.set(0, 0, 0);
-    if (rig.weaponR) rig.weaponR.position.y = this.weaponBaseR;
-    if (rig.weaponL) rig.weaponL.position.y = this.weaponBaseL;
+    if (rig.weaponR) {
+      rig.weaponR.position.y = this.weaponBaseR;
+      rig.weaponR.rotation.set(this.weaponTiltR, 0, 0);
+    }
+    if (rig.weaponL) {
+      rig.weaponL.position.y = this.weaponBaseL;
+      rig.weaponL.rotation.set(this.weaponTiltL, 0, 0);
+    }
   }
 
   // ----------------------------------------------------------- triggers
@@ -211,12 +268,18 @@ export class FighterAnimator {
     const k = heavy ? 2.4 : 1;
     if (muzzle === 1) this.recoilL.kick(r.kick * k);
     else this.recoilR.kick(r.kick * k);
-    // Two-handed weapons rock both arms.
-    if (this.rig.look.weapon !== 'twin_blasters') this.recoilL.kick(r.kick * 0.6 * k);
+    // Two-handed weapons rock both arms (Kai's trick pistol is one-handed: his free hand stays loose).
+    const w = this.rig.look.weapon;
+    if (w !== 'twin_blasters' && w !== 'ricochet') this.recoilL.kick(r.kick * (w === 'stinger' ? 0.35 : 0.6) * k);
     this.recoilBody.kick((r.spine * 60 + (heavy ? 2.5 : 0)) * k);
     if (r.shove > 0 || heavy) this.shove.kick(-(r.shove + (heavy ? 3 : 0)));
     if (heavy) this.squash.kick(-2.5);
     this.glowPulse = heavy ? 1.8 : 0.9;
+    // weapon-specific follow-through
+    this.shotN++;
+    if (w === 'ricochet' && !heavy && this.shotN % 4 === 0 && this.twirlT < 0) this.twirlT = 0; // showman spins the pistol every few shots
+    else if (w === 'boom_cannon') this.pumpT = 0; // pump the shotgun
+    else if (w === 'stinger' && !heavy) this.tapT = 0; // the second barrel of the double tap
   }
 
   hit(dx: number, dz: number, heavy: boolean): void {
@@ -251,17 +314,44 @@ export class FighterAnimator {
     if (this.koT >= 0) return;
     this.koT = 0;
     this.staggerT = -1;
+    this.victoryT = -1;
     // Fall backward along the finishing blow.
     const l = Math.hypot(this.lastHitX, this.lastHitZ);
     this.koYaw = l > 0.01 ? Math.atan2(-this.lastHitX / l, -this.lastHitZ / l) : this.yaw;
   }
 
-  victory(): void {
-    if (this.victoryT < 0) {
-      this.victoryT = 0;
-      this.flourishDone = false;
-      if (this.victoryStyle === 'peace') this.spinT = 0;
+  /**
+   * Start a victory routine: one of the three of this fighter's style, at random and
+   * never the previous one again (`variant` forces one, for previews and tests).
+   */
+  victory(variant?: number): void {
+    if (this.victoryT >= 0 || this.koT >= 0) return;
+    const set = VICTORY_SETS[this.victoryStyle];
+    const key = this.rig.look.id;
+    let i: number;
+    if (variant !== undefined) i = ((Math.floor(variant) % set.length) + set.length) % set.length;
+    else {
+      i = Math.floor(Math.random() * set.length);
+      const last = lastVictory.get(key);
+      if (set.length > 1 && i === last) i = (i + 1 + Math.floor(Math.random() * (set.length - 1))) % set.length;
     }
+    lastVictory.set(key, i);
+    this.victoryMove = set[i];
+    this.victoryT = 0;
+    this.flourishDone = false;
+    this.beatN = 0;
+    this.spinT = SPIN_START.has(this.victoryMove) ? 0 : -1;
+  }
+
+  /** Ease out of a victory routine back into the idle (menu showcase), without a pose pop. */
+  endVictory(): void {
+    this.victoryT = -1;
+    this.spinT = -1;
+  }
+
+  /** The routine playing now (null when not celebrating). */
+  get victoryRoutine(): VictoryMove | null {
+    return this.victoryT >= 0 ? this.victoryMove : null;
   }
 
   // ------------------------------------------------------------- update
@@ -272,6 +362,11 @@ export class FighterAnimator {
     const t = this.t;
     const P = this.tgt;
     for (const k of POSE_KEYS) P[k] = 0;
+    this.wSpin = 0;
+    this.wFlip = 0;
+    this.yawAdd = 0;
+    this.sx = this.sy = this.sz = 1;
+    const terminal = this.koT >= 0 || this.victoryT >= 0;
 
     rig.root.position.set(inp.x, 0, inp.z);
 
@@ -306,14 +401,12 @@ export class FighterAnimator {
     this.yaw = dampAngle(this.yaw, yawTarget, yawRate, dt);
     if (dt > 1e-5) this.yawRate = damp(this.yawRate, clamp(wrapAngle(this.yaw - this.prevYaw) / dt, -12, 12), 10, dt);
     this.prevYaw = this.yaw;
-    let yawOut = this.yaw;
     if (this.spinT >= 0) {
       this.spinT += dt;
       const sp = clamp01(this.spinT / 0.7);
-      yawOut += ease.outCubic(sp) * TAU;
+      this.yawAdd += ease.outCubic(sp) * TAU;
       if (sp >= 1) this.spinT = -1;
     }
-    rig.root.rotation.y = yawOut;
 
     // ------------------------------------------------- local kinematics
     const sy = Math.sin(-this.yaw);
@@ -334,6 +427,7 @@ export class FighterAnimator {
     const A = Math.pow(sN, 0.85);
     let legDir = 1;
     let hipOff = 0;
+    let resid = 0;
     let lx = 0;
     let lz = 0;
     if (speed > 0.15) {
@@ -342,10 +436,15 @@ export class FighterAnimator {
       const a = Math.atan2(lx, lz);
       if (Math.abs(a) <= 1.95) {
         hipOff = clamp(a, -0.85, 0.85);
+        resid = a - hipOff;
       } else {
-        hipOff = clamp(wrapAngle(a + Math.PI), -0.85, 0.85);
+        const b = wrapAngle(a + Math.PI);
+        hipOff = clamp(b, -0.85, 0.85);
+        resid = b - hipOff;
         legDir = -1;
       }
+      this.lastLX = lx;
+      this.lastLZ = lz;
     }
     // Stride-matched cadence: one full cycle per strideLength of travel.
     const cadenceBoost = inp.overdrive ? 1.08 : 1;
@@ -353,11 +452,17 @@ export class FighterAnimator {
     const ph = this.phase;
     const sinP = Math.sin(ph);
     const swing = G.legSwing * A;
+    // The hips turn toward the travel direction (up to ~50°); whatever is left over
+    // (strafing) swings the legs sideways, so the feet follow the ground instead of skating.
+    const fwdK = Math.cos(resid);
+    const sideK = Math.sin(resid) * 0.85;
     P.hipsRY = hipOff * sN;
     P.spineRY = -hipOff * sN * 0.85;
     P.headRY = -hipOff * sN * 0.12;
-    P.legLX = -sinP * swing;
-    P.legRX = sinP * swing;
+    P.legLX = -sinP * swing * fwdK;
+    P.legRX = sinP * swing * fwdK;
+    P.legLZ = sinP * swing * sideK;
+    P.legRZ = -sinP * swing * sideK;
     P.kneeL = Math.max(0, Math.cos(ph) * legDir) * G.kneeLift * A + 0.06 * A;
     P.kneeR = Math.max(0, -Math.cos(ph) * legDir) * G.kneeLift * A + 0.06 * A;
     // Highest at mid-stance (legs passing), lowest at double support.
@@ -404,17 +509,77 @@ export class FighterAnimator {
       P.shRX = -0.25 - sinP * A * 0.2;
       P.shRZ = -0.08;
       P.elR = -0.95;
+    } else if (rig.look.weapon === 'ricochet') {
+      // the long trick pistol carried muzzle-up at the shoulder, showman style
+      P.shRX = -0.45 + sinP * A * 0.12;
+      P.shRZ = 0.12;
+      P.elR = -1.75;
+      P.shLX = sinP * A * 0.6;
+      P.shLZ = 0.16;
+      P.elL = -0.35 - A * 0.4;
+    } else if (rig.look.weapon === 'stinger') {
+      // compact blaster carried close at the chest, the free hand near the wrist
+      P.shRX = -0.55 + sinP * A * 0.1;
+      P.shRZ = 0.2;
+      P.elR = -1.35;
+      P.shLX = -0.6 - sinP * A * 0.1;
+      P.shLZ = -0.3;
+      P.elL = -1.3;
     }
+    // Shoulders counter-rotate against the stride (applied after the aim pose).
+    const twist = sinP * A * 0.09 * fwdK;
     // Foot contact beats
     const contact = Math.abs(sinP);
     if (A > 0.35 && contact > 0.97 && this.t - this.lastContact > 0.18) {
       this.lastContact = this.t;
-      if (this.idleStyle === 'heavy') this.events.onStep?.(true);
+      if (this.idleStyle === 'heavy' || this.idleStyle === 'champion') this.events.onStep?.(true);
       this.squash.kick(G.contactSquash * 30 * A);
+    }
+    // A run that stops settles with a small sway instead of freezing on the spot.
+    if (this.speedN > 0.6) this.stopArmed = true;
+    else if (this.stopArmed && this.speedN < 0.25) {
+      this.stopArmed = false;
+      if (!terminal) {
+        const k = G.lean / 0.16;
+        this.settle.kick(this.lastLZ * 0.55 * k);
+        this.settleSide.kick(-this.lastLX * 0.4 * k);
+      }
+    }
+    // Turning on the spot: small stepping feet, the hips lag behind the shoulders.
+    const turnW = terminal ? 0 : clamp01((Math.abs(this.yawRate) - 1.2) / 4) * (1 - Math.min(1, sN * 2.5));
+    if (turnW > 0.01) {
+      this.turnPh += Math.abs(this.yawRate) * dt * 2.2;
+      const s1 = Math.max(0, Math.sin(this.turnPh));
+      const s2 = Math.max(0, -Math.sin(this.turnPh));
+      P.kneeL += s1 * 0.55 * turnW;
+      P.legLX -= s1 * 0.18 * turnW;
+      P.kneeR += s2 * 0.55 * turnW;
+      P.legRX -= s2 * 0.18 * turnW;
+      P.hipsRY -= clamp(this.yawRate * 0.035, -0.25, 0.25) * turnW;
+      P.bodyY += (s1 + s2) * 0.015 * turnW;
     }
 
     // ----------------------------------------------------------- idle
-    const idleW = 1 - Math.min(1, sN * 3);
+    // living idle state keeps running so it never pops when the fighter stops
+    this.shiftT -= dt;
+    if (this.shiftT <= 0) {
+      this.shiftTarget = this.shiftTarget > 0 ? -(0.4 + Math.random() * 0.6) : 0.4 + Math.random() * 0.6;
+      this.shiftT = 3.5 + Math.random() * 4;
+    }
+    this.shift = damp(this.shift, this.shiftTarget, 1.6, dt);
+    this.glanceT -= dt;
+    if (this.glanceT <= 0) {
+      if (this.glanceTarget !== 0) {
+        this.glanceTarget = 0;
+        this.glanceT = 1.8 + Math.random() * 3;
+      } else {
+        // in a fight the eyes stay on the opponent: only a quick, small check
+        this.glanceTarget = (Math.random() * 2 - 1) * (inp.combat ? 0.12 : 0.42);
+        this.glanceT = inp.combat ? 0.35 + Math.random() * 0.3 : 0.7 + Math.random() * 0.8;
+      }
+    }
+    this.glance = damp(this.glance, this.glanceTarget, 5, dt);
+    const idleW = terminal || inp.ko ? 0 : 1 - Math.min(1, sN * 3);
     if (idleW > 0) {
       switch (this.idleStyle) {
         case 'bouncy': {
@@ -473,8 +638,83 @@ export class FighterAnimator {
           P.legRX -= Math.max(0, -sw) * 0.09 * idleW;
           break;
         }
+        case 'showman': {
+          // Kai: cocky — weight on the back leg, the head nodding to the show's beat
+          const beat = Math.sin(t * 4.4);
+          P.hipsRZ -= 0.05 * idleW;
+          P.bodyX -= 0.02 * idleW;
+          P.spineRZ += 0.05 * idleW;
+          P.kneeL += 0.2 * idleW;
+          P.legLX -= 0.12 * idleW;
+          P.kneeR += 0.05 * idleW;
+          P.headRX += beat * 0.035 * idleW;
+          P.headRZ += 0.04 * idleW;
+          P.spineRY += Math.sin(t * 2.2) * 0.04 * idleW;
+          P.shLZ += 0.06 * idleW;
+          break;
+        }
+        case 'feint': {
+          // Rina: light on the balls of the feet, small shuffles from side to side
+          const sh = Math.sin(t * 3.4);
+          const b = 0.5 + 0.5 * Math.sin(t * 6.8);
+          P.bodyX += sh * 0.035 * idleW;
+          P.bodyY += (b * 0.02 - 0.03) * idleW;
+          P.kneeL += (0.3 + Math.max(0, sh) * 0.12) * idleW;
+          P.kneeR += (0.3 + Math.max(0, -sh) * 0.12) * idleW;
+          P.legLX -= 0.14 * idleW;
+          P.legRX -= 0.14 * idleW;
+          P.legLZ += 0.06 * idleW;
+          P.legRZ -= 0.06 * idleW;
+          P.spineRX += 0.08 * idleW;
+          P.hipsRZ += sh * 0.04 * idleW;
+          P.headRY += Math.sin(t * 1.7) * 0.06 * idleW;
+          break;
+        }
+        case 'brawler': {
+          // Crash: restless — bouncing weight, rolling shoulders, a twitchy head
+          const b = Math.abs(Math.sin(t * 5));
+          const roll = Math.sin(t * 2.6);
+          P.bodyY += (b * 0.03 - 0.03) * idleW;
+          P.kneeL += (0.28 + b * 0.08) * idleW;
+          P.kneeR += (0.28 + b * 0.08) * idleW;
+          P.legLZ += 0.12 * idleW;
+          P.legRZ -= 0.12 * idleW;
+          P.legLX -= 0.1 * idleW;
+          P.legRX -= 0.1 * idleW;
+          P.spineRX += 0.12 * idleW;
+          P.shLZ += roll * 0.08 * idleW;
+          P.shRZ += roll * 0.08 * idleW;
+          P.spineRY += roll * 0.06 * idleW;
+          P.headRZ += (Math.floor(t * 1.3) % 3 === 0 ? 0.08 : 0) * idleW;
+          break;
+        }
+        case 'champion': {
+          // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
+          const br = Math.sin(t * 1.05);
+          P.spineRX += (-0.05 + br * 0.02) * idleW;
+          P.headRX -= 0.06 * idleW;
+          P.legLZ += 0.09 * idleW;
+          P.legRZ -= 0.09 * idleW;
+          P.kneeL += 0.08 * idleW;
+          P.kneeR += 0.08 * idleW;
+          P.shLZ += (0.04 + br * 0.02) * idleW;
+          P.shRZ -= (0.04 + br * 0.02) * idleW;
+          break;
+        }
       }
-      P.spineRX += Math.sin(t * 2.3) * 0.016 * idleW;
+      // every fighter: breathing (chest and shoulders rise), weight shifts, glances
+      const br = Math.sin(t * this.breathRate);
+      P.spineRX += (Math.sin(t * 2.3) * 0.016 - br * 0.012) * idleW;
+      P.shLZ += br * 0.015 * idleW;
+      P.shRZ -= br * 0.015 * idleW;
+      P.bodyY += br * 0.004 * idleW;
+      const sh = this.idleStyle === 'champion' ? this.shift * 0.5 : this.shift;
+      P.hipsRZ += sh * 0.045 * idleW;
+      P.bodyX += sh * 0.018 * idleW;
+      P.kneeL += Math.max(0, -sh) * 0.12 * idleW;
+      P.kneeR += Math.max(0, sh) * 0.12 * idleW;
+      P.headRY += this.glance * idleW;
+      P.spineRY += this.glance * 0.15 * idleW;
     }
 
     // ------------------------------------------------------ aim pose
@@ -482,64 +722,114 @@ export class FighterAnimator {
     this.aimW = damp(this.aimW, aiming ? 1 : 0, 10, dt);
     const aw = this.aimW;
     if (aw > 0.001) {
-      const lerpP = (k: PoseKey, v: number) => {
-        P[k] = P[k] + (v - P[k]) * aw;
-      };
+      this.w = aw;
       // breathing / step bob of the aimed arms keeps the stance alive
       const bob = Math.sin(ph * 2) * G.armBob * A + Math.sin(t * 2.1) * 0.02 * (1 - A);
       switch (rig.look.weapon) {
         case 'twin_blasters':
-          lerpP('shRX', -1.42 + bob);
-          lerpP('shRZ', 0.16);
-          lerpP('elR', -0.22);
-          lerpP('shLX', -1.42 - bob);
-          lerpP('shLZ', -0.16);
-          lerpP('elL', -0.22);
+          this.to('shRX', -1.42 + bob);
+          this.to('shRZ', 0.16);
+          this.to('elR', -0.22);
+          this.to('shLX', -1.42 - bob);
+          this.to('shLZ', -0.16);
+          this.to('elL', -0.22);
           break;
         case 'boom_cannon':
-          lerpP('shRX', -0.45 + bob * 0.5);
-          lerpP('shRZ', -0.05);
-          lerpP('elR', -1.12);
-          lerpP('shLX', -0.95 + bob * 0.5);
-          lerpP('shLZ', -0.5);
-          lerpP('elL', -1.05);
+          this.to('shRX', -0.45 + bob * 0.5);
+          this.to('shRZ', -0.05);
+          this.to('elR', -1.12);
+          this.to('shLX', -0.95 + bob * 0.5);
+          this.to('shLZ', -0.5);
+          this.to('elL', -1.05);
           P.spineRY += 0.12 * aw;
           break;
         case 'pulse_rifle':
           // shouldered marksman stance: rifle along the line of sight, cheek on the stock
-          lerpP('shRX', -0.86 + bob * 0.35);
-          lerpP('shRZ', 0.3);
-          lerpP('elR', -0.82);
-          lerpP('shLX', -1.36 + bob * 0.35);
-          lerpP('shLZ', -0.36);
-          lerpP('elL', -0.4);
+          this.to('shRX', -0.86 + bob * 0.35);
+          this.to('shRZ', 0.3);
+          this.to('elR', -0.82);
+          this.to('shLX', -1.36 + bob * 0.35);
+          this.to('shLZ', -0.36);
+          this.to('elL', -0.4);
           P.spineRY += -0.08 * aw;
           P.headRX += 0.07 * aw;
           P.headRZ -= 0.06 * aw;
           break;
         case 'breaker':
           // heavy chest-level hold: wide planted stance, both hands on the rifle, braced forward
-          lerpP('shRX', -0.6 + bob * 0.3);
-          lerpP('shRZ', 0.26);
-          lerpP('elR', -0.98);
-          lerpP('shLX', -1.18 + bob * 0.3);
-          lerpP('shLZ', -0.46);
-          lerpP('elL', -0.52);
+          this.to('shRX', -0.6 + bob * 0.3);
+          this.to('shRZ', 0.26);
+          this.to('elR', -0.98);
+          this.to('shLX', -1.18 + bob * 0.3);
+          this.to('shLZ', -0.46);
+          this.to('elL', -0.52);
           P.spineRY += -0.1 * aw;
           P.spineRX += 0.05 * aw;
           P.legLZ += 0.05 * aw;
           P.legRZ -= 0.05 * aw;
           break;
+        case 'ricochet':
+          // bladed showman stance: gun arm out straight, the free hand loose at the hip
+          this.to('shRX', -1.42 + bob);
+          this.to('shRZ', 0.12);
+          this.to('elR', -0.18);
+          this.to('shLX', -0.15 - bob * 0.3);
+          this.to('shLZ', 0.5);
+          this.to('elL', -1.15);
+          P.spineRY += -0.16 * aw;
+          P.headRY += 0.1 * aw;
+          break;
+        case 'stinger':
+          // compact two-hand hold close to the face: low, coiled, ready to step
+          this.to('shRX', -1.22 + bob * 0.5);
+          this.to('shRZ', 0.24);
+          this.to('elR', -0.55);
+          this.to('shLX', -1.28 + bob * 0.5);
+          this.to('shLZ', -0.3);
+          this.to('elL', -0.66);
+          P.spineRX += 0.05 * aw;
+          P.kneeL += 0.12 * aw;
+          P.kneeR += 0.12 * aw;
+          break;
         case 'tech_carbine':
-          lerpP('shRX', -0.78 + bob * 0.5);
-          lerpP('shRZ', 0.3);
-          lerpP('elR', -0.92);
-          lerpP('shLX', -1.28 + bob * 0.5);
-          lerpP('shLZ', -0.42);
-          lerpP('elL', -0.5);
+          this.to('shRX', -0.78 + bob * 0.5);
+          this.to('shRZ', 0.3);
+          this.to('elR', -0.92);
+          this.to('shLX', -1.28 + bob * 0.5);
+          this.to('shLZ', -0.42);
+          this.to('elL', -0.5);
           P.spineRY += -0.06 * aw;
           P.headRX += 0.05 * aw;
           break;
+      }
+    }
+    P.spineRY += twist * (1 - 0.6 * aw);
+
+    // ------------------------------------------------ shot flourishes
+    if (this.pumpT >= 0) {
+      // BOOM CANNON: the support hand racks the pump right after the blast
+      this.pumpT += dt;
+      const p = (this.pumpT - 0.08) / 0.3;
+      if (p >= 1) this.pumpT = -1;
+      else if (p > 0) {
+        const s = Math.sin(p * Math.PI);
+        P.elL += 0.55 * s * aw;
+        P.shLX += 0.22 * s * aw;
+      }
+    }
+    if (this.twirlT >= 0) {
+      // RICOCHET: a quick spin of the pistol around the trigger finger
+      this.twirlT += dt;
+      const p = this.twirlT / 0.42;
+      if (p >= 1) this.twirlT = -1;
+      else this.wFlip = ease.inOutCubic(p) * TAU;
+    }
+    if (this.tapT >= 0) {
+      // STINGER: the second barrel of the double tap
+      this.tapT += dt;
+      if (this.tapT > 0.07) {
+        this.recoilR.kick(this.recoil.kick * 0.45);
+        this.tapT = -1;
       }
     }
 
@@ -566,6 +856,39 @@ export class FighterAnimator {
         P.spineRY += 0.2 * crouch;
         P.shRX -= 0.15 * crouch;
         P.headRX -= 0.08 * crouch;
+        // every weapon charges its own way
+        switch (rig.look.weapon) {
+          case 'twin_blasters':
+            // both blasters brought together onto the line
+            P.shLZ -= 0.12 * crouch;
+            P.shRZ += 0.12 * crouch;
+            P.rollRX += 0.06 * crouch;
+            break;
+          case 'boom_cannon':
+            // braced: feet wide, chest over the barrel
+            P.legLZ += 0.12 * crouch;
+            P.legRZ -= 0.12 * crouch;
+            P.spineRX += 0.18 * crouch;
+            break;
+          case 'ricochet':
+            // BANK SHOT: bladed side-on, the eyes on the barrier, the free arm out for balance
+            P.spineRY -= 0.45 * crouch;
+            P.headRY += 0.25 * crouch;
+            P.shLZ += 0.6 * crouch;
+            P.elL -= 0.3 * crouch;
+            break;
+          case 'stinger':
+            P.kneeL += 0.15 * crouch;
+            P.kneeR += 0.15 * crouch;
+            P.spineRX += 0.2 * crouch;
+            break;
+          case 'pulse_rifle':
+          case 'tech_carbine':
+            // cheek tight to the stock
+            P.headRX += 0.12 * crouch;
+            P.headRZ -= 0.05 * crouch;
+            break;
+        }
       }
       const sh = p * 0.035;
       P.spineRZ += Math.sin(t * 60) * sh;
@@ -643,6 +966,29 @@ export class FighterAnimator {
       P.shRX = -0.5 - Math.sin(t * 20) * 0.5;
       P.shLZ = 0.8;
       P.shRZ = -0.8;
+    } else if (inp.action === 'feint') {
+      // FALSE START: a sharp shimmy to one side — low, twisted, the blaster kept up
+      const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
+      const k = Math.sin(p * Math.PI);
+      const side = inp.dashX * cy + inp.dashZ * sy >= 0 ? 1 : -1;
+      P.rollRZ += -side * 0.32 * k;
+      P.spineRY += side * 0.3 * k;
+      P.spineRX += 0.16 * k;
+      P.kneeL += 0.45 * k;
+      P.kneeR += 0.45 * k;
+      P.legLZ += 0.22 * k;
+      P.legRZ -= 0.22 * k;
+      P.bodyY -= 0.1 * k;
+      P.headRZ += side * 0.12 * k;
+    }
+    if (inp.reading && inp.action === 'none' && !terminal) {
+      // FALSE START read window: coiled, waiting for the attack to answer it
+      P.kneeL += 0.22;
+      P.kneeR += 0.22;
+      P.spineRX += 0.1;
+      P.bodyY -= 0.04;
+      P.headRX += 0.04;
+      this.glowPulse = Math.max(this.glowPulse, 0.5 + Math.sin(t * 20) * 0.2);
     }
 
     // ------------------------------------------------------------ dash
@@ -653,7 +999,7 @@ export class FighterAnimator {
     rig.body.visible = true;
     if (this.dashT >= 0) {
       this.dashT += dt;
-      const dur = this.dashStyle === 'roll' ? 0.32 : 0.3;
+      const dur = this.dashStyle === 'roll' ? 0.32 : this.dashStyle === 'slide' ? 0.34 : 0.3;
       const p = clamp01(this.dashT / dur);
       if (this.dashStyle === 'roll') {
         // anticipation stretch → tight tuck roll → landing squash
@@ -682,6 +1028,44 @@ export class FighterAnimator {
         P.bodyY = -0.05 * k;
         bodyScaleZ = 1 + 0.2 * k;
         bodyScaleX = 1 - 0.07 * k;
+      } else if (this.dashStyle === 'spin') {
+        // Kai: a showman's pirouette dash — one full turn, legs crossing, the pistol up
+        this.yawAdd += ease.inOutCubic(smoothstep(0.05, 0.95, p)) * TAU;
+        const k = Math.sin(p * Math.PI);
+        P.shRX = -2.2 * k + P.shRX * (1 - k);
+        P.shRZ = 0.1;
+        P.elR = -0.8;
+        P.shLX = -0.4;
+        P.shLZ = 0.2 - 0.4 * k;
+        P.elL = -1.6 * k;
+        P.kneeL = 0.35 + 0.5 * k;
+        P.kneeR = 0.35;
+        P.legLX = -0.3 * k;
+        P.legRX = 0.25 * k;
+        P.legLZ = -0.15 * k;
+        P.rollRX = 0.2 * k;
+        P.bodyY = 0.05 * k;
+        bodyScaleY = 1 + 0.05 * k;
+      } else if (this.dashStyle === 'slide') {
+        // Rina: a low slide along the floor — the leading leg out straight, the blaster still up
+        const k = smoothstep(0, 0.2, p) * (1 - smoothstep(0.75, 1, p));
+        P.bodyY = -0.3 * k;
+        P.rollRX = -0.3 * k;
+        P.legLX = -1.3 * k;
+        P.kneeL = 0.1 * k;
+        P.legRX = 0.3 * k;
+        P.kneeR = 1.7 * k;
+        P.legLZ = 0;
+        P.legRZ = 0;
+        P.spineRX = 0.15 * k;
+        P.headRX = 0.12 * k;
+        P.shRX = -1.3;
+        P.shRZ = 0.2;
+        P.elR = -0.5;
+        P.shLX = 0.3 * k;
+        P.shLZ = 0.7 * k;
+        P.elL = -0.3;
+        P.hipsRY = 0.35 * k;
       } else {
         // blink: glitch-teleport flicker
         const k = Math.sin(p * Math.PI);
@@ -694,6 +1078,7 @@ export class FighterAnimator {
           this.dashLanded = true;
           this.squash.kick(this.dashStyle === 'lunge' ? 6 : 4);
           if (this.dashStyle === 'lunge') this.events.onStep?.(true);
+          else if (this.dashStyle === 'slide' || this.dashStyle === 'spin') this.events.onStep?.(false);
         }
         this.dashT = -1;
       }
@@ -706,24 +1091,21 @@ export class FighterAnimator {
       if (st >= 1) this.staggerT = -1;
       else {
         // fast rise, eased recovery
-        const w = st < 0.15 ? st / 0.15 : 1 - ease.inOutCubic((st - 0.15) / 0.85);
+        this.w = st < 0.15 ? st / 0.15 : 1 - ease.inOutCubic((st - 0.15) / 0.85);
         const sd = this.staggerSide;
-        const mix = (k: PoseKey, v: number) => {
-          P[k] = P[k] + (v - P[k]) * w;
-        };
-        mix('spineRX', -0.38);
-        mix('headRX', -0.3);
-        mix('rollRX', -0.22);
-        mix('rollRZ', 0.12 * sd);
-        mix('shLX', -0.9);
-        mix('shRX', -0.9);
-        mix('shLZ', 0.95);
-        mix('shRZ', -0.95);
-        mix('legRX', 0.45);
-        mix('kneeR', 0.35);
-        mix('legLX', -0.2);
-        mix('kneeL', 0.25);
-        P.bodyY -= 0.04 * w;
+        this.to('spineRX', -0.38);
+        this.to('headRX', -0.3);
+        this.to('rollRX', -0.22);
+        this.to('rollRZ', 0.12 * sd);
+        this.to('shLX', -0.9);
+        this.to('shRX', -0.9);
+        this.to('shLZ', 0.95);
+        this.to('shRZ', -0.95);
+        this.to('legRX', 0.45);
+        this.to('kneeR', 0.35);
+        this.to('legLX', -0.2);
+        this.to('kneeL', 0.25);
+        P.bodyY -= 0.04 * this.w;
       }
     }
 
@@ -813,12 +1195,17 @@ export class FighterAnimator {
       P.elR = -0.25;
       P.legLX = kt < 0.38 ? -1.0 : -0.45;
       P.legRX = kt < 0.38 ? -0.6 : -0.15;
+      P.legLZ = 0;
+      P.legRZ = 0;
       P.kneeL = 0.55;
       P.kneeR = 0.2;
       P.headRX = kt < 0.38 ? -0.5 : -0.3;
+      P.headRY = 0;
       P.headRZ = 0.25;
       P.spineRX = -0.1;
+      P.spineRZ = 0;
       P.hipsRY = 0;
+      P.hipsRZ = 0;
       P.spineRY = 0;
       P.rollRX = 0;
       P.rollRZ = 0;
@@ -829,81 +1216,15 @@ export class FighterAnimator {
     }
 
     // --------------------------------------------------------- victory
-    let weaponSpin = 0;
     if (this.victoryT >= 0) {
       this.victoryT += dt;
-      const vt = this.victoryT;
-      const k = clamp01(vt / 0.35);
-      const vk = (key: PoseKey, v: number) => {
-        P[key] = P[key] + (v - P[key]) * k;
-      };
-      switch (this.victoryStyle) {
-        case 'hype': {
-          const j = Math.max(0, Math.sin(vt * 7));
-          P.bodyY += j * 0.34 * k;
-          vk('shRX', -2.85);
-          vk('shRZ', -0.15);
-          vk('elR', -0.4 - j * 0.5);
-          vk('shLX', -0.4);
-          vk('shLZ', 0.5);
-          vk('elL', -1.6);
-          vk('kneeL', 0.3 + j * 0.65);
-          vk('kneeR', 0.3 + j * 0.65);
-          vk('legLX', -0.2 - j * 0.32);
-          vk('legRX', -0.2 - j * 0.32);
-          vk('headRX', -0.18);
-          vk('spineRX', -0.08);
-          // pistol twirl while airborne
-          weaponSpin = j > 0.2 ? (vt * 18) % TAU : 0;
-          break;
-        }
-        case 'flex': {
-          const pulse = Math.max(0, Math.sin(vt * 4));
-          vk('shLX', -0.15);
-          vk('shRX', -0.15);
-          vk('shLZ', 1.45 + pulse * 0.1);
-          vk('shRZ', -1.45 - pulse * 0.1);
-          vk('elL', -2.1 - pulse * 0.2);
-          vk('elR', -2.1 - pulse * 0.2);
-          vk('spineRX', -0.12 - pulse * 0.05);
-          vk('headRX', -0.2);
-          vk('legLZ', 0.18);
-          vk('legRZ', -0.18);
-          vk('kneeL', 0.3);
-          vk('kneeR', 0.3);
-          bodyScaleX = 1 + pulse * 0.04;
-          if (!this.flourishDone && vt > 0.32) {
-            this.flourishDone = true;
-            this.squash.kick(6);
-            this.events.onFlourish?.();
-          }
-          break;
-        }
-        case 'peace': {
-          const sw = Math.sin(vt * 3);
-          vk('shRX', -2.5);
-          vk('shRZ', -0.35);
-          vk('elR', -1.9);
-          vk('shLX', 0.1);
-          vk('shLZ', 0.7);
-          vk('elL', -1.7);
-          vk('kneeL', 1.1);
-          vk('legLX', 0.15);
-          vk('headRZ', 0.22 + sw * 0.05);
-          vk('hipsRZ', sw * 0.1);
-          vk('spineRZ', -sw * 0.08);
-          if (!this.flourishDone && vt > 0.72) {
-            this.flourishDone = true;
-            this.events.onFlourish?.();
-          }
-          break;
-        }
-      }
-      this.mouthT = Math.max(this.mouthT, Math.sin(vt * 2) > 0.6 ? 0.1 : 0);
+      this.w = clamp01(this.victoryT / 0.35);
+      this.victoryPose(this.victoryT);
+      this.mouthT = Math.max(this.mouthT, Math.sin(this.victoryT * 2) > 0.6 ? 0.1 : 0);
     }
 
     // -------------------------------------------- showcase flair (menu)
-    if (!inp.combat && this.victoryT < 0 && this.koT < 0) {
+    if (!inp.combat && !terminal) {
       this.flairT -= dt;
       if (this.flairT <= 0 && this.flair <= 0) {
         this.flair = 1.6;
@@ -911,31 +1232,9 @@ export class FighterAnimator {
       }
       if (this.flair > 0) {
         this.flair -= dt;
-        const f = Math.sin(clamp01(1 - this.flair / 1.6) * Math.PI);
-        const fk = (key: PoseKey, v: number) => {
-          P[key] = P[key] + (v - P[key]) * f;
-        };
-        switch (this.victoryStyle) {
-          case 'hype':
-            fk('shRX', -1.5);
-            fk('shRZ', 0.3);
-            fk('elR', -0.3);
-            fk('headRZ', 0.15);
-            weaponSpin = f > 0.3 ? (this.t * 16) % TAU : 0;
-            break;
-          case 'flex':
-            fk('shLZ', 1.4);
-            fk('elL', -2.0);
-            fk('shLX', -0.2);
-            fk('headRX', -0.1);
-            break;
-          case 'peace':
-            fk('shRX', -2.4);
-            fk('shRZ', -0.3);
-            fk('elR', -1.8);
-            fk('headRZ', 0.2);
-            break;
-        }
+        const fp = clamp01(1 - this.flair / 1.6);
+        this.w = Math.sin(fp * Math.PI);
+        this.flairPose(fp);
       }
     }
 
@@ -956,13 +1255,16 @@ export class FighterAnimator {
     const hrl = this.headRoll.update(dt);
     const sq = this.squash.update(dt);
     const sv = this.shove.update(dt);
+    const st = this.settle.update(dt);
+    const ss = this.settleSide.update(dt);
 
+    rig.root.rotation.y = this.yaw + this.yawAdd;
     rig.body.position.set(C.bodyX, C.bodyY + koLift, koSlide + sv * 0.035);
     rig.body.rotation.x = -koFall;
-    rig.roll.rotation.set(C.rollRX + rollSpin - rb * 0.012, 0, C.rollRZ);
+    rig.roll.rotation.set(C.rollRX + rollSpin - rb * 0.012 + st, 0, C.rollRZ + ss);
     rig.hips.rotation.set(0, C.hipsRY, C.hipsRZ);
-    rig.spine.rotation.set(C.spineRX + hp * 0.06 - rb * 0.02 - (rR + rL) * 0.004, C.spineRY + (rR - rL) * 0.01, C.spineRZ + hr * 0.05);
-    rig.head.rotation.set(C.headRX + hp * 0.05 + hs * 0.06, C.headRY, C.headRZ + hr * 0.04 + hrl * 0.05);
+    rig.spine.rotation.set(C.spineRX + hp * 0.06 - rb * 0.02 - (rR + rL) * 0.004 + st * 0.5, C.spineRY + (rR - rL) * 0.01, C.spineRZ + hr * 0.05);
+    rig.head.rotation.set(C.headRX + hp * 0.05 + hs * 0.06 - st * 0.6, C.headRY, C.headRZ + hr * 0.04 + hrl * 0.05);
     rig.shoulderL.rotation.set(C.shLX - rL * 0.05, 0, C.shLZ);
     rig.shoulderR.rotation.set(C.shRX - rR * 0.05, 0, C.shRZ);
     rig.elbowL.rotation.set(C.elL - rL * 0.06, 0, 0);
@@ -971,18 +1273,19 @@ export class FighterAnimator {
     rig.legR.rotation.set(C.legRX, 0, C.legRZ);
     rig.kneeL.rotation.set(C.kneeL, 0, 0);
     rig.kneeR.rotation.set(C.kneeR, 0, 0);
-    // weapon slides back along its barrel on each shot (+y is "back" in forearm space)
+    // weapon slides back along its barrel on each shot (+y is "back" in forearm space);
+    // wSpin rolls it around the barrel, wFlip spins it around the hand (revolver twirl)
     const slide = this.recoil.slide;
     if (rig.weaponR) {
       rig.weaponR.position.y = this.weaponBaseR + clamp(rR * 0.012, -0.05, 0.2) * slide * 10;
-      rig.weaponR.rotation.y = weaponSpin;
+      rig.weaponR.rotation.set(this.weaponTiltR + this.wFlip, this.wSpin, 0);
     }
     if (rig.weaponL) {
       rig.weaponL.position.y = this.weaponBaseL + clamp(rL * 0.012, -0.05, 0.2) * slide * 10;
-      rig.weaponL.rotation.y = weaponSpin ? -weaponSpin : 0;
+      rig.weaponL.rotation.set(this.weaponTiltL, -this.wSpin, 0);
     }
     const sqk = clamp(sq * 0.012, -0.12, 0.18);
-    rig.body.scale.set(bodyScaleX * (1 + sqk * 0.5), bodyScaleY * (1 - sqk), bodyScaleZ * (1 + sqk * 0.5));
+    rig.body.scale.set(bodyScaleX * this.sx * (1 + sqk * 0.5), bodyScaleY * this.sy * (1 - sqk), bodyScaleZ * this.sz * (1 + sqk * 0.5));
 
     // ---------------------------------------------------------- face
     this.blinkT -= dt;
@@ -1016,6 +1319,619 @@ export class FighterAnimator {
     }
     if (!rig.holo) {
       (rig.glowMat as MeshBasicMaterial).color.setScalar(1 + this.glowPulse);
+    }
+  }
+
+  /** Blend one pose key toward `v` by the current mix weight `this.w` (no per-frame closures). */
+  private to(key: PoseKey, v: number): void {
+    const P = this.tgt;
+    P[key] += (v - P[key]) * this.w;
+  }
+
+  /** One flourish beat per routine (sparkle, or a stomp / slam when `heavy`). */
+  private flourish(vt: number, at: number, heavy: boolean): void {
+    if (this.flourishDone || vt < at) return;
+    this.flourishDone = true;
+    if (heavy) this.squash.kick(6);
+    this.events.onFlourish?.(heavy);
+  }
+
+  // ---------------------------------------------------- victory routines
+  private victoryPose(vt: number): void {
+    const P = this.tgt;
+    const k = this.w;
+    switch (this.victoryMove) {
+      // ---- Ray
+      case 'hype_jump': {
+        const j = Math.max(0, Math.sin(vt * 7));
+        P.bodyY += j * 0.34 * k;
+        this.to('shRX', -2.85);
+        this.to('shRZ', -0.15);
+        this.to('elR', -0.4 - j * 0.5);
+        this.to('shLX', -0.4);
+        this.to('shLZ', 0.5);
+        this.to('elL', -1.6);
+        this.to('kneeL', 0.3 + j * 0.65);
+        this.to('kneeR', 0.3 + j * 0.65);
+        this.to('legLX', -0.2 - j * 0.32);
+        this.to('legRX', -0.2 - j * 0.32);
+        this.to('headRX', -0.18);
+        this.to('spineRX', -0.08);
+        // pistol twirl while airborne
+        this.wSpin = j > 0.2 ? (vt * 18) % TAU : 0;
+        this.flourish(vt, 0.3, false);
+        break;
+      }
+      case 'hype_crowd': {
+        // pumping the blasters to the crowd, one then the other, bouncing on the toes
+        const ph = vt * 7.5;
+        const j = Math.sin(ph);
+        const up = Math.max(0, j);
+        const dn = Math.max(0, -j);
+        const hop = Math.abs(j);
+        const look = Math.sin(vt * 1.6);
+        P.bodyY += hop * 0.09 * k;
+        this.to('shRX', -2.3 - up * 0.55);
+        this.to('shRZ', -0.25);
+        this.to('elR', -1.1 + up * 0.8);
+        this.to('shLX', -2.3 - dn * 0.55);
+        this.to('shLZ', 0.25);
+        this.to('elL', -1.1 + dn * 0.8);
+        this.to('kneeL', 0.25 + hop * 0.3);
+        this.to('kneeR', 0.25 + hop * 0.3);
+        this.to('legLX', -0.12 - hop * 0.12);
+        this.to('legRX', -0.12 - hop * 0.12);
+        this.to('headRX', -0.2);
+        this.to('headRY', look * 0.35);
+        this.to('spineRY', look * 0.18);
+        this.to('spineRX', -0.1);
+        this.flourish(vt, 0.45, false);
+        break;
+      }
+      case 'hype_spin': {
+        // a spin with the arms out, then both blasters pointed at the sky with a hop
+        const s = smoothstep(0.55, 0.95, vt);
+        const hop = vt > 0.7 && vt < 1.1 ? Math.sin(((vt - 0.7) / 0.4) * Math.PI) : 0;
+        P.bodyY += hop * 0.3 * k;
+        this.to('shRX', -0.3 - 2.35 * s);
+        this.to('shRZ', -1.35 + 0.85 * s);
+        this.to('elR', -0.15);
+        this.to('shLX', -0.3 - 2.35 * s);
+        this.to('shLZ', 1.35 - 0.85 * s);
+        this.to('elL', -0.15);
+        this.to('kneeL', 0.2 + hop * 0.6);
+        this.to('kneeR', 0.2 + hop * 0.6);
+        this.to('legLX', -hop * 0.3);
+        this.to('legRX', -hop * 0.3);
+        this.to('headRX', -0.25 * s);
+        this.to('spineRX', -0.12 * s);
+        this.wSpin = vt > 0.9 && vt < 1.5 ? ease.inOutCubic((vt - 0.9) / 0.6) * TAU * 2 : 0;
+        this.flourish(vt, 0.85, false);
+        break;
+      }
+      // ---- Bruno
+      case 'flex_double': {
+        const pulse = Math.max(0, Math.sin(vt * 4));
+        this.to('shLX', -0.15);
+        this.to('shRX', -0.15);
+        this.to('shLZ', 1.45 + pulse * 0.1);
+        this.to('shRZ', -1.45 - pulse * 0.1);
+        this.to('elL', -2.1 - pulse * 0.2);
+        this.to('elR', -2.1 - pulse * 0.2);
+        this.to('spineRX', -0.12 - pulse * 0.05);
+        this.to('headRX', -0.2);
+        this.to('legLZ', 0.18);
+        this.to('legRZ', -0.18);
+        this.to('kneeL', 0.3);
+        this.to('kneeR', 0.3);
+        this.sx = 1 + pulse * 0.04;
+        this.flourish(vt, 0.32, true);
+        break;
+      }
+      case 'flex_cannon': {
+        // the cannon hoisted overhead with one arm, shaking with effort, then slammed onto the shoulder
+        const raise = smoothstep(0, 0.45, vt);
+        const slam = smoothstep(0.95, 1.12, vt);
+        const shake = vt < 0.95 ? Math.sin(vt * 26) * 0.05 * raise : 0;
+        const dip = vt > 1.0 && vt < 1.45 ? Math.sin(((vt - 1.0) / 0.45) * Math.PI) : 0;
+        const pulse = slam * Math.max(0, Math.sin((vt - 1.1) * 4));
+        this.to('shRX', lerp(lerp(-0.4, -2.9, raise), -1.0, slam) + shake);
+        this.to('shRZ', lerp(-0.2, -0.35, slam));
+        this.to('elR', lerp(-0.25, -2.5, slam));
+        this.to('shLX', lerp(-1.7, -0.15, slam));
+        this.to('shLZ', lerp(0.55, 1.4 + pulse * 0.1, slam));
+        this.to('elL', -1.9 - pulse * 0.2);
+        this.to('legLZ', 0.16);
+        this.to('legRZ', -0.16);
+        this.to('kneeL', 0.28 + dip * 0.35);
+        this.to('kneeR', 0.28 + dip * 0.35);
+        P.bodyY -= dip * 0.07 * k;
+        this.to('headRX', lerp(-0.3, -0.12, slam));
+        this.to('spineRX', lerp(-0.12, -0.06 - pulse * 0.04, slam));
+        this.flourish(vt, 1.05, true);
+        break;
+      }
+      case 'flex_roar': {
+        // chest thumps, then both arms up and a roar to the rafters
+        const beat = Math.sin(vt * 6.5);
+        const a = Math.max(0, beat);
+        const b = Math.max(0, -beat);
+        const roar = smoothstep(1.25, 1.55, vt);
+        if (vt < 1.3) {
+          this.to('shRX', -1.0 - a * 0.35);
+          this.to('shRZ', 0.15);
+          this.to('elR', -2.2 - a * 0.2);
+          this.to('shLX', -1.0 - b * 0.35);
+          this.to('shLZ', -0.15);
+          this.to('elL', -2.2 - b * 0.2);
+          this.to('spineRX', -0.08 + (a + b) * 0.05);
+          this.to('headRX', -0.05);
+        } else {
+          const tr = Math.sin(vt * 18) * 0.08;
+          this.to('shRX', -2.4);
+          this.to('shRZ', -0.7);
+          this.to('elR', -1.0 + tr);
+          this.to('shLX', -2.4);
+          this.to('shLZ', 0.7);
+          this.to('elL', -1.0 - tr);
+          this.to('spineRX', -0.22 * roar);
+          this.to('headRX', -0.42 * roar);
+          this.mouthT = Math.max(this.mouthT, 0.1);
+        }
+        this.to('legLZ', 0.2);
+        this.to('legRZ', -0.2);
+        this.to('kneeL', 0.38);
+        this.to('kneeR', 0.38);
+        P.bodyY -= 0.05 * k;
+        this.flourish(vt, 1.3, true);
+        break;
+      }
+      // ---- Nika
+      case 'peace_sign': {
+        const sw = Math.sin(vt * 3);
+        this.to('shRX', -2.5);
+        this.to('shRZ', -0.35);
+        this.to('elR', -1.9);
+        this.to('shLX', 0.1);
+        this.to('shLZ', 0.7);
+        this.to('elL', -1.7);
+        this.to('kneeL', 1.1);
+        this.to('legLX', 0.15);
+        this.to('headRZ', 0.22 + sw * 0.05);
+        this.to('hipsRZ', sw * 0.1);
+        this.to('spineRZ', -sw * 0.08);
+        this.flourish(vt, 0.72, false);
+        break;
+      }
+      case 'peace_wave': {
+        // a big wave, the rifle propped on the shoulder, a hip pop
+        const sw = Math.sin(vt * 2.6);
+        const wave = Math.sin(vt * 10);
+        this.to('shLX', -2.55);
+        this.to('shLZ', 0.45 + wave * 0.12);
+        this.to('elL', -0.55 + wave * 0.35);
+        this.to('shRX', -0.45);
+        this.to('shRZ', 0.15);
+        this.to('elR', -2.2);
+        this.to('hipsRZ', 0.1 + sw * 0.06);
+        this.to('spineRZ', -0.08 - sw * 0.05);
+        this.to('bodyX', 0.03);
+        this.to('kneeL', 0.55);
+        this.to('legLX', 0.08);
+        this.to('kneeR', 0.08);
+        this.to('headRZ', -0.18 + sw * 0.05);
+        this.to('headRX', -0.08);
+        this.flourish(vt, 0.6, false);
+        break;
+      }
+      case 'peace_hop': {
+        // happy little hops, arms up in a V, kicking up one heel then the other
+        const ph = vt * 6.2;
+        const hop = Math.max(0, Math.sin(ph));
+        const side = Math.sin(ph * 0.5) > 0;
+        P.bodyY += hop * 0.2 * k;
+        this.to('shRX', -2.5);
+        this.to('shRZ', -0.55);
+        this.to('elR', -0.35);
+        this.to('shLX', -2.5);
+        this.to('shLZ', 0.55);
+        this.to('elL', -0.35);
+        this.to('kneeL', 0.2 + hop * (side ? 1.2 : 0.35));
+        this.to('kneeR', 0.2 + hop * (side ? 0.35 : 1.2));
+        this.to('legLX', -hop * 0.2);
+        this.to('legRX', -hop * 0.2);
+        this.to('headRX', -0.2);
+        this.to('headRZ', Math.sin(ph * 0.5) * 0.15);
+        this.flourish(vt, 0.5, false);
+        break;
+      }
+      // ---- Vega
+      case 'precise_present': {
+        // present arms: the carbine upright before the chest, heels together, a crisp nod
+        const nod = vt > 0.8 && vt < 1.25 ? Math.sin(((vt - 0.8) / 0.45) * Math.PI) : 0;
+        this.to('shRX', -1.05);
+        this.to('shRZ', 0.42);
+        this.to('elR', -1.85);
+        this.to('shLX', -0.85);
+        this.to('shLZ', -0.45);
+        this.to('elL', -1.55);
+        this.to('legLZ', 0);
+        this.to('legRZ', 0);
+        this.to('kneeL', 0.04);
+        this.to('kneeR', 0.04);
+        this.to('hipsRZ', 0);
+        this.to('spineRX', -0.08);
+        this.to('headRX', -0.08 + nod * 0.32);
+        this.flourish(vt, 0.95, false);
+        break;
+      }
+      case 'precise_shoulder': {
+        // the carbine rests on the shoulder, a hand on the hip, a calm look around
+        const look = Math.sin(vt * 0.9);
+        this.to('shRX', -0.55);
+        this.to('shRZ', 0.1);
+        this.to('elR', -2.35);
+        this.to('shLX', 0.12);
+        this.to('shLZ', 0.75);
+        this.to('elL', -1.35);
+        this.to('hipsRZ', 0.08);
+        this.to('bodyX', 0.03);
+        this.to('spineRZ', -0.07);
+        this.to('kneeR', 0.26);
+        this.to('legRX', -0.08);
+        this.to('kneeL', 0.05);
+        this.to('headRY', look * 0.38);
+        this.to('headRX', -0.06);
+        this.to('spineRY', look * 0.08);
+        this.flourish(vt, 0.7, false);
+        break;
+      }
+      case 'precise_check': {
+        // a last scan down the sights, then the carbine lowered to port arms
+        const up = 1 - smoothstep(1.5, 1.9, vt);
+        const sweep = Math.sin(vt * 2.2) * up;
+        this.to('shRX', lerp(-0.7, -1.75, up));
+        this.to('shRZ', 0.3);
+        this.to('elR', lerp(-1.5, -0.95, up));
+        this.to('shLX', lerp(-0.9, -1.95, up));
+        this.to('shLZ', -0.4);
+        this.to('elL', lerp(-1.3, -0.45, up));
+        this.to('spineRY', sweep * 0.32);
+        this.to('headRY', sweep * 0.12);
+        this.to('headRX', lerp(-0.04, 0.06, up));
+        this.to('kneeL', 0.12);
+        this.to('kneeR', 0.12);
+        this.flourish(vt, 1.75, false);
+        break;
+      }
+      // ---- Kai
+      case 'show_twirl': {
+        // the revolver spins on the finger (three turns), back to the hip, and a tip of the hat
+        const spinP = clamp01((vt - 0.15) / 0.9);
+        this.wFlip = spinP > 0 && spinP < 1 ? ease.inOutCubic(spinP) * TAU * 3 : 0;
+        const holster = smoothstep(1.0, 1.25, vt);
+        const tip = smoothstep(1.15, 1.4, vt);
+        this.to('shRX', lerp(-0.9, 0.05, holster));
+        this.to('shRZ', lerp(-0.85, -0.2, holster));
+        this.to('elR', lerp(-0.4, -0.5, holster));
+        this.to('shLX', lerp(-0.2, -2.35, tip));
+        this.to('shLZ', lerp(0.3, 0.15, tip));
+        this.to('elL', lerp(-0.6, -2.3, tip));
+        this.to('headRX', -0.06 + tip * 0.12);
+        this.to('headRZ', 0.1);
+        this.to('hipsRZ', -0.06);
+        this.to('kneeL', 0.22);
+        this.to('legLX', -0.1);
+        this.to('spineRY', -0.12);
+        this.flourish(vt, 1.2, false);
+        break;
+      }
+      case 'show_bow': {
+        // a theatrical bow with a sweep of the arm, then the pistol pointed at the camera
+        const bow = vt < 1.3 ? Math.sin(clamp01((vt - 0.1) / 1.1) * Math.PI) : 0;
+        const point = smoothstep(1.25, 1.5, vt);
+        this.to('spineRX', 0.55 * bow - 0.05 * point);
+        this.to('headRX', 0.2 * bow - 0.08 * point);
+        this.to('rollRX', 0.12 * bow);
+        this.to('shLX', lerp(-0.9 * bow, -0.15, point));
+        this.to('shLZ', lerp(0.2 - 0.75 * bow, 0.4, point));
+        this.to('elL', lerp(-1.45, -1.1, point));
+        this.to('shRX', lerp(-0.3, -1.45, point));
+        this.to('shRZ', lerp(-1.15, 0.12, point));
+        this.to('elR', -0.15);
+        this.to('legRX', 0.35 * bow);
+        this.to('kneeR', 0.05 + 0.3 * bow);
+        this.to('kneeL', 0.15 * bow);
+        this.to('spineRY', -0.18 * point);
+        this.to('headRY', 0.12 * point);
+        this.flourish(vt, 1.4, false);
+        break;
+      }
+      case 'show_smoke': {
+        // blows the smoke off the barrel, then a pistol aimed at the camera
+        const up = smoothstep(0.05, 0.4, vt);
+        const aimC = smoothstep(1.15, 1.4, vt);
+        this.to('shRX', lerp(-1.3 * up, -1.48, aimC));
+        this.to('shRZ', lerp(0.4, 0.1, aimC));
+        this.to('elR', lerp(-2.15 * up, -0.15, aimC));
+        this.to('headRZ', lerp(-0.14 * up, 0.1, aimC));
+        this.to('headRX', lerp(0.12 * up, 0, aimC));
+        this.to('headRY', lerp(0.15 * up, 0, aimC));
+        this.to('shLX', -0.1);
+        this.to('shLZ', 0.5);
+        this.to('elL', -1.2);
+        this.to('hipsRZ', 0.07);
+        this.to('kneeL', 0.2);
+        if (vt > 0.7 && vt < 1.0) this.mouthT = Math.max(this.mouthT, 0.05);
+        this.flourish(vt, 0.75, false);
+        break;
+      }
+      // ---- Rina
+      case 'grace_pirouette': {
+        // a pirouette on one foot with the arms in a crown, then a pose with the arms open
+        const pose = smoothstep(0.7, 0.95, vt);
+        P.bodyY += (vt < 0.75 ? 0.06 : 0) * k;
+        this.to('kneeL', lerp(1.45, 0.1, pose));
+        this.to('legLX', lerp(-0.35, 0.25, pose));
+        this.to('legLZ', lerp(0.25, 0.1, pose));
+        this.to('kneeR', 0.04);
+        this.to('shRX', lerp(-2.6, -1.3, pose));
+        this.to('shRZ', lerp(0.35, -0.9, pose));
+        this.to('elR', lerp(-0.7, -0.1, pose));
+        this.to('shLX', lerp(-2.6, -0.4, pose));
+        this.to('shLZ', lerp(-0.35, 1.0, pose));
+        this.to('elL', lerp(-0.7, -0.2, pose));
+        this.to('headRX', lerp(-0.15, 0.05, pose));
+        this.to('headRZ', 0.12 * pose);
+        this.to('spineRX', -0.1);
+        this.to('hipsRZ', 0.06 * pose);
+        this.flourish(vt, 0.8, false);
+        break;
+      }
+      case 'grace_kneel': {
+        // drops to one knee, the blaster up by the face, the free hand on the knee
+        const d = ease.outCubic(clamp01(vt / 0.4));
+        P.bodyY -= 0.3 * d * k;
+        this.to('legLX', -1.15 * d);
+        this.to('kneeL', 1.35 * d);
+        this.to('legRX', 0.55 * d);
+        this.to('kneeR', 1.75 * d);
+        this.to('legLZ', 0);
+        this.to('legRZ', 0);
+        this.to('spineRX', 0.05);
+        this.to('headRX', -0.18);
+        this.to('headRZ', 0.12);
+        this.to('shRX', -1.1);
+        this.to('shRZ', 0.3);
+        this.to('elR', -2.25);
+        this.to('shLX', -0.75);
+        this.to('shLZ', 0.2);
+        this.to('elL', -0.55);
+        this.flourish(vt, 0.42, false);
+        break;
+      }
+      case 'grace_salute': {
+        // a two-finger salute from the brow flicked out to the crowd, the blaster on the shoulder
+        const flick = smoothstep(0.85, 1.0, vt);
+        const sw = Math.sin(vt * 2.2);
+        this.to('shLX', -2.05 + flick * 0.35);
+        this.to('shLZ', 0.2 + flick * 0.7);
+        this.to('elL', -2.35 + flick * 1.4);
+        this.to('shRX', -0.5);
+        this.to('shRZ', 0.15);
+        this.to('elR', -2.2);
+        this.to('hipsRZ', 0.12 + sw * 0.03);
+        this.to('bodyX', 0.035);
+        this.to('spineRZ', -0.1);
+        this.to('kneeL', 0.45);
+        this.to('legLX', 0.06);
+        this.to('headRZ', -0.14);
+        this.to('headRX', -0.06);
+        this.flourish(vt, 0.92, false);
+        break;
+      }
+      // ---- Crash
+      case 'brawl_roar': {
+        // both fists up, shaking, the head thrown back
+        const sh = Math.sin(vt * 22) * 0.12;
+        const up = ease.outBack(clamp01(vt / 0.35));
+        this.to('shRX', -2.65 * up);
+        this.to('shRZ', -0.45);
+        this.to('elR', -0.95 + sh);
+        this.to('shLX', -2.65 * up);
+        this.to('shLZ', 0.45);
+        this.to('elL', -0.95 - sh);
+        this.to('headRX', -0.42);
+        this.to('spineRX', -0.18);
+        this.to('legLZ', 0.2);
+        this.to('legRZ', -0.2);
+        this.to('kneeL', 0.42);
+        this.to('kneeR', 0.42);
+        P.bodyY -= 0.05 * k;
+        this.mouthT = Math.max(this.mouthT, 0.1);
+        this.flourish(vt, 0.38, true);
+        break;
+      }
+      case 'brawl_stomp': {
+        // stomp-stomp-stomp, chest out, fists low and flexed — then he stands there daring anyone
+        const period = 0.46;
+        const stomping = vt < period * 5;
+        const ph = (vt % period) / period;
+        const foot = Math.floor(vt / period) % 2;
+        const lift = stomping ? Math.sin(clamp01(ph / 0.7) * Math.PI) : 0;
+        const jolt = stomping && ph > 0.7 ? 1 - (ph - 0.7) / 0.3 : 0;
+        this.to('kneeL', 0.3 + (foot === 0 ? lift * 1.1 : 0));
+        this.to('legLX', foot === 0 ? -lift * 0.55 : 0);
+        this.to('kneeR', 0.3 + (foot === 1 ? lift * 1.1 : 0));
+        this.to('legRX', foot === 1 ? -lift * 0.55 : 0);
+        this.to('legLZ', 0.18);
+        this.to('legRZ', -0.18);
+        this.to('spineRX', -0.12 + jolt * 0.14);
+        this.to('headRX', -0.2 + jolt * 0.1);
+        this.to('shLX', -0.3);
+        this.to('shLZ', 0.65);
+        this.to('elL', -1.7);
+        this.to('shRX', -0.3);
+        this.to('shRZ', -0.65);
+        this.to('elR', -1.7);
+        this.to('hipsRZ', (foot === 0 ? 1 : -1) * 0.06 * (stomping ? 1 : 0));
+        // a heavy footfall on every landing
+        const n = stomping ? Math.floor((vt - period * 0.7) / period) + 1 : this.beatN;
+        if (n > this.beatN) {
+          this.beatN = n;
+          this.squash.kick(4);
+          this.events.onStep?.(true);
+          if (n === 1) this.flourish(vt, 0, true);
+        }
+        break;
+      }
+      case 'brawl_taunt': {
+        // "come on": the free hand beckons, the shotgun over the shoulder, chin up
+        const curl = Math.max(0, Math.sin(vt * 6.5));
+        this.to('shLX', -1.4);
+        this.to('shLZ', 0.15);
+        this.to('elL', -0.35 - curl * 1.2);
+        this.to('shRX', -0.65);
+        this.to('shRZ', -0.1);
+        this.to('elR', -2.25);
+        this.to('spineRX', -0.14);
+        this.to('headRX', -0.22 + curl * 0.06);
+        this.to('legRX', 0.25);
+        this.to('kneeR', 0.2);
+        this.to('legLX', -0.2);
+        this.to('kneeL', 0.15);
+        P.bodyY += Math.abs(Math.sin(vt * 3.25)) * 0.03 * k;
+        this.flourish(vt, 0.5, false);
+        break;
+      }
+      // ---- Victor (dignified, never cartoonish)
+      case 'champ_salute': {
+        // the rifle grounded at his side, a measured hand to the crowd, the gaze sweeping the stands
+        const wave = Math.sin(vt * 2.4);
+        const sweep = Math.sin(vt * 0.7);
+        this.to('shRX', 0.04);
+        this.to('shRZ', -0.12);
+        this.to('elR', -0.35);
+        this.to('shLX', -2.35);
+        this.to('shLZ', 0.5 + wave * 0.08);
+        this.to('elL', -0.35 + wave * 0.1);
+        this.to('spineRX', -0.1);
+        this.to('headRX', -0.12);
+        this.to('headRY', sweep * 0.35);
+        this.to('spineRY', sweep * 0.1);
+        this.to('legLZ', 0.08);
+        this.to('legRZ', -0.08);
+        this.to('kneeL', 0.06);
+        this.to('kneeR', 0.06);
+        this.flourish(vt, 0.7, false);
+        break;
+      }
+      case 'champ_raise': {
+        // PRIME BREAKER lifted overhead with both hands like a trophy — slowly, deliberately
+        const up = ease.inOutCubic(clamp01((vt - 0.1) / 1.1));
+        this.to('shRX', lerp(-0.6, -2.85, up));
+        this.to('shRZ', lerp(0.26, -0.35, up));
+        this.to('elR', lerp(-0.98, -0.4, up));
+        this.to('shLX', lerp(-1.18, -2.85, up));
+        this.to('shLZ', lerp(-0.46, 0.35, up));
+        this.to('elL', lerp(-0.52, -0.4, up));
+        this.to('spineRX', -0.14 * up);
+        this.to('headRX', -0.3 * up);
+        this.to('legLZ', 0.1);
+        this.to('legRZ', -0.1);
+        this.to('kneeL', 0.1);
+        this.to('kneeR', 0.1);
+        this.flourish(vt, 1.2, false);
+        break;
+      }
+      case 'champ_heart': {
+        // a fist over the heart and a slow, respectful bow of the head — then the chin comes up
+        const bowH = vt > 0.6 && vt < 1.8 ? Math.sin(((vt - 0.6) / 1.2) * Math.PI) : 0;
+        const proud = smoothstep(1.7, 2.0, vt);
+        this.to('shLX', -1.0);
+        this.to('shLZ', -0.32);
+        this.to('elL', -2.25);
+        this.to('shRX', 0);
+        this.to('shRZ', -0.15);
+        this.to('elR', -0.45);
+        this.to('headRX', 0.32 * bowH - 0.1 * proud);
+        this.to('spineRX', 0.08 * bowH - 0.08);
+        this.to('legLZ', 0.04);
+        this.to('legRZ', -0.04);
+        this.flourish(vt, 1.85, false);
+        break;
+      }
+    }
+  }
+
+  /** Menu showcase gestures (`this.w` rises and falls over the 1.6 s gesture; fp = progress 0..1). */
+  private flairPose(fp: number): void {
+    const f = this.w;
+    switch (this.victoryStyle) {
+      case 'hype':
+        this.to('shRX', -1.5);
+        this.to('shRZ', 0.3);
+        this.to('elR', -0.3);
+        this.to('headRZ', 0.15);
+        this.wSpin = f > 0.3 ? (this.t * 16) % TAU : 0;
+        break;
+      case 'flex':
+        this.to('shLZ', 1.4);
+        this.to('elL', -2.0);
+        this.to('shLX', -0.2);
+        this.to('headRX', -0.1);
+        break;
+      case 'peace':
+        this.to('shRX', -2.4);
+        this.to('shRZ', -0.3);
+        this.to('elR', -1.8);
+        this.to('headRZ', 0.2);
+        break;
+      case 'precise':
+        // a quick look down the sights
+        this.to('shRX', -1.7);
+        this.to('shRZ', 0.3);
+        this.to('elR', -0.95);
+        this.to('shLX', -1.9);
+        this.to('shLZ', -0.4);
+        this.to('elL', -0.45);
+        this.to('headRX', 0.06);
+        break;
+      case 'showman':
+        // the pistol flipped twice around the finger
+        this.to('shRX', -1.0);
+        this.to('shRZ', -0.6);
+        this.to('elR', -0.5);
+        this.to('headRZ', 0.12);
+        this.wFlip = ease.inOutCubic(fp) * TAU * 2;
+        break;
+      case 'graceful':
+        // a hand through the hair, a hip pop
+        this.to('shLX', -2.0);
+        this.to('shLZ', 0.35);
+        this.to('elL', -2.3);
+        this.to('hipsRZ', 0.12);
+        this.to('headRZ', -0.16);
+        break;
+      case 'brawler':
+        // cracks the knuckles in front of the chest
+        this.to('shLX', -1.3);
+        this.to('shLZ', -0.35);
+        this.to('elL', -1.5);
+        this.to('shRX', -1.3);
+        this.to('shRZ', 0.35);
+        this.to('elR', -1.5);
+        this.to('spineRX', 0.08);
+        this.to('headRX', 0.1);
+        break;
+      case 'champion':
+        // straightens the collar
+        this.to('shLX', -2.0);
+        this.to('shLZ', -0.1);
+        this.to('elL', -2.45);
+        this.to('headRZ', 0.08);
+        this.to('headRX', -0.08);
+        break;
     }
   }
 

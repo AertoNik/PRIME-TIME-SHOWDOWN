@@ -6,6 +6,7 @@ import type { Match } from './Match';
 import type { HitInfo, Projectile, ProjectileKind } from './types';
 
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
+const bankTmp = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
 
 export interface SpawnOpts {
   homing?: number;
@@ -19,6 +20,106 @@ export interface SpawnOpts {
   electric?: boolean;
   combo?: Projectile['combo'];
   pierce?: number;
+  /** BANK SHOT: reflections off the barrier. */
+  bounces?: number;
+}
+
+/** Alpha 1.5 — attacks a FALSE START can read (instant SHOCK / OVERLOAD, poison ticks, slams and shockwaves cannot). */
+const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter']);
+
+/** Alpha 1.5 — a BANK SHOT solution: first leg direction, the bounce point and both leg lengths. */
+export interface BankSolution {
+  dirX: number;
+  dirZ: number;
+  /** Bounce point on the barrier (null = no clean bounce: fired straight at the target). */
+  bx: number;
+  bz: number;
+  bounce: boolean;
+  len1: number;
+  len2: number;
+}
+
+/**
+ * Mirror-shot geometry: reflect the target across each straight barrier wall and aim at
+ * the image. The bounce point must sit on the straight part of that wall (corners are
+ * rounded, a reflection there would not be clean). Picks the shortest valid path.
+ */
+export function solveBank(sx: number, sz: number, tx: number, tz: number, out: BankSolution): BankSolution {
+  const W = ARENA.wallX;
+  const Z = ARENA.wallZ;
+  const m = CARD_TUNING.bank_shot.wallMargin;
+  const straightZ = Z - ARENA.wallCorner - m; // half length of the straight part of the side walls
+  const straightX = W - ARENA.wallCorner - m;
+  let best = Infinity;
+  out.bounce = false;
+  const walls: [number, number, number][] = [
+    // [axis (0 = x wall, 1 = z wall), wall coordinate, -]
+    [0, W, 0],
+    [0, -W, 0],
+    [1, Z, 0],
+    [1, -Z, 0],
+  ];
+  for (const [axis, c] of walls) {
+    let ix: number;
+    let iz: number;
+    if (axis === 0) {
+      ix = 2 * c - tx;
+      iz = tz;
+      const den = ix - sx;
+      if (Math.abs(den) < 1e-4) continue;
+      const k = (c - sx) / den;
+      if (k <= 0.05 || k >= 1) continue;
+      const pz = sz + (iz - sz) * k;
+      if (Math.abs(pz) > straightZ) continue;
+      const l1 = Math.hypot(c - sx, pz - sz);
+      const l2 = Math.hypot(tx - c, tz - pz);
+      if (l1 + l2 < best) {
+        best = l1 + l2;
+        out.bx = c;
+        out.bz = pz;
+        out.len1 = l1;
+        out.len2 = l2;
+        out.bounce = true;
+      }
+    } else {
+      ix = tx;
+      iz = 2 * c - tz;
+      const den = iz - sz;
+      if (Math.abs(den) < 1e-4) continue;
+      const k = (c - sz) / den;
+      if (k <= 0.05 || k >= 1) continue;
+      const px = sx + (ix - sx) * k;
+      if (Math.abs(px) > straightX) continue;
+      const l1 = Math.hypot(px - sx, c - sz);
+      const l2 = Math.hypot(tx - px, tz - c);
+      if (l1 + l2 < best) {
+        best = l1 + l2;
+        out.bx = px;
+        out.bz = c;
+        out.len1 = l1;
+        out.len2 = l2;
+        out.bounce = true;
+      }
+    }
+  }
+  if (out.bounce) {
+    const dx = out.bx - sx;
+    const dz = out.bz - sz;
+    const d = Math.hypot(dx, dz) || 1;
+    out.dirX = dx / d;
+    out.dirZ = dz / d;
+  } else {
+    const dx = tx - sx;
+    const dz = tz - sz;
+    const d = Math.hypot(dx, dz) || 1;
+    out.dirX = dx / d;
+    out.dirZ = dz / d;
+    out.bx = tx;
+    out.bz = tz;
+    out.len1 = d;
+    out.len2 = 0;
+  }
+  return out;
 }
 
 /** Muzzle offsets in fighter-local space (x = right, z = forward). */
@@ -35,6 +136,12 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
     case 'breaker':
       // the long rifle in its chest-level hold: just behind the crown muzzle of the model
       return { right: 0.3, fwd: 1.55 };
+    case 'ricochet':
+      // Alpha 1.5: Kai's long-barrelled trick pistol, held out in the right hand
+      return { right: 0.34, fwd: 1.12 };
+    case 'stinger':
+      // Alpha 1.5: Rina's compact twin-barrel blaster, held close
+      return { right: 0.3, fwd: 0.82 };
   }
 }
 
@@ -81,6 +188,16 @@ export class CombatSystem {
     if (f.ironSkinCd > 0) f.ironSkinCd -= dt;
     if (f.overclock > 0) f.overclock = Math.max(0, f.overclock - dt);
     if (f.invuln > 0) f.invuln = Math.max(0, f.invuln - dt);
+    if (f.riposteCd > 0) f.riposteCd = Math.max(0, f.riposteCd - dt);
+    if (f.feint > 0) {
+      f.feint -= dt;
+      if (f.feint <= 0) {
+        // the read window closed with nothing to read: a wasted feint
+        f.feint = 0;
+        this.m.emit({ type: 'feintEnd', side: f.side });
+        if (f.side === 0 && this.m.phase === 'fight') this.m.broadcast.add(BROADCAST.wasted, 'ВХОЛОСТУЮ');
+      }
+    }
     if (f.counterT > 0) {
       f.counterT -= dt;
       if (f.counterT <= 0) f.counterShots = 0;
@@ -140,10 +257,10 @@ export class CombatSystem {
     let tvz = 0;
     let accel = 32;
     const a = f.action;
-    if (a.kind === 'dash' || a.kind === 'rush') {
+    if (a.kind === 'dash' || a.kind === 'rush' || a.kind === 'feint') {
       tvx = a.dirX * a.speed;
       tvz = a.dirZ * a.speed;
-      accel = 400;
+      accel = a.kind === 'feint' ? 120 : 400;
     } else if (f.knockback > 0) {
       tvx = f.kbX;
       tvz = f.kbZ;
@@ -257,11 +374,18 @@ export class CombatSystem {
       case 'windup': {
         a.t += dt;
         if (!a.locked) {
-          const dx = f.aimX - f.x;
-          const dz = f.aimZ - f.z;
-          const d = Math.hypot(dx, dz) || 1;
-          a.dirX = dx / d;
-          a.dirZ = dz / d;
+          if (a.card === 'bank_shot') {
+            // BANK SHOT aims at the bounce point (re-solved as both fighters move)
+            this.bankAim(f, bankTmp);
+            a.dirX = bankTmp.dirX;
+            a.dirZ = bankTmp.dirZ;
+          } else {
+            const dx = f.aimX - f.x;
+            const dz = f.aimZ - f.z;
+            const d = Math.hypot(dx, dz) || 1;
+            a.dirX = dx / d;
+            a.dirZ = dz / d;
+          }
           if (a.telegraph && a.t >= a.total * a.lockAt) {
             a.locked = true;
             a.lockedAt = m.time;
@@ -272,6 +396,7 @@ export class CombatSystem {
         break;
       }
       case 'dash':
+      case 'feint':
         a.t += dt;
         if (a.t >= a.total) f.action = { kind: 'none' };
         break;
@@ -368,7 +493,28 @@ export class CombatSystem {
       f.shotCount++;
       deadeye = f.shotCount % PASSIVE_TUNING.deadeye.every === 0;
     }
-    const dmg = atk.damage * f.outgoingDamageMult() * (counter ? CARD_TUNING.dash.counterMult : 1) * (deadeye ? PASSIVE_TUNING.deadeye.mult : 1);
+    // Alpha 1.5 — CROSSFIRE (Kai): shots fired while strafing across the line of fire hit harder
+    let cross = false;
+    if (f.def.passive === 'crossfire') {
+      const lat = Math.abs(f.vx * Math.cos(yaw) - f.vz * Math.sin(yaw));
+      cross = lat >= f.stats.moveSpeed * PASSIVE_TUNING.crossfire.lateral;
+    }
+    // Alpha 1.5 — RIPOSTE (Rina): the volley after an evade hits harder (the whole double tap)
+    let riposte = false;
+    if (f.def.passive === 'riposte') {
+      if (startsVolley) {
+        riposte = f.riposte;
+        f.riposte = false;
+        f.burstRiposte = riposte;
+      } else riposte = f.burstRiposte;
+    }
+    const dmg =
+      atk.damage *
+      f.outgoingDamageMult() *
+      (counter ? CARD_TUNING.dash.counterMult : 1) *
+      (deadeye ? PASSIVE_TUNING.deadeye.mult : 1) *
+      (cross ? PASSIVE_TUNING.crossfire.mult : 1) *
+      (riposte ? PASSIVE_TUNING.riposte.mult : 1);
     const kind: ProjectileKind =
       atk.weapon === 'boom_cannon'
         ? 'pellet'
@@ -388,7 +534,7 @@ export class CombatSystem {
         falloff: atk.falloff,
         slowAmount: atk.slow?.amount ?? 0,
         slowDuration: atk.slow?.duration ?? 0,
-        crit: counter || deadeye,
+        crit: counter || deadeye || riposte,
       });
     }
     f.m.shots++;
@@ -427,6 +573,52 @@ export class CombatSystem {
       ...opts,
     });
     this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dirX, dz: dirZ, kind: 'power' });
+  }
+
+  /** Alpha 1.5 — BANK SHOT: the copper ricochet round along the first leg of the bank path. */
+  fireBank(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts): void {
+    const yaw = Math.atan2(dirX, dirZ);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    const t = CARD_TUNING.bank_shot;
+    this.spawn(f.side, 'bank', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, damage, t.radius, t.range, {
+      knockback: t.knockback,
+      heavy: true,
+      bounces: 1,
+      ...opts,
+    });
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dirX, dz: dirZ, kind: 'bank' });
+  }
+
+  /** Where Kai's BANK SHOT would go right now: aimed at where the target will be when the round arrives. */
+  bankAim(f: FighterSim, out: BankSolution): BankSolution {
+    const t = CARD_TUNING.bank_shot;
+    // first guess at where the target stands, then lead it by the time the bank path takes
+    solveBank(f.x, f.z, f.seenX, f.seenZ, out);
+    const time = (out.len1 + out.len2) / t.speed;
+    const lead = 0.85;
+    let tx = f.seenX + f.seenVX * time * lead;
+    let tz = f.seenZ + f.seenVZ * time * lead;
+    clampRoundedRect(tx, tz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmpClamp);
+    tx = tmpClamp.x;
+    tz = tmpClamp.z;
+    return solveBank(f.x, f.z, tx, tz, out);
+  }
+
+  /** Alpha 1.5 — FALSE START read an attack: Rina fires straight back at the attacker. */
+  private fireCounter(f: FighterSim, foe: FighterSim): void {
+    const t = CARD_TUNING.false_start;
+    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const lead = dist / t.counterSpeed;
+    const yaw = Math.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    this.spawn(f.side, 'counter', f.stats.attack.weapon, origin.x, origin.z, yaw, t.counterSpeed, t.counterDamage * f.feintMult * f.outgoingDamageMult(), t.counterRadius, t.counterRange, {
+      crit: true,
+    });
+    f.m.shots++;
+    f.fireTimer = Math.max(f.fireTimer, 0.25);
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'counter' });
   }
 
   spawn(
@@ -473,6 +665,8 @@ export class CombatSystem {
     p.closest = 999;
     p.sidestepped = false;
     p.pierce = o.pierce ?? 0;
+    p.bounces = o.bounces ?? 0;
+    p.bounced = false;
     this.m.projectiles.push(p);
     return p;
   }
@@ -538,13 +732,17 @@ export class CombatSystem {
           }
           if (foe.invuln <= 0 && !p.passThrough) {
             const prog = clamp(p.traveled / p.range, 0, 1);
-            const dmg = p.damage * (1 + (p.falloff - 1) * prog);
+            let dmg = p.damage * (1 + (p.falloff - 1) * prog);
+            // BANK SHOT: a straight hit before the ricochet is only a graze; after it, a TRICK SHOT
+            const trick = p.kind === 'bank' && p.bounced;
+            if (p.kind === 'bank' && !p.bounced) dmg *= CARD_TUNING.bank_shot.directMult;
             const len = Math.hypot(p.vx, p.vz) || 1;
-            const outcome = this.applyHit(foe, m.fighters[p.owner], {
+            const src = m.fighters[p.owner];
+            const outcome = this.applyHit(foe, src, {
               damage: dmg,
-              kind: p.kind === 'power' ? 'power' : p.kind === 'adrenaline' ? 'adrenaline' : 'auto',
+              kind: p.kind === 'power' ? 'power' : p.kind === 'adrenaline' ? 'adrenaline' : p.kind === 'bank' ? 'bank' : p.kind === 'counter' ? 'counter' : 'auto',
               heavy: p.heavy,
-              crit: p.crit,
+              crit: p.crit || trick,
               electric: p.electric,
               combo: p.combo,
               knockback: p.knockback,
@@ -557,8 +755,19 @@ export class CombatSystem {
               projectile: p,
               pierce: p.pierce,
             });
+            if (outcome === 'dodged') {
+              // FALSE START read it: the shot flies on past her
+              p.passThrough = true;
+              p.dodgeLogged = true;
+              continue;
+            }
             if (outcome === 'blocked') {
               m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'shield', heavy: p.heavy, weapon: p.weapon });
+            }
+            if (trick && outcome === 'hit' && !src.ko) {
+              const refund = CARD_TUNING.bank_shot.energyRefund;
+              m.hands[src.side].gain(refund);
+              m.emit({ type: 'trickShot', side: src.side, x: p.x, z: p.z, refund });
             }
             p.alive = false;
             continue;
@@ -590,6 +799,29 @@ export class CombatSystem {
         m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'expire', heavy: p.heavy, weapon: p.weapon });
         continue;
       }
+      if (!inArenaWall(p.x, p.z) && p.bounces > 0) {
+        // BANK SHOT: one clean reflection off the barrier (v' = v − 2(v·n)n), back inside the ring
+        clampRoundedRect(p.x, p.z, ARENA.wallX, ARENA.wallZ, ARENA.wallCorner, tmpClamp);
+        const nx = tmpClamp.nx;
+        const nz = tmpClamp.nz;
+        const vn = p.vx * nx + p.vz * nz;
+        p.vx -= 2 * vn * nx;
+        p.vz -= 2 * vn * nz;
+        p.x = tmpClamp.x - nx * 0.06;
+        p.z = tmpClamp.z - nz * 0.06;
+        p.px = p.x;
+        p.pz = p.z;
+        p.bounces--;
+        p.bounced = true;
+        // the second leg is a fresh approach for near-miss / dodge bookkeeping
+        p.closest = 999;
+        p.dodgeLogged = false;
+        p.sidestepped = false;
+        const l = Math.hypot(p.vx, p.vz) || 1;
+        m.emit({ type: 'bank', side: p.owner, x: tmpClamp.x, z: tmpClamp.z, nx, nz, dx: p.vx / l, dz: p.vz / l });
+        m.hitProps(tmpClamp.x, tmpClamp.z, false);
+        continue;
+      }
       if (!inArenaWall(p.x, p.z)) {
         p.alive = false;
         clampRoundedRect(p.x, p.z, ARENA.wallX, ARENA.wallZ, ARENA.wallCorner, tmpClamp);
@@ -615,6 +847,30 @@ export class CombatSystem {
       f.momentumCd = t.cooldown;
       this.m.emit({ type: 'passive', side: f.side, passive: 'momentum' });
     }
+    // Alpha 1.5 — RIPOSTE (Rina): an evade loads her next volley
+    if (f.def.passive === 'riposte' && f.riposteCd <= 0 && !f.ko && !f.riposte) {
+      f.riposte = true;
+      f.riposteCd = PASSIVE_TUNING.riposte.cooldown;
+      this.m.emit({ type: 'passive', side: f.side, passive: 'riposte' });
+    }
+  }
+
+  /**
+   * Alpha 1.5 — FALSE START: an attack reached a fighter whose read window is open.
+   * It misses (one attack per card), a short invulnerability covers the rest of that
+   * volley, and the counter shot goes back at the attacker. Returns true if it read it.
+   */
+  private tryFeint(target: FighterSim, source: FighterSim, h: HitInfo): boolean {
+    if (target.feint <= 0 || !FEINTABLE.has(h.kind) || target.stun > 0 || target.knockback > 0 || target.ko) return false;
+    const t = CARD_TUNING.false_start;
+    target.feint = 0;
+    target.invuln = Math.max(target.invuln, t.invulnAfter);
+    target.m.perfects++;
+    this.m.emit({ type: 'dodge', side: target.side, x: target.x, z: target.z, perfect: true, heavy: h.heavy });
+    this.m.emit({ type: 'feintCounter', side: target.side, x: target.x, z: target.z, tx: source.x, tz: source.z, kind: h.kind });
+    this.onEvade(target);
+    if (!source.ko) this.fireCounter(target, source);
+    return true;
   }
 
   // ------------------------------------------------------------------ damage
@@ -640,6 +896,7 @@ export class CombatSystem {
     if (target.invuln > 0 && h.kind !== 'dot' && h.kind !== 'slam') {
       return 'dodged';
     }
+    if (target.feint > 0 && this.tryFeint(target, source, h)) return 'dodged';
     let dmg = h.damage;
     if (target.glitch > 0) dmg *= CARD_TUNING.system_overload.damageTakenMult;
     if (h.kind !== 'dot' && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;

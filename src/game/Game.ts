@@ -12,6 +12,7 @@ import type { CardFailReason, MatchEvent } from '../combat/types';
 import { Rng } from '../core/math';
 import { arenaAvailable, resolveArena, validArenaPref } from '../meta/ArenaSelection';
 import { CareerSystem } from '../meta/CareerSystem';
+import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
@@ -25,6 +26,7 @@ import { Showcase } from '../render/Showcase';
 import { VFX } from '../render/VFX';
 import { BattleHUD } from '../ui/screens/BattleHUD';
 import { CareerScreen } from '../ui/screens/CareerScreen';
+import { CollectionScreen } from '../ui/screens/CollectionScreen';
 import { EventsScreen } from '../ui/screens/EventsScreen';
 import { MenuScreen } from '../ui/screens/MenuScreen';
 import { ModesScreen } from '../ui/screens/ModesScreen';
@@ -37,7 +39,7 @@ import { UIManager } from '../ui/UI';
 import { ThemeManager } from './ThemeManager';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'modes' | 'battle' | 'results' | 'survival';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'battle' | 'results' | 'survival';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -74,7 +76,7 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'dex', 'tank', 'zoe', 'crash', 'vale'];
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>
@@ -97,6 +99,8 @@ export class Game {
   readonly save = new SaveSystem();
   readonly career: CareerSystem;
   readonly events: EventManager;
+  /** MY COLLECTION (Alpha 1.5): owned cosmetics and achievements (state in save.cosmetics). */
+  readonly collection: Collection;
   /** Survival marathon and Prime Challenge rules (Alpha 1.3). */
   readonly modes: GameModes;
   /** A Survival attempt closed at launch because the game was shut mid-run (shown once in the menu). */
@@ -135,6 +139,7 @@ export class Game {
     this.stage = stage;
     this.career = new CareerSystem(this.save);
     this.events = new EventManager(this.save, devEventOverrides());
+    this.collection = this.events.collection;
     this.modes = new GameModes(this.save, this.career, this.events);
     // A marathon interrupted by closing the game ends with the waves it really cleared.
     this.abandoned = this.modes.closeAbandoned();
@@ -228,6 +233,7 @@ export class Game {
     this.ui.register('prep', new PrepScreen(this));
     this.ui.register('career', new CareerScreen(this));
     this.ui.register('events', new EventsScreen(this));
+    this.ui.register('collection', new CollectionScreen(this));
     this.ui.register('modes', new ModesScreen(this));
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
@@ -635,6 +641,7 @@ export class Game {
     let challenge = null;
     let boss = null;
     let outcome;
+    const stageBefore = this.career.stage().index;
     if (mode.kind === 'boss') {
       const def = bossById(mode.id)!;
       outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, {
@@ -657,6 +664,8 @@ export class Game {
     } else {
       outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, { classic: true });
     }
+    // a boss win or a challenge clear (recorded after the match) can complete a career stage too
+    outcome.newStage = this.career.newStageSince(stageBefore);
     const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
     this.enterResultsView(m.result.outcome);
     this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
@@ -908,7 +917,7 @@ export class Game {
     const a = this.audio;
     switch (e.type) {
       case 'shot':
-        a.shoot(e.weapon, e.kind === 'power', e.side === 1);
+        a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank', e.side === 1);
         break;
       case 'hit':
         if (e.kind !== 'dot') a.hit(e.heavy, e.crit, e.side === 0);
@@ -966,6 +975,16 @@ export class Game {
         break;
       case 'whiff':
         a.ooh();
+        break;
+      // Alpha 1.5: BANK SHOT and FALSE START
+      case 'bank':
+        a.bank();
+        break;
+      case 'trickShot':
+        a.trickShot();
+        break;
+      case 'feintCounter':
+        a.feintCounter();
         break;
       case 'telegraph':
         // the champion's SPOTLIGHT SHOT gets its own warning sting

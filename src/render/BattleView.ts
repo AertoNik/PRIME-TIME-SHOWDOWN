@@ -20,7 +20,7 @@ import { lineReach } from '../combat/CombatSystem';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
 import type { MatchEvent, Projectile } from '../combat/types';
-import { clamp01, damp, lerp, Rng } from '../core/math';
+import { clamp01, clampRoundedRect, damp, lerp, Rng, type ClampResult } from '../core/math';
 import type { Arena } from './Arena';
 import type { CameraRig } from './CameraRig';
 import { defaultInput, type AnimInput } from './FighterAnimator';
@@ -90,6 +90,9 @@ const _m4 = new Matrix4();
 const _xa = new Vector3();
 const _za = new Vector3();
 const _c = new Color();
+const _clamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
+/** Shared animation input for holograms (PHANTOM STEP decoys, FALSE START afterimage): no per-frame allocation. */
+const _holoInput: AnimInput = defaultInput();
 const rng = new Rng(99);
 
 /** Renders a Match: fighters, projectiles and all reactive effects. */
@@ -106,6 +109,8 @@ export class BattleView {
   private pvis: ProjVis[] = [];
   private pmap = new Map<number, ProjVis>();
   private decoys = new Map<number, CachedFighter>();
+  /** Alpha 1.5: FALSE START afterimage (visual only; one at a time, fades out in ~0.4 s). */
+  private ghost: { model: CachedFighter; t: number; x: number; z: number; yaw: number } | null = null;
   private match: Match | null = null;
   private t = 0;
   private finishTimer = -1;
@@ -220,9 +225,9 @@ export class BattleView {
             this.cam.addTrauma(0.3);
           }
         },
-        onFlourish: () => {
+        onFlourish: (heavy) => {
           const p = slot.pos;
-          if (model.anim.victoryStyle === 'flex') {
+          if (heavy) {
             this.vfx.landImpact(p.x, p.z, 1, _c.set(0xff7a1a));
             this.cam.addTrauma(0.2);
           } else {
@@ -264,6 +269,10 @@ export class BattleView {
     }
     for (const d of this.decoys.values()) this.root.remove(d.rig.root);
     this.decoys.clear();
+    if (this.ghost) {
+      this.root.remove(this.ghost.model.rig.root);
+      this.ghost = null;
+    }
     for (const p of this.pvis) {
       p.group.visible = false;
       p.used = false;
@@ -346,11 +355,33 @@ export class BattleView {
       }
     }
 
+    // FALSE START afterimage: stands where Rina feinted and fades out
+    const gh = this.ghost;
+    if (gh) {
+      gh.t += dt;
+      const life = 0.42;
+      if (gh.t >= life) {
+        this.root.remove(gh.model.rig.root);
+        this.ghost = null;
+      } else {
+        const inp = _holoInput;
+        inp.x = gh.x;
+        inp.z = gh.z;
+        inp.facing = gh.yaw;
+        inp.combat = true;
+        gh.model.anim.update(dt, inp);
+        const hm = gh.model.rig.holoMat;
+        if (hm) {
+          hm.uniforms.uTime.value = this.t;
+          hm.uniforms.uOpacity.value = (1 - gh.t / life) * 0.85;
+        }
+      }
+    }
     // decoys
     for (const [id, d] of this.decoys) {
       const dec = m.decoys.find((x) => x.id === id);
       if (!dec) continue;
-      const inp = defaultInput();
+      const inp = _holoInput;
       inp.x = dec.x;
       inp.z = dec.z;
       inp.facing = dec.facing;
@@ -378,10 +409,11 @@ export class BattleView {
     inp.cutStage = f.action.kind === 'cut' ? f.action.stage : null;
     inp.actionT = 't' in f.action ? f.action.t : 0;
     inp.actionTotal = 'total' in f.action ? f.action.total : 1;
-    if (f.action.kind === 'rush' || f.action.kind === 'dash') {
+    if (f.action.kind === 'rush' || f.action.kind === 'dash' || f.action.kind === 'feint') {
       inp.dashX = f.action.dirX;
       inp.dashZ = f.action.dirZ;
     }
+    inp.reading = f.feint > 0;
     inp.stunned = f.stun > 0;
     inp.knockback = f.knockback > 0;
     inp.ko = f.ko;
@@ -424,8 +456,42 @@ export class BattleView {
       this.vfx.cutLane.hide();
       this.cutOwner = -1;
     }
+    // Alpha 1.5 — BANK SHOT telegraph: the line runs to the barrier, then the reflected leg
+    // (drawn from the same simulation direction the round will take)
+    let aimX = f.aimX;
+    let aimZ = f.aimZ;
+    const bankWind = ca.kind === 'windup' && ca.card === 'bank_shot' && !f.ko;
+    fx.bankOn = bankWind ? 1 : 0;
+    if (bankWind) {
+      const len1 = lineReach(f.x, f.z, ca.dirX, ca.dirZ, 26);
+      const bx = f.x + ca.dirX * len1;
+      const bz = f.z + ca.dirZ * len1;
+      clampRoundedRect(bx, bz, ARENA.wallX, ARENA.wallZ, ARENA.wallCorner, _clamp);
+      let nx = _clamp.nx;
+      let nz = _clamp.nz;
+      if (!_clamp.hit) {
+        clampRoundedRect(bx + ca.dirX * 0.3, bz + ca.dirZ * 0.3, ARENA.wallX, ARENA.wallZ, ARENA.wallCorner, _clamp);
+        nx = _clamp.nx;
+        nz = _clamp.nz;
+      }
+      const vn = ca.dirX * nx + ca.dirZ * nz;
+      const rx = ca.dirX - 2 * vn * nx;
+      const rz = ca.dirZ - 2 * vn * nz;
+      fx.laneLen = len1;
+      fx.laneWidth = 0.7;
+      fx.laneLocked = true;
+      fx.laneDirX = ca.dirX;
+      fx.laneDirZ = ca.dirZ;
+      fx.bankX = bx;
+      fx.bankZ = bz;
+      fx.bankDX = rx;
+      fx.bankDZ = rz;
+      fx.bankLen = Math.min(7, lineReach(bx - nx * 0.1, bz - nz * 0.1, rx, rz, 7));
+      aimX = x + ca.dirX;
+      aimZ = z + ca.dirZ;
+    }
     const muzzle = s.model.rig.muzzles[0].getWorldPosition(_v2);
-    fx.update(dt, this.t, x, z, f.aimX, f.aimZ, muzzle);
+    fx.update(dt, this.t, x, z, aimX, aimZ, muzzle);
     const g = this.vfx.glitch[s.side];
     g.on = damp(g.on, f.glitch > 0 ? 1 : 0, 8, dt);
     g.update(this.t, x, z);
@@ -534,6 +600,20 @@ export class BattleView {
         v.streakLen = 2.2;
         v.streakWidth = 0.2;
         break;
+      case 'bank':
+        // Alpha 1.5 — BANK SHOT: a spinning copper disc with a warm tracer
+        r = 0.2;
+        elong = 0.5;
+        v.streakLen = 2.4;
+        v.streakWidth = 0.36;
+        break;
+      case 'counter':
+        // Alpha 1.5 — FALSE START counter: a fast coral needle
+        r = 0.11;
+        elong = 4.4;
+        v.streakLen = 2.8;
+        v.streakWidth = 0.26;
+        break;
       default:
         r = 0.095;
         elong = 3.6;
@@ -544,11 +624,13 @@ export class BattleView {
     v.coreMat.color.copy(accent).lerp(_c.set(0xffffff), 0.55).multiplyScalar(p.kind === 'power' ? 4 : 3);
     _c.copy(accent);
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
+    if (p.kind === 'bank') _c.set(0xff9a4a).lerp(accent, 0.25);
     if (p.electric) _c.set(0xffe14d);
-    v.streakMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.9);
-    v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.4);
-    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' ? 1 : 0.6);
-    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle';
+    const big = p.kind === 'power' || p.kind === 'bank';
+    v.streakMat.color.copy(_c).multiplyScalar(big ? 2.4 : p.kind === 'counter' ? 2.6 : 1.9);
+    v.glowMat.color.copy(_c).multiplyScalar(big ? 2.4 : 1.4);
+    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bank' ? 1.5 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' || p.kind === 'counter' ? 1 : 0.6);
+    v.ring.visible = (p.kind === 'power' && p.weapon !== 'pulse_rifle') || p.kind === 'bank';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;
@@ -559,7 +641,8 @@ export class BattleView {
     const z = lerp(p.pz, p.z, alpha);
     v.y = damp(v.y, ARENA.shotHeight + (p.kind === 'power' ? 0.1 : 0), 6, dt);
     v.group.position.set(x, v.y, z);
-    v.core.rotation.set(0, Math.atan2(p.vx, p.vz), 0);
+    // the BANK SHOT disc spins on its edge as it flies
+    v.core.rotation.set(0, Math.atan2(p.vx, p.vz), p.kind === 'bank' ? this.t * 30 : 0);
 
     // camera-facing tracer streak oriented along travel
     const sp = Math.hypot(p.vx, p.vz) || 1;
@@ -576,7 +659,7 @@ export class BattleView {
 
     // sparse particle wake (power shots and bolts only — tracers do the rest)
     const s = this.slots[p.owner];
-    const n = p.kind === 'power' ? 3 : p.kind === 'bolt' && rng.chance(0.5) ? 1 : 0;
+    const n = p.kind === 'power' ? 3 : p.kind === 'bank' ? 2 : p.kind === 'bolt' && rng.chance(0.5) ? 1 : 0;
     for (let i = 0; i < n; i++) {
       this.vfx.sparks.spawn(
         x - p.vx * 0.01 + rng.range(-0.05, 0.05),
@@ -588,7 +671,7 @@ export class BattleView {
         p.kind === 'power' ? 0.35 : 0.2,
         p.kind === 'power' ? 0.45 : 0.14,
         0.02,
-        p.electric ? _c.set(0xffe14d) : s.accent,
+        p.electric ? _c.set(0xffe14d) : p.kind === 'bank' ? _c.set(0xffb070) : s.accent,
         2,
         2,
         0,
@@ -616,7 +699,7 @@ export class BattleView {
     switch (e.type) {
       case 'shot': {
         const s = this.slots[e.side];
-        const heavy = e.kind === 'power';
+        const heavy = e.kind === 'power' || e.kind === 'bank';
         s.model.anim.fire(e.muzzle, heavy);
         const mz = s.model.rig.muzzles[e.muzzle] ?? s.model.rig.muzzles[0];
         mz.getWorldPosition(_v);
@@ -1025,6 +1108,50 @@ export class BattleView {
       case 'propRespawn': {
         const p = this.match?.props[e.index];
         if (p) this.arena.propRespawn(e.index, p.x, p.z);
+        break;
+      }
+      // Alpha 1.5 — BANK SHOT / FALSE START
+      case 'bank': {
+        const s = this.slots[e.side];
+        this.vfx.bankSpark(e.x, e.z, e.nx, e.nz, _c.set(0xff9a4a).lerp(s.accent, 0.3));
+        this.cam.addTrauma(0.08);
+        break;
+      }
+      case 'trickShot': {
+        const s = this.slots[e.side];
+        this.vfx.rays(e.x, ARENA.shotHeight, e.z, _c.set(0xffb070), 1, 3.4, 0.4, 2);
+        this.vfx.ring(e.x, e.z, s.accent, 0.5, 3, 0.4, 2.2);
+        this.arena.hype(0.8);
+        break;
+      }
+      case 'feint': {
+        // the afterimage stays where she was, she slips aside
+        const s = this.slots[e.side];
+        const f = m.fighters[e.side];
+        if (this.ghost) this.root.remove(this.ghost.model.rig.root);
+        const g = this.models.getGhost(f.look);
+        g.anim.reset(f.facing);
+        g.rig.root.position.set(e.x, 0, e.z);
+        this.root.add(g.rig.root);
+        this.ghost = { model: g, t: 0, x: e.x, z: e.z, yaw: f.facing };
+        this.vfx.ring(e.x, e.z, s.accent, 0.35, 2.2, 0.35, 2);
+        this.vfx.burst(e.x, 1.1, e.z, s.accent, 14, 3, 0.14, 0.35, 2.2);
+        break;
+      }
+      case 'feintCounter': {
+        const s = this.slots[e.side];
+        const p = this.chest(e.side, _v);
+        this.vfx.flash(p.x, p.y, p.z, s.accent, 1.2, 3, 0.25, 2.6);
+        this.vfx.rays(p.x, p.y, p.z, _c.set(0xffe3c2), 1, 3, 0.35, 2);
+        this.vfx.ring(s.pos.x, s.pos.z, s.accent, 0.5, 3.2, 0.4, 2.4);
+        this.requestTime(0.35, 0.18);
+        this.cam.addTrauma(0.15);
+        this.arena.hype(0.8);
+        break;
+      }
+      case 'feintEnd': {
+        const s = this.slots[e.side];
+        this.vfx.burst(s.pos.x, 1.1, s.pos.z, s.accent, 6, 2, 0.1, 0.3, 1.6);
         break;
       }
       case 'reaction': {

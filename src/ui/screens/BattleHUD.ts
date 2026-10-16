@@ -55,12 +55,15 @@ const STATUS_ORDER: { key: string; label: string; color: string }[] = [
   { key: 'stun', label: 'ОГЛУШЁН', color: '#ffe14d' },
   { key: 'glitch', label: 'ВЗЛОМ', color: '#ff4fd8' },
   { key: 'shield', label: 'ЩИТ', color: '#9ad8ff' },
+  // Alpha 1.5: FALSE START read window (the next suitable attack is answered) and RIPOSTE ready
+  { key: 'feint', label: 'ФИНТ', color: '#ff8a7a' },
   { key: 'overdrive', label: 'РАЗГОН', color: '#ffa060' },
   { key: 'adrenaline', label: 'АДРЕНАЛИН', color: '#22f0e0' },
   { key: 'smoke', label: 'В ДЫМУ', color: '#b8b0e0' },
   { key: 'momentum', label: 'MOMENTUM', color: '#22f0e0' },
   { key: 'ironSkin', label: 'IRON SKIN', color: '#c8d4ea' },
   { key: 'overclock', label: 'OVERCLOCK', color: '#ff8ae6' },
+  { key: 'riposte', label: 'РИПОСТ', color: '#ffb0a0' },
 ];
 const MAX_STATUS = 3;
 
@@ -625,6 +628,8 @@ export class BattleHUD implements Screen {
         momentum: f.momentum > 0,
         ironSkin: f.ironSkin > 0,
         overclock: f.overclock > 0,
+        feint: f.feint > 0,
+        riposte: f.riposte,
       };
       const st: string[] = [];
       for (const s of STATUS_ORDER) {

@@ -617,6 +617,58 @@ export function getRigGeometry(lookId: string): RigGeometry {
         TG.add(rbox(0.05, 0.05, 0.012, 0.006), top.trim, { p: [-0.15, h * 0.6, zf(h * 0.6) + 0.01], r: [0, -0.35, Math.PI / 4] }, GLOW);
         break;
       }
+      case 'track': {
+        // Alpha 1.5 (Kai): cropped early-2000s track jacket — navy body, turquoise colour-block
+        // yoke, copper piping down the sides, a zip, a popped collar and a glowing trick-shot badge
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(torsoShell(d, h * 0.58, h * 0.84, 0.012), top.accent);
+        T.add(torsoRing(d, h * 0.58, 0.016, 0.014), top.trim);
+        T.add(torsoRing(d, 0.04, 0.012, 0.05), top.accent);
+        // white tee showing under the cropped hem
+        T.add(torsoShell(d, -0.02, 0.05, -0.01), top.inner);
+        for (const ss of [1, -1]) {
+          // copper piping down each side
+          const a = ss * 1.45;
+          const r = torsoR(d, h * 0.4) + 0.012;
+          T.add(rbox(0.026, h * 0.62, 0.03, 0.01), top.trim, { p: [Math.sin(a) * r, h * 0.36, Math.cos(a) * r * d.depth], r: [0, a, 0] });
+        }
+        T.add(rbox(0.024, h * 0.8, 0.03, 0.01), 0xd9dde8, { p: [0, h * 0.44, zf(h * 0.44) + 0.004] });
+        // popped collar: a tall open band
+        const col = tor(0.2, 0.05, Math.PI * 1.55, 22);
+        col.rotateX(Math.PI / 2);
+        col.rotateY(Math.PI * 1.27);
+        T.add(col, top.main, { p: [0, h * 0.96, -0.01], s: [1, 2.1, 0.94] });
+        T.add(col.clone(), top.accent, { p: [0, h * 0.96 + 0.06, -0.01], s: [1.02, 0.5, 0.96] });
+        // round badge with a bounce-arrow glow
+        T.add(sph(0.062, 14, 10), top.trim, { p: [0.16, h * 0.68, zf(h * 0.68) - 0.012], s: [1, 1, 0.35] });
+        TG.add(tor(0.034, 0.008, Math.PI * 1.3, 12), look.glow, { p: [0.16, h * 0.68, zf(h * 0.68) + 0.01], r: [0, 0, 0.6] }, GLOW);
+        break;
+      }
+      case 'moto': {
+        // Alpha 1.5 (Rina): cropped cream moto jacket — coral side panels, an asymmetric zip,
+        // wide notched lapels over a graphite top and a belted waist with a silver buckle
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.inner);
+        T.add(torsoShell(d, h * 0.08, h * 0.95, 0.02, 0.4, Math.PI * 2 - 0.8), top.main);
+        for (const ss of [1, -1]) {
+          T.add(torsoShell(d, h * 0.1, h * 0.62, 0.026, ss > 0 ? Math.PI * 0.32 : Math.PI * 1.43, Math.PI * 0.25), top.accent);
+          // lapels folded open
+          T.add(rbox(0.09, h * 0.36, 0.028, 0.014), top.main, { p: [ss * 0.115, h * 0.72, zf(h * 0.72) + 0.01], r: [0, ss * 0.32, -ss * 0.45] });
+          T.add(rbox(0.016, h * 0.34, 0.03, 0.006), top.accent, { p: [ss * 0.16, h * 0.72, zf(h * 0.72) + 0.002], r: [0, ss * 0.42, -ss * 0.45] });
+        }
+        // asymmetric zip: from the left hip up to the right collarbone
+        const zl = h * 0.78;
+        const zip = rbox(0.022, zl, 0.026, 0.008);
+        zip.rotateZ(0.38);
+        T.add(zip, 0xc9ced8, { p: [0.04, h * 0.46, zf(h * 0.46) + 0.022] });
+        // belt
+        T.add(torsoRing(d, h * 0.12, 0.03, 0.03), top.trim);
+        T.add(rbox(0.08, 0.06, 0.03, 0.012), 0xd9dde8, { p: [-0.12, h * 0.12, zf(h * 0.12) + 0.04], r: [0, -0.35, 0] });
+        // shoulder straps (epaulettes)
+        for (const ss of [1, -1]) T.add(rbox(0.06, 0.03, 0.2, 0.012), top.trim, { p: [ss * d.shoulderX * 0.82, d.shoulderY + 0.06, 0], r: [0, 0, -ss * 0.25] });
+        break;
+      }
       case 'pads': {
         // sleeveless jersey with a hazard-stripe badge (shoulder pads below)
         T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
@@ -689,6 +741,13 @@ export function getRigGeometry(lookId: string): RigGeometry {
         T.add(sph(0.07, 12, 8), look.top.accent, { p: [ss * 0.28, d.neckY - 0.04, 0.06], s: [0.5, 1, 1] });
       }
     }
+    if (look.accessories.includes('choker')) {
+      // Alpha 1.5 (Rina): graphite choker with a small glowing coral stone
+      const ch = tor(d.neckR * 1.18, 0.022, Math.PI * 2, 24);
+      ch.rotateX(Math.PI / 2);
+      T.add(ch, look.top.trim, { p: [0, d.neckY - 0.03, 0.005] });
+      TG.add(sph(0.026, 10, 8), look.glow, { p: [0, d.neckY - 0.045, d.neckR * 1.2], s: [1, 1.2, 0.6] }, GLOW);
+    }
     if (look.accessories.includes('chain')) {
       const ch = tor(0.2, 0.026, Math.PI * 2, 30);
       T.add(ch, 0xffc23a, { p: [0, d.neckY - 0.08, 0.13], r: [1.15, 0, 0], s: [1.25, 1, 1] });
@@ -730,10 +789,32 @@ export function getRigGeometry(lookId: string): RigGeometry {
       const ring = tor(ar * 1.25, 0.016);
       ring.rotateX(Math.PI / 2);
       U.add(ring, top.accent, { p: [0, -d.upperArm * 0.62, 0] });
+    } else if (top.style === 'track') {
+      // two track stripes down the outside of the sleeve and a turquoise shoulder block
+      U.add(sph(ar * 1.5, 14, 10), top.accent, { p: [0, 0.0, 0], s: [1, 0.75, 1] });
+      for (const [off, c] of [
+        [0.022, top.accent],
+        [-0.022, top.trim],
+      ] as [number, number][]) U.add(rbox(0.02, d.upperArm * 0.8, 0.026, 0.008), c, { p: [s * ar * 1.2, -d.upperArm * 0.5, off] });
+    } else if (top.style === 'moto') {
+      // a coral band above the elbow
+      const ring = tor(ar * 1.24, 0.026);
+      ring.rotateX(Math.PI / 2);
+      U.add(ring, top.accent, { p: [0, -d.upperArm * 0.7, 0] });
     }
     // forearm
     F.add(cap(ar * (bare ? 1.05 : 1.12), d.foreArm * 0.55), sleeveMain, { p: [0, -d.foreArm * 0.45, 0] });
     if (top.style === 'racer') F.add(rbox(0.03, d.foreArm * 0.62, 0.038, 0.012), top.accent, { p: [s * ar * 1.12, -d.foreArm * 0.42, 0] });
+    if (top.style === 'track') {
+      for (const [off, c] of [
+        [0.02, top.accent],
+        [-0.02, top.trim],
+      ] as [number, number][]) F.add(rbox(0.018, d.foreArm * 0.6, 0.024, 0.008), c, { p: [s * ar * 1.1, -d.foreArm * 0.42, off] });
+    }
+    if (top.style === 'moto') {
+      // zipped cuff
+      F.add(rbox(0.016, d.foreArm * 0.28, 0.02, 0.006), 0xc9ced8, { p: [s * ar * 1.08, -d.foreArm * 0.72, 0] });
+    }
     if (top.style === 'coat') {
       // wide turned-back gold cuff
       F.add(cyl(ar * 1.32, ar * 1.22, 0.1, 16), top.accent, { p: [0, -d.foreArm * 0.78, 0] });
@@ -908,6 +989,38 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const s of [1, -1]) H.add(rbox(0.05, 0.13, 0.07, 0.02), hc, { p: [s * R * 0.93, cy - 0.01, 0.08] });
         break;
       }
+      case 'curtain': {
+        // Alpha 1.5 (Kai): late-90s curtains — a middle part, two swept lobes over the temples
+        // with copper frosted tips, volume on top, short tapered sides
+        H.add(new SphereGeometry(R * 1.05, 26, 14, 0, Math.PI * 2, 0, 1.22), hc, { p: [0, cy + 0.01, -0.03], r: [-0.26, 0, 0] });
+        H.add(new SphereGeometry(R * 1.035, 22, 12, Math.PI, Math.PI, 0.5, 1.4), hc, { p: [0, cy, 0.0] });
+        H.add(sph(0.25, 18, 12), hc, { p: [0, cy + R * 0.9, R * 0.12], s: [1.25, 0.55, 1.05] });
+        for (const s of [1, -1]) {
+          // each curtain: a lock from the part sweeping out and down to the temple, frosted at the end
+          H.add(sph(0.2, 16, 12), shade(hc, 1.18), { p: [s * 0.12, cy + R * 0.64, R * 0.74], s: [1.0, 0.42, 0.6], r: [0.75, s * 0.15, -s * 0.55] });
+          H.add(sph(0.17, 14, 10), hc, { p: [s * 0.26, cy + R * 0.42, R * 0.76], s: [0.88, 0.42, 0.55], r: [0.6, s * 0.45, -s * 1.0] });
+          H.add(sph(0.08, 12, 8), h2, { p: [s * 0.33, cy + R * 0.29, R * 0.74], s: [0.78, 0.42, 0.55], r: [0.6, s * 0.5, -s * 1.15] });
+          H.add(rbox(0.05, 0.12, 0.08, 0.02), hc, { p: [s * R * 0.92, cy + 0.0, 0.1] });
+        }
+        // the part line
+        H.add(rbox(0.018, 0.04, R * 0.5, 0.008), shade(hc, 0.6), { p: [0, cy + R * 0.98, R * 0.28], r: [0.55, 0, 0] });
+        break;
+      }
+      case 'bob': {
+        // Alpha 1.5 (Rina): sharp asymmetric bob — jaw-length sides that flip at the ends, a long
+        // swept fringe with a coral streak, an angled short nape
+        H.add(new SphereGeometry(R * 1.06, 26, 14, 0, Math.PI * 2, 0, 1.34), hc, { p: [0, cy + 0.01, -0.03], r: [-0.18, 0, 0] });
+        H.add(new SphereGeometry(R * 1.055, 22, 14, Math.PI, Math.PI, 0.4, 1.78), hc, { p: [0, cy, 0.0] });
+        for (const s of [1, -1]) {
+          H.add(sph(0.22, 16, 12), hc, { p: [s * R * 0.88, cy - R * 0.12, 0.04], s: [0.52, 1.25, 1.0] });
+          H.add(sph(0.12, 12, 10), hc, { p: [s * R * 0.9, cy - R * 0.5, 0.14], s: [0.6, 0.45, 1.05], r: [0, 0, s * 0.35] });
+        }
+        H.add(sph(0.24, 18, 12), hc, { p: [0.1, cy + R * 0.52, R * 0.68], s: [1.55, 0.58, 0.55], r: [0.42, 0, -0.5] });
+        H.add(sph(0.12, 12, 10), h2, { p: [0.26, cy + R * 0.38, R * 0.76], s: [0.6, 1.15, 0.42], r: [0.3, 0, -0.62] });
+        H.add(sph(0.11, 12, 10), hc, { p: [-0.24, cy + R * 0.6, R * 0.62], s: [1.1, 0.5, 0.55], r: [0.5, 0, 0.4] });
+        H.add(sph(0.2, 14, 10), hc, { p: [0, cy - R * 0.3, -R * 0.76], s: [1.45, 0.72, 0.72], r: [0.25, 0, 0] });
+        break;
+      }
       case 'mohawk': {
         H.add(new SphereGeometry(R * 1.02, 26, 14, 0, Math.PI * 2, 0, 1.3), h2, { p: [0, cy + 0.0, -0.02], r: [-0.2, 0, 0] });
         H.add(new SphereGeometry(R * 1.015, 22, 12, Math.PI, Math.PI, 0.5, 1.3), h2, { p: [0, cy, 0.0] });
@@ -962,6 +1075,18 @@ export function getRigGeometry(lookId: string): RigGeometry {
       frame.rotateX(Math.PI / 2);
       frame.rotateY((arc + 0.25) / 2 - Math.PI / 2);
       H.add(frame, look.top.trim, { p: [0, cy + R * 0.4 + 0.035, -0.04], r: [-0.18, 0, 0], s: [1, 1, 0.95] });
+    }
+    if (look.accessories.includes('shades')) {
+      // Alpha 1.5 (Kai): retro oval shades pushed up into the hair, turquoise-mirrored lenses
+      for (const s of [1, -1]) {
+        const lens = cyl(0.075, 0.075, 0.025, 16);
+        lens.rotateX(Math.PI / 2);
+        H.add(lens, 0x14161c, { p: [s * 0.13, cy + R * 0.86, R * 0.5], r: [-1.05, s * 0.12, 0], s: [1.25, 1, 0.8] });
+        const glint = cyl(0.058, 0.058, 0.01, 14);
+        glint.rotateX(Math.PI / 2);
+        HG.add(glint, look.glow, { p: [s * 0.13, cy + R * 0.87 + 0.012, R * 0.5 + 0.012], r: [-1.05, s * 0.12, 0], s: [1.25, 1, 0.8] }, GLOW * 0.6);
+      }
+      H.add(rbox(0.07, 0.016, 0.016, 0.006), look.top.trim, { p: [0, cy + R * 0.88, R * 0.52], r: [-1.05, 0, 0] });
     }
     if (look.accessories.includes('earring')) {
       H.add(tor(0.035, 0.01), 0xffd76a, { p: [-R * 1.0, cy - 0.12, 0.02], r: [0, Math.PI / 2, 0] });
@@ -1145,6 +1270,51 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(rbox(0.06, 0.05, 0.27, 0.02), wd, { p: [0, 0.0, -0.25], r: [-0.22, 0, 0] });
     W.add(rbox(0.09, 0.21, 0.05, 0.02), wc, { p: [0, 0.07, -0.4] });
     muzzleR = [0, 0.1, 1.26];
+  } else if (look.weapon === 'ricochet') {
+    // Alpha 1.5 — Kai's trick pistol: a long copper barrel over a revolver-style drum, two
+    // angled "bank" deflector fins at the muzzle and turquoise glow strips. One-handed.
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    W.add(rbox(0.12, 0.15, 0.34, 0.04), wd, { p: [0, 0.1, 0.1] });
+    const drum = cyl(0.085, 0.085, 0.13, 16);
+    drum.rotateX(Math.PI / 2);
+    W.add(drum, wc, { p: [0, 0.12, 0.2] });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      WG.add(sph(0.016, 8, 6), gl, { p: [Math.cos(a) * 0.06, 0.12 + Math.sin(a) * 0.06, 0.272] }, GLOW);
+    }
+    W.add(rbox(0.075, 0.08, 0.44, 0.025), wc, { p: [0, 0.14, 0.5] });
+    W.add(rbox(0.04, 0.03, 0.4, 0.01), wd, { p: [0, 0.19, 0.5] });
+    for (const sg of [1, -1]) {
+      W.add(rbox(0.012, 0.06, 0.12, 0.005), wc, { p: [sg * 0.06, 0.15, 0.66], r: [0, sg * 0.45, 0] });
+      WG.add(rbox(0.008, 0.016, 0.34, 0.005), gl, { p: [sg * 0.04, 0.14, 0.5] }, GLOW);
+    }
+    W.add(tor(0.042, 0.014, Math.PI * 2, 16), wd, { p: [0, 0.14, 0.73] });
+    WG.add(tor(0.028, 0.009, Math.PI * 2, 14), gl, { p: [0, 0.14, 0.745] }, GLOW * 1.2);
+    W.add(rbox(0.08, 0.2, 0.1, 0.03), wd, { p: [0, -0.04, -0.02], r: [-0.3, 0, 0] });
+    W.add(tor(0.05, 0.012, Math.PI, 12), wd, { p: [0, 0.02, 0.07], r: [Math.PI, Math.PI / 2, 0] });
+    W.add(rbox(0.03, 0.05, 0.05, 0.01), wc, { p: [0, 0.2, -0.06], r: [0.5, 0, 0] });
+    muzzleR = [0, 0.14, 0.77];
+  } else if (look.weapon === 'stinger') {
+    // Alpha 1.5 — Rina's compact twin-barrel blaster with a wrist brace and coral emitters,
+    // held close (one hand on the grip, the other bracing the wrist)
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    W.add(rbox(0.13, 0.15, 0.3, 0.045), wc, { p: [0, 0.09, 0.1] });
+    for (const sg of [1, -1]) {
+      const b = cyl(0.028, 0.03, 0.17, 12);
+      b.rotateX(Math.PI / 2);
+      W.add(b, wd, { p: [sg * 0.036, 0.12, 0.31] });
+      WG.add(tor(0.03, 0.009, Math.PI * 2, 14), gl, { p: [sg * 0.036, 0.12, 0.4] }, GLOW * 1.1);
+      WG.add(rbox(0.008, 0.03, 0.16, 0.004), gl, { p: [sg * 0.068, 0.07, 0.1] }, GLOW * 0.8);
+    }
+    W.add(rbox(0.05, 0.035, 0.18, 0.012), wd, { p: [0, 0.18, 0.08] });
+    WG.add(rbox(0.026, 0.02, 0.03, 0.006), gl, { p: [0, 0.205, 0.14] }, GLOW);
+    W.add(rbox(0.07, 0.17, 0.08, 0.025), wd, { p: [0, -0.05, 0.0], r: [-0.25, 0, 0] });
+    const brace = tor(0.08, 0.016, Math.PI, 12);
+    W.add(brace, wd, { p: [0, 0.05, -0.12], r: [0, 0, Math.PI / 2] });
+    W.add(rbox(0.06, 0.09, 0.05, 0.02), 0xff6f61, { p: [0, 0.06, -0.2] });
+    muzzleR = [0, 0.12, 0.42];
   } else if (look.weapon === 'pulse_rifle') {
     // long marksman rifle with a scope (weapon space: barrel +Z), shouldered with both hands
     const W = B.t('weaponR');

@@ -3,9 +3,9 @@ import type { CardId, ComboId, DashStyle, PassiveId, Side, WeaponType } from '..
 
 export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
-export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'cut';
+export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'cut' | 'bank' | 'counter';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline' | 'bank' | 'counter';
 
 export interface Projectile {
   id: number;
@@ -44,6 +44,10 @@ export interface Projectile {
   sidestepped: boolean;
   /** 0..1 share of damage that ignores shields (CHARGED SHOT); shields it hits break. */
   pierce: number;
+  /** Alpha 1.5 (BANK SHOT): reflections left off the barrier (0 = dies at the wall as usual). */
+  bounces: number;
+  /** Has already bounced once (a hit now is a TRICK SHOT). */
+  bounced: boolean;
 }
 
 export interface SmokeZone {
@@ -180,7 +184,17 @@ export type MatchEvent =
   | { type: 'propBreak'; index: number; x: number; z: number }
   /** A set piece was hit but holds (hp left), or a reactive piece reacted (hp = -1). */
   | { type: 'propHit'; index: number; x: number; z: number; hp: number; heavy: boolean }
-  | { type: 'propRespawn'; index: number };
+  | { type: 'propRespawn'; index: number }
+  /** Alpha 1.5: a BANK SHOT ricocheted off the barrier at (x, z) (n = wall normal, d = new direction). */
+  | { type: 'bank'; side: Side; x: number; z: number; nx: number; nz: number; dx: number; dz: number }
+  /** Alpha 1.5: a BANK SHOT landed after its ricochet. */
+  | { type: 'trickShot'; side: Side; x: number; z: number; refund: number }
+  /** Alpha 1.5: FALSE START — the feint step (window seconds of reading). */
+  | { type: 'feint'; side: Side; x: number; z: number; dx: number; dz: number; window: number }
+  /** Alpha 1.5: the feint read an attack — it missed and the counter shot is on its way. */
+  | { type: 'feintCounter'; side: Side; x: number; z: number; tx: number; tz: number; kind: HitKind }
+  /** Alpha 1.5: the feint window ran out with nothing to read. */
+  | { type: 'feintEnd'; side: Side };
 
 export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase';
 

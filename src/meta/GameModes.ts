@@ -1,7 +1,7 @@
 import type { ArenaId } from '../config/arenas.config';
 import { bossById, type BossDef } from '../config/boss.config';
 import { REWARDS } from '../config/career';
-import { COSMETICS, type CosmeticId } from '../config/cosmetics.config';
+import type { CosmeticId } from '../config/cosmetics.config';
 import { RIVALS, RIVAL_ORDER } from '../config/fighters';
 import { PERKS, PERK_ORDER, SURVIVAL, challengeById, type ChallengeDef, type ModeReward, type PerkDef, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
@@ -10,6 +10,7 @@ import type { MatchResultData } from '../combat/types';
 import { Rng } from '../core/math';
 import type { CareerSystem, GrantOutcome, RewardLine } from './CareerSystem';
 import type { EventManager, MatchEventOutcome } from './EventManager';
+import { Collection } from './Collection';
 import { emptyBoss, emptyChallenge, emptyPerks, type BossProgress, type ChallengeProgress, type SaveSystem, type SurvivalRecords, type SurvivalRun, type WaveLog } from './SaveSystem';
 
 /**
@@ -346,6 +347,7 @@ export class GameModes {
     const prevBestWave = rec.bestWave;
     const prevBestScore = rec.bestScore;
     const newRecord = cleared > prevBestWave || (cleared > 0 && cleared === prevBestWave && score > prevBestScore);
+    const stageBefore = this.career.stage().index;
     rec.runs++;
     if (end === 'complete') rec.completions++;
     if (firstClear) rec.firstClearPaid = true;
@@ -357,6 +359,8 @@ export class GameModes {
     }
     rec.bestByFighter[run.fighter] = Math.max(rec.bestByFighter[run.fighter] ?? 0, cleared);
     const grant = this.career.grant(reward, run.fighter);
+    // the marathon itself can be the milestone that completes a career stage
+    grant.newStage = this.career.newStageSince(stageBefore);
     // One attempt = one session for seasonal quests and tokens (never once per wave).
     let event: MatchEventOutcome | null = null;
     if (this.events && run.eventId && run.waves.length) event = this.events.applyMatch(run.eventId, this.aggregate(run, end), this.topDifficulty(run));
@@ -464,15 +468,11 @@ export class GameModes {
     return { def, won, phase, bossHp, firstWin, cosmeticNew, newBestTime, newBestRating, progress: { ...p, history: p.history.slice() } };
   }
 
-  /** Add a cosmetic to the collection once; a newly obtained item is equipped right away (like event rewards). */
+  /** Add a cosmetic to MY COLLECTION once; a newly obtained item is equipped right away (like event rewards). */
   private grantCosmetic(id: CosmeticId, source: string): boolean {
-    const c = this.store.data.cosmetics;
-    if (c.owned.includes(id)) return false;
-    c.owned.push(id);
-    c.history.push({ id, event: source, at: this.clock() });
-    c.equipped[COSMETICS[id].slot] = id;
-    return true;
+    return new Collection(this.store, this.clock).grant(id, source);
   }
+
 
   // ------------------------------------------------------------ challenges
   progress(id: string): ChallengeProgress {

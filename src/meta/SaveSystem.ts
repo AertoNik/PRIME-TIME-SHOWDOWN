@@ -1,5 +1,5 @@
 import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config';
-import { CAREER_START, GOALS, type GoalId } from '../config/career';
+import { CAREER_STAGES, CAREER_START, GOALS, type GoalId, type StageId } from '../config/career';
 import { UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
@@ -52,6 +52,8 @@ export interface CosmeticsState {
   equipped: Partial<Record<CosmeticSlot, CosmeticId>>;
   /** When and where each item was obtained. */
   history: { id: CosmeticId; event: string; at: number }[];
+  /** v8 (1.5): items the player has already looked at in MY COLLECTION (the rest show "NEW"). */
+  seen: CosmeticId[];
 }
 
 /** One finished Survival wave (kept while the run is in progress). */
@@ -193,6 +195,8 @@ export interface SaveData {
   modes: ModesState;
   /** v7 (1.4): preferred studio set (an arena id or 'random'). */
   arena: ArenaPref;
+  /** v8 (1.5): career stages whose reward has been paid (each once). */
+  careerClaimed: StageId[];
 }
 
 // The key never changes between versions so existing careers keep loading;
@@ -200,7 +204,8 @@ export interface SaveData {
 const KEY = 'primetime-showdown-save-v1';
 // v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes. v5 (1.3.1): boss fight.
 // v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access). v7 (1.4): arena preference.
-const VERSION = 7;
+// v8 (1.5): new fighters (filled from defaults), MY COLLECTION "seen" marks, claimed career stages.
+const VERSION = 8;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -246,9 +251,10 @@ export function defaultSave(): SaveData {
     seed: Math.floor(Math.random() * 1e9),
     hintsSeen: false,
     events: {},
-    cosmetics: { owned: [], equipped: {}, history: [] },
+    cosmetics: { owned: [], equipped: {}, history: [], seen: [] },
     modes: emptyModes(),
     arena: 'original',
+    careerClaimed: [],
   };
 }
 
@@ -302,7 +308,7 @@ function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
 }
 
 function sanitizeCosmetics(raw: unknown): CosmeticsState {
-  const c: CosmeticsState = { owned: [], equipped: {}, history: [] };
+  const c: CosmeticsState = { owned: [], equipped: {}, history: [], seen: [] };
   if (!raw || typeof raw !== 'object') return c;
   const r = raw as Partial<CosmeticsState>;
   if (Array.isArray(r.owned)) c.owned = [...new Set(r.owned.filter(isCosmeticId))];
@@ -318,6 +324,8 @@ function sanitizeCosmetics(raw: unknown): CosmeticsState {
       if (h && typeof h === 'object' && isCosmeticId(h.id)) c.history.push({ id: h.id, event: String(h.event ?? '').slice(0, 64), at: num(h.at, 0) });
     }
   }
+  // v8: items owned before MY COLLECTION existed are not flagged as new
+  c.seen = Array.isArray(r.seen) ? [...new Set(r.seen.filter((id): id is CosmeticId => isCosmeticId(id) && c.owned.includes(id)))] : c.owned.slice();
   return c;
 }
 
@@ -513,6 +521,11 @@ export function sanitize(raw: unknown): SaveData {
   d.cosmetics = sanitizeCosmetics(r.cosmetics);
   // v4: game modes (absent before Alpha 1.3 -> empty records)
   d.modes = sanitizeModes(r.modes);
+  // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)
+  if (Array.isArray(r.careerClaimed)) {
+    const ids = new Set(CAREER_STAGES.map((st) => st.id));
+    d.careerClaimed = [...new Set((r.careerClaimed as unknown[]).filter((x): x is StageId => typeof x === 'string' && ids.has(x as StageId)))];
+  }
   // v7: arena preference by id (absent before 1.4 -> the original studio). Whether a
   // seasonal set is still open is checked by the game against the running season.
   d.arena = r.arena === 'random' || isArenaId(r.arena) ? r.arena : 'original';

@@ -1,6 +1,6 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
-export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega';
+export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina';
 export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale';
 export type CardId =
   | 'dash'
@@ -13,16 +13,21 @@ export type CardId =
   | 'knockout'
   | 'system_overload'
   | 'charged_shot'
+  /** Alpha 1.5: Kai's ricochet shot (one controlled bounce off the barrier). */
+  | 'bank_shot'
+  /** Alpha 1.5: Rina's feint (a short read window that evades one attack and fires back). */
+  | 'false_start'
   /** Boss only (Alpha 1.3.3): the champion's three-shot DIRECTOR'S CUT. Never in a player deck. */
   | 'directors_cut';
 export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
-export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye';
-export type DashStyle = 'roll' | 'lunge' | 'blink';
-export type VictoryStyle = 'hype' | 'flex' | 'peace';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise';
+export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte';
+export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide';
+/** Victory set key (render only): picks which family of victory animations a fighter performs. */
+export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 

@@ -99,7 +99,8 @@ export class Showcase {
     }
     if (this.cheerT > 0) {
       this.cheerT -= dt;
-      if (this.cheerT <= 0) this.current.anim.reset(this.yaw);
+      // ease back into the idle instead of snapping out of the pose
+      if (this.cheerT <= 0) this.current.anim.endVictory();
     }
     this.input.facing = this.yaw;
     this.input.x = 0;

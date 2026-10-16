@@ -29,6 +29,7 @@ import {
 } from 'three';
 import { clamp01, ease, Rng } from '../core/math';
 import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, pumpkinSpriteTexture, puffTexture, raysTexture, ringTexture, scorchTexture, starTexture } from './textures';
+import { ARENA } from '../config/balance';
 import type { WeaponType } from '../config/types';
 
 const _v = new Vector3();
@@ -891,6 +892,14 @@ export class FighterFX {
   readonly auraMat: ShaderMaterial;
   readonly lane: Mesh;
   readonly laneMat: MeshBasicMaterial;
+  /** Alpha 1.5 — the reflected leg of a BANK SHOT telegraph (same material as the lane). */
+  readonly lane2: Mesh;
+  bankOn = 0;
+  bankX = 0;
+  bankZ = 0;
+  bankDX = 0;
+  bankDZ = 1;
+  bankLen = 0;
   readonly ring: Mesh;
   readonly ringMat: MeshBasicMaterial;
   readonly charge: Sprite;
@@ -938,6 +947,10 @@ export class FighterFX {
     this.lane.visible = false;
     this.lane.renderOrder = 3;
     group.add(this.lane);
+    this.lane2 = new Mesh(lg, this.laneMat);
+    this.lane2.visible = false;
+    this.lane2.renderOrder = 3;
+    group.add(this.lane2);
 
     this.ringMat = new MeshBasicMaterial({
       map: ringTexture(),
@@ -1009,6 +1022,12 @@ export class FighterFX {
       const pulse = this.laneLocked ? 0.85 + Math.sin(t * 40) * 0.15 : 0.45 + Math.sin(t * 18) * 0.2;
       this.laneMat.opacity = this.laneOn * pulse;
       this.laneMat.map!.offset.y = -t * 1.6;
+    }
+    this.lane2.visible = this.lane.visible && this.bankOn > 0.01 && this.bankLen > 0.1;
+    if (this.lane2.visible) {
+      this.lane2.position.set(this.bankX, 0.05, this.bankZ);
+      this.lane2.rotation.y = Math.atan2(this.bankDX, this.bankDZ);
+      this.lane2.scale.set(this.laneWidth * 0.85, 1, this.bankLen);
     }
     this.ring.visible = this.laneOn > 0.01;
     if (this.ring.visible) {
@@ -1471,6 +1490,19 @@ export class VFX {
         }
         this.soft.spawn(p.x + dx * 0.2, p.y, p.z + dz * 0.2, dx * 1.2 + rng.range(-0.3, 0.3), rng.range(0.2, 0.6), dz * 1.2 + rng.range(-0.3, 0.3), rng.range(0.35, 0.55), 0.22, 0.75, _c.set(0x5a5560), 1, 3, -0.3);
         break;
+      case 'ricochet':
+        // Alpha 1.5 — Kai: a copper pop with a little spinning ring off the deflector fins
+        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xffb070), 2.6, 0.4, 0.85, 0.05);
+        this.glows.spawn(p.x, p.y, p.z, color, 1.5, 0.3, 0.9, 0.07);
+        this.rings.spawn(p.x, p.y, p.z, _c.set(0xff9a4a), 1.8, 0.12, 0.6, 0.12, false);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 3, 8, 0.2, 0.09);
+        break;
+      case 'stinger':
+        // Alpha 1.5 — Rina: two tight coral pops, one per barrel
+        this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.28, 0.5, 0.035);
+        this.glows.spawn(p.x, p.y, p.z, _c.set(0xffe3c2), 1.2, 0.2, 0.55, 0.05);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 2, 7, 0.12, 0.07);
+        break;
       case 'tech_carbine':
         this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
         for (let i = 0; i < 2; i++) {
@@ -1510,12 +1542,34 @@ export class VFX {
         this.rings.spawn(x, y, z, color, 2.2, 0.2, 1.1, 0.18, false);
         this.burst(x, y, z, color, 9, 7, 0.13, 0.3, 2.6, 4);
         break;
+      case 'ricochet':
+        this.flashes.spawn(x, y, z, _c.set(0xffb070), 2.4, 0.4, 1.0, 0.08, 2);
+        this.burst(x, y, z, color, 7, 6, 0.12, 0.3, 2.4);
+        break;
+      case 'stinger':
+        this.flashes.spawn(x, y, z, color, 2.2, 0.3, 0.8, 0.06, 2);
+        this.burst(x, y, z, _c.set(0xffe3c2), 5, 5, 0.1, 0.24, 2.4);
+        break;
       case 'tech_carbine':
         this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);
         for (let i = 0; i < 5; i++) {
           this.sparks.spawn(x + rng.range(-0.2, 0.2), y + rng.range(-0.2, 0.3), z + rng.range(-0.2, 0.2), rng.range(-1.5, 1.5), rng.range(0.5, 2.5), rng.range(-1.5, 1.5), rng.range(0.2, 0.4), 0.16, 0.16, i % 2 ? _c.set(0x22f0e0) : color, 2.4, 4, 0);
         }
         break;
+    }
+  }
+
+  /** Alpha 1.5 — BANK SHOT ricochet: sparks spray off the barrier along the wall, a copper ring and a flash. */
+  bankSpark(x: number, z: number, nx: number, nz: number, color: Color): void {
+    const y = ARENA.shotHeight;
+    this.flashes.spawn(x, y, z, _c.set(0xffd2a0), 3, 0.5, 1.4, 0.1);
+    this.rings.spawn(x, y, z, color, 2.2, 0.2, 1.3, 0.22, false);
+    for (let i = 0; i < 10; i++) {
+      const side = i % 2 ? 1 : -1;
+      // along the wall (tangent) and back into the ring (−normal)
+      const tx = -nz * side * rng.range(2, 5) - nx * rng.range(0.5, 2.5);
+      const tz = nx * side * rng.range(2, 5) - nz * rng.range(0.5, 2.5);
+      this.sparks.spawn(x, y, z, tx, rng.range(0.2, 2), tz, rng.range(0.15, 0.32), 0.14, 0.02, i % 3 ? color : _c.set(0xffffff), 2.4, 3, -2);
     }
   }
 

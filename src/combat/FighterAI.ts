@@ -2,6 +2,7 @@ import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
 import { CARDS, COMBOS } from '../config/cards';
 import type { BehaviorDef, CardId, Side } from '../config/types';
 import { clamp } from '../core/math';
+import type { BankSolution } from './CombatSystem';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
 
@@ -21,6 +22,8 @@ export interface AIProfile {
   usesCards: boolean;
   behavior: BehaviorDef;
 }
+
+const bankScore: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
 
 interface Perceived {
   x: number;
@@ -285,17 +288,19 @@ export class FighterAI {
     const m = this.m;
     if (this.considered.size > 300) this.considered.clear();
     for (const p of m.projectiles) {
-      if (p.owner === f.side || !p.alive || this.considered.has(p.id)) continue;
+      // a BANK SHOT after its ricochet is a new approach (its own key)
+      const key = p.bounced ? -p.id : p.id;
+      if (p.owner === f.side || !p.alive || this.considered.has(key)) continue;
       const rx = f.x - p.x;
       const rz = f.z - p.z;
       const vv = p.vx * p.vx + p.vz * p.vz;
       const tca = (rx * p.vx + rz * p.vz) / vv;
       if (tca < 0) {
-        this.considered.add(p.id);
+        this.considered.add(key);
         continue;
       }
       if (tca > 0.5) continue;
-      this.considered.add(p.id);
+      this.considered.add(key);
       const cx = p.x + p.vx * tca - f.x;
       const cz = p.z + p.vz * tca - f.z;
       const miss = Math.hypot(cx, cz);
@@ -385,7 +390,7 @@ export class FighterAI {
       const tca = (rx * p.vx + rz * p.vz) / vv;
       if (tca < 0 || tca > 0.65) continue;
       const miss = Math.hypot(p.x + p.vx * tca - f.x, p.z + p.vz * tca - f.z);
-      if (miss < f.radius + p.radius + 0.5) return { key: 'p' + p.id, kind: 'incoming' };
+      if (miss < f.radius + p.radius + 0.5) return { key: 'p' + p.id + (p.bounced ? 'b' : ''), kind: 'incoming' };
     }
     return null;
   }
@@ -413,8 +418,10 @@ export class FighterAI {
         if (this.reactKind === 'windup') {
           // Interrupt if the charge is still going, otherwise brace.
           const charging = foe.action.kind === 'windup' || (foe.action.kind === 'cut' && foe.action.stage === 'prep');
-          if (charging && (this.tryPlay('shock') || this.tryPlay('system_overload') || this.tryPlay('shield'))) return;
-        } else if (this.tryPlay('dash') || this.tryPlay('shield')) {
+          // FALSE START reads a charge whose aim already froze (the shot comes within the window)
+          const locked = foe.action.kind === 'windup' && foe.action.locked;
+          if (charging && (this.tryPlay('shock') || this.tryPlay('system_overload') || (locked && this.tryPlay('false_start')) || this.tryPlay('shield'))) return;
+        } else if (this.tryPlay('dash') || this.tryPlay('false_start') || this.tryPlay('shield')) {
           return;
         }
       }
@@ -504,7 +511,8 @@ export class FighterAI {
     const b = this.profile.behavior;
     const hand = m.hands[this.side];
     const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
-    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0;
+    const hasHeavy =
+      this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0 || this.has('bank_shot') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
     // Visible openings a pressure fighter jumps on: the foe just spent its DASH,
     // is slowed, or is committed to a charge of its own.
@@ -560,6 +568,25 @@ export class FighterAI {
         if (foe.shield > 0) s += 1.5;
         if (foe.invuln > 0) s -= 6;
         if (combo) s += 4;
+        break;
+      case 'bank_shot': {
+        // the ricochet needs a clean bounce point and a target that is not hiding behind a shield
+        const sol = m.combat.bankAim(f, bankScore);
+        s = sol.bounce ? 5.5 : 2;
+        if (dist < 2.2) s -= 2;
+        if (foeDisabled) s += 4;
+        if (foe.shield > 0) s -= 4;
+        if (foe.invuln > 0) s -= 6;
+        if (combo) s += 4;
+        if (foe.hp < 600) s += 1.5;
+        break;
+      }
+      case 'false_start':
+        // mostly a reaction card (see the reaction step); proactively only under fire
+        s = 1;
+        if (threatened && dist < foe.stats.attack.range) s += 3.5;
+        if (foe.fireTimer < 0.25 && dist < foe.stats.attack.range * 0.9) s += 2;
+        if (f.feint > 0) s = -10;
         break;
       case 'shield':
         s = 1;

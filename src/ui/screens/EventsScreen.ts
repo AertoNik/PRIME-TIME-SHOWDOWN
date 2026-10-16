@@ -27,7 +27,11 @@ export function currencyIcon(e: EventDef | null): string {
 
 const RARITY: Record<CosmeticDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
 
-/** Seasonal events: banner, countdown, currency, quests, reward exchange and the cosmetics collection. */
+/**
+ * Seasonal events: banner, countdown, currency, quests and the reward exchange — the
+ * season's own content only. Rewards earned here go to MY COLLECTION (Alpha 1.5),
+ * which is where they are kept, equipped and taken off, long after the season ends.
+ */
 export class EventsScreen implements Screen {
   readonly el: HTMLElement;
   private g: Game;
@@ -107,14 +111,10 @@ export class EventsScreen implements Screen {
         g.audio.ui('deny');
         g.ui.toast(r.reason);
       }
-    } else if (act === 'equip' || act === 'unequip') {
-      const id = t.dataset.id as CosmeticId;
-      if (em.setEquipped(id, act === 'equip')) {
-        g.audio.ui(act === 'equip' ? 'confirm' : 'click');
-        g.applyCosmetics();
-        g.ui.toast(act === 'equip' ? `${COSMETICS[id].name}: надето` : `${COSMETICS[id].name}: снято`);
-        this.render();
-      }
+    } else if (act === 'collection') {
+      g.audio.ui('click');
+      g.ui.closeModal();
+      g.goto('collection', { tab: 'seasons' });
     } else if (act === 'play') {
       g.audio.ui('confirm');
       g.goto('prep', { mode: { kind: 'classic' } });
@@ -141,7 +141,8 @@ export class EventsScreen implements Screen {
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>
          <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже надето · ${esc(c.where)}</div>
-         <div class="modal-actions"><button class="btn teal wide" data-a="ok">Отлично!</button></div>
+         <div class="rp-col muted">Предмет сохранён в разделе «Моя коллекция» и останется у вас после окончания события.</div>
+         <div class="modal-actions"><button class="btn teal wide" data-a="ok">Отлично!</button><button class="btn ghost wide" data-act="collection">Моя коллекция</button></div>
        </div>`,
       (root, close) => {
         root.querySelector('[data-a="ok"]')!.addEventListener('click', () => {
@@ -267,16 +268,15 @@ export class EventsScreen implements Screen {
     const equipped = owned && em.isEquipped(c.id);
     let btn: string;
     if (owned) {
-      btn = equipped
-        ? `<button class="btn ghost er-btn" data-act="unequip" data-id="${c.id}">${UI_ICONS.check.replace('<svg', '<svg width="13" height="13"')} Надето</button>`
-        : `<button class="btn teal er-btn" data-act="equip" data-id="${c.id}">Надеть</button>`;
+      // obtained: it lives in MY COLLECTION now (equip / take off there)
+      btn = `<button class="btn ghost er-btn" data-act="collection">${UI_ICONS.check.replace('<svg', '<svg width="13" height="13"')} ${equipped ? 'Надето' : 'В коллекции'}</button>`;
     } else if (price !== null && e && em.playable) {
       const can = em.tokens(e) >= price;
       btn = `<button class="btn er-btn ${can ? '' : 'short'}" data-act="buy" data-id="${c.id}">${price}<span class="eq-coin">${currencyIcon(e)}</span></button>`;
     } else if (e?.grandPrize?.cosmetic === c.id) {
       btn = `<span class="er-lock">${ICONS.lock} Главный приз</span>`;
     } else {
-      btn = `<span class="er-lock">${ICONS.lock} Недоступно</span>`;
+      btn = `<span class="er-lock">${ICONS.lock} ${e && !em.playable ? 'Во время события' : 'Недоступно'}</span>`;
     }
     return `<div class="ev-reward rarity-${c.rarity} ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
         <div class="er-art">${REWARD_ART[c.art]}</div>
@@ -291,8 +291,9 @@ export class EventsScreen implements Screen {
   private renderRewards(e: EventDef): string {
     const items = e.shop.map((s) => this.rewardCard(COSMETICS[s.cosmetic], s.cost, e));
     if (e.grandPrize) items.push(this.rewardCard(COSMETICS[e.grandPrize.cosmetic], null, e));
-    return `<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на косметику. Полученные предметы остаются у вас и после окончания события.</div>
-      <div class="ev-rewards">${items.join('')}</div>`;
+    return `<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на косметику. Полученные предметы попадают в «Мою коллекцию» и остаются у вас после окончания события — надеть или снять их можно там.</div>
+      <div class="ev-rewards">${items.join('')}</div>
+      <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
 
   /** No playable event: upcoming teaser or theme preview, plus the player's collection. */
@@ -308,10 +309,12 @@ export class EventsScreen implements Screen {
     } else {
       top = `<div class="ev-empty panel">${ICONS.calendar}<div class="h2">Сейчас нет события</div><div class="muted">Следите за обновлениями: новые сезоны PRIME TIME появляются в календаре автоматически.</div></div>`;
     }
-    const owned = this.g.save.data.cosmetics.owned;
-    const collection = owned.length
-      ? `<div class="ev-rewards">${owned.map((id) => this.rewardCard(COSMETICS[id], null, null)).join('')}</div>`
-      : `<div class="ev-hint muted">Здесь появятся косметические награды, полученные в событиях.</div>`;
-    return `${top}<div class="section-title ev-coll-title"><span class="h2">Коллекция</span><span class="label">${owned.length} предм.</span></div>${collection}`;
+    // the season's own reward lineup (owned items marked); everything earned lives in MY COLLECTION
+    const season = active ?? em.upcoming;
+    const lineup = season && (season.shop.length || season.grandPrize)
+      ? [...season.shop.map((x) => x.cosmetic), ...(season.grandPrize ? [season.grandPrize.cosmetic] : [])].map((id) => this.rewardCard(COSMETICS[id], null, season)).join('')
+      : '';
+    return `${top}${lineup ? `<div class="section-title ev-coll-title"><span class="h2">Награды сезона</span><span class="label">${esc(season!.title)}</span></div><div class="ev-rewards">${lineup}</div>` : ''}
+      <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
 }

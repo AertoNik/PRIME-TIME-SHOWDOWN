@@ -1,8 +1,9 @@
-import { COSMETICS, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import type { CosmeticId, CosmeticSlot } from '../config/cosmetics.config';
 import { EVENTS, eventSettings, plural, type EventDef, type EventSettings, type QuestDef, type QuestMetric } from '../config/events.config';
 import { DIFFICULTY_ORDER } from '../config/fighters';
 import type { Difficulty } from '../config/types';
 import type { MatchResultData } from '../combat/types';
+import { Collection } from './Collection';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
 
 /**
@@ -77,10 +78,13 @@ export class EventManager {
   upcoming: EventDef | null = null;
   /** Bumped whenever something visible changes (UI can re-render). */
   version = 0;
+  /** Where granted rewards go (shared state: save.cosmetics). */
+  readonly collection: Collection;
 
   constructor(store: SaveSystem, opts: { clock?: Clock; settings?: EventSettings; registry?: EventDef[] } = {}) {
     this.store = store;
     this.clock = opts.clock ?? (() => Date.now());
+    this.collection = new Collection(store, () => this.now());
     this.settings = opts.settings ?? eventSettings;
     this.registry = opts.registry ?? EVENTS;
     this.refresh();
@@ -284,36 +288,29 @@ export class EventManager {
   }
 
   // --------------------------------------------------------------- cosmetics
+  // Alpha 1.5: the event only *grants* rewards; ownership and equipment live in
+  // MY COLLECTION (src/meta/Collection.ts), so seasonal items outlive the season.
   owns(id: CosmeticId): boolean {
-    return this.store.data.cosmetics.owned.includes(id);
+    return this.collection.owns(id);
   }
 
   /** Add to the collection once; newly obtained items are equipped right away. */
   private grant(id: CosmeticId, eventId: string): void {
-    const c = this.store.data.cosmetics;
-    if (c.owned.includes(id)) return;
-    c.owned.push(id);
-    c.history.push({ id, event: eventId, at: this.now() });
-    c.equipped[COSMETICS[id].slot] = id;
+    this.collection.grant(id, eventId);
   }
 
   equipped(slot: CosmeticSlot): CosmeticId | null {
-    return this.store.data.cosmetics.equipped[slot] ?? null;
+    return this.collection.equipped(slot);
   }
 
   isEquipped(id: CosmeticId): boolean {
-    return this.equipped(COSMETICS[id].slot) === id;
+    return this.collection.isEquipped(id);
   }
 
-  /** Equip an owned item, or take it off with `on = false`. */
+  /** Equip an owned item, or take it off with `on = false` (delegates to the collection). */
   setEquipped(id: CosmeticId, on: boolean): boolean {
-    if (!this.owns(id)) return false;
-    const slot = COSMETICS[id].slot;
-    const eq = this.store.data.cosmetics.equipped;
-    if (on) eq[slot] = id;
-    else if (eq[slot] === id) delete eq[slot];
+    if (!this.collection.setEquipped(id, on)) return false;
     this.version++;
-    this.store.save();
     return true;
   }
 }

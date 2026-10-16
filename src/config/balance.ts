@@ -149,6 +149,45 @@ export const CARD_TUNING = {
     /** Share of the shot that ignores a shield; a shield it hits always breaks. */
     pierce: 0.5,
   },
+  /**
+   * Alpha 1.5 — Kai's BANK SHOT: a copper ricochet round aimed so that ONE bounce off a
+   * straight barrier wall carries it into where the target is heading. It is a real
+   * projectile (dodge / shield / smoke rules as usual): a hit before the bounce deals
+   * only `directMult` of the damage; a hit after the bounce is a TRICK SHOT (full damage,
+   * crit) and gives Kai `energyRefund` back. It bounces once, then dies at the next wall.
+   */
+  bank_shot: {
+    windup: 0.3,
+    telegraph: 0.95,
+    lockAt: 0.6,
+    damage: 560,
+    directMult: 0.45,
+    speed: 22,
+    radius: 0.32,
+    range: 24,
+    knockback: 1.6,
+    energyRefund: 2,
+    /** Keep the bounce point this far from the corners of the straight walls. */
+    wallMargin: 0.35,
+  },
+  /**
+   * Alpha 1.5 — Rina's FALSE START: a short feint step (`distance` in `duration`, no
+   * invulnerability) that opens a `window`. The first suitable attack (shots, POWER /
+   * CHARGED / BANK SHOT, KNOCKOUT charge, DIRECTOR'S CUT shot) landing inside the window
+   * misses her and she fires a counter shot back; `invulnAfter` covers the rest of that
+   * volley (shotgun pellets). SHOCK, SYSTEM OVERLOAD, poison ticks and wall slams are not
+   * evaded. One evade per card; an unused window simply runs out.
+   */
+  false_start: {
+    duration: 0.22,
+    distance: 0.95,
+    window: 0.7,
+    invulnAfter: 0.15,
+    counterDamage: 420,
+    counterSpeed: 30,
+    counterRadius: 0.3,
+    counterRange: 12,
+  },
   system_overload: {
     duration: 2.8,
     damage: 180,
@@ -179,6 +218,10 @@ export const PASSIVE_TUNING = {
   overclock: { energy: 1.0, duration: 3.0, regenMult: 1.3 },
   /** Vega: every Nth auto shot is a marksman shot. */
   deadeye: { every: 4, mult: 1.75 },
+  /** Alpha 1.5 — Kai: shots fired while moving sideways (relative to the aim) hit harder. */
+  crossfire: { lateral: 0.55, mult: 1.15 },
+  /** Alpha 1.5 — Rina: after any successful evade her next volley hits harder (once per cooldown). */
+  riposte: { mult: 1.5, cooldown: 3 },
 };
 
 export const BROADCAST = {
@@ -206,6 +249,9 @@ export const BROADCAST = {
   /** Each ADRENALINE flurry hit is a small crowd-pleaser. */
   flurryHit: 0.5,
   whiffPunish: 4,
+  /** Alpha 1.5: a BANK SHOT landing after its ricochet / a FALSE START reading an attack. */
+  trickShot: 5,
+  feintRead: 6,
   koWin: 10,
   finisherHeavy: 10,
   buzzerBeater: 8,

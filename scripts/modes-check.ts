@@ -6,7 +6,7 @@
 import { CHALLENGES, PERKS, SURVIVAL, challengeById } from '../src/config/modes.config';
 import { BOSSES } from '../src/config/boss.config';
 import { CARD_TUNING } from '../src/config/balance';
-import { FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../src/config/fighters';
+import { FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../src/config/fighters';
 import type { CardId, FighterId } from '../src/config/types';
 import { Match } from '../src/combat/Match';
 import type { MatchResultData } from '../src/combat/types';
@@ -258,7 +258,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.2.5 save gets empty mode records', m.modes.survival.runs === 0 && m.modes.survival.active === null && Object.keys(m.modes.challenges).length === 0);
   const junk = sanitize({ modes: { survival: { bestWave: 99, runs: -3, active: { fighter: 'nobody', rivals: [] } }, challenges: { spotlight: { attempts: 'x', clears: 4, firstClearAt: 5 } } } });
   check('corrupt mode data is cleaned', junk.modes.survival.bestWave === 5 && junk.modes.survival.runs === 0 && junk.modes.survival.active === null && junk.modes.challenges.spotlight.attempts === 4);
-  check('save version is 7 (1.4: arena preference)', defaultSave().version === 7);
+  check('save version is 8 (1.5: collection, career stages, new fighters)', defaultSave().version === 8);
 }
 
 // ----------------------------------------------------------------- boss fight
@@ -362,7 +362,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   const accL = legacy.modes.bossAccess('vale', 'vega');
   check('a fighter who already beat the champion keeps access (legacy)', accL.open && accL.legacy && !legacy.modes.bossAccess('vale', 'nika').open);
   const after = sanitize(JSON.parse(JSON.stringify(a.store.data)));
-  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 7);
+  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 8);
 }
 
 // ----------------------------------------------------------- DIRECTOR'S CUT
@@ -637,7 +637,8 @@ if (!ok) (globalThis as { process?: { exitCode?: number } }).process!.exitCode =
 // ------------------------------------------------------------ balance report
 const N = Number((globalThis as { process?: { argv?: string[] } }).process?.argv?.[2] ?? 12);
 if (N > 0) {
-  const fighters: FighterId[] = ['ray', 'bruno', 'nika', 'vega'];
+  // Alpha 1.5: every playable fighter
+  const fighters: FighterId[] = FIGHTER_ORDER;
   console.log(`\nSURVIVAL balance: ${N} marathons per cell (bot picks a bonus by HP: <55% SECOND WIND, else POWER SURGE / ENERGY BOOST)`);
   console.log('fighter  player  avgWaves  reach3  clear5  avgHPin5  dur(min)');
   const modesOf: Mode[] = ['mash', 'combo'];

@@ -1,8 +1,11 @@
-import { GOALS, type GoalId } from '../../config/career';
+import { CAREER_STAGES, GOALS, type GoalId, type StageId } from '../../config/career';
+import { COSMETICS } from '../../config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
+import type { StageView } from '../../meta/careerStages';
+import { REWARD_ART } from '../eventArt';
 import { el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -62,6 +65,18 @@ export class CareerScreen implements Screen {
         g.ui.toast(`Награда получена: +${formatMoney(r.money)} и +${r.rep} репутации`, true);
         this.render();
       }
+    } else if (act === 'claim-stage') {
+      const r = g.career.claimStage(t.dataset.stage as StageId);
+      if (r) {
+        g.audio.ui('level');
+        if (r.cosmetic) g.applyCosmetics();
+        const item = r.cosmetic ? ` · «${COSMETICS[r.cosmetic].name}» в коллекции` : '';
+        g.ui.toast(`Этап карьеры: +${formatMoney(r.money)} и +${r.rep} репутации${item}`, true);
+        this.render();
+      }
+    } else if (act === 'collection') {
+      g.audio.ui('click');
+      g.goto('collection');
     } else if (act === 'contract') {
       g.audio.ui('click');
       g.goto('roster', t.dataset.f);
@@ -132,6 +147,7 @@ export class CareerScreen implements Screen {
             </div>
           </div>
         </div>
+        ${this.renderStages()}
         <div class="stats-grid">
           <div class="kv"><div class="v" style="color:var(--gold)">${formatMoney(s.money)}</div><div class="k">Бюджет</div></div>
           <div class="kv"><div class="v">${s.wins}-${s.losses}-${s.draws}</div><div class="k">Победы-пор.-ничьи</div></div>
@@ -149,5 +165,69 @@ export class CareerScreen implements Screen {
           ${goals}
         </div>
       </div>`;
+  }
+
+  // ------------------------------------------------- career stages (1.5)
+  private renderStages(): string {
+    const g = this.g;
+    const all = g.career.stages();
+    const cur = g.career.stage();
+    const next = g.career.nextStage();
+    const track = all
+      .map((st) => {
+        const state = st.reached ? (st.index === cur.index ? 'cur' : 'done') : next && st.index === next.index ? 'next' : '';
+        return `<div class="st-step ${state}"><span class="st-dot">${st.reached ? UI_ICONS.check.replace('<svg', '<svg width="11" height="11"') : st.index + 1}</span><span class="st-name">${esc(st.def.short)}</span></div>`;
+      })
+      .join('<i class="st-line"></i>');
+    // rewards of reached stages that are still waiting
+    const waiting = all
+      .filter((st) => st.reached && !st.claimed)
+      .map((st) => `<div class="stage-claim">
+          <div class="fill"><div class="label">Этап достигнут</div><div class="h2">${esc(st.def.title)}</div><div class="sc-reward">${this.rewardText(st)}</div></div>
+          <button class="btn" data-act="claim-stage" data-stage="${st.def.id}"><span class="shine"></span>Забрать</button>
+        </div>`)
+      .join('');
+    let nextBlock: string;
+    if (next) {
+      const done = next.milestones.filter((m) => m.done).length;
+      const rows = next.milestones
+        .map((m) => {
+          const pct = Math.min(1, m.value / m.def.target);
+          const val = m.def.target > 1 ? `${formatNumber(Math.min(m.value, m.def.target))} / ${formatNumber(m.def.target)}` : m.done ? 'Готово' : 'Нет';
+          return `<div class="ms-row ${m.done ? 'done' : ''}">
+              <span class="ms-ico">${m.done ? UI_ICONS.check.replace('<svg', '<svg width="12" height="12"') : ''}</span>
+              <div class="fill"><div class="row between"><span class="ms-label">${esc(m.def.label)}</span><span class="ms-val">${val}</span></div>
+              <div class="progress ${m.done ? 'gold' : ''}"><i style="transform:scaleX(${pct})"></i></div></div>
+            </div>`;
+        })
+        .join('');
+      nextBlock = `<div class="stage-next">
+          <div class="label">Следующий этап · условий ${done}/${next.milestones.length}</div>
+          <div class="h2 sn-title">${esc(next.def.title)}</div>
+          <div class="sn-reward">Награда: ${this.rewardText(next)}</div>
+          <div class="muted sn-desc">${esc(next.def.desc)}</div>
+          ${rows}
+        </div>`;
+    } else {
+      nextBlock = `<div class="stage-next top"><div class="h2">Вершина карьеры</div><div class="muted sn-desc">Все этапы пройдены: ваша студия — легенда прайм-тайма.</div></div>`;
+    }
+    const art = cur.def.id === 'legendary' ? REWARD_ART.studio : cur.def.id === 'star' ? REWARD_ART.star : UI_ICONS.trophy;
+    return `<div class="section panel stage-panel">
+        <div class="section-title"><span class="h2">Путь продюсера</span><span class="label">этап ${cur.index + 1}/${CAREER_STAGES.length}</span></div>
+        <div class="stage-cur">
+          <div class="sc-art">${art}</div>
+          <div class="fill"><div class="sc-title">${esc(cur.def.title)}</div><div class="label">${esc(cur.def.subtitle)}</div><div class="muted sc-desc">${esc(cur.def.desc)}</div></div>
+        </div>
+        <div class="stage-track">${track}</div>
+        ${waiting}
+        ${nextBlock}
+      </div>`;
+  }
+
+  private rewardText(st: StageView): string {
+    const r = st.def.reward;
+    if (!r) return '';
+    const item = r.cosmetic ? ` · <button class="link-btn" data-act="collection">«${esc(COSMETICS[r.cosmetic].name)}»</button>` : '';
+    return `<span style="color:var(--gold)">$${r.money}</span> · <span style="color:var(--teal)">+${r.rep}★</span>${item}`;
   }
 }

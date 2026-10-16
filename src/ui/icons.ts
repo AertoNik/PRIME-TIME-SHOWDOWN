@@ -62,6 +62,22 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M30 32 L62 32" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
      <path d="M48 24 L62 32 L48 40" fill="none" stroke="#bff4ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`,
   ),
+  // Alpha 1.5: BANK SHOT — a round bouncing once off a wall into a target ring
+  bank_shot: S(
+    `<rect x="52" y="4" width="8" height="56" rx="3" fill="#fff" opacity=".9"/>
+     <path d="M6 54 L48 22 L12 8" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8 5"/>
+     <path d="M46 14 L50 22 L41 24" fill="none" stroke="#ffd2a0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+     <circle cx="48" cy="22" r="5" fill="#ff9a4a" stroke="#fff" stroke-width="2.5"/>
+     <circle cx="12" cy="10" r="7" fill="none" stroke="#fff" stroke-width="3.5"/>
+     <circle cx="12" cy="10" r="2.5" fill="#ffd2a0"/>`,
+  ),
+  // Alpha 1.5: FALSE START — two fading afterimages and the real silhouette stepping aside
+  false_start: S(
+    `<circle cx="16" cy="16" r="7" fill="#fff" opacity=".25"/><path d="M8 52 V34 C8 27 24 27 24 34 V52 Z" fill="#fff" opacity=".25"/>
+     <circle cx="28" cy="16" r="7" fill="#fff" opacity=".5"/><path d="M20 52 V34 C20 27 36 27 36 34 V52 Z" fill="#fff" opacity=".5"/>
+     <circle cx="46" cy="16" r="7.5" fill="#fff" ${STROKE}/><path d="M37 52 V34 C37 26 55 26 55 34 V52 Z" fill="#fff" ${STROKE}/>
+     <path d="M30 40 L44 40 M40 35 L45 40 L40 45" fill="none" stroke="#ff6f61" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
   // three warning lines from the champion's rifle, the last one the widest (DIRECTOR'S CUT)
   directors_cut: S(
     `<path d="M10 34 L56 12" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
@@ -92,6 +108,18 @@ export const PASSIVE_ICONS: Record<PassiveId, string> = {
      <circle cx="32" cy="32" r="3.5" fill="#5fd8ff"/>
      <path d="M32 6 V16 M32 48 V58" stroke="#fff" stroke-width="3.5" stroke-linecap="round"/>`,
   ),
+  // Alpha 1.5: CROSSFIRE — a sideways step with a shot across it
+  crossfire: S(
+    `<path d="M10 44 H40 M32 36 L40 44 L32 52" fill="none" stroke="#13b5a6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+     <path d="M20 12 L48 34" stroke="#ff9a4a" stroke-width="5" stroke-linecap="round"/>
+     <circle cx="52" cy="37" r="6" fill="#fff"/>`,
+  ),
+  // Alpha 1.5: RIPOSTE — an arrow turning back on itself
+  riposte: S(
+    `<path d="M50 14 C30 8 12 20 14 36 C16 50 34 56 48 46" fill="none" stroke="#ff6f61" stroke-width="5" stroke-linecap="round"/>
+     <path d="M40 38 L49 46 L38 52" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+     <path d="M44 8 L52 14 L44 20" fill="none" stroke="#ffe3c2" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
 };
 
 export const UI_ICONS = {
@@ -111,6 +139,8 @@ export const UI_ICONS = {
   star: S(`<path d="M32 4 L40 23 L60 24 L44 37 L50 57 L32 46 L14 57 L20 37 L4 24 L24 23 Z" fill="#ffd23a"/>`),
   pencil: S(`<path d="M10 54 L14 40 L42 12 L52 22 L24 50 Z" fill="#fff"/><path d="M38 16 L48 26" stroke="#0b1028" stroke-width="4"/>`),
   users: S(`<circle cx="24" cy="22" r="10" fill="#fff"/><path d="M6 54 C6 40 42 40 42 54 Z" fill="#fff"/><circle cx="44" cy="24" r="8" fill="#fff" opacity=".7"/><path d="M40 42 C52 40 60 46 60 54 H46" fill="#fff" opacity=".7"/>`),
+  // Alpha 1.5: MY COLLECTION — a showcase case with a star
+  archive: S(`<rect x="8" y="10" width="48" height="44" rx="6" fill="none" stroke="#fff" stroke-width="5"/><path d="M8 38 H56" stroke="#fff" stroke-width="4"/><path d="M32 15 L35.5 23 L44 23.6 L37.5 29 L39.6 37 L32 32.6 L24.4 37 L26.5 29 L20 23.6 L28.5 23 Z" fill="#ffd23a"/><rect x="18" y="43" width="10" height="6" rx="2" fill="#22f0e0"/><rect x="36" y="43" width="10" height="6" rx="2" fill="#ff4fd8"/>`),
   career: S(`<rect x="8" y="36" width="10" height="20" rx="2" fill="#fff"/><rect x="27" y="24" width="10" height="32" rx="2" fill="#fff"/><rect x="46" y="10" width="10" height="46" rx="2" fill="#22f0e0"/>`),
   bolt: S(`<path d="M36 2 L12 36 L28 36 L22 62 L52 24 L35 24 L44 2 Z" fill="currentColor"/>`),
   film: S(`<rect x="6" y="14" width="40" height="36" rx="6" fill="#fff"/><path d="M46 26 L60 18 V46 L46 38 Z" fill="#fff"/>`),

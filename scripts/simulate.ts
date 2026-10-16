@@ -1,11 +1,12 @@
 // Headless balance check: full duels with no rendering.
 // Usage: npm run sim [runsPerCell]
-import { RIVAL_ORDER } from '../src/config/fighters';
+import { FIGHTER_ORDER, RIVAL_ORDER } from '../src/config/fighters';
 import type { Difficulty, FighterId } from '../src/config/types';
 import { runMatch, type Mode } from './bots';
 
 const N = Number((globalThis as { process?: { argv?: string[] } }).process?.argv?.[2] ?? 30);
-const fighters: FighterId[] = ['ray', 'bruno', 'nika', 'vega'];
+// Alpha 1.5: every playable fighter (the four originals first, so their rows stay comparable)
+const fighters: FighterId[] = FIGHTER_ORDER;
 const diffs: Difficulty[] = ['rookie', 'pro', 'champion'];
 const modes: Mode[] = ['idle', 'mash', 'combo'];
 

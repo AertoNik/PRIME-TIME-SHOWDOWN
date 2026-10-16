@@ -1,4 +1,5 @@
 // Producer career: economy, levels, goals. Kept intentionally small and readable.
+import type { CosmeticId } from './cosmetics.config';
 
 export const CAREER_START = {
   orgName: 'NEON NIGHT PRODUCTIONS',
@@ -82,4 +83,89 @@ export const FAME_TIERS = [
   { min: 5000, label: 'Звезда шоу' },
   { min: 20000, label: 'Суперзвезда' },
   { min: 100000, label: 'Легенда' },
+];
+
+// ------------------------------------------------------------ career stages
+/**
+ * Alpha 1.5: the producer's prestige path. Each stage is reached when ALL its
+ * milestones are met (and the previous stage is reached). Milestones read the
+ * real career counters of the save, so a long-running career is recognised at
+ * once; each stage's reward is paid once (save.careerClaimed).
+ */
+export type StageId = 'rookie' | 'rising' | 'star' | 'legendary';
+export type MilestoneMetric = 'wins' | 'fansEarned' | 'signed' | 'bestRating' | 'proWins' | 'championWins' | 'survivalClears' | 'challengeClears' | 'bossWins';
+
+export interface MilestoneDef {
+  metric: MilestoneMetric;
+  target: number;
+  label: string;
+}
+
+export interface StageDef {
+  id: StageId;
+  /** On-air name of the stage. */
+  title: string;
+  /** Short label for the stage track. */
+  short: string;
+  subtitle: string;
+  desc: string;
+  milestones: MilestoneDef[];
+  reward: { money: number; rep: number; cosmetic?: CosmeticId } | null;
+}
+
+export const CAREER_STAGES: StageDef[] = [
+  {
+    id: 'rookie',
+    title: 'ROOKIE PRODUCER',
+    short: 'ROOKIE',
+    subtitle: 'Начинающий продюсер',
+    desc: 'Первое шоу в сетке канала: маленький павильон, один боец и большие планы.',
+    milestones: [],
+    reward: null,
+  },
+  {
+    id: 'rising',
+    title: 'RISING BROADCAST',
+    short: 'RISING',
+    subtitle: 'Шоу набирает аудиторию',
+    desc: 'О вашем эфире начинают говорить: зрители возвращаются, спонсоры звонят сами.',
+    milestones: [
+      { metric: 'wins', target: 10, label: 'Победы в эфире' },
+      { metric: 'fansEarned', target: 5000, label: 'Новые фанаты' },
+      { metric: 'signed', target: 2, label: 'Бойцы в составе' },
+      { metric: 'bestRating', target: 70, label: 'Лучший рейтинг шоу' },
+    ],
+    reward: { money: 600, rep: 40 },
+  },
+  {
+    id: 'star',
+    title: 'PRIME TIME STAR',
+    short: 'STAR',
+    subtitle: 'Звезда прайм-тайма',
+    desc: 'Шоу в лучшем эфирном времени: громкий состав, марафоны и испытания канала.',
+    milestones: [
+      { metric: 'fansEarned', target: 20000, label: 'Новые фанаты' },
+      { metric: 'signed', target: 4, label: 'Бойцы в составе' },
+      { metric: 'proWins', target: 5, label: 'Победы на «Профи»' },
+      { metric: 'survivalClears', target: 1, label: 'Пройденный Survival' },
+      { metric: 'challengeClears', target: 2, label: 'Пройденные Prime Challenge' },
+    ],
+    reward: { money: 1500, rep: 80, cosmetic: 'title_prime_star' },
+  },
+  {
+    id: 'legendary',
+    title: 'LEGENDARY PRODUCTION',
+    short: 'LEGENDARY',
+    subtitle: 'Легендарное производство',
+    desc: 'Главное событие индустрии: полный состав звёзд и победа над самой легендой шоу.',
+    milestones: [
+      { metric: 'fansEarned', target: 60000, label: 'Новые фанаты' },
+      { metric: 'signed', target: 6, label: 'Бойцы в составе' },
+      { metric: 'championWins', target: 3, label: 'Победы на «Чемпионе»' },
+      { metric: 'challengeClears', target: 3, label: 'Все Prime Challenge' },
+      { metric: 'bossWins', target: 1, label: 'Победа над Виктором' },
+      { metric: 'bestRating', target: 90, label: 'Лучший рейтинг шоу' },
+    ],
+    reward: { money: 3000, rep: 150, cosmetic: 'frame_legendary' },
+  },
 ];
