@@ -22,7 +22,7 @@ import {
   type Material,
   type Object3D,
   type Texture,
-  type Vector3,
+  Vector3,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { ArenaId } from '../../config/arenas.config';
@@ -423,7 +423,23 @@ export function colorSticks(sticks: Points, colors: number[]): void {
 }
 
 // ------------------------------------------------------------- flying pieces
-/** One loose piece of a broken set piece (simple ballistic flight, bounces, comes to rest). */
+/**
+ * How long debris stays on the set (Alpha 1.4.1): it lands, lies there for `rest`
+ * seconds, then shrinks away over `fade` seconds. Small sparks, dust and smoke are
+ * the VFX pools' business (they live 0.4–2 s on their own).
+ */
+export const DEBRIS = {
+  /** Chips, planks, pumpkin shards: 6–8 s on the floor, 2 s to disappear. */
+  medium: { rest: [6, 8], fade: 2 },
+  /** Big chunks of a prop (plywood wall pieces): ~10 s, 2.5 s to disappear. */
+  large: { rest: [10, 10.5], fade: 2.5 },
+} as const;
+export type DebrisSize = keyof typeof DEBRIS;
+
+/** How far a piece sinks into the floor while it shrinks away. */
+const DEBRIS_SINK = 0.06;
+
+/** One loose piece of a broken set piece (simple ballistic flight, bounces, rests, fades). */
 interface Piece {
   obj: Object3D;
   vx: number;
@@ -433,22 +449,41 @@ interface Piece {
   sy: number;
   sz: number;
   ground: number;
-  active: boolean;
+  phase: 'idle' | 'fly' | 'rest' | 'fade' | 'gone';
+  /** Seconds left in the rest / fade phase. */
+  t: number;
+  rest: number;
+  fade: number;
+  /** Scale before the break (restored on reset). */
+  base: Vector3;
+  /** Resting height (the piece sinks from here while fading). */
+  y0: number;
 }
 
 /**
  * Deterministic "debris" for set pieces: no physics engine, just gravity, a
- * couple of bounces and friction. Pieces stay where they land until reset.
+ * couple of bounces and friction. A piece lands, lies on the set for a while,
+ * then smoothly shrinks into the floor and is hidden — opaque all the way (no
+ * transparent materials), nothing is created or freed during a fight, and a
+ * vanished piece never comes back until `clear()` (new fight / Survival wave).
+ * Debris has no collision of any kind: the fight never sees it.
  */
 export class Pieces {
   private list: Piece[] = [];
 
-  launch(obj: Object3D, v: [number, number, number], spin: [number, number, number], ground: number): void {
+  /** `vary` (0..1) spreads the resting time inside the size's range so pieces do not all vanish at once. */
+  launch(obj: Object3D, v: [number, number, number], spin: [number, number, number], ground: number, size: DebrisSize = 'medium', vary = 0.5): void {
     let p = this.list.find((q) => q.obj === obj);
     if (!p) {
-      p = { obj, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0, ground, active: false };
+      p = { obj, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0, ground, phase: 'idle', t: 0, rest: 0, fade: 1, base: new Vector3(), y0: 0 };
       this.list.push(p);
     }
+    if (p.phase === 'idle') p.base.copy(obj.scale);
+    else obj.scale.copy(p.base);
+    obj.visible = true;
+    const d = DEBRIS[size];
+    p.rest = d.rest[0] + (d.rest[1] - d.rest[0]) * clamp01(vary);
+    p.fade = d.fade;
     p.vx = v[0];
     p.vy = v[1];
     p.vz = v[2];
@@ -456,42 +491,76 @@ export class Pieces {
     p.sy = spin[1];
     p.sz = spin[2];
     p.ground = ground;
-    p.active = true;
+    p.phase = 'fly';
   }
 
+  /** Something is still flying, resting or fading (the stage keeps calling update). */
   get busy(): boolean {
-    return this.list.some((p) => p.active);
+    return this.list.some((p) => p.phase === 'fly' || p.phase === 'rest' || p.phase === 'fade');
   }
 
-  update(dt: number): void {
+  /** Advance all pieces. Returns true if any piece moved or changed size this frame. */
+  update(dt: number): boolean {
+    if (dt <= 0) return false;
+    let changed = false;
     for (const p of this.list) {
-      if (!p.active) continue;
       const o = p.obj;
-      p.vy -= 9.8 * dt;
-      o.position.x += p.vx * dt;
-      o.position.y += p.vy * dt;
-      o.position.z += p.vz * dt;
-      o.rotation.x += p.sx * dt;
-      o.rotation.y += p.sy * dt;
-      o.rotation.z += p.sz * dt;
-      if (o.position.y <= p.ground) {
-        o.position.y = p.ground;
-        if (Math.abs(p.vy) > 1.2) {
-          p.vy = -p.vy * 0.32;
-          p.vx *= 0.55;
-          p.vz *= 0.55;
-          p.sx *= 0.5;
-          p.sy *= 0.5;
-          p.sz *= 0.5;
-        } else {
-          p.active = false;
+      if (p.phase === 'fly') {
+        changed = true;
+        p.vy -= 9.8 * dt;
+        o.position.x += p.vx * dt;
+        o.position.y += p.vy * dt;
+        o.position.z += p.vz * dt;
+        o.rotation.x += p.sx * dt;
+        o.rotation.y += p.sy * dt;
+        o.rotation.z += p.sz * dt;
+        if (o.position.y <= p.ground) {
+          o.position.y = p.ground;
+          if (Math.abs(p.vy) > 1.2) {
+            p.vy = -p.vy * 0.32;
+            p.vx *= 0.55;
+            p.vz *= 0.55;
+            p.sx *= 0.5;
+            p.sy *= 0.5;
+            p.sz *= 0.5;
+          } else {
+            // landed: lie on the set first, disappear later
+            p.phase = 'rest';
+            p.t = p.rest;
+          }
+        }
+      } else if (p.phase === 'rest') {
+        p.t -= dt;
+        if (p.t <= 0) {
+          p.phase = 'fade';
+          p.t = p.fade;
+          p.y0 = o.position.y;
+        }
+      } else if (p.phase === 'fade') {
+        changed = true;
+        p.t = Math.max(0, p.t - dt);
+        const k = p.t / p.fade;
+        const e = k * k * (3 - 2 * k); // smooth, no pop
+        o.scale.copy(p.base).multiplyScalar(e);
+        o.position.y = p.y0 - (1 - e) * DEBRIS_SINK;
+        if (p.t <= 0) {
+          o.scale.set(0, 0, 0);
+          o.visible = false;
+          p.phase = 'gone';
         }
       }
     }
+    return changed;
   }
 
+  /** New fight / Survival wave / leaving the battle: every piece back to its pre-break scale and visible. */
   clear(): void {
-    for (const p of this.list) p.active = false;
+    for (const p of this.list) {
+      if (p.phase === 'idle') continue;
+      p.obj.scale.copy(p.base);
+      p.obj.visible = true;
+      p.phase = 'idle';
+    }
   }
 }
 
@@ -567,6 +636,8 @@ export abstract class Stage {
   protected low = false;
   protected motion = 1;
   protected time = 0;
+  /** The fight is paused (pause menu, hitstop): debris holds still, like the VFX. */
+  debrisFrozen = false;
 
   constructor(shared: StageShared) {
     this.sh = shared;

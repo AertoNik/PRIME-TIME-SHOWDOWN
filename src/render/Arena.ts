@@ -380,7 +380,9 @@ export class Arena {
     this.flashBoost = Math.max(this.flashBoost, amount);
   }
 
-  update(dt: number): void {
+  /** `fightPaused`: debris of broken set pieces waits while the fight is paused. */
+  update(dt: number, fightPaused = false): void {
+    this.stage.debrisFrozen = fightPaused;
     this.time += dt;
     const t = this.time;
     this.flashBoost = Math.max(0, this.flashBoost - dt * 0.8);

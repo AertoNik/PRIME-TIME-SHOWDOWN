@@ -16,6 +16,8 @@ import { CareerSystem } from '../src/meta/CareerSystem';
 import { EventManager } from '../src/meta/EventManager';
 import { GameModes } from '../src/meta/GameModes';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
+import { Object3D } from 'three';
+import { DEBRIS, Pieces } from '../src/render/stages/StageKit';
 import { AUTO } from './bots';
 
 const BOSS = Object.values(BOSSES)[0];
@@ -171,6 +173,67 @@ function fight(arena: ArenaId, fighter: FighterId, seed: number, boss?: string):
   check('RANDOM preference round-trips', sanitize({ arena: 'random' }).arena === 'random');
   check('an unknown arena id becomes the original studio', sanitize({ arena: 'volcano' }).arena === 'original' && sanitize({ arena: 7 }).arena === 'original');
   check('a saved haunted choice survives the save itself (season check is the game\'s job)', sanitize({ arena: 'haunted' }).arena === 'haunted');
+}
+
+// ------------------------------------------------- debris lifecycle (1.4.1)
+/** Fly one piece from 1.2 m up and record when it starts fading and when it is gone. */
+function debrisRun(size: 'medium' | 'large', vary: number) {
+  const pcs = new Pieces();
+  const o = new Object3D();
+  o.position.set(0, 1.2, 0);
+  o.scale.set(1, 2, 1);
+  pcs.launch(o, [1, 2.5, 0], [3, 2, 1], 0, size, vary);
+  const dt = 1 / 60;
+  let t = 0;
+  let fadeStart = -1;
+  let gone = -1;
+  let shrankInAir = false;
+  while (t < 30 && pcs.busy) {
+    pcs.update(dt);
+    t += dt;
+    const shrinking = o.scale.y < 2;
+    if (shrinking && o.position.y > 0.001 && fadeStart < 0) shrankInAir = true;
+    if (shrinking && fadeStart < 0) fadeStart = t;
+    if (gone < 0 && !o.visible) gone = t;
+  }
+  return { pcs, o, fadeStart, gone, shrankInAir };
+}
+{
+  const m = debrisRun('medium', 0);
+  const m1 = debrisRun('medium', 1);
+  const l = debrisRun('large', 0.5);
+  // flight from 1.2 m with a bounce takes ~1 s; the rest timer only starts on landing
+  check(`medium debris lies ~6 s before fading (fade starts at ${m.fadeStart.toFixed(1)} s)`, m.fadeStart > 6.3 && m.fadeStart < 8);
+  check(`medium debris rest spreads up to ~8 s (fade starts at ${m1.fadeStart.toFixed(1)} s)`, m1.fadeStart > 8.3 && m1.fadeStart < 10);
+  check(`medium debris disappears over 2 s (${(m.gone - m.fadeStart).toFixed(2)} s)`, Math.abs(m.gone - m.fadeStart - DEBRIS.medium.fade) < 0.05);
+  check(`large debris lies ~10 s, then disappears over 2.5 s (fade at ${l.fadeStart.toFixed(1)} s, gone at ${l.gone.toFixed(1)} s)`, l.fadeStart > 10.3 && l.fadeStart < 12.5 && Math.abs(l.gone - l.fadeStart - DEBRIS.large.fade) < 0.05);
+  check('debris never shrinks in the air (lands first, then fades)', !m.shrankInAir && !l.shrankInAir);
+  check('a vanished piece is hidden, scaled to zero and the system goes idle', !m.o.visible && m.o.scale.lengthSq() === 0 && !m.pcs.busy);
+  check('a vanished piece does not come back on its own', (() => { for (let i = 0; i < 600; i++) m.pcs.update(1 / 60); return !m.o.visible; })());
+  m.pcs.clear();
+  check('reset (new fight / Survival wave) restores scale and visibility', m.o.visible && m.o.scale.x === 1 && m.o.scale.y === 2 && m.o.scale.z === 1 && !m.pcs.busy);
+  // early exit mid-flight / mid-rest: clear stops everything at once
+  const e = new Pieces();
+  const eo = new Object3D();
+  eo.position.y = 2;
+  e.launch(eo, [0, 1, 0], [0, 0, 0], 0, 'large', 0);
+  for (let i = 0; i < 30; i++) e.update(1 / 60);
+  e.clear();
+  check('leaving a fight mid-flight stops the debris cleanly', !e.busy && eo.visible && eo.scale.x === 1 && !e.update(1 / 60));
+  // a paused fight (dt = 0) holds the debris exactly where it is
+  const f = new Pieces();
+  const fo = new Object3D();
+  fo.position.y = 1;
+  f.launch(fo, [1, 1, 0], [1, 1, 1], 0, 'medium', 0);
+  f.update(1 / 60);
+  const y = fo.position.y;
+  const moved = f.update(0);
+  check('a paused fight freezes the debris (no movement, no ageing)', !moved && fo.position.y === y && f.busy);
+  // a piece re-launched in the next fight starts from its real size again
+  const r = debrisRun('medium', 0);
+  r.pcs.clear();
+  r.pcs.launch(r.o, [0, 2, 0], [0, 0, 0], 0, 'medium', 0);
+  check('a piece re-launched after a reset keeps its original size', r.o.scale.y === 2 && r.o.visible);
 }
 
 // ---------------------------------------------------- BOSS FIGHT layering

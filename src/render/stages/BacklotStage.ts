@@ -985,7 +985,8 @@ export class BacklotStage extends Stage {
         const tx = Math.cos(w.yaw) * side * 1.1;
         const tz = -Math.sin(w.yaw) * side * 1.1;
         const land = landingY(c.position.x + back[0] * 0.5, c.position.z + back[1] * 0.5);
-        this.pieces.launch(c, [back[0] + tx, 2.6 + (k >> 1) * 1.4, back[1] + tz], [2 + k, 1.5 * side, 3 * side], land + 0.03);
+        // plywood chunks are large debris: ~10 s on the set, then shrink away (the frame stays)
+        this.pieces.launch(c, [back[0] + tx, 2.6 + (k >> 1) * 1.4, back[1] + tz], [2 + k, 1.5 * side, 3 * side], land + 0.03, 'large', k / 3);
       });
       if (vfx) {
         for (let k = 0; k < 6; k++) vfx.soft.spawn(x + (k - 2.5) * 0.25, 0.9, z, (k - 2.5) * 0.4, 0.8, 0, 1.1, 0.5, 1.6, _c.set(0x9a8a78), 1, 2.4, -0.25);
@@ -1002,7 +1003,8 @@ export class BacklotStage extends Stage {
         p.rotation.set(...c.home[k].r);
         const a = (k / c.planks.length) * Math.PI * 2;
         const land = landingY(p.position.x + Math.cos(a) * 0.8, p.position.z + Math.sin(a) * 0.8);
-        this.pieces.launch(p, [Math.cos(a) * 2.2 + back[0] * 0.6, 3 + (k % 3), Math.sin(a) * 2.2 + back[1] * 0.6], [5, 2 + k, 4], land + 0.03);
+        // planks are medium debris: 6–8 s on the set, then shrink away
+        this.pieces.launch(p, [Math.cos(a) * 2.2 + back[0] * 0.6, 3 + (k % 3), Math.sin(a) * 2.2 + back[1] * 0.6], [5, 2 + k, 4], land + 0.03, 'medium', k / (c.planks.length - 1));
       });
       if (vfx) {
         vfx.debrisBurst(x, 0.8, z, _c.set(0x8a5a2a), 10);
@@ -1103,6 +1105,6 @@ export class BacklotStage extends Stage {
       }
     }
 
-    if (this.pieces.busy) this.pieces.update(dt);
+    if (this.pieces.busy) this.pieces.update(this.debrisFrozen ? 0 : dt);
   }
 }

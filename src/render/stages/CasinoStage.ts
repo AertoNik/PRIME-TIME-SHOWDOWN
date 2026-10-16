@@ -913,7 +913,8 @@ export class CasinoStage extends Stage {
       const vx = Math.cos(a) * out - (ox / ol) * 1.2;
       const vz = Math.sin(a) * out - (oz / ol) * 1.2;
       const land = landingY(o.position.x + vx * 0.45, o.position.z + vz * 0.45);
-      this.pieces.launch(o, [vx, 3.2 + (k % 3) * 0.9, vz], [6 + k, 3, 5 - k], land + 0.035);
+      // chips are medium debris: they lie 6–8 s (staggered), then shrink away
+      this.pieces.launch(o, [vx, 3.2 + (k % 3) * 0.9, vz], [6 + k, 3, 5 - k], land + 0.035, 'medium', (k % 5) / 4);
     });
     st.base.scale.set(1, 0.6, 1);
     if (vfx) {
@@ -1003,8 +1004,8 @@ export class CasinoStage extends Stage {
         dirty = true;
       }
     }
-    if (this.pieces.busy) {
-      this.pieces.update(dt);
+    // flying, resting or fading chips (matrices re-uploaded only when something moved)
+    if (this.pieces.busy && this.pieces.update(this.debrisFrozen ? 0 : dt)) {
       for (const st of this.stacks) {
         if (!st.broken) continue;
         st.objs.forEach((o, k) => {

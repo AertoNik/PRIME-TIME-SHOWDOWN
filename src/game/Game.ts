@@ -894,7 +894,7 @@ export class Game {
         if (this.refreshSeason() && (this.screen === 'menu' || this.screen === 'events')) this.ui.show(this.screen);
       }
     }
-    this.arena.update(dtReal);
+    this.arena.update(dtReal, !!m && dt === 0);
     this.vfx.update(dt === 0 && m ? 0 : m ? dt : dtReal, this.renderer.camera);
     this.vfx.setViewport(this.renderer.size.h * this.renderer.renderer.getPixelRatio(), this.renderer.camera.fov);
     this.ui.update(dtReal);

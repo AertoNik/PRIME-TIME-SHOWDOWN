@@ -955,7 +955,8 @@ export class HauntedStage extends Stage {
         s.rotation.set(0, k, 0);
         const a = (k / p.shards.length) * Math.PI * 2;
         const land = landingY(p.x + Math.cos(a) * 0.9, p.z + Math.sin(a) * 0.9);
-        this.pieces.launch(s, [Math.cos(a) * 2.4, 3.2 + (k % 2) * 1.2, Math.sin(a) * 2.4], [6, 4 + k, 5], land + 0.05);
+        // shards are medium debris: 6–8 s on the set, then shrink away (the squashed shell stays)
+        this.pieces.launch(s, [Math.cos(a) * 2.4, 3.2 + (k % 2) * 1.2, Math.sin(a) * 2.4], [6, 4 + k, 5], land + 0.05, 'medium', k / (p.shards.length - 1));
       });
       if (vfx) {
         vfx.flash(x, 0.9, z, _c.set(0xffb040), 0.5, 2.6, 0.22, 2.4);
@@ -1074,6 +1075,6 @@ export class HauntedStage extends Stage {
       this.bats.setMatrixAt(i, _m);
     }
     this.bats.instanceMatrix.needsUpdate = true;
-    if (this.pieces.busy) this.pieces.update(dt);
+    if (this.pieces.busy) this.pieces.update(this.debrisFrozen ? 0 : dt);
   }
 }
