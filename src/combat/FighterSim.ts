@@ -1,4 +1,4 @@
-import { CARD_TUNING, PASSIVE_TUNING } from '../config/balance';
+import { CARD_TUNING, PASSIVE_TUNING, type CutTuning } from '../config/balance';
 import type { CardId, ComboId, DashStyle, FighterDef, FighterStats, Side } from '../config/types';
 
 export interface WindupAction {
@@ -39,7 +39,30 @@ export interface RecoverAction {
   t: number;
   total: number;
 }
-export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction;
+/**
+ * DIRECTOR'S CUT (boss): prep pose, then for each of the three shots a tracking line
+ * ('aim'), a frozen line ('lock') and a short pause after the shot ('gap').
+ */
+export interface CutAction {
+  kind: 'cut';
+  stage: 'prep' | 'aim' | 'lock' | 'gap';
+  /** Current shot, 0..2. */
+  shot: number;
+  /** Time in the current stage and its length. */
+  t: number;
+  total: number;
+  /** Line direction: follows the target during 'aim', frozen from 'lock' on. */
+  dirX: number;
+  dirZ: number;
+  /** Match time when the current line froze. */
+  lockedAt: number;
+  /** The target stood in the frozen line at the lock (a DASH out of it is a read). */
+  inLaneAtLock: boolean;
+  /** Numbers for this cast (the boss's current phase). */
+  tune: CutTuning;
+  empowered: boolean;
+}
+export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction;
 
 export interface FighterMatchStats {
   damageDealt: number;
@@ -97,8 +120,13 @@ export class FighterSim {
   burstCounter = false;
   /** DEADEYE passive: auto shots fired so far (every Nth is a marksman shot). */
   shotCount = 0;
-  /** Seconds until PRIME PULSE can be used again (boss only). */
-  pulseCd = 0;
+  /** Seconds until DIRECTOR'S CUT can be used again (boss only). */
+  cutCd = 0;
+  /** What this fighter's brain currently sees of the opponent (decoys and smoke included). */
+  seenX = 0;
+  seenZ = 0;
+  seenVX = 0;
+  seenVZ = 0;
   action: Action = { kind: 'none' };
 
   // status timers
@@ -176,6 +204,8 @@ export class FighterSim {
     if (this.slow > 0) m *= 1 - this.slowAmount;
     if (this.glitch > 0) m *= CARD_TUNING.system_overload.moveMult;
     if (this.action.kind === 'windup') m *= 0.3;
+    // DIRECTOR'S CUT: planted while a line is frozen, a slow step otherwise
+    else if (this.action.kind === 'cut') m *= this.action.stage === 'lock' ? 0 : 0.18;
     return m;
   }
 

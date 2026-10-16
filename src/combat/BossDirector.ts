@@ -5,7 +5,7 @@ import type { Match } from './Match';
 /**
  * Runs the legendary champion's BOSS FIGHT inside the simulation: switches
  * phases by health (deck, AI personality, energy, STAR POWER) and exposes the
- * phase's PRIME PULSE numbers to Abilities. Deterministic like the rest of Match;
+ * phase's DIRECTOR'S CUT numbers to Abilities. Deterministic like the rest of Match;
  * the champion only uses the regular card mechanics, so every heavy attack keeps
  * its telegraph.
  */
@@ -48,12 +48,16 @@ export class BossDirector {
     const prof = m.ais[1]?.profile;
     if (prof) prof.behavior = p.behavior;
     if (!announce) return;
-    // a charge in progress is called off: the new phase starts clean, never with a half-shown wave
+    // a charge or a DIRECTOR'S CUT in progress is called off: the new phase starts clean,
+    // never with a half-shown line
     if (boss.action.kind === 'windup') {
       const card = boss.action.card;
       boss.action = { kind: 'none' };
       m.emit({ type: 'release', side: 1, card }); // clears the telegraph visuals
     }
+    m.abilities.cancelCut(boss);
+    // the new phase shows its DIRECTOR'S CUT soon instead of waiting out the old cooldown
+    boss.cutCd = Math.min(boss.cutCd, 2.5);
     m.emit({ type: 'bossPhase', phase: p.n });
     if (p.starPower > 0) {
       boss.overdrive = Math.max(boss.overdrive, p.starPower);

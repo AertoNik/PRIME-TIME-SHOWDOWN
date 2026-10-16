@@ -2,9 +2,9 @@ import type { CardId, ComboId, DashStyle, PassiveId, Side, WeaponType } from '..
 
 export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
-export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'pulse';
+export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'cut';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'disc' | 'power' | 'adrenaline';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline';
 
 export interface Projectile {
   id: number;
@@ -119,9 +119,32 @@ export type MatchEvent =
   | { type: 'shieldBurst'; side: Side; x: number; z: number; hit: boolean }
   | { type: 'stun'; side: Side; duration: number }
   | { type: 'interrupt'; side: Side; by: Side }
-  | { type: 'telegraph'; side: Side; card: CardId; duration: number; lockAt: number; player: boolean; range?: number; angle?: number }
-  /** PRIME PULSE released: the shockwave sector (angle = half-width in radians). */
-  | { type: 'pulse'; side: Side; x: number; z: number; dx: number; dz: number; range: number; angle: number; hit: boolean; empowered: boolean }
+  | { type: 'telegraph'; side: Side; card: CardId; duration: number; lockAt: number; player: boolean }
+  /** DIRECTOR'S CUT: raised-rifle pose and alert (`prep` seconds before the first line). */
+  | { type: 'cutStart'; side: Side; prep: number; empowered: boolean }
+  /** DIRECTOR'S CUT: a new warning line appears for shot `shot` (0..2) and tracks the target. */
+  | { type: 'cutAim'; side: Side; shot: number; aim: number; lock: number; halfWidth: number; length: number; empowered: boolean }
+  /** DIRECTOR'S CUT: the line froze; the shot follows `lock` seconds later along (dx, dz). */
+  | { type: 'cutLock'; side: Side; shot: number; dx: number; dz: number; lock: number; empowered: boolean }
+  /** DIRECTOR'S CUT: shot fired along the frozen line from (x, z) to (ex, ez). */
+  | {
+      type: 'cutShot';
+      side: Side;
+      shot: number;
+      x: number;
+      z: number;
+      ex: number;
+      ez: number;
+      dx: number;
+      dz: number;
+      halfWidth: number;
+      /** 'hit' | 'blocked' (shield) | 'dodged' (DASH i-frames / left the line) | 'miss' | 'decoy'. */
+      outcome: 'hit' | 'blocked' | 'dodged' | 'miss' | 'decoy';
+      final: boolean;
+      empowered: boolean;
+    }
+  /** DIRECTOR'S CUT ended: all three shots fired, or called off (interrupt, phase change, KO, match end). */
+  | { type: 'cutEnd'; side: Side; completed: boolean }
   | { type: 'aimLock'; side: Side; dx: number; dz: number }
   | { type: 'release'; side: Side; card: CardId }
   | { type: 'dash'; side: Side; fromX: number; fromZ: number; toX: number; toZ: number; style: DashStyle }

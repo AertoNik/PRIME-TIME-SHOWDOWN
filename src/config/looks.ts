@@ -195,7 +195,7 @@ export const LOOKS: Record<string, LookDef> = {
   },
   // Alpha 1.3.1 boss: the show's legendary champion. Broad athletic build, long
   // black showman coat with gold lapels and epaulettes, championship belt,
-  // slicked-back hair with a gold streak, PRIME OSCILLATOR on the right forearm (Alpha 1.3.2).
+  // slicked-back hair with a gold streak, the PRIME BREAKER heavy rifle (Alpha 1.3.3).
   vale: {
     id: 'vale',
     body: 'athletic',
@@ -210,11 +210,11 @@ export const LOOKS: Record<string, LookDef> = {
     brow: 'cocky',
     mouth: 'smirk',
     accessories: ['belt', 'stubble', 'earring'],
-    // Alpha 1.3.2: PRIME OSCILLATOR — black-gold resonator gauntlet with a cyan energy core
-    weapon: 'oscillator',
-    weaponColor: 0xf0c04a,
-    weaponDark: 0x16131b,
-    glow: 0x46e8ff,
+    // Alpha 1.3.3: PRIME BREAKER — graphite heavy rifle with gold accents and warm gold glow
+    weapon: 'breaker',
+    weaponColor: 0xe8b23c,
+    weaponDark: 0x22232a,
+    glow: 0xffc84a,
     rim: 0xffe39a,
   },
 };

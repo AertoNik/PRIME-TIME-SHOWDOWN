@@ -251,16 +251,17 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     behavior: 'tactical',
     look: 'vale',
     deck: ['dash', 'shield', 'overdrive', 'charged_shot'],
-    bio: 'Пятикратный чемпион PRIME TIME и лицо прайм-тайма. Резонатор PRIME OSCILLATOR, фирменная волна PRIME PULSE и ни одного проигранного финала.',
+    bio: 'Пятикратный чемпион PRIME TIME и лицо прайм-тайма. Тяжёлая винтовка PRIME BREAKER, фирменный DIRECTOR\'S CUT и ни одного проигранного финала.',
     theme: { main: '#ffc23a', accent: '#fff1b0', dark: '#2a1600' },
     mods: {
       style: 'Чемпионская техника и шоу',
       hpMult: 1.75,
       speedMult: 1.04,
       fireRateMult: 1.0,
-      // Alpha 1.3.2: PRIME OSCILLATOR fires RESONANCE DISCS — same damage model as before,
-      // a little slower and wider so the discs read clearly on a phone
-      attack: { weapon: 'oscillator', speed: 24, radius: 0.24 },
+      // Alpha 1.3.3: PRIME BREAKER — CHAMPION BURST. Short controlled bursts of three heavy
+      // slugs with a pause between them; reaches past the marksmen (Vega 10.5, Nika 9.5), no
+      // homing, no distance bonus. Tuned with `npm run modes` (boss balance report).
+      attack: { weapon: 'breaker', interval: 2.2, damage: 90, speed: 26, range: 12, radius: 0.2, falloff: 1, inaccuracy: 0.03, homing: 0, burst: { count: 3, gap: 0.11 } },
       idleStyle: 'poise',
       victoryStyle: 'flex',
       dashStyle: 'lunge',

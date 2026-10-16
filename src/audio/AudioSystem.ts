@@ -233,11 +233,12 @@ export class AudioSystem {
         this.tone({ type: 'square', f0: 1900 + Math.random() * 150, f1: 420, dur: 0.12, gain: 0.08 * v, filter: { type: 'lowpass', f0: 6000 } });
         this.tone({ type: 'sine', f0: 2600, f1: 2200, dur: 0.16, gain: 0.03 * v });
         break;
-      case 'oscillator':
-        // resonance disc: a quick "wub" — two detuned sines sweeping down with a soft click
-        this.tone({ type: 'sine', f0: 620, f1: 180, dur: 0.16, gain: 0.1 * v });
-        this.tone({ type: 'triangle', f0: 1240, f1: 360, dur: 0.12, gain: 0.05 * v, detune: 18 });
-        this.noise({ dur: 0.04, gain: 0.04 * v, type: 'highpass', f0: 3000 });
+      case 'breaker':
+        // heavy slug: a deep thump with a hard crack on top and a short metallic clank of the action
+        this.noise({ dur: 0.16, gain: 0.24 * v, type: 'lowpass', f0: 3600, f1: 260 });
+        this.tone({ type: 'sine', f0: 150, f1: 46, dur: 0.22, gain: 0.36 * v });
+        this.tone({ type: 'square', f0: 820 + Math.random() * 90, f1: 210, dur: 0.07, gain: 0.07 * v, filter: { type: 'lowpass', f0: 4200 } });
+        this.tone({ type: 'triangle', f0: 1650, f1: 1400, dur: 0.06, gain: 0.025 * v, delay: 0.05 });
         break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst
@@ -466,7 +467,7 @@ export class AudioSystem {
     this.cheer(1.4);
   }
 
-  /** BOSS FIGHT signature move warning (PRIME PULSE / SPOTLIGHT SHOT). */
+  /** BOSS FIGHT signature move warning (SPOTLIGHT SHOT). */
   bossWarn(): void {
     if (!this.throttle('bossWarn', 500)) return;
     this.tone({ type: 'square', f0: NOTE(76), dur: 0.12, gain: 0.07, filter: { type: 'lowpass', f0: 3000 } });
@@ -474,21 +475,40 @@ export class AudioSystem {
     this.tone({ type: 'sawtooth', f0: NOTE(47), dur: 0.35, gain: 0.08, filter: { type: 'lowpass', f0: 900 } });
   }
 
-  /** PRIME PULSE charging: a resonance whine rising over the whole telegraph. */
-  pulseCharge(duration: number): void {
-    const d = Math.max(0.4, duration);
-    this.tone({ type: 'sawtooth', f0: 140, f1: 900, dur: d, gain: 0.06, attack: d * 0.6, filter: { type: 'lowpass', f0: 400, f1: 3200, q: 4 } });
-    this.tone({ type: 'sine', f0: 280, f1: 1800, dur: d, gain: 0.05, attack: d * 0.7, detune: 14 });
-    this.tone({ type: 'triangle', f0: 70, f1: 110, dur: d, gain: 0.08, attack: d * 0.5 });
+  /** DIRECTOR'S CUT alert: a clapper snap, a brass stab and the rifle's charge spinning up. */
+  cutStart(empowered: boolean): void {
+    this.noise({ dur: 0.05, gain: 0.3, type: 'highpass', f0: 2500 });
+    this.tone({ type: 'square', f0: 1400, f1: 900, dur: 0.05, gain: 0.08 });
+    const base = empowered ? 50 : 52;
+    [0, 7, 12].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(base + n), dur: 0.5, gain: 0.07, delay: 0.06, attack: 0.02, filter: { type: 'lowpass', f0: 2600, f1: 900 } }));
+    this.tone({ type: 'sawtooth', f0: 90, f1: 420, dur: 0.6, gain: 0.07, delay: 0.1, attack: 0.3, filter: { type: 'lowpass', f0: 300, f1: 2400, q: 5 } });
+    this.cheer(0.5);
   }
 
-  /** PRIME PULSE released: deep resonant boom with a ringing tail. */
-  pulseBlast(empowered: boolean): void {
-    this.tone({ type: 'sine', f0: empowered ? 110 : 130, f1: 30, dur: 0.9, gain: 0.65 });
-    this.noise({ dur: 0.7, gain: 0.32, type: 'lowpass', f0: 3200, f1: 140 });
-    this.tone({ type: 'sawtooth', f0: 900, f1: 120, dur: 0.45, gain: 0.08, filter: { type: 'lowpass', f0: 4000, f1: 400 } });
-    [0, 7, 12].forEach((n, i) => this.tone({ type: 'sine', f0: NOTE((empowered ? 76 : 79) + n), dur: 0.8, gain: 0.03, delay: 0.05 + i * 0.03 }));
-    this.cheer(empowered ? 1 : 0.6);
+  /** A new DIRECTOR'S CUT line: a rising targeting whine over the tracking time. */
+  cutAim(duration: number, shot: number): void {
+    const d = Math.max(0.3, duration);
+    this.tone({ type: 'sine', f0: 600 + shot * 120, f1: 1500 + shot * 200, dur: d, gain: 0.045, attack: d * 0.5 });
+    this.tone({ type: 'square', f0: NOTE(81 + shot * 2), dur: 0.06, gain: 0.04, filter: { type: 'lowpass', f0: 3000 } });
+  }
+
+  /** The line froze: a hard double click and a held warning tone up to the shot. */
+  cutLock(lock: number): void {
+    this.noise({ dur: 0.03, gain: 0.22, type: 'highpass', f0: 4000 });
+    this.noise({ dur: 0.03, gain: 0.18, type: 'highpass', f0: 3000, delay: 0.06 });
+    this.tone({ type: 'square', f0: NOTE(88), dur: Math.max(0.2, lock * 0.9), gain: 0.035, attack: 0.01, filter: { type: 'lowpass', f0: 4000 } });
+  }
+
+  /** DIRECTOR'S CUT shot: a big rifle boom; the final one rolls on with a crowd roar. */
+  cutShot(final: boolean, empowered: boolean): void {
+    this.noise({ dur: final ? 0.6 : 0.4, gain: final ? 0.48 : 0.36, type: 'lowpass', f0: 5000, f1: 140 });
+    this.tone({ type: 'sine', f0: final ? 120 : 150, f1: 32, dur: final ? 0.8 : 0.5, gain: final ? 0.66 : 0.5 });
+    this.tone({ type: 'sawtooth', f0: 1600, f1: 120, dur: final ? 0.5 : 0.32, gain: 0.12, filter: { type: 'lowpass', f0: 6000, f1: 500 } });
+    this.noise({ dur: 0.12, gain: 0.2, type: 'highpass', f0: 2600 });
+    if (final) {
+      [0, 7, 12].forEach((n, i) => this.tone({ type: 'sawtooth', f0: NOTE((empowered ? 50 : 52) + n), dur: 0.7, gain: 0.04, delay: 0.08 + i * 0.02, filter: { type: 'lowpass', f0: 2400 } }));
+      this.cheer(empowered ? 1.1 : 0.8);
+    }
   }
 
   /** Seasonal reward unlocked. */

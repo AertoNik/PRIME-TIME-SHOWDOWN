@@ -127,6 +127,7 @@ export class FighterAI {
     } else if (myReach < foeReach - 1.5) {
       desired = Math.min(desired, f.stats.preferredRange);
     }
+
     if (f.overdrive > 0 || f.adrenaline > 0) desired *= 0.7;
     // Exploit a disabled or drained opponent by pressing in.
     if (foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover') desired *= 0.75;
@@ -141,6 +142,9 @@ export class FighterAI {
     if (this.surgeT > 0) desired *= 0.65;
     // relentless fighters never back off for low health
     if (b.pressure > 0 && f.hpFrac < 0.3) desired = Math.min(desired, f.stats.preferredRange * b.rangeMult);
+    // BOSS FIGHT: the champion's rifle outranges everyone — whatever the surge or phase, he
+    // holds his firing distance and repositions instead of walking into the opponent
+    if (b.holdRange && myReach > foeReach + 1) desired = Math.max(desired, Math.min(b.holdRange, foeReach + 1));
     return clamp(desired, 1.7, 8.5);
   }
 
@@ -299,6 +303,10 @@ export class FighterAI {
     const lead = (dist / atk.speed) * this.profile.aimLead;
     f.aimX = t.x + t.vx * lead;
     f.aimZ = t.z + t.vz * lead;
+    f.seenX = t.x;
+    f.seenZ = t.z;
+    f.seenVX = t.vx;
+    f.seenVZ = t.vz;
     this.aimTimer -= dt;
     if (this.aimTimer <= 0) {
       this.aimTimer = 0.22;
@@ -333,6 +341,15 @@ export class FighterAI {
     const fa = foe.action;
     if (fa.kind === 'windup') {
       return { key: 'w' + Math.round((m.time - fa.t) * 20), kind: 'windup' };
+    }
+    if (fa.kind === 'cut') {
+      // the alert is a chance to interrupt; a frozen line through me is the cue to DASH / SHIELD
+      if (fa.stage === 'prep') return { key: 'cp' + Math.round((m.time - fa.t) * 20), kind: 'windup' };
+      if (fa.stage === 'lock') {
+        const t = fa.tune;
+        const near = m.abilities.inCutLane(foe, fa.dirX, fa.dirZ, t.halfWidth[fa.shot] + 0.35, t.length[fa.shot], f.x, f.z, f.radius);
+        if (near >= 0) return { key: 'cl' + fa.shot + '_' + Math.round(fa.lockedAt * 20), kind: 'incoming' };
+      }
     }
     if (fa.kind === 'rush') {
       const toX = f.x - foe.x;
@@ -376,7 +393,8 @@ export class FighterAI {
       if (this.reactT < 0) {
         if (this.reactKind === 'windup') {
           // Interrupt if the charge is still going, otherwise brace.
-          if (foe.action.kind === 'windup' && (this.tryPlay('shock') || this.tryPlay('system_overload') || this.tryPlay('shield'))) return;
+          const charging = foe.action.kind === 'windup' || (foe.action.kind === 'cut' && foe.action.stage === 'prep');
+          if (charging && (this.tryPlay('shock') || this.tryPlay('system_overload') || this.tryPlay('shield'))) return;
         } else if (this.tryPlay('dash') || this.tryPlay('shield')) {
           return;
         }
@@ -467,7 +485,7 @@ export class FighterAI {
     const b = this.profile.behavior;
     const hand = m.hands[this.side];
     const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
-    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('prime_pulse') >= 0;
+    const hasHeavy = this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
     // Visible openings a pressure fighter jumps on: the foe just spent its DASH,
     // is slowed, or is committed to a charge of its own.
@@ -481,7 +499,9 @@ export class FighterAI {
         if (dist < 1.8 && b.pressure <= 0) s += 2.5;
         if (f.hpFrac < 0.35 && threatened) s += 2;
         // gap closer: rush in when the target keeps its distance
-        if (b.pressure > 0 && dist > f.stats.preferredRange + 2.2) s += 5 * b.pressure;
+        if (b.pressure > 0 && dist > f.stats.preferredRange + 2.2 && !b.holdRange) s += 5 * b.pressure;
+        // BOSS FIGHT: the champion steps back out to his firing distance instead of brawling
+        if (b.holdRange && dist < b.holdRange * 0.55) s += 4.5;
         break;
       case 'power_shot':
         s = dist < 11 ? 4.5 : 0;
@@ -499,15 +519,18 @@ export class FighterAI {
         if (opening && dist < 5.2) s += 3;
         if (b.pressure > 0 && dist < 5.2) s += 2.5 * b.pressure;
         break;
-      case 'prime_pulse': {
-        // the champion's shockwave: only when the target is inside its reach and not protected
-        const reach = this.m.abilities.pulseTuning().range;
-        if (f.pulseCd > 0) s = -10;
+      case 'directors_cut': {
+        // the champion's long-range answer: three lines from a comfortable distance, never point-blank
+        const t = this.m.abilities.cutTuning();
+        if (f.cutCd > 0) s = -10;
         else {
-          s = dist < reach * 0.85 ? 6.5 : dist < reach ? 3 : -4;
-          if (foeDisabled) s += 3;
-          if (opening) s += 2;
-          if (foe.shield > 0 || foe.invuln > 0) s -= 7;
+          const reach = t.length[0];
+          s = dist < reach * 0.85 ? 6.5 : dist < reach ? 3.5 : -4;
+          if (dist < 2.4) s -= 3;
+          if (dist > 7) s += 1.5;
+          if (foeDisabled) s += 2.5;
+          if (foe.invuln > 0) s -= 6;
+          if (foe.shield > 0) s -= 5;
         }
         break;
       }

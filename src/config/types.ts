@@ -13,10 +13,10 @@ export type CardId =
   | 'knockout'
   | 'system_overload'
   | 'charged_shot'
-  /** Boss only (Alpha 1.3.2): the champion's PRIME OSCILLATOR shockwave. Never in a player deck. */
-  | 'prime_pulse';
+  /** Boss only (Alpha 1.3.3): the champion's three-shot DIRECTOR'S CUT. Never in a player deck. */
+  | 'directors_cut';
 export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'oscillator';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
 export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye';
@@ -112,7 +112,7 @@ export interface RivalDef {
   mods?: {
     /** Style line shown on the prep screen (defaults to the archetype's). */
     style?: string;
-    /** Weapon / projectile overrides (the boss's PRIME OSCILLATOR). */
+    /** Weapon / projectile overrides (the boss's PRIME BREAKER). */
     attack?: Partial<AttackStats>;
     hpMult?: number;
     speedMult?: number;
@@ -201,4 +201,9 @@ export interface BehaviorDef {
    * uses DASH to get in and spends heavy cards in visible openings.
    */
   pressure: number;
+  /**
+   * BOSS FIGHT: the champion keeps at least this far from shorter-ranged fighters
+   * (his rifle outranges them). Absent for regular rivals.
+   */
+  holdRange?: number;
 }

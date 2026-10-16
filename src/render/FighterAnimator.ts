@@ -13,7 +13,9 @@ export interface AnimInput {
   facing: number;
   maxSpeed: number;
   combat: boolean;
-  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover';
+  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut';
+  /** DIRECTOR'S CUT stage while action === 'cut'. */
+  cutStage: 'prep' | 'aim' | 'lock' | 'gap' | null;
   actionCard: CardId | null;
   actionT: number;
   actionTotal: number;
@@ -38,6 +40,7 @@ export function defaultInput(): AnimInput {
     combat: false,
     action: 'none',
     actionCard: null,
+    cutStage: null,
     actionT: 0,
     actionTotal: 1,
     dashX: 0,
@@ -160,10 +163,6 @@ export class FighterAnimator {
   private flourishDone = false;
   private weaponBaseR = 0;
   private weaponBaseL = 0;
-  /** PRIME OSCILLATOR emitter rings: angular speed, post-pulse cool-down, last action. */
-  private ringSpeed = 2;
-  private ringCool = 0;
-  private prevAction = 'none';
 
   constructor(rig: FighterRig, idle: IdleStyle, dash: DashStyle, victory: VictoryStyle) {
     this.rig = rig;
@@ -204,13 +203,6 @@ export class FighterAnimator {
     rig.body.rotation.set(0, 0, 0);
     if (rig.weaponR) rig.weaponR.position.y = this.weaponBaseR;
     if (rig.weaponL) rig.weaponL.position.y = this.weaponBaseL;
-    this.ringSpeed = 2;
-    this.ringCool = 0;
-    this.prevAction = 'none';
-    if (rig.spinR) {
-      rig.spinR.rotation.z = 0;
-      rig.spinR.scale.setScalar(1);
-    }
   }
 
   // ----------------------------------------------------------- triggers
@@ -219,10 +211,8 @@ export class FighterAnimator {
     const k = heavy ? 2.4 : 1;
     if (muzzle === 1) this.recoilL.kick(r.kick * k);
     else this.recoilR.kick(r.kick * k);
-    // Two-handed weapons rock both arms (the arm-mounted resonator only its own).
-    if (this.rig.look.weapon !== 'twin_blasters' && this.rig.look.weapon !== 'oscillator') this.recoilL.kick(r.kick * 0.6 * k);
-    // the resonator's rings flick round on every disc
-    if (this.rig.spinR) this.ringSpeed += heavy ? 14 : 7;
+    // Two-handed weapons rock both arms.
+    if (this.rig.look.weapon !== 'twin_blasters') this.recoilL.kick(r.kick * 0.6 * k);
     this.recoilBody.kick((r.spine * 60 + (heavy ? 2.5 : 0)) * k);
     if (r.shove > 0 || heavy) this.shove.kick(-(r.shove + (heavy ? 3 : 0)));
     if (heavy) this.squash.kick(-2.5);
@@ -395,12 +385,14 @@ export class FighterAnimator {
       P.shLX = -0.75 - sinP * A * 0.08;
       P.shLZ = -0.5;
       P.elL = -0.85;
-    } else if (rig.look.weapon === 'oscillator') {
-      // resonator arm held forward and bent, showing the gauntlet; free fist swings a little
-      P.shRX = -0.45 + sinP * A * 0.12;
-      P.shRZ = -0.05;
-      P.elR = -1.25;
-      P.elL = -0.6 - A * 0.4;
+    } else if (rig.look.weapon === 'breaker') {
+      // PRIME BREAKER carried low across the body, muzzle down: the weight shows in the arms
+      P.shRX = -0.22 + sinP * A * 0.08;
+      P.shRZ = 0.24;
+      P.elR = -1.0;
+      P.shLX = -0.82 - sinP * A * 0.06;
+      P.shLZ = -0.56;
+      P.elL = -0.78;
     } else if (rig.look.weapon === 'tech_carbine') {
       P.shRX = -0.35 + sinP * A * 0.15;
       P.shRZ = 0.25;
@@ -525,15 +517,18 @@ export class FighterAnimator {
           P.headRX += 0.07 * aw;
           P.headRZ -= 0.06 * aw;
           break;
-        case 'oscillator':
-          // resonator arm straight at the target, the free fist raised in a guard
-          lerpP('shRX', -1.45 + bob);
-          lerpP('shRZ', 0.1);
-          lerpP('elR', -0.12);
-          lerpP('shLX', -0.62 - bob * 0.5);
-          lerpP('shLZ', -0.32);
-          lerpP('elL', -1.7);
-          P.spineRY += -0.14 * aw;
+        case 'breaker':
+          // heavy chest-level hold: wide planted stance, both hands on the rifle, braced forward
+          lerpP('shRX', -0.6 + bob * 0.3);
+          lerpP('shRZ', 0.26);
+          lerpP('elR', -0.98);
+          lerpP('shLX', -1.18 + bob * 0.3);
+          lerpP('shLZ', -0.46);
+          lerpP('elL', -0.52);
+          P.spineRY += -0.1 * aw;
+          P.spineRX += 0.05 * aw;
+          P.legLZ += 0.05 * aw;
+          P.legRZ -= 0.05 * aw;
           break;
         case 'tech_carbine':
           lerpP('shRX', -0.78 + bob * 0.5);
@@ -587,6 +582,60 @@ export class FighterAnimator {
       P.legRX = Math.sin(rp) * 1.0;
       P.kneeL = Math.max(0, Math.cos(rp)) * 1.4;
       P.kneeR = Math.max(0, -Math.cos(rp)) * 1.4;
+    } else if (inp.action === 'cut') {
+      // DIRECTOR'S CUT: the rifle goes up over the head for the alert (free arm out to the crowd), then comes down to the
+      // shoulder; each line is aimed from a crouched, shouldered stance that freezes at the lock
+      const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
+      if (inp.cutStage === 'prep') {
+        const up = ease.outBack(Math.min(1, p * 1.8));
+        P.shRX = -0.3 - 2.0 * up;
+        P.shRZ = 0.12 + 0.3 * up;
+        P.elR = -0.4 - 0.3 * up;
+        // showman flourish: the free arm thrown out to the side, face to the crowd
+        P.shLX = -0.25 - 0.45 * up;
+        P.shLZ = -0.3 - 1.05 * up;
+        P.elL = -0.35;
+        P.spineRX -= 0.16 * up;
+        P.headRX -= 0.18 * up;
+        P.rollRX -= 0.05 * up;
+        P.kneeL += 0.12 * up;
+        P.kneeR += 0.12 * up;
+        P.bodyY -= 0.03 * up;
+        this.glowPulse = Math.max(this.glowPulse, 0.8 + p * 1.4);
+      } else {
+        const locked = inp.cutStage === 'lock';
+        const settle = inp.cutStage === 'aim' ? ease.outCubic(Math.min(1, p * 3)) : 1;
+        P.shRX = -0.92 * settle + P.shRX * (1 - settle);
+        P.shRZ = 0.3;
+        P.elR = -0.8 * settle + P.elR * (1 - settle);
+        P.shLX = -1.4 * settle + P.shLX * (1 - settle);
+        P.shLZ = -0.36;
+        P.elL = -0.42;
+        P.spineRY += -0.12;
+        P.spineRX += locked ? 0.1 : 0.06;
+        P.headRX += 0.08;
+        P.headRZ -= 0.07;
+        P.kneeL += locked ? 0.32 : 0.2;
+        P.kneeR += locked ? 0.32 : 0.2;
+        P.legLX -= 0.16;
+        P.legRX += 0.1;
+        P.legLZ += 0.08;
+        P.legRZ -= 0.08;
+        P.bodyY -= locked ? 0.06 : 0.035;
+        if (locked) this.glowPulse = Math.max(this.glowPulse, 1 + p * 1.6);
+      }
+    } else if (inp.action === 'recover' && rig.look.weapon === 'breaker') {
+      // the champion after his three shots: rifle down, chest out, a breath for the crowd
+      const br = Math.sin(t * 3);
+      P.shRX = -0.1;
+      P.shRZ = 0.22;
+      P.elR = -0.55;
+      P.shLX = -0.25;
+      P.shLZ = 0.3;
+      P.elL = -0.35;
+      P.spineRX -= 0.1 + br * 0.03;
+      P.headRX -= 0.1;
+      P.headRZ += 0.06;
     } else if (inp.action === 'recover') {
       P.rollRX += 0.42 + Math.sin(t * 18) * 0.08;
       P.headRX += 0.3;
@@ -932,21 +981,6 @@ export class FighterAnimator {
       rig.weaponL.position.y = this.weaponBaseL + clamp(rL * 0.012, -0.05, 0.2) * slide * 10;
       rig.weaponL.rotation.y = weaponSpin ? -weaponSpin : 0;
     }
-    // PRIME OSCILLATOR: rings idle slowly, spin up while charging (PRIME PULSE / SPOTLIGHT SHOT),
-    // then wind down for a moment after the release
-    if (rig.spinR) {
-      const charging = inp.action === 'windup';
-      if (this.prevAction === 'windup' && !charging) this.ringCool = 0.9;
-      this.prevAction = inp.action;
-      if (this.ringCool > 0) this.ringCool -= dt;
-      const charge = charging ? clamp(inp.actionT / Math.max(0.05, inp.actionTotal), 0, 1) : 0;
-      const target = charging ? 10 + charge * 22 : this.ringCool > 0 ? 0.3 : 2;
-      this.ringSpeed = damp(this.ringSpeed, target, charging ? 5 : 2.5, dt);
-      rig.spinR.rotation.z += this.ringSpeed * dt;
-      const s = charging ? 1 + charge * 0.22 + Math.sin(this.t * 40) * 0.025 * charge : this.ringCool > 0 ? 0.9 : 1;
-      rig.spinR.scale.setScalar(damp(rig.spinR.scale.x, s, 12, dt));
-    }
-
     const sqk = clamp(sq * 0.012, -0.12, 0.18);
     rig.body.scale.set(bodyScaleX * (1 + sqk * 0.5), bodyScaleY * (1 - sqk), bodyScaleZ * (1 + sqk * 0.5));
 
@@ -964,7 +998,7 @@ export class FighterAnimator {
     if (inp.stunned || this.flash > 0.4 || this.staggerT >= 0) eyeScale = Math.min(eyeScale, 0.35);
     rig.eyes.scale.y = damp(rig.eyes.scale.y, eyeScale, 40, dt);
     if (this.mouthT > 0) this.mouthT -= dt;
-    const open = this.mouthT > 0 || inp.stunned || this.koT >= 0 || inp.action === 'windup' || inp.action === 'rush';
+    const open = this.mouthT > 0 || inp.stunned || this.koT >= 0 || inp.action === 'windup' || inp.action === 'rush' || inp.cutStage === 'prep';
     rig.mouth.visible = !open;
     rig.mouthOpen.visible = open;
     rig.brows.position.y = damp(rig.brows.position.y, inp.action !== 'none' || this.flash > 0.3 ? -0.025 : this.victoryT >= 0 ? 0.03 : 0, 14, dt);

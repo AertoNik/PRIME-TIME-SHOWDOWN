@@ -427,6 +427,13 @@ export class Game {
     const s = this.save.data;
     const fighter = s.selected;
     if (!s.fighters[fighter].unlocked) return;
+    // the champion only takes challengers with a Classic Duel record (or who already beat him)
+    const access = this.modes.bossAccess(def.id, fighter);
+    if (!access.open) {
+      this.audio.ui('deny');
+      this.ui.toast(`Вызов откроется после ${access.need} побед в Classic Duel этим бойцом: ${access.wins}/${access.need}`);
+      return;
+    }
     this.launch(
       { fighter, deck: s.fighters[fighter].deck.slice(), rival: def.rival, difficulty: def.rewards.purseDifficulty, mods: this.modes.bossMods(def), boss: def.id },
       { kind: 'boss', id: def.id },
@@ -585,7 +592,7 @@ export class Game {
       challenge = this.modes.recordChallenge(mode.id, m.result, meta.fighter);
       outcome.levelAfter = this.career.level().level;
     } else {
-      outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival);
+      outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, { classic: true });
     }
     const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
     this.enterResultsView(m.result.outcome);
@@ -892,14 +899,21 @@ export class Game {
         a.ooh();
         break;
       case 'telegraph':
-        // the champion's signature moves get their own warning sting; PRIME PULSE charges audibly
-        if (e.side === 1 && this.match?.boss && (e.card === 'prime_pulse' || e.card === 'charged_shot')) a.bossWarn();
-        if (e.card === 'prime_pulse') a.pulseCharge(e.duration);
+        // the champion's SPOTLIGHT SHOT gets its own warning sting
+        if (e.side === 1 && this.match?.boss && e.card === 'charged_shot') a.bossWarn();
         break;
-      case 'pulse':
-        a.pulseBlast(e.empowered);
-        this.cam.addTrauma(e.empowered ? 0.45 : 0.32);
-        this.cam.kick(e.empowered ? 0.8 : 0.55);
+      case 'cutStart':
+        a.cutStart(e.empowered);
+        break;
+      case 'cutAim':
+        a.cutAim(e.aim, e.shot);
+        break;
+      case 'cutLock':
+        a.cutLock(e.lock);
+        break;
+      case 'cutShot':
+        a.cutShot(e.final, e.empowered);
+        if (e.final && e.outcome === 'hit') this.timeFx.hitstop = Math.max(this.timeFx.hitstop, 0.08);
         break;
       case 'bossPhase': {
         const ph = this.match?.boss?.def.phases[e.phase - 1];

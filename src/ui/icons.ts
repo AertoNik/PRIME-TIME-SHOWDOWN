@@ -62,11 +62,14 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M30 32 L62 32" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
      <path d="M48 24 L62 32 L48 40" fill="none" stroke="#bff4ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>`,
   ),
-  prime_pulse: S(
-    `<path d="M10 32 L54 14 A40 40 0 0 1 54 50 Z" fill="#46e8ff" opacity=".25"/>
-     <path d="M30 20 A16 16 0 0 1 30 44 M40 14 A26 26 0 0 1 40 50 M50 9 A36 36 0 0 1 50 55" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
-     <circle cx="14" cy="32" r="9" fill="none" stroke="#ffd76a" stroke-width="4"/>
-     <circle cx="14" cy="32" r="4" fill="#bff8ff"/>`,
+  // three warning lines from the champion's rifle, the last one the widest (DIRECTOR'S CUT)
+  directors_cut: S(
+    `<path d="M10 34 L56 12" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
+     <path d="M10 34 L58 34" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
+     <path d="M10 34 L56 56" stroke="#ffd76a" stroke-width="7" stroke-linecap="round"/>
+     <circle cx="10" cy="34" r="7" fill="#ffc23a" stroke="#fff" stroke-width="3"/>
+     <path d="M8 6 H34 L30 14 H4 Z" fill="#fff"/>
+     <path d="M12 6 L8 14 M20 6 L16 14 M28 6 L24 14" stroke="#7a1020" stroke-width="3"/>`,
   ),
 };
 

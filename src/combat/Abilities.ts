@@ -1,7 +1,8 @@
-import { ARENA, CARD_TUNING, COMBO_TUNING } from '../config/balance';
+import { ARENA, CARD_TUNING, COMBO_TUNING, type CutTuning } from '../config/balance';
 import type { CardId, ComboDef } from '../config/types';
 import { clampRoundedRect, type ClampResult } from '../core/math';
-import type { FighterSim, RushAction, WindupAction } from './FighterSim';
+import { lineReach } from './CombatSystem';
+import type { CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
 import type { Match } from './Match';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
@@ -32,6 +33,7 @@ export class Abilities {
         f.readDash =
           foe.action.kind === 'windup' ||
           foe.action.kind === 'rush' ||
+          foe.action.kind === 'cut' ||
           m.projectiles.some((p) => p.owner !== f.side && p.heavy && p.alive);
         f.stun = 0;
         clampRoundedRect(fromX + dir.x * t.distance, fromZ + dir.z * t.distance, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
@@ -62,16 +64,16 @@ export class Abilities {
         m.emit({ type: 'telegraph', side: f.side, card, duration: total, lockAt: telegraph ? t.lockAt : 1, player: !telegraph });
         break;
       }
-      case 'prime_pulse': {
-        // the resonator charges; the danger sector is telegraphed and its aim freezes at lockAt
-        const t = this.pulseTuning();
-        const telegraph = true;
-        const total = t.telegraph * m.difficulty.telegraphMult;
+      case 'directors_cut': {
+        // raised-rifle pose and the alert first; the three lines follow (updateCut)
+        const t = this.cutTuning();
+        const empowered = t !== CARD_TUNING.directors_cut;
         const dx = f.aimX - f.x;
         const dz = f.aimZ - f.z;
         const d = Math.hypot(dx, dz) || 1;
-        f.action = { kind: 'windup', card, t: 0, total, lockAt: t.lockAt, locked: false, dirX: dx / d, dirZ: dz / d, combo: comboId, telegraph };
-        m.emit({ type: 'telegraph', side: f.side, card, duration: total, lockAt: t.lockAt, player: false, range: t.range, angle: t.halfAngle });
+        f.action = { kind: 'cut', stage: 'prep', shot: 0, t: 0, total: t.prep, dirX: dx / d, dirZ: dz / d, lockedAt: -1, inLaneAtLock: false, tune: t, empowered };
+        f.cutCd = t.cooldown + this.cutLength(t);
+        m.emit({ type: 'cutStart', side: f.side, prep: t.prep, empowered });
         break;
       }
       case 'shield': {
@@ -188,9 +190,10 @@ export class Abilities {
         }
         target.glitch = t.duration * mult;
         target.glitchDot = t.dotInterval;
-        if (target.action.kind === 'windup') {
+        if (target.action.kind === 'windup' || target.action.kind === 'cut') {
           m.emit({ type: 'interrupt', side: target.side, by: f.side });
           f.m.perfects++;
+          this.cancelCut(target);
           target.action = { kind: 'none' };
         }
         target.overdrive = 0;
@@ -239,10 +242,6 @@ export class Abilities {
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
 
-    if (a.card === 'prime_pulse') {
-      this.releasePulse(f, a, dirX, dirZ);
-      return;
-    }
     if (a.card === 'power_shot' || a.card === 'charged_shot') {
       const charged = a.card === 'charged_shot';
       const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
@@ -278,69 +277,195 @@ export class Abilities {
     }
   }
 
-  /** PRIME PULSE numbers: the boss's current phase (FINAL BROADCAST is stronger), else the base tuning. */
-  pulseTuning(): typeof CARD_TUNING.prime_pulse {
-    return this.m.boss?.current.pulse ?? CARD_TUNING.prime_pulse;
+  /** DIRECTOR'S CUT numbers: the boss's current phase (FINAL BROADCAST is sharper), else the base tuning. */
+  cutTuning(): CutTuning {
+    return this.m.boss?.current.cut ?? CARD_TUNING.directors_cut;
+  }
+
+  /** Seconds from the card to the end of the recovery (the cooldown runs after that). */
+  cutLength(t: CutTuning): number {
+    return t.prep + t.aim[0] + t.aim[1] + t.aim[2] + t.lock[0] + t.lock[1] + t.lock[2] + t.gap * 2 + t.recover;
   }
 
   /**
-   * The shockwave: everything inside the frozen sector is hit once. Fair answers:
-   * SHIELD absorbs it (a perfect block), a DASH started after the sector froze always
-   * carries the fighter out of the wave (perfect dodge), SHOCK interrupts the charge.
+   * Where the line goes during 'aim': at what the champion sees of the target. When it
+   * freezes it leads the target's current motion by `lead` seconds — a fighter that keeps
+   * running the same way walks into it, one that turns or DASHes does not.
    */
-  private releasePulse(f: FighterSim, a: WindupAction, dirX: number, dirZ: number): void {
+  private cutDir(f: FighterSim, a: CutAction, lead: number): void {
+    const tx = f.seenX + f.seenVX * lead;
+    const tz = f.seenZ + f.seenVZ * lead;
+    const dx = tx - f.x;
+    const dz = tz - f.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.05) return;
+    a.dirX = dx / d;
+    a.dirZ = dz / d;
+  }
+
+  /**
+   * The one hit test of a DIRECTOR'S CUT shot: the rectangle that is drawn on the floor.
+   * Origin = the champion, along the frozen direction, `length` long; a body counts as
+   * inside when its centre is within halfWidth + half its radius of the centre line.
+   */
+  inCutLane(f: FighterSim, dirX: number, dirZ: number, halfWidth: number, length: number, x: number, z: number, r: number): number {
+    const rx = x - f.x;
+    const rz = z - f.z;
+    const along = rx * dirX + rz * dirZ;
+    const perp = Math.abs(rx * dirZ - rz * dirX);
+    if (along < -r * 0.5 || along > length + r * 0.5 || perp > halfWidth + r * 0.5) return -1;
+    return along;
+  }
+
+  /** Advances DIRECTOR'S CUT (called every fight step while the action runs). */
+  updateCut(f: FighterSim, foe: FighterSim, a: CutAction, dt: number): void {
     const m = this.m;
-    const t = this.pulseTuning();
-    const foe = m.foe(f.side);
-    const empowered = t !== CARD_TUNING.prime_pulse;
-    const inSector = (x: number, z: number, r: number) => {
-      const dx = x - f.x;
-      const dz = z - f.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > t.range + r) return false;
-      if (dist < r + f.radius) return true;
-      const cos = (dx * dirX + dz * dirZ) / dist;
-      return Math.acos(Math.max(-1, Math.min(1, cos))) <= t.halfAngle + Math.atan(r / dist);
-    };
-    let hit = false;
-    for (const d of m.decoys) if (d.alive && d.owner !== f.side && inSector(d.x, d.z, 0.5)) m.popDecoy(d);
-    if (!foe.ko && inSector(foe.x, foe.z, foe.radius)) {
-      const dashedOut = a.lockedAt !== undefined && foe.lastDash >= a.lockedAt;
-      if (foe.invuln > 0 || dashedOut) {
+    const t = a.tune;
+    a.t += dt;
+    switch (a.stage) {
+      case 'prep':
+        this.cutDir(f, a, 0);
+        if (a.t >= a.total) this.cutNextLine(f, a, 0);
+        break;
+      case 'aim':
+        this.cutDir(f, a, 0);
+        if (a.t >= a.total) {
+          // freeze: lead the target's motion, plus the champion's (small) aim error
+          this.cutDir(f, a, t.lead);
+          const err = m.rng.range(-1, 1) * m.difficulty.aimError * 0.5;
+          if (err !== 0) {
+            const c = Math.cos(err);
+            const s = Math.sin(err);
+            const x = a.dirX * c - a.dirZ * s;
+            a.dirZ = a.dirX * s + a.dirZ * c;
+            a.dirX = x;
+          }
+          a.stage = 'lock';
+          a.t = 0;
+          a.total = t.lock[a.shot];
+          a.lockedAt = m.time;
+          a.inLaneAtLock = !foe.ko && this.inCutLane(f, a.dirX, a.dirZ, t.halfWidth[a.shot], t.length[a.shot], foe.x, foe.z, foe.radius) >= 0;
+          f.facing = Math.atan2(a.dirX, a.dirZ);
+          m.emit({ type: 'cutLock', side: f.side, shot: a.shot, dx: a.dirX, dz: a.dirZ, lock: a.total, empowered: a.empowered });
+        }
+        break;
+      case 'lock':
+        if (a.t >= a.total) {
+          this.fireCut(f, foe, a);
+          if (f.action !== a) return; // the shot ended the match
+          if (a.shot >= 2) {
+            m.emit({ type: 'cutEnd', side: f.side, completed: true });
+            f.action = { kind: 'recover', t: 0, total: t.recover };
+            f.fireTimer = Math.max(f.fireTimer, t.recover * 0.6);
+          } else {
+            a.stage = 'gap';
+            a.t = 0;
+            a.total = t.gap;
+          }
+        }
+        break;
+      case 'gap':
+        if (a.t >= a.total) this.cutNextLine(f, a, a.shot + 1);
+        break;
+    }
+  }
+
+  private cutNextLine(f: FighterSim, a: CutAction, shot: number): void {
+    const t = a.tune;
+    a.stage = 'aim';
+    a.shot = shot;
+    a.t = 0;
+    a.total = t.aim[shot];
+    a.inLaneAtLock = false;
+    this.cutDir(f, a, 0);
+    this.m.emit({ type: 'cutAim', side: f.side, shot, aim: a.total, lock: t.lock[shot], halfWidth: t.halfWidth[shot], length: t.length[shot], empowered: a.empowered });
+  }
+
+  /** One shot along the frozen line: resolved once, at this instant, against the drawn rectangle. */
+  private fireCut(f: FighterSim, foe: FighterSim, a: CutAction): void {
+    const m = this.m;
+    const t = a.tune;
+    const i = a.shot;
+    const w = t.halfWidth[i];
+    // the line ends at the barrier (the view clips the drawn line the same way)
+    const len = lineReach(f.x, f.z, a.dirX, a.dirZ, t.length[i]);
+    if (len < t.length[i]) m.hitProps(f.x + a.dirX * len, f.z + a.dirZ * len, true);
+    const final = i === 2;
+    let outcome: 'hit' | 'blocked' | 'dodged' | 'miss' | 'decoy' = 'miss';
+    let end = len;
+    const foeAlong = foe.ko ? -1 : this.inCutLane(f, a.dirX, a.dirZ, w, len, foe.x, foe.z, foe.radius);
+    // a hologram decoy standing in the line in front of the target takes the shot
+    let decoyAlong = Infinity;
+    let decoy = null;
+    for (const d of m.decoys) {
+      if (!d.alive || d.owner === f.side) continue;
+      const al = this.inCutLane(f, a.dirX, a.dirZ, w, len, d.x, d.z, 0.5);
+      if (al >= 0 && al < decoyAlong) {
+        decoyAlong = al;
+        decoy = d;
+      }
+    }
+    if (decoy && (foeAlong < 0 || decoyAlong < foeAlong)) {
+      m.popDecoy(decoy);
+      outcome = 'decoy';
+      end = decoyAlong;
+    } else if (foeAlong >= 0) {
+      if (foe.invuln > 0) {
+        outcome = 'dodged';
         foe.m.perfects++;
         m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
         m.combat.onEvade(foe);
       } else {
         const r = m.combat.applyHit(foe, f, {
-          damage: t.damage * f.outgoingDamageMult(),
-          kind: 'pulse',
+          damage: t.damage[i] * f.outgoingDamageMult(),
+          kind: 'cut',
           heavy: true,
-          crit: empowered,
+          crit: final,
           electric: false,
-          combo: a.combo,
-          knockback: t.knockback,
-          stun: t.stun,
+          combo: null,
+          knockback: t.knockback[i],
+          stun: t.stun[i],
           slowAmount: 0,
           slowDuration: 0,
-          dx: dirX,
-          dz: dirZ,
+          dx: a.dirX,
+          dz: a.dirZ,
           sure: true,
           projectile: null,
         });
-        hit = r === 'hit';
+        outcome = r === 'hit' ? 'hit' : r === 'blocked' ? 'blocked' : r === 'dodged' ? 'dodged' : 'miss';
+        // the beam stops on the body or the shield it struck
+        if (outcome === 'hit' || outcome === 'blocked') end = Math.min(len, foeAlong);
       }
-    } else if (!foe.ko && foe.readDash && a.lockedAt !== undefined && foe.lastDash >= a.lockedAt) {
-      // dashed clear of the wave on a read
+    } else if (!foe.ko && a.inLaneAtLock && foe.lastDash >= a.lockedAt) {
+      // stepped out of the frozen line with a DASH: a read
+      outcome = 'dodged';
       foe.m.perfects++;
       m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
       m.combat.onEvade(foe);
     }
-    // the wave cracks speaker stacks at the far end of the sector
-    m.hitProps(f.x + dirX * t.range * 0.85, f.z + dirZ * t.range * 0.85, true);
-    m.emit({ type: 'pulse', side: f.side, x: f.x, z: f.z, dx: dirX, dz: dirZ, range: t.range, angle: t.halfAngle, hit, empowered });
-    f.action = { kind: 'recover', t: 0, total: t.recover };
-    f.pulseCd = t.cooldown;
-    f.fireTimer = Math.max(f.fireTimer, t.recover);
+    f.facing = Math.atan2(a.dirX, a.dirZ);
+    m.emit({
+      type: 'cutShot',
+      side: f.side,
+      shot: i,
+      x: f.x,
+      z: f.z,
+      ex: f.x + a.dirX * end,
+      ez: f.z + a.dirZ * end,
+      dx: a.dirX,
+      dz: a.dirZ,
+      halfWidth: w,
+      outcome,
+      final,
+      empowered: a.empowered,
+    });
+  }
+
+  /** Calls off a running DIRECTOR'S CUT (interrupt, phase change, KO, match end). Safe to call any time. */
+  cancelCut(f: FighterSim): void {
+    if (f.action.kind !== 'cut') return;
+    f.action = { kind: 'none' };
+    this.m.emit({ type: 'cutEnd', side: f.side, completed: false });
   }
 
   updateRush(f: FighterSim, foe: FighterSim, a: RushAction): void {
@@ -446,10 +571,12 @@ export class Abilities {
       if (nd < 1.6) score -= 4;
       // dodge the telegraphed line: prefer perpendicular to the attack direction
       const fa = foe.action;
-      if (fa.kind === 'windup' || fa.kind === 'rush') {
+      if (fa.kind === 'windup' || fa.kind === 'rush' || fa.kind === 'cut') {
         const perp = Math.abs(c.x * fa.dirZ - c.z * fa.dirX);
         score += perp * 3;
       }
+      // DIRECTOR'S CUT: never land back inside the frozen line
+      if (fa.kind === 'cut' && fa.stage === 'lock' && this.inCutLane(foe, fa.dirX, fa.dirZ, fa.tune.halfWidth[fa.shot], fa.tune.length[fa.shot], tmp.x, tmp.z, f.radius) >= 0) score -= 8;
       // dodge incoming projectiles
       for (const p of m.projectiles) {
         if (p.owner === f.side) continue;

@@ -316,9 +316,7 @@ export type BoneName =
   | 'thighR'
   | 'shinR'
   | 'weaponR'
-  | 'weaponL'
-  /** Spinning emitter rings of the boss's PRIME OSCILLATOR (rotated by the animator). */
-  | 'spinR';
+  | 'weaponL';
 
 interface BoneGeo {
   toon: BufferGeometry | null;
@@ -376,7 +374,6 @@ class Bones {
       'shinR',
       'weaponR',
       'weaponL',
-      'spinR',
     ];
     const out = {} as Record<BoneName, BoneGeo>;
     for (const n of names) {
@@ -1076,43 +1073,78 @@ export function getRigGeometry(lookId: string): RigGeometry {
     // stripe
     W.add(rbox(0.305, 0.04, 0.3, 0.015), look.top.style === 'vest' ? look.top.main : look.top.accent, { p: [0, 0.2, 0.3] });
     muzzleR = [0, 0.15, 0.8];
-  } else if (look.weapon === 'oscillator') {
-    // PRIME OSCILLATOR (Alpha 1.3.2, boss only): a resonator gauntlet strapped over the right
-    // forearm, firing through a ring emitter in front of the fist. Weapon space: +Z along the
-    // forearm towards the fist, +Y = top of the forearm. The emitter rings live on a separate
-    // bone ('spinR') so they can spin while charging.
+  } else if (look.weapon === 'breaker') {
+    // PRIME BREAKER (Alpha 1.3.3, boss only): the champion's heavy burst rifle. Graphite body
+    // with gold rails, a stage-spotlight sight on top, a gold "crown" muzzle brake, dark-red
+    // details and three glowing burst indicators per side. Weapon space: +Z = barrel,
+    // +Y = top, the right hand on the grip at the origin, the left on the fore-grip.
     const W = B.t('weaponR');
     const WG = B.g('weaponR');
-    const core = 0x46e8ff;
-    // gauntlet housing around the forearm
-    W.add(rbox(0.22, 0.19, 0.4, 0.06), wd, { p: [0, 0.02, -0.18] });
-    W.add(rbox(0.17, 0.05, 0.34, 0.02), wc, { p: [0, 0.125, -0.17] });
+    const red = 0x8a1426;
+    const black = 0x111116;
+    const plate = shade(wd, 1.45);
+    // receiver: a broad, angular block
+    W.add(rbox(0.17, 0.2, 0.6, 0.05), wd, { p: [0, 0.09, 0.2] });
+    W.add(rbox(0.155, 0.05, 0.5, 0.02), plate, { p: [0, 0.2, 0.18] });
     for (const s of [1, -1]) {
-      W.add(rbox(0.035, 0.13, 0.26, 0.015), wc, { p: [s * 0.122, 0.03, -0.16] });
-      WG.add(rbox(0.012, 0.03, 0.22, 0.006), core, { p: [s * 0.142, 0.05, -0.16] }, GLOW);
+      // gold side rails, a dark-red panel and the small PRIME diamond
+      W.add(rbox(0.02, 0.035, 0.46, 0.008), wc, { p: [s * 0.088, 0.135, 0.2] });
+      W.add(rbox(0.014, 0.06, 0.15, 0.006), red, { p: [s * 0.087, 0.06, 0.37] });
+      W.add(rbox(0.008, 0.05, 0.05, 0.004), wc, { p: [s * 0.09, 0.072, 0.25], r: [Math.PI / 4, 0, 0] });
+      // burst indicators: three warm dots, one per slug
+      for (let i = 0; i < 3; i++) WG.add(sph(0.017, 8, 6), gl, { p: [s * 0.088, 0.072, 0.04 + i * 0.05], s: [0.5, 1, 1] }, GLOW * 1.2);
     }
-    WG.add(rbox(0.022, 0.014, 0.28, 0.006), core, { p: [0, 0.153, -0.17] }, GLOW);
-    // front collar and the fixed outer emitter ring
-    const collar = cyl(0.125, 0.135, 0.09, 20);
-    collar.rotateX(Math.PI / 2);
-    W.add(collar, wc, { p: [0, 0.01, 0.05] });
-    W.add(tor(0.205, 0.034, Math.PI * 2, 28), wd, { p: [0, 0.01, 0.2] });
+    // heavy barrel shroud with glowing heat vents and a gold top rib
+    W.add(rbox(0.16, 0.16, 0.44, 0.04), wd, { p: [0, 0.1, 0.71] });
+    W.add(rbox(0.04, 0.02, 0.4, 0.008), wc, { p: [0, 0.185, 0.71] });
     for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2 + Math.PI / 2;
-      W.add(rbox(0.03, 0.03, 0.15, 0.01), wc, { p: [Math.cos(a) * 0.15, 0.01 + Math.sin(a) * 0.15, 0.13] });
+      for (const sg of [1, -1]) {
+        W.add(rbox(0.012, 0.07, 0.05, 0.004), black, { p: [sg * 0.081, 0.1, 0.6 + i * 0.09] });
+        WG.add(rbox(0.008, 0.05, 0.032, 0.003), gl, { p: [sg * 0.085, 0.1, 0.6 + i * 0.09] }, GLOW * 0.9);
+      }
     }
-    // energy core in the middle of the emitter
-    WG.add(sph(0.075, 14, 10), core, { p: [0, 0.01, 0.2] }, GLOW * 1.4);
-    // spinning rings (own bone): gold outer ring with notches + a glowing inner ring
-    const S = B.t('spinR');
-    const SG = B.g('spinR');
-    S.add(tor(0.16, 0.026, Math.PI * 2, 26), wc);
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      S.add(rbox(0.05, 0.03, 0.04, 0.01), wc, { p: [Math.cos(a) * 0.185, Math.sin(a) * 0.185, 0], r: [0, 0, a] });
+    W.add(rbox(0.17, 0.035, 0.06, 0.012), wc, { p: [0, 0.1, 0.5] });
+    const barrel = cyl(0.045, 0.05, 0.2, 14);
+    barrel.rotateX(Math.PI / 2);
+    W.add(barrel, wd, { p: [0, 0.1, 1.01] });
+    // crown muzzle brake: gold collar, three forward prongs, a dark-red ring, glowing bore
+    const collar = cyl(0.078, 0.078, 0.08, 16);
+    collar.rotateX(Math.PI / 2);
+    W.add(collar, wc, { p: [0, 0.1, 1.11] });
+    for (let k = 0; k < 3; k++) {
+      const a = Math.PI / 2 + (k - 1) * 1.1;
+      W.add(rbox(0.04, 0.036, 0.18, 0.012), wc, { p: [Math.cos(a) * 0.08, 0.1 + Math.sin(a) * 0.08, 1.2], r: [-Math.sin(a) * 0.26, Math.cos(a) * 0.26, 0] });
     }
-    SG.add(tor(0.105, 0.016, Math.PI * 1.6, 22), core, {}, GLOW * 1.2);
-    muzzleR = [0, 0.01, 0.3];
+    W.add(tor(0.074, 0.015, Math.PI * 2, 18), red, { p: [0, 0.1, 1.15] });
+    WG.add(tor(0.04, 0.012, Math.PI * 2, 16), gl, { p: [0, 0.1, 1.19] }, GLOW * 1.2);
+    WG.add(sph(0.026, 8, 6), gl, { p: [0, 0.1, 1.18] }, GLOW);
+    // stage-spotlight sight: a big flared lamp with a gold rim, a bright lens and barn-door flaps
+    W.add(rbox(0.07, 0.07, 0.14, 0.015), wd, { p: [0, 0.26, 0.14] });
+    const lamp = cyl(0.11, 0.08, 0.3, 20);
+    lamp.rotateX(Math.PI / 2);
+    W.add(lamp, black, { p: [0, 0.36, 0.13] });
+    W.add(tor(0.108, 0.02, Math.PI * 2, 24), wc, { p: [0, 0.36, 0.285] });
+    const cap = cyl(0.07, 0.07, 0.04, 14);
+    cap.rotateX(Math.PI / 2);
+    W.add(cap, wc, { p: [0, 0.36, -0.03] });
+    for (const zz of [0.06, 0.13, 0.2]) W.add(rbox(0.016, 0.03, 0.035, 0.005), wd, { p: [0, 0.46, zz] });
+    for (const sg of [1, -1]) {
+      // barn doors: hinged flaps above and below the lens, opened outward
+      W.add(rbox(0.2, 0.012, 0.09, 0.004), wd, { p: [0, 0.36 + sg * 0.115, 0.33], r: [-sg * 0.5, 0, 0] });
+      W.add(rbox(0.012, 0.16, 0.08, 0.004), wd, { p: [sg * 0.115, 0.36, 0.33], r: [0, sg * 0.5, 0] });
+    }
+    WG.add(sph(0.095, 16, 12), gl, { p: [0, 0.36, 0.288], s: [1, 1, 0.28] }, GLOW * 1.5);
+    // magazine angled forward, with a dark-red band
+    W.add(rbox(0.1, 0.2, 0.13, 0.03), black, { p: [0, -0.07, 0.31], r: [0.25, 0, 0] });
+    W.add(rbox(0.104, 0.032, 0.134, 0.01), red, { p: [0, -0.125, 0.325], r: [0.25, 0, 0] });
+    // pistol grip, fore-grip for the left hand
+    W.add(rbox(0.078, 0.19, 0.088, 0.025), wd, { p: [0, -0.05, 0.0], r: [-0.3, 0, 0] });
+    W.add(rbox(0.062, 0.15, 0.072, 0.02), wd, { p: [0, -0.045, 0.56] });
+    // skeleton stock with a gold butt plate
+    W.add(rbox(0.07, 0.06, 0.3, 0.02), wd, { p: [0, 0.13, -0.24] });
+    W.add(rbox(0.06, 0.05, 0.27, 0.02), wd, { p: [0, 0.0, -0.25], r: [-0.22, 0, 0] });
+    W.add(rbox(0.09, 0.21, 0.05, 0.02), wc, { p: [0, 0.07, -0.4] });
+    muzzleR = [0, 0.1, 1.26];
   } else if (look.weapon === 'pulse_rifle') {
     // long marksman rifle with a scope (weapon space: barrel +Z), shouldered with both hands
     const W = B.t('weaponR');
@@ -1204,8 +1236,6 @@ export interface FighterRig {
   kneeR: Group;
   weaponR: Group | null;
   weaponL: Group | null;
-  /** PRIME OSCILLATOR emitter rings (spun while charging), null for other weapons. */
-  spinR: Group | null;
   /** [primary(right), secondary(left)] */
   muzzles: Object3D[];
   /** Centre of the right hand (fist charge effects). */
@@ -1309,7 +1339,6 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   const muzzles: Object3D[] = [];
   let weaponR: Group | null = null;
   let weaponL: Group | null = null;
-  let spinR: Group | null = null;
   if (G.bones.weaponR.toon) {
     weaponR = boneGroup('weaponR', elbowR, G.weaponHand);
     weaponR.rotation.x = Math.PI / 2;
@@ -1318,10 +1347,6 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     mz.position.set(...G.muzzleR!);
     weaponR.add(mz);
     muzzles.push(mz);
-    if (G.bones.spinR.toon || G.bones.spinR.glow) {
-      spinR = boneGroup('spinR', weaponR, [0, 0.01, 0.2]);
-      attach('spinR', spinR);
-    }
   }
   if (G.bones.weaponL.toon) {
     weaponL = boneGroup('weaponL', elbowL, G.weaponHand);
@@ -1357,7 +1382,6 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     kneeR,
     weaponR,
     weaponL,
-    spinR,
     muzzles,
     handR,
     eyes,

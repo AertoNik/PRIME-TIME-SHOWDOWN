@@ -17,6 +17,7 @@ import {
   type PerspectiveCamera,
   PlaneGeometry,
   Points,
+  RepeatWrapping,
   Quaternion,
   type Scene,
   ShaderMaterial,
@@ -1026,6 +1027,124 @@ export class FighterFX {
   }
 }
 
+// ================================================================ DIRECTOR'S CUT line
+/** Hatched fill for the DIRECTOR'S CUT line (tiles along its length). */
+function cutFillTexture(): Texture {
+  const { c, g } = makeCanvas(64, 128);
+  g.fillStyle = 'rgba(255,255,255,0.32)';
+  g.fillRect(0, 0, 64, 128);
+  g.strokeStyle = 'rgba(255,255,255,0.75)';
+  g.lineWidth = 9;
+  for (let y = -64; y < 192; y += 32) {
+    g.beginPath();
+    g.moveTo(-8, y + 40);
+    g.lineTo(72, y);
+    g.stroke();
+  }
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  g.fillRect(29, 8, 6, 44);
+  g.fillRect(29, 72, 6, 44);
+  const t = canvasTexture(c);
+  t.wrapS = RepeatWrapping;
+  t.wrapT = RepeatWrapping;
+  return t;
+}
+
+/**
+ * The warning line of a DIRECTOR'S CUT shot. Drawn exactly where the simulation tests the
+ * hit: from the champion, along the line direction, `length` long, crisp edges at
+ * ±halfWidth. While tracking it scrolls and glows orange; frozen, it stops, turns red-white
+ * and a bright bar sweeps from the far end to the rifle — the shot fires when it arrives.
+ */
+export class CutLane {
+  private root = new Group();
+  private fill: Mesh;
+  private fillMat: MeshBasicMaterial;
+  private edges: Mesh[] = [];
+  private edgeMat: MeshBasicMaterial;
+  private bar: Mesh;
+  private barMat: MeshBasicMaterial;
+  private cap: Mesh;
+
+  constructor(group: Group) {
+    const geo = new PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, 0, 0.5);
+    const mid = new PlaneGeometry(1, 1);
+    mid.rotateX(-Math.PI / 2);
+    this.fillMat = new MeshBasicMaterial({ map: cutFillTexture(), blending: AdditiveBlending, transparent: true, depthWrite: false, color: 0xff4a2a });
+    this.fill = new Mesh(geo, this.fillMat);
+    this.fill.renderOrder = 3;
+    this.root.add(this.fill);
+    this.edgeMat = new MeshBasicMaterial({ blending: AdditiveBlending, transparent: true, depthWrite: false, color: 0xff6a3a });
+    for (let i = 0; i < 2; i++) {
+      const e = new Mesh(geo, this.edgeMat);
+      e.renderOrder = 4;
+      this.root.add(e);
+      this.edges.push(e);
+    }
+    this.cap = new Mesh(mid, this.edgeMat);
+    this.cap.renderOrder = 4;
+    this.root.add(this.cap);
+    this.barMat = new MeshBasicMaterial({ blending: AdditiveBlending, transparent: true, depthWrite: false, color: 0xffffff });
+    this.bar = new Mesh(mid, this.barMat);
+    this.bar.renderOrder = 5;
+    this.root.add(this.bar);
+    this.root.visible = false;
+    group.add(this.root);
+  }
+
+  hide(): void {
+    this.root.visible = false;
+  }
+
+  /**
+   * @param progress 0..1 through the current stage ('aim' or 'lock').
+   * @param empowered FINAL BROADCAST: gold edges, brighter fill.
+   */
+  show(t: number, x: number, z: number, dirX: number, dirZ: number, halfWidth: number, length: number, locked: boolean, progress: number, empowered: boolean, final: boolean): void {
+    const r = this.root;
+    r.visible = true;
+    r.position.set(x, 0.055, z);
+    r.rotation.set(0, Math.atan2(dirX, dirZ), 0);
+    const w = halfWidth * 2;
+    this.fill.scale.set(w, 1, length);
+    const map = this.fillMat.map!;
+    map.repeat.set(1, length / 1.6);
+    const ew = final ? 0.1 : 0.07;
+    for (let i = 0; i < 2; i++) {
+      const e = this.edges[i];
+      e.scale.set(ew, 1, length);
+      e.position.set(i === 0 ? halfWidth : -halfWidth, 0.002, 0);
+    }
+    this.cap.scale.set(w + ew, 1, ew * 1.6);
+    this.cap.position.set(0, 0.002, length);
+    if (!locked) {
+      // tracking: scrolls toward the target, soft pulse; the edges fade in over the first moment
+      map.offset.y = -t * 2.2;
+      const appear = Math.min(1, progress * 5);
+      const pulse = 0.75 + Math.sin(t * 16) * 0.25;
+      this.fillMat.color.set(empowered ? 0xff5a1a : 0xff3a1a).multiplyScalar(1.2);
+      this.fillMat.opacity = 0.42 * appear * pulse;
+      this.edgeMat.color.set(empowered ? 0xffc23a : 0xff6a3a).multiplyScalar(empowered ? 1.8 : 1.5);
+      this.edgeMat.opacity = 0.75 * appear;
+      this.bar.visible = false;
+    } else {
+      // frozen: no scrolling, a blink that speeds up towards the shot, the sweep bar shows the timing
+      const blink = 0.7 + 0.3 * Math.sin(t * (24 + progress * 40));
+      this.fillMat.color.set(0xff2a2a).multiplyScalar(empowered ? 2 : 1.7);
+      this.fillMat.opacity = (0.55 + progress * 0.25) * blink;
+      this.edgeMat.color.set(empowered ? 0xffe27a : 0xffd0c0).multiplyScalar(2.4);
+      this.edgeMat.opacity = 1;
+      this.bar.visible = true;
+      this.bar.scale.set(w + 0.3, 1, 0.16);
+      this.bar.position.set(0, 0.004, Math.max(0.3, length * (1 - progress)));
+      this.barMat.opacity = 0.65 + 0.35 * progress;
+      this.barMat.color.set(empowered ? 0xfff0b0 : 0xffffff).multiplyScalar(2.2);
+    }
+  }
+}
+
 // ===================================================================== glitch field
 class GlitchField {
   readonly mesh: InstancedMesh;
@@ -1143,6 +1262,8 @@ export class VFX {
   private pumpkinRain: SpriteRain | null = null;
   readonly fighterFX: FighterFX[] = [];
   readonly glitch: GlitchField[] = [];
+  /** DIRECTOR'S CUT warning line (only the boss uses it, one at a time). */
+  readonly cutLane: CutLane;
   private t = 0;
 
   constructor(scene: Scene) {
@@ -1158,6 +1279,7 @@ export class VFX {
     this.scorches = new ScorchPool(this.group, 10);
     this.raysPool = new FlashPool(this.group, 6, raysTexture());
     for (let i = 0; i < 2; i++) this.glitch.push(new GlitchField(this.group));
+    this.cutLane = new CutLane(this.group);
     scene.add(this.group);
   }
 
@@ -1306,9 +1428,9 @@ export class VFX {
     if (heavy) {
       this.muzzle(p, dx, dz, color, true, weapon === 'boom_cannon');
       this.raysPool.spawn(p.x, p.y, p.z, color, 1.6, 0.6, 2.2, 0.18, 4);
-      if (weapon === 'oscillator') {
-        this.rings.spawn(p.x, p.y, p.z, color, 2.6, 0.3, 1.5, 0.22, false);
-        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xffffff), 3, 0.45, 1.3, 0.1);
+      if (weapon === 'breaker') {
+        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xfff2c0), 3.2, 0.5, 1.5, 0.12);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 14, 11, 0.4, 0.13, 2.6);
       }
       if (weapon === 'pulse_rifle') {
         // CHARGED SHOT: a ring of frost sparks and a white-hot core
@@ -1338,10 +1460,16 @@ export class VFX {
         this.glows.spawn(p.x, p.y, p.z, _c.set(0xffffff), 1.6, 0.25, 0.7, 0.06);
         this.cone(p.x, p.y, p.z, dx, dz, color, 4, 9, 0.12, 0.08);
         break;
-      case 'oscillator':
-        // resonator pulse: a ring flares in front of the fist, small cyan flash
-        this.rings.spawn(p.x, p.y, p.z, color, 2.2, 0.2, 0.75, 0.14, false);
-        this.flashes.spawn(p.x, p.y, p.z, color, 2, 0.3, 0.6, 0.05);
+      case 'breaker':
+        // heavy slug: a wide gold flash with side jets from the crown brake, a hot spark cone
+        // and a puff of smoke — every shot of the burst should feel like a punch
+        this.flashes.spawn(p.x, p.y, p.z, color, 3, 0.55, 1.15, 0.07);
+        this.glows.spawn(p.x, p.y, p.z, _c.set(0xfff0c0), 1.8, 0.4, 1.2, 0.08);
+        this.cone(p.x, p.y, p.z, dx, dz, color, 6, 10, 0.3, 0.11, 2.4);
+        for (const sgn of [1, -1]) {
+          this.sparks.spawn(p.x, p.y, p.z, -dz * sgn * 3 + dx, rng.range(0, 0.6), dx * sgn * 3 + dz, 0.12, 0.14, 0.02, color, 2.2, 3, 0);
+        }
+        this.soft.spawn(p.x + dx * 0.2, p.y, p.z + dz * 0.2, dx * 1.2 + rng.range(-0.3, 0.3), rng.range(0.2, 0.6), dz * 1.2 + rng.range(-0.3, 0.3), rng.range(0.35, 0.55), 0.22, 0.75, _c.set(0x5a5560), 1, 3, -0.3);
         break;
       case 'tech_carbine':
         this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
@@ -1376,11 +1504,11 @@ export class VFX {
         this.rings.spawn(x, y, z, color, 2, 0.15, 0.9, 0.18, false);
         this.burst(x, y, z, color, 6, 7, 0.11, 0.28, 2.6);
         break;
-      case 'oscillator':
-        // disc hit: a vertical resonance ring and a light spark spray
-        this.rings.spawn(x, y, z, color, 2.2, 0.15, 1.0, 0.2, false);
-        this.flashes.spawn(x, y, z, color, 2, 0.3, 0.8, 0.06, 2);
-        this.burst(x, y, z, color, 5, 6, 0.1, 0.26, 2.4);
+      case 'breaker':
+        // heavy slug impact: a hard gold-white flash, a ring and a fat spark spray
+        this.flashes.spawn(x, y, z, _c.set(0xfff0c0), 2.8, 0.5, 1.3, 0.09, 2);
+        this.rings.spawn(x, y, z, color, 2.2, 0.2, 1.1, 0.18, false);
+        this.burst(x, y, z, color, 9, 7, 0.13, 0.3, 2.6, 4);
         break;
       case 'tech_carbine':
         this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);
@@ -1388,6 +1516,29 @@ export class VFX {
           this.sparks.spawn(x + rng.range(-0.2, 0.2), y + rng.range(-0.2, 0.3), z + rng.range(-0.2, 0.2), rng.range(-1.5, 1.5), rng.range(0.5, 2.5), rng.range(-1.5, 1.5), rng.range(0.2, 0.4), 0.16, 0.16, i % 2 ? _c.set(0x22f0e0) : color, 2.4, 4, 0);
         }
         break;
+    }
+  }
+
+  /** DIRECTOR'S CUT shot: a straight beam along the frozen line, scorched floor for the final one. */
+  cutBeam(from: Vector3, to: Vector3, color: Color, final: boolean, empowered: boolean): void {
+    const w = final ? (empowered ? 0.75 : 0.6) : 0.36;
+    const life = final ? 0.34 : 0.22;
+    this.bolts.spawn(from, to, color, final ? 3.6 : 3, w, life, 0);
+    this.bolts.spawn(from, to, _c.set(0xffffff), 3.4, w * 0.38, life * 0.8, 0);
+    this.flashes.spawn(from.x, from.y, from.z, _c.set(0xfff0c0), final ? 4 : 3.2, 0.6, final ? 2.4 : 1.6, 0.14);
+    this.rays(from.x, from.y, from.z, color, 0.8, final ? 3.4 : 2.2, 0.22, 3);
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const n = Math.min(26, Math.round(len * (final ? 2.4 : 1.4)));
+    for (let i = 0; i < n; i++) {
+      const k = rng.range(0, 1);
+      this.sparks.spawn(from.x + dx * k, from.y + (to.y - from.y) * k, from.z + dz * k, rng.range(-1.2, 1.2), rng.range(0.4, 2.4), rng.range(-1.2, 1.2), rng.range(0.25, 0.45), 0.16, 0.02, color, 2.4, 4, 0);
+    }
+    this.flashes.spawn(to.x, to.y, to.z, color, 3, 0.5, final ? 2.2 : 1.4, 0.16);
+    if (final) {
+      for (let d = 1; d < len; d += 1.6) this.scorches.spawn(from.x + (dx / len) * d, from.z + (dz / len) * d, 1.3, 2.6);
+      this.rings.spawn(from.x, 0.08, from.z, color, 2.6, 0.6, 4.2, 0.45);
     }
   }
 

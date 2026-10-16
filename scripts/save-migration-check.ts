@@ -69,6 +69,20 @@ const checks: [string, boolean][] = [
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, cosmetics: { owned: ['title_prime_legend'], equipped: { title: 'title_prime_legend' } }, modes: { boss: { vale: { attempts: 3, wins: 1, firstWinAt: 1790000000000, bestTime: 96, bestPhase: 3 } } } })));
     return v.modes.boss.vale.wins === 1 && v.modes.boss.vale.firstWinAt === 1790000000000 && v.cosmetics.equipped.title === 'title_prime_legend';
   })()],
+  // Alpha 1.3.3: Classic Duel wins per fighter (BOSS FIGHT access). Old saves did not keep
+  // them apart: all of the fighter's wins minus their boss wins.
+  ['1.3.3: v1/v2 saves: every win was a Classic one', s.fighters.ray.classicWins === 5 && s.fighters.bruno.classicWins === 2 && s11.fighters.nika.classicWins === 4],
+  ['1.3.3: v5 save: boss wins are not counted as Classic wins', (() => {
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 5, modes: { boss: { vale: { attempts: 4, wins: 2, winsByFighter: { ray: 2 } } } } })));
+    return v.fighters.ray.classicWins === 3 && v.fighters.ray.wins === 5 && v.fighters.bruno.classicWins === 2;
+  })()],
+  ['1.3.3: v6 counter kept as saved (never above total wins)', (() => {
+    const f = { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, classicWins: 4 }, bruno: { ...alpha11.fighters.bruno, classicWins: 99 } };
+    const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 6, fighters: f })));
+    return v.fighters.ray.classicWins === 4 && v.fighters.bruno.classicWins === 2;
+  })()],
+  ['1.3.3: corrupt counter falls back to the estimate', sanitize({ ...alpha11, fighters: { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, classicWins: 'x' } } }).fighters.ray.classicWins === 5],
+  ['1.3.3: new fighters start with 0 Classic wins', s.fighters.vega.classicWins === 0],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
 let ok = true;

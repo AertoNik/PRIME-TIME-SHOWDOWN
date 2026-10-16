@@ -138,6 +138,9 @@ export class BattleHUD implements Screen {
   private bossDef: BossDef | null = null;
   private bossWarnEl: HTMLElement | null = null;
   private bossWarnTimer: number | null = null;
+  /** DIRECTOR'S CUT: the big alert and the live shot tracker under the mode strip. */
+  private cutAlertEl: HTMLElement | null = null;
+  private cutEl: HTMLElement | null = null;
 
   constructor(g: Game) {
     this.g = g;
@@ -362,6 +365,61 @@ export class BattleHUD implements Screen {
     }, Math.max(700, seconds * 1000 + 250));
   }
 
+  /** DIRECTOR'S CUT alert: the clapper card in the middle of the screen while the rifle goes up. */
+  private cutAlert(prep: number, empowered: boolean): void {
+    this.cutAlertEl?.remove();
+    const a = el(
+      'div',
+      'cut-alert' + (empowered ? ' final' : ''),
+      `<div class="ca-clap"><i></i><i></i><i></i><i></i><i></i></div><b>DIRECTOR'S CUT!</b><span>${empowered ? 'FINAL CUT · ' : ''}3 выстрела по линиям прицела</span>`,
+    );
+    this.el.appendChild(a);
+    // a third of the way down, but never over the shot tracker (short phones)
+    const host = this.el.getBoundingClientRect();
+    const below = this.cutEl ? this.cutEl.getBoundingClientRect().bottom - host.top + 12 : 0;
+    a.style.top = `${Math.round(Math.max(host.height * 0.34, below))}px`;
+    this.cutAlertEl = a;
+    window.setTimeout(() => {
+      a.remove();
+      if (this.cutAlertEl === a) this.cutAlertEl = null;
+    }, Math.max(1100, prep * 1000 + 650));
+  }
+
+  /** Live DIRECTOR'S CUT tracker: which shot, and whether its line still follows or has frozen. */
+  private cutStatus(shot: number, state: 'prep' | 'aim' | 'lock' | 'gap', empowered: boolean): void {
+    if (!this.cutEl) {
+      this.bossWarnEl?.remove();
+      this.bossWarnEl = null;
+      if (this.bossWarnTimer !== null) clearTimeout(this.bossWarnTimer);
+      this.bossWarnTimer = null;
+      const w = el('div', 'boss-warn cut-warn');
+      w.style.top = `${Math.round(this.modeStrip.getBoundingClientRect().bottom - this.el.getBoundingClientRect().top + 8)}px`;
+      this.el.appendChild(w);
+      this.cutEl = w;
+    }
+    const done = state === 'gap' ? shot + 1 : shot;
+    const pips = [0, 1, 2].map((i) => `<i class="${i < done ? 'done' : i === shot && state !== 'gap' ? 'now' : ''}"></i>`).join('');
+    const text =
+      state === 'prep'
+        ? 'Чемпион вскидывает винтовку'
+        : state === 'aim'
+          ? 'Линия следит за вами'
+          : state === 'lock'
+            ? 'ЗАСТЫЛА! DASH или SHIELD'
+            : shot >= 2
+              ? 'Чемпион открыт!'
+              : 'Следующая линия…';
+    this.cutEl.className = `boss-warn cut-warn ${state}${empowered ? ' final' : ''}`;
+    this.cutEl.innerHTML = `<span class="cw-row"><b>⚠ DIRECTOR'S CUT</b><span class="cw-pips">${pips}</span></span><span class="cw-txt">${text}</span>`;
+  }
+
+  private clearCut(): void {
+    this.cutAlertEl?.remove();
+    this.cutAlertEl = null;
+    this.cutEl?.remove();
+    this.cutEl = null;
+  }
+
   /** Fill the mode strip for Survival / Prime Challenge; returns the intro caption (empty for Classic). */
   private setupMode(mode: ModeSession): string {
     this.challenge = null;
@@ -370,6 +428,7 @@ export class BattleHUD implements Screen {
     this.modeLiveTxt = '';
     this.bossWarnEl?.remove();
     this.bossWarnEl = null;
+    this.clearCut();
     this.el.querySelectorAll('.phase-mark').forEach((x) => x.remove());
     this.el.classList.remove('boss-p1', 'boss-p2', 'boss-p3');
     this.el.classList.toggle('has-mode', mode.kind !== 'classic');
@@ -846,6 +905,7 @@ export class BattleHUD implements Screen {
         this.big(e.n > 0 ? String(e.n) : 'FIGHT!', e.n > 0 ? '' : 'fight');
         break;
       case 'phase':
+        if (e.phase === 'outro') this.clearCut();
         if (e.phase === 'fight' && !this.hints.start && !this.g.save.data.hintsSeen) {
           this.hints.start = true;
           setTimeout(
@@ -914,10 +974,9 @@ export class BattleHUD implements Screen {
         if (e.hit) this.spawnFloater('ПРИМАНКА!', 'callout', e.x, 2.4, e.z, 0.9, 0.6);
         break;
       case 'telegraph':
-        if (e.side === 1 && this.bossDef && (e.card === 'prime_pulse' || e.card === 'charged_shot')) {
-          const pulse = e.card === 'prime_pulse';
-          const mv = this.bossDef.moves.find((x) => x.id === (pulse ? 'pulse' : 'spotlight'));
-          if (mv) this.bossWarn(mv.name, pulse ? 'SHIELD сейчас или DASH, когда зона застынет' : 'Уйдите с красной линии рывком DASH', e.duration);
+        if (e.side === 1 && this.bossDef && e.card === 'charged_shot' && !this.cutEl) {
+          const mv = this.bossDef.moves.find((x) => x.id === 'spotlight');
+          if (mv) this.bossWarn(mv.name, 'Уйдите с красной линии рывком DASH', e.duration);
         }
         if (e.side === 1) {
           this.g.audio.telegraph();
@@ -973,7 +1032,8 @@ export class BattleHUD implements Screen {
           // the champion's cards carry his signature names.
           const rc = e.combo ? COMBOS.find((x) => x.id === e.combo)! : null;
           const bossName = this.bossDef?.cardNames[e.card];
-          this.callout(1, (rc ? rc.name : (bossName ?? c.name)) + '!', bossName ? '#ffd76a' : '#ff8a7a');
+          // DIRECTOR'S CUT has its own big alert
+          if (e.card !== 'directors_cut' || rc) this.callout(1, (rc ? rc.name : (bossName ?? c.name)) + '!', bossName ? '#ffd76a' : '#ff8a7a');
         }
         break;
       }
@@ -990,6 +1050,29 @@ export class BattleHUD implements Screen {
       case 'bossMove':
         if (e.move === 'star') this.callout(1, 'STAR POWER!', '#ffd76a');
         break;
+      case 'cutStart':
+        this.cutStatus(0, 'prep', e.empowered);
+        this.cutAlert(e.prep, e.empowered);
+        vibrate(20);
+        break;
+      case 'cutAim':
+        this.cutStatus(e.shot, 'aim', e.empowered);
+        break;
+      case 'cutLock':
+        this.cutStatus(e.shot, 'lock', e.empowered);
+        vibrate(14);
+        break;
+      case 'cutShot':
+        this.cutStatus(e.shot, 'gap', e.empowered);
+        if (e.outcome === 'decoy') this.callout(0, 'ПРИМАНКА ПРИНЯЛА!', '#c8a0ff');
+        break;
+      case 'cutEnd':
+        this.cutEl?.remove();
+        this.cutEl = null;
+        this.cutAlertEl?.remove();
+        this.cutAlertEl = null;
+        if (e.completed) this.callout(e.side, 'ЧЕМПИОН ОТКРЫТ!', '#9dff5c');
+        break;
       case 'cardFail':
         break;
       default:
@@ -1002,6 +1085,7 @@ export class BattleHUD implements Screen {
     this.hintEl = null;
     this.bossWarnEl?.remove();
     this.bossWarnEl = null;
+    this.clearCut();
     if (this.bossWarnTimer !== null) clearTimeout(this.bossWarnTimer);
     this.bossWarnTimer = null;
   }

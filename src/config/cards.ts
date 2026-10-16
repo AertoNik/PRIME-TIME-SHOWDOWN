@@ -112,15 +112,15 @@ export const CARDS: Record<CardId, CardDef> = {
     heavy: true,
   },
   // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
-  prime_pulse: {
-    id: 'prime_pulse',
-    name: 'PRIME PULSE',
+  directors_cut: {
+    id: 'directors_cut',
+    name: "DIRECTOR'S CUT",
     cost: 5,
     role: 'Чемпион',
-    short: 'Резонансная волна',
-    desc: `Резонатор заряжается, и в секторе перед чемпионом проходит волна: ${T.prime_pulse.damage} урона и отброс. SHIELD поглощает её, DASH после того, как зона застыла, уводит из волны.`,
-    color: '#46e8ff',
-    color2: '#7a5a10',
+    short: 'Три выстрела по линиям',
+    desc: `Три мощных выстрела PRIME BREAKER. Перед каждым — линия прицела: следит за целью, застывает, и выстрел идёт ровно по ней (${T.directors_cut.damage[0]} / ${T.directors_cut.damage[1]} / ${T.directors_cut.damage[2]} урона). DASH после застывания уводит из линии, SHIELD гасит урон.`,
+    color: '#ffc23a',
+    color2: '#7a1020',
     heavy: true,
   },
 };

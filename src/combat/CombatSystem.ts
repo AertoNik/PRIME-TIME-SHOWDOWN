@@ -32,14 +32,23 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
       return { right: 0.2, fwd: 1.05 };
     case 'pulse_rifle':
       return { right: 0.2, fwd: 1.32 };
-    case 'oscillator':
-      return { right: 0.3, fwd: 1.05 };
+    case 'breaker':
+      // the long rifle in its chest-level hold: just behind the crown muzzle of the model
+      return { right: 0.3, fwd: 1.55 };
   }
 }
 
 export function inArenaWall(x: number, z: number): boolean {
   clampRoundedRect(x, z, ARENA.wallX, ARENA.wallZ, ARENA.wallCorner, tmpClamp);
   return !tmpClamp.hit;
+}
+
+/** How far a straight line from (x, z) runs before it meets the barrier (capped at `length`). */
+export function lineReach(x: number, z: number, dirX: number, dirZ: number, length: number): number {
+  for (let d = 0.5; d < length; d += 0.25) {
+    if (!inArenaWall(x + dirX * d, z + dirZ * d)) return d;
+  }
+  return length;
 }
 
 /** Movement, auto-fire, projectiles and damage resolution. */
@@ -55,7 +64,7 @@ export class CombatSystem {
   // ------------------------------------------------------------------ timers
   tickStatuses(f: FighterSim, dt: number): void {
     if (f.stun > 0) f.stun = Math.max(0, f.stun - dt);
-    if (f.pulseCd > 0) f.pulseCd = Math.max(0, f.pulseCd - dt);
+    if (f.cutCd > 0) f.cutCd = Math.max(0, f.cutCd - dt);
     if (f.shield > 0) {
       f.shield -= dt;
       if (f.shield <= 0) {
@@ -162,11 +171,11 @@ export class CombatSystem {
     this.integrate(f, dt);
 
     // Aim / facing (model turns toward its aim point).
-    const desired = Math.atan2(f.aimX - f.x, f.aimZ - f.z);
+    const desired = a.kind === 'cut' ? Math.atan2(a.dirX, a.dirZ) : Math.atan2(f.aimX - f.x, f.aimZ - f.z);
     if (a.kind === 'rush' || a.kind === 'dash') {
       // Keep facing; view handles the dash pose.
     } else if (f.stun <= 0) {
-      f.facing = dampAngle(f.facing, desired, a.kind === 'windup' ? 10 : 15, dt);
+      f.facing = dampAngle(f.facing, desired, a.kind === 'windup' ? 10 : a.kind === 'cut' ? 12 : 15, dt);
     }
 
     this.autoFire(f, foe, dt);
@@ -274,6 +283,9 @@ export class CombatSystem {
         a.t += dt;
         if (a.t >= a.total) f.action = { kind: 'none' };
         break;
+      case 'cut':
+        m.abilities.updateCut(f, foe, a, dt);
+        break;
       default:
         break;
     }
@@ -364,8 +376,8 @@ export class CombatSystem {
           ? 'bolt'
           : atk.weapon === 'pulse_rifle'
             ? 'rail'
-            : atk.weapon === 'oscillator'
-              ? 'disc'
+            : atk.weapon === 'breaker'
+              ? 'slug'
               : 'auto';
     const n = atk.projectiles;
     for (let i = 0; i < n; i++) {
@@ -608,10 +620,11 @@ export class CombatSystem {
   // ------------------------------------------------------------------ damage
   applyStun(target: FighterSim, duration: number, by: Side): void {
     if (target.ko || duration <= 0) return;
-    if (target.action.kind === 'windup' || target.action.kind === 'rush') {
+    if (target.action.kind === 'windup' || target.action.kind === 'rush' || target.action.kind === 'cut') {
       this.m.emit({ type: 'interrupt', side: target.side, by });
       if (by !== target.side) this.m.fighters[by].m.perfects++;
     }
+    this.m.abilities.cancelCut(target);
     if (target.action.kind !== 'dash') target.action = { kind: 'none' };
     target.adrenaline = 0;
     target.adrenalineShots = 0;
@@ -695,8 +708,9 @@ export class CombatSystem {
       target.kbX = h.dx * h.knockback * 2.6;
       target.kbZ = h.dz * h.knockback * 2.6;
       target.knockback = Math.min(0.7, 0.15 + h.knockback * 0.06);
-      if (target.action.kind === 'windup') {
+      if (target.action.kind === 'windup' || target.action.kind === 'cut') {
         m.emit({ type: 'interrupt', side: target.side, by: source.side });
+        m.abilities.cancelCut(target);
         target.action = { kind: 'none' };
       }
     }

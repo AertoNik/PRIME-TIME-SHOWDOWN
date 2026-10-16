@@ -5,14 +5,15 @@
 //         Usage: npm run modes [runsPerCell]   (0 skips the balance report)
 import { CHALLENGES, PERKS, SURVIVAL, challengeById } from '../src/config/modes.config';
 import { BOSSES } from '../src/config/boss.config';
-import { FIGHTERS, RIVALS, RIVAL_ORDER } from '../src/config/fighters';
+import { CARD_TUNING } from '../src/config/balance';
+import { FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../src/config/fighters';
 import type { FighterId } from '../src/config/types';
 import { Match } from '../src/combat/Match';
 import type { MatchResultData } from '../src/combat/types';
 import { CareerSystem } from '../src/meta/CareerSystem';
 import { EventManager } from '../src/meta/EventManager';
 import { GameModes, evaluateChallenge } from '../src/meta/GameModes';
-import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
+import { defaultSave, emptyBoss as emptyBossProgress, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
 import { runMatch, type Mode } from './bots';
 
 class MemSave {
@@ -257,7 +258,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.2.5 save gets empty mode records', m.modes.survival.runs === 0 && m.modes.survival.active === null && Object.keys(m.modes.challenges).length === 0);
   const junk = sanitize({ modes: { survival: { bestWave: 99, runs: -3, active: { fighter: 'nobody', rivals: [] } }, challenges: { spotlight: { attempts: 'x', clears: 4, firstClearAt: 5 } } } });
   check('corrupt mode data is cleaned', junk.modes.survival.bestWave === 5 && junk.modes.survival.runs === 0 && junk.modes.survival.active === null && junk.modes.challenges.spotlight.attempts === 4);
-  check('save version is 5', defaultSave().version === 5);
+  check('save version is 6', defaultSave().version === 6);
 }
 
 // ----------------------------------------------------------------- boss fight
@@ -281,14 +282,21 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   boss.hp = Math.round(boss.maxHp * 0.6);
   m.step(1 / 60);
   drain();
-  check('phase 2 at 65%: event, new deck, pressure AI, STAR POWER', m.boss!.phase === 2 && evs.includes('phase2') && evs.includes('star') && m.hands[1].deck.includes('prime_pulse') && m.ais[1].profile.behavior.pressure > 0 && boss.overdrive > 0);
+  check('phase 2 at 65%: event, DIRECTOR\'S CUT deck, pressure AI, STAR POWER', m.boss!.phase === 2 && evs.includes('phase2') && evs.includes('star') && m.hands[1].deck.includes('directors_cut') && m.ais[1].profile.behavior.pressure > 0 && boss.overdrive > 0);
   for (let i = 0; i < 120; i++) m.step(1 / 60);
   drain();
   check('phase 2 announced only once', evs.filter((x) => x === 'phase2').length === 1);
   boss.hp = Math.round(boss.maxHp * 0.25);
   m.step(1 / 60);
   drain();
-  check('phase 3 at 30%: FINAL BROADCAST with the stronger PRIME PULSE', m.boss!.phase === 3 && evs.includes('phase3') && !!def.phases[2].pulse);
+  const p3 = def.phases[2].cut!;
+  const p2c = CARD_TUNING.directors_cut;
+  check('phase 3 at 30%: FINAL BROADCAST with the sharper DIRECTOR\'S CUT', m.boss!.phase === 3 && evs.includes('phase3') && m.hands[1].deck.includes('directors_cut') && !!p3);
+  check('FINAL CUT: leads further, shorter but human windows (>= 0.5 s), wider and stronger 3rd shot', p3.lead > p2c.lead && p3.lock.every((x, i) => x <= p2c.lock[i] && x >= 0.5) && p3.halfWidth[2] > p2c.halfWidth[2] && p3.damage[2] > p2c.damage[2]);
+  check('phase 1 is bursts only (no DIRECTOR\'S CUT, no SPOTLIGHT SHOT)', !def.phases[0].deck.includes('directors_cut') && !def.phases[0].deck.includes('charged_shot'));
+  const va = rivalFighterDef(RIVALS.vale).stats.attack;
+  check('PRIME BREAKER: 3-shot CHAMPION BURST, outranges Vega and Nika, no homing, no distance bonus', va.weapon === 'breaker' && va.burst?.count === 3 && va.range > FIGHTERS.vega.stats.attack.range && va.range > FIGHTERS.nika.stats.attack.range && va.homing === 0 && va.falloff === 1);
+  check('the third shot is the strongest but every shot hits once only', p2c.damage[2] > p2c.damage[0] && p2c.damage[2] > p2c.damage[1]);
   const two = mk(2);
   guard = 0;
   while (two.phase === 'intro' && guard++ < 2000) two.step(1 / 60);
@@ -333,6 +341,257 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.3 save (v4) loads: Survival/Challenge kept, empty boss records', v4.modes.survival.bestWave === 4 && v4.modes.challenges.spotlight.clears === 1 && Object.keys(v4.modes.boss).length === 0 && v4.money === 900);
   const junk = sanitize({ modes: { boss: { vale: { wins: 'x', attempts: 2, bestPhase: 9, bestBossHp: -1, history: [{ fighter: 'nobody' }, { fighter: 'ray', phase: 7, won: true }] } } } });
   check('corrupt boss data is cleaned', junk.modes.boss.vale.bestPhase === 3 && junk.modes.boss.vale.bestBossHp === 0 && junk.modes.boss.vale.history.length === 1 && junk.modes.boss.vale.history[0].phase === 3);
+
+  // access: 5 Classic Duel wins with the selected fighter (a fighter who already beat the champion keeps access)
+  const a = world();
+  const need = def.unlock.classicWins;
+  const acc0 = a.modes.bossAccess('vale', 'ray');
+  check('new career: BOSS FIGHT closed, 0/5 Classic wins', need === 5 && !acc0.open && acc0.wins === 0 && acc0.need === 5);
+  for (let i = 0; i < 4; i++) a.career.applyMatch(result({ outcome: 'win' }), 'ray', 'rookie', 'dex', { classic: true });
+  a.career.applyMatch(result({ outcome: 'loss' }), 'ray', 'rookie', 'dex', { classic: true });
+  check('4 Classic wins (and a loss): still closed, 4/5', !a.modes.bossAccess('vale', 'ray').open && a.modes.bossAccess('vale', 'ray').wins === 4);
+  a.career.applyMatch(result({ outcome: 'win' }), 'ray', 'pro', 'tank', { moneyMult: 1.5, moneyLabel: 'x', rotateRival: false });
+  check('a Prime Challenge win does not count towards access', !a.modes.bossAccess('vale', 'ray').open && a.store.data.fighters.ray.classicWins === 4 && a.store.data.fighters.ray.wins === 5);
+  a.career.applyMatch(result({ outcome: 'win' }), 'ray', 'rookie', 'dex', { classic: true });
+  const acc5 = a.modes.bossAccess('vale', 'ray');
+  check('5th Classic win opens BOSS FIGHT for that fighter only', acc5.open && !acc5.legacy && acc5.wins === 5 && !a.modes.bossAccess('vale', 'bruno').open);
+  a.modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 99 }), 'ray');
+  check('a boss win is not a Classic win', a.store.data.fighters.ray.classicWins === 5);
+  const legacy = world();
+  legacy.store.data.modes.boss.vale = { ...emptyBossProgress(), wins: 1, winsByFighter: { vega: 1 } };
+  const accL = legacy.modes.bossAccess('vale', 'vega');
+  check('a fighter who already beat the champion keeps access (legacy)', accL.open && accL.legacy && !legacy.modes.bossAccess('vale', 'nika').open);
+  const after = sanitize(JSON.parse(JSON.stringify(a.store.data)));
+  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 6);
+}
+
+// ----------------------------------------------------------- DIRECTOR'S CUT
+{
+  type Ev = ReturnType<Match['drainEvents']>[number];
+  /** A boss fight already in phase 2 with a clean stage: no STAR POWER, full boss energy, player at (px, pz). */
+  const setup = (seed: number, fighter: FighterId = 'ray') => {
+    const def = BOSSES.vale;
+    const m = new Match({ fighter, deck: FIGHTERS[fighter].defaultDeck, rival: 'vale', difficulty: 'pro', seed, fans: 0, mods: { duration: def.duration, introTime: def.introTime, timeUpRule: 'rival' }, boss: 'vale' });
+    let g = 0;
+    while (m.phase === 'intro' && g++ < 2000) m.step(1 / 60);
+    const b = m.fighters[1];
+    b.hp = Math.round(b.maxHp * 0.6);
+    m.step(1 / 60);
+    b.overdrive = 0;
+    m.drainEvents();
+    return m;
+  };
+  /** Plays DIRECTOR'S CUT for the boss and steps until `until` holds (player pinned to a spot by `pin`). */
+  const run = (m: Match, pin: ((step: number, evs: Ev[]) => void) | null, until: (evs: Ev[]) => boolean, max = 900) => {
+    const all: Ev[] = [];
+    for (let i = 0; i < max; i++) {
+      pin?.(i, all);
+      m.step(1 / 60);
+      all.push(...m.drainEvents());
+      if (until(all)) break;
+    }
+    return all;
+  };
+  const cast = (m: Match) => {
+    const b = m.fighters[1];
+    b.cutCd = 0;
+    m.hands[1].energy = 10;
+    m.hands[1].lockout = 0;
+    b.action = { kind: 'none' };
+    b.stun = 0;
+    b.knockback = 0;
+    const i = m.hands[1].hand.indexOf('directors_cut');
+    if (i < 0) {
+      // bring the card into the hand for the test
+      m.hands[1].hand[0] = 'directors_cut';
+      return m.playCard(1, 0);
+    }
+    return m.playCard(1, i);
+  };
+  const place = (m: Match, bx: number, bz: number, px: number, pz: number) => {
+    const [p, b] = m.fighters;
+    b.place(bx, bz, 0);
+    p.place(px, pz, Math.PI);
+    b.seenX = px;
+    b.seenZ = pz;
+    b.seenVX = b.seenVZ = 0;
+  };
+  /** Keeps the player standing still on a spot, perpendicular offset `off` from the boss→player line. */
+  const pinAt = (m: Match, x: number, z: number) => () => {
+    const p = m.fighters[0];
+    p.x = p.px = x;
+    p.z = p.pz = z;
+    p.vx = p.vz = 0;
+    const b = m.fighters[1];
+    b.seenX = x;
+    b.seenZ = z;
+    b.seenVX = b.seenVZ = 0;
+  };
+  const shots = (evs: Ev[]) => evs.filter((e): e is Extract<Ev, { type: 'cutShot' }> => e.type === 'cutShot');
+  const cutHits = (evs: Ev[]) => evs.filter((e) => e.type === 'hit' && e.kind === 'cut').length;
+
+  // a full cut against a player standing right on the line: three lines, three shots, three single hits
+  {
+    const m = setup(11);
+    place(m, 0, -4, 0, 4);
+    const p = m.fighters[0];
+    const hp0 = p.hp;
+    const err = m.difficulty.aimError;
+    (m.difficulty as { aimError: number }).aimError = 0;
+    check("DIRECTOR'S CUT can be played in phase 2", cast(m) === null && m.fighters[1].action.kind === 'cut');
+    const evs = run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'cutEnd'));
+    (m.difficulty as { aimError: number }).aimError = err;
+    const aims = evs.filter((e) => e.type === 'cutAim').map((e) => (e as { shot: number }).shot);
+    const sh = shots(evs);
+    check("full cut: alert, 3 lines (each its own warning), 3 shots, ends with the champion open", evs.findIndex((e) => e.type === 'cutStart') < evs.findIndex((e) => e.type === 'cutAim') && aims.join() === '0,1,2' && evs.filter((e) => e.type === 'cutLock').length === 3 && sh.length === 3 && m.fighters[1].action.kind === 'recover');
+    check('a player standing in the line takes every shot exactly once (no multi-hits)', sh.every((x) => x.outcome === 'hit') && cutHits(evs) === 3);
+    const dmg = CARD_TUNING.directors_cut.damage.reduce((a, b) => a + b, 0) * m.fighters[1].dmgMult;
+    check('damage = exactly the three shots, nothing extra', Math.abs(hp0 - p.hp - dmg) <= 3);
+    check('the cut goes on cooldown', m.fighters[1].cutCd > 0);
+    m.fighters[1].action = { kind: 'none' };
+    m.hands[1].energy = 10;
+    m.hands[1].lockout = 0;
+    m.hands[1].hand[0] = 'directors_cut';
+    check('…and cannot be played again until it runs out', m.playCard(1, 0) === 'cooldown');
+  }
+
+  // hitbox = the drawn rectangle: inside by a hair is a hit, outside by a hair is a miss
+  {
+    const m = setup(12);
+    const b = m.fighters[1];
+    const r = m.fighters[0].radius;
+    const hw = CARD_TUNING.directors_cut.halfWidth[0];
+    const len = CARD_TUNING.directors_cut.length[0];
+    b.place(0, 0, 0);
+    const edge = hw + r * 0.5;
+    check('lane test: centre within halfWidth + half the body radius is in, a hair further is out', m.abilities.inCutLane(b, 0, 1, hw, len, edge - 0.01, 5, r) >= 0 && m.abilities.inCutLane(b, 0, 1, hw, len, edge + 0.01, 5, r) < 0);
+    check('lane test: nothing behind the champion or past the end of the line', m.abilities.inCutLane(b, 0, 1, hw, len, 0, -1, r) < 0 && m.abilities.inCutLane(b, 0, 1, hw, len, 0, len + r, r) < 0 && m.abilities.inCutLane(b, 0, 1, hw, len, 0, len - 0.1, r) >= 0);
+  }
+  {
+    // the player steps just outside the frozen line after the lock: every shot misses
+    const m = setup(13);
+    place(m, 0, -4, 0, 4);
+    const p = m.fighters[0];
+    (m.difficulty as { aimError: number }).aimError = 0;
+    cast(m);
+    const off = CARD_TUNING.directors_cut.halfWidth[0] + p.radius * 0.5 + 0.25;
+    const evs = run(
+      m,
+      () => {
+        // stand on the line while it tracks, step just outside once it is frozen
+        const a = m.fighters[1].action;
+        pinAt(m, a.kind === 'cut' && a.stage === 'lock' ? off : 0, 4)();
+      },
+      (e) => e.some((x) => x.type === 'cutEnd'),
+    );
+    const hp = p.hp;
+    check('outside the drawn line when the shot fires = no damage (3 misses)', shots(evs).length === 3 && shots(evs).every((x) => x.outcome === 'miss') && cutHits(evs) === 0 && hp === p.maxHp);
+  }
+
+  // SHIELD absorbs, DASH after the lock dodges
+  {
+    const m = setup(14);
+    place(m, 0, -4, 0, 4);
+    const p = m.fighters[0];
+    (m.difficulty as { aimError: number }).aimError = 0;
+    cast(m);
+    const evs = run(
+      m,
+      (_i, all) => {
+        pinAt(m, 0, 4)();
+        if (all.some((x) => x.type === 'cutLock') && p.shield <= 0 && !all.some((x) => x.type === 'shieldUp')) {
+          p.shield = CARD_TUNING.shield.duration;
+          p.shieldHp = CARD_TUNING.shield.absorb;
+          m.emit({ type: 'shieldUp', side: 0 });
+        }
+      },
+      (e) => shots(e).length >= 1,
+    );
+    check('SHIELD raised after the lock blocks the shot (perfect block, no HP lost)', shots(evs)[0]?.outcome === 'blocked' && p.hp === p.maxHp && evs.some((x) => x.type === 'block' && x.perfect));
+  }
+  {
+    const m = setup(15);
+    place(m, 0, -4, 0, 4);
+    const p = m.fighters[0];
+    (m.difficulty as { aimError: number }).aimError = 0;
+    cast(m);
+    // follow the player normally until the first lock, then DASH like a human would (0.3 s later)
+    let lockT = -1;
+    let dashed = false;
+    const evs = run(
+      m,
+      (i, all) => {
+        if (lockT < 0) {
+          pinAt(m, 0, 4)();
+          if (all.some((x) => x.type === 'cutLock')) lockT = i;
+        } else if (!dashed && i - lockT >= 18) {
+          m.hands[0].energy = 10;
+          m.hands[0].lockout = 0;
+          let di = m.hands[0].hand.indexOf('dash');
+          if (di < 0) {
+            m.hands[0].hand[0] = 'dash';
+            di = 0;
+          }
+          dashed = m.playCard(0, di) === null;
+        }
+      },
+      (e) => shots(e).length >= 1,
+    );
+    check('DASH after the lock: the shot is dodged (read, energy refund), no damage', dashed && shots(evs)[0]?.outcome === 'dodged' && p.hp === p.maxHp && evs.some((x) => x.type === 'dodge' && x.perfect));
+  }
+
+  // interrupts and endings
+  {
+    const m = setup(16);
+    place(m, 0, -4, 0, 4);
+    cast(m);
+    m.step(1 / 60);
+    m.hands[0].energy = 10;
+    m.hands[0].lockout = 0;
+    m.hands[0].hand[0] = 'shock';
+    m.playCard(0, 0);
+    const evs = run(m, pinAt(m, 0, 4), () => false, 360);
+    check('SHOCK during the alert calls the cut off: no line, no shot', m.fighters[1].action.kind !== 'cut' && shots(evs).length === 0 && !evs.some((x) => x.type === 'cutAim'));
+  }
+  {
+    const m = setup(17);
+    place(m, 0, -4, 0, 4);
+    cast(m);
+    const evs = run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'cutAim'));
+    m.fighters[1].hp = Math.round(m.fighters[1].maxHp * 0.25);
+    const after = run(m, pinAt(m, 0, 4), () => false, 300);
+    check('phase change mid-cut (2→3) cancels it cleanly', evs.length > 0 && after.some((x) => x.type === 'bossPhase' && x.phase === 3) && after.some((x) => x.type === 'cutEnd' && !x.completed) && shots(after).length === 0);
+  }
+  {
+    const m = setup(18);
+    place(m, 0, -4, 0, 4);
+    cast(m);
+    run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'cutLock'));
+    m.knockOut(m.fighters[1], true);
+    const after = run(m, null, () => false, 400);
+    check('champion knocked out mid-cut: the cut ends, no more shots', m.fighters[1].action.kind === 'none' && shots(after).length === 0);
+    check('no DIRECTOR\'S CUT after the match is over', m.playCard(1, 0) === 'phase');
+  }
+  {
+    const m = setup(19);
+    place(m, 0, -4, 0, 4);
+    cast(m);
+    run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'cutAim'));
+    m.fighters[0].hp = 1;
+    const evs = run(m, pinAt(m, 0, 4), (e) => e.some((x) => x.type === 'phase' && x.phase === 'over'), 1200);
+    check('the shot that knocks the player out ends the cut and the match (no shots after)', m.result?.outcome === 'loss' && shots(evs).length === 1 && evs.some((x) => x.type === 'cutEnd'));
+  }
+  {
+    // the line tracks the player while aiming
+    const m = setup(20);
+    place(m, 0, -4, 3, 3);
+    cast(m);
+    run(m, pinAt(m, 3, 3), (e) => e.some((x) => x.type === 'cutAim'));
+    const b = m.fighters[1];
+    const a = b.action;
+    const d = Math.hypot(3 - b.x, 3 - b.z);
+    check('while aiming the line points at the player', a.kind === 'cut' && a.stage === 'aim' && Math.abs(a.dirX - (3 - b.x) / d) < 0.02 && Math.abs(a.dirZ - (3 - b.z) / d) < 0.02);
+  }
 }
 
 let ok = true;
@@ -387,25 +646,35 @@ if (N > 0) {
     }
   }
 
-  console.log(`\nBOSS FIGHT vs ${RIVALS.vale.fullName}: ${N} fights per cell, default decks (idle = no cards)`);
-  console.log('fighter  player  win%  avgDur  phase reached 1/2/3  bossHpLeftOnLoss  rushes  spotlights');
+  console.log(`\nBOSS FIGHT vs ${RIVALS.vale.fullName}: ${N} fights per cell, default decks (idle = no cards, mash = random cards, combo = deliberate)`);
+  console.log("fighter  player  win%  avgDur  phase 1/2/3  bossHp@loss  hp@win  taken  burst  cut  cuts  DIRECTOR'S CUT shots: hit/dodged/blocked/missed");
   const bd = BOSSES.vale;
   for (const f of fighters) {
     for (const mode of ['idle', 'mash', 'combo'] as Mode[]) {
-      let win = 0, dur = 0, left = 0, rush = 0, spot = 0;
+      let win = 0, dur = 0, left = 0, hpWin = 0, taken = 0, burst = 0, cut = 0, cuts = 0;
       const ph = [0, 0, 0, 0];
+      const sh = { hit: 0, dodged: 0, blocked: 0, miss: 0 };
       for (let i = 0; i < N; i++) {
         const { m, events } = runMatch(f, 'vale', 'pro', mode, 5000 + i * 7919, undefined, { duration: bd.duration, introTime: bd.introTime, timeUpRule: 'rival' }, 'vale');
         const r = m.result!;
-        if (r.outcome === 'win') win++;
-        else left += r.enemyHpFrac;
+        if (r.outcome === 'win') {
+          win++;
+          hpWin += r.playerHpFrac;
+        } else left += r.enemyHpFrac;
         dur += r.duration;
         ph[r.bossPhase ?? 1]++;
-        rush += events.get('rivalCard:knockout') ?? 0;
-        spot += events.get('rivalCard:charged_shot') ?? 0;
+        taken += m.fighters[0].m.damageTaken;
+        burst += events.get('taken:auto') ?? 0;
+        cut += events.get('taken:cut') ?? 0;
+        cuts += events.get('rivalCard:directors_cut') ?? 0;
+        for (const k of Object.keys(sh) as (keyof typeof sh)[]) sh[k] += events.get('cutShot:' + k) ?? 0;
       }
       const lost = N - win;
-      console.log(`${f.padEnd(8)} ${mode.padEnd(7)} ${String(Math.round((win / N) * 100)).padStart(4)}%  ${(dur / N).toFixed(0).padStart(5)}s  ${`${ph[1]}/${ph[2]}/${ph[3]}`.padStart(9)}            ${lost ? String(Math.round((left / lost) * 100)).padStart(3) + '%' : '   -'}        ${(rush / N).toFixed(1).padStart(4)}  ${(spot / N).toFixed(1).padStart(5)}`);
+      const shots = sh.hit + sh.dodged + sh.blocked + sh.miss || 1;
+      const pc = (v: number) => `${Math.round((v / shots) * 100)}%`;
+      console.log(
+        `${f.padEnd(8)} ${mode.padEnd(7)} ${String(Math.round((win / N) * 100)).padStart(4)}%  ${(dur / N).toFixed(0).padStart(5)}s  ${`${ph[1]}/${ph[2]}/${ph[3]}`.padStart(9)}    ${lost ? String(Math.round((left / lost) * 100)).padStart(3) + '%' : '   -'}        ${win ? String(Math.round((hpWin / win) * 100)).padStart(3) + '%' : '   -'}  ${(taken / N).toFixed(0).padStart(5)}  ${(burst / N).toFixed(0).padStart(5)} ${(cut / N).toFixed(0).padStart(4)}  ${(cuts / N).toFixed(1).padStart(4)}  ${[pc(sh.hit), pc(sh.dodged), pc(sh.blocked), pc(sh.miss)].join('/')}`,
+      );
     }
   }
 

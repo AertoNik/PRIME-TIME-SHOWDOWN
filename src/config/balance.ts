@@ -48,6 +48,47 @@ export const ARENA = {
   propRespawn: 10,
 };
 
+/** DIRECTOR'S CUT numbers. Arrays hold one value per shot (1st, 2nd, 3rd). */
+export interface CutTuning {
+  /** Raised-rifle pose and the "DIRECTOR'S CUT!" alert before the first line. */
+  prep: number;
+  /** Seconds the warning line tracks the target before it freezes. */
+  aim: [number, number, number];
+  /** Seconds between the freeze and the shot (the time to DASH or raise a SHIELD). */
+  lock: [number, number, number];
+  /** Pause after a shot before the next line appears. */
+  gap: number;
+  /** Half-width of the line (world units). A fighter is hit when its centre is within halfWidth + half its body radius. */
+  halfWidth: [number, number, number];
+  /** Length of the line from the champion. */
+  length: [number, number, number];
+  damage: [number, number, number];
+  knockback: [number, number, number];
+  stun: [number, number, number];
+  /** Seconds of the target's current motion the line leads by when it freezes (0 = where it stands). */
+  lead: number;
+  /** The champion stands open after the third shot. */
+  recover: number;
+  /** Seconds before the next DIRECTOR'S CUT. */
+  cooldown: number;
+}
+
+/** Phase 2 DIRECTOR'S CUT (the base card numbers). */
+const CUT_P2: CutTuning = {
+  prep: 0.55,
+  aim: [0.7, 0.55, 0.7],
+  lock: [0.62, 0.6, 0.66],
+  gap: 0.32,
+  halfWidth: [0.55, 0.55, 0.78],
+  length: [11, 11, 12],
+  damage: [840, 840, 1380],
+  knockback: [1, 1, 4.5],
+  stun: [0, 0, 0.3],
+  lead: 0.3,
+  recover: 1.0,
+  cooldown: 9,
+};
+
 export const CARD_TUNING = {
   /** A perfect dodge (reading the attack) refunds energy. */
   /** perfectRefund: energy back on a read dodge. counter*: the next volley after a dash hits harder. */
@@ -82,29 +123,18 @@ export const CARD_TUNING = {
     wallSlamStun: 0.8,
     missRecover: 0.6,
   },
+  /**
+   * DIRECTOR'S CUT (boss only, Alpha 1.3.3): PRIME BREAKER fires three heavy shots, each
+   * along its own warning line. Per shot: the line tracks the target for `aim[i]` s, freezes
+   * (lock) and the shot fires `lock[i]` s later along exactly that line — the hit test is the
+   * drawn rectangle (`halfWidth[i]`, `length[i]`) at the moment of the shot, nothing else.
+   * Each shot hits at most once. Phase 3 of the boss fight overrides these numbers
+   * (boss.config.ts). Answers: DASH after the lock (leaves the line, i-frames), SHIELD
+   * absorbs, SHOCK / heavy knockback interrupts the sequence.
+   */
+  directors_cut: CUT_P2,
   // Vega's signature: a charged rail shot. Damage grows with distance travelled
   // (falloff > 1), and it punches through shields.
-  /**
-   * PRIME PULSE (boss only): the resonator charges, the danger sector is shown, its aim
-   * freezes at `lockAt`, then a shockwave hits everything inside the sector. Phase 3 of
-   * the boss fight overrides these numbers (boss.config.ts). Answers: SHIELD absorbs it,
-   * DASH started after the sector freezes always gets out of the wave, SHOCK interrupts.
-   */
-  prime_pulse: {
-    windup: 0.9,
-    telegraph: 1.3,
-    lockAt: 0.5,
-    range: 7.2,
-    /** Half-width of the sector (radians, ~27°). */
-    halfAngle: 0.48,
-    damage: 900,
-    knockback: 3.5,
-    stun: 0.3,
-    /** The champion holds still after the wave: an opening. */
-    recover: 0.75,
-    /** Seconds before the next PRIME PULSE. */
-    cooldown: 7,
-  },
   charged_shot: {
     windup: 0.42,
     telegraph: 0.95,

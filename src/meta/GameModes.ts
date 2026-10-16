@@ -52,6 +52,16 @@ export interface WaveSetup {
   mods: MatchMods;
 }
 
+/** BOSS FIGHT access for one fighter. */
+export interface BossAccess {
+  open: boolean;
+  /** Classic Duel wins counted towards the requirement (capped at `need`). */
+  wins: number;
+  need: number;
+  /** Open only because this fighter already beat the champion before the requirement existed. */
+  legacy: boolean;
+}
+
 export interface PerkOption {
   def: PerkDef;
   stacks: number;
@@ -389,6 +399,18 @@ export class GameModes {
   // ------------------------------------------------------------ boss fight
   bossProgress(id: string): BossProgress {
     return this.store.data.modes.boss[id] ?? emptyBoss();
+  }
+
+  /**
+   * Can this fighter challenge the boss? Needs `def.unlock.classicWins` Classic Duel wins
+   * with that fighter; a fighter who has already beaten the champion keeps access.
+   */
+  bossAccess(id: string, fighter: FighterId): BossAccess {
+    const def = bossById(id);
+    const need = def?.unlock.classicWins ?? 0;
+    const wins = this.store.data.fighters[fighter]?.classicWins ?? 0;
+    const legacy = (this.bossProgress(id).winsByFighter[fighter] ?? 0) > 0;
+    return { open: !!def && (wins >= need || legacy), wins: Math.min(wins, need), need, legacy: legacy && wins < need };
   }
 
   /** Fight rules of a boss: longer bout, longer intro, knockout only. */

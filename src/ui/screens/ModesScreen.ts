@@ -1,4 +1,4 @@
-import { BEHAVIORS, RIVALS } from '../../config/fighters';
+import { BEHAVIORS, FIGHTERS, RIVALS } from '../../config/fighters';
 import { BOSS_ORDER, bossById } from '../../config/boss.config';
 import { COSMETICS } from '../../config/cosmetics.config';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
@@ -134,6 +134,16 @@ export class ModesScreen implements Screen {
     const p = g.modes.bossProgress(def.id);
     const fw = def.rewards.firstWin;
     const phases = def.phases.map((ph) => `<span class="bc-phase"><b>${ph.n}</b>${esc(ph.title)}</span>`).join('');
+    // access: Classic Duel wins with the selected fighter (or a past win over the champion)
+    const sel = g.save.data.selected;
+    const acc = g.modes.bossAccess(def.id, sel);
+    const fname = esc(FIGHTERS[sel].name);
+    const pips = Array.from({ length: acc.need }, (_, i) => `<i class="${i < acc.wins ? 'on' : ''}"></i>`).join('');
+    const access = acc.open
+      ? acc.legacy
+        ? `<div class="bc-access open">${UI_ICONS.check.replace('<svg', '<svg width="12" height="12"')}<span>Открыт для ${fname}: чемпион уже побеждён этим бойцом</span></div>`
+        : ''
+      : `<div class="bc-access locked">${UI_ICONS.lock.replace('<svg', '<svg width="13" height="13"')}<span>Вызов откроется после <b>${acc.need} побед в Classic Duel</b> бойцом ${fname}</span><span class="wave-pips">${pips}</span><b class="bc-count">${acc.wins}/${acc.need}</b></div>`;
     const record = p.wins
       ? `побед ${p.wins} · лучшее время ${p.bestTime} с`
       : p.attempts
@@ -154,7 +164,8 @@ export class ModesScreen implements Screen {
           <span><i>Награда</i>${p.firstWinAt ? `гонорар легендарного эфира ×${String(def.rewards.moneyMult).replace('.', ',')}` : `первая победа +$${fw.money}, +${fw.rep}★ и титул ${esc(COSMETICS[fw.cosmetic].name)}`}</span>
         </div>
         <div class="mc-record"><span class="mcr-label">${MODE_ICONS.trophy}Рекорд</span><span class="mcr-val">${record}</span></div>
-        <button class="btn wide mc-cta bc-cta" data-act="boss" data-id="${def.id}"><span class="shine"></span>Бросить вызов</button>
+        ${access}
+        <button class="btn wide mc-cta bc-cta ${acc.open ? '' : 'locked'}" data-act="boss" data-id="${def.id}"><span class="shine"></span>${acc.open ? 'Бросить вызов' : 'Условия вызова'}</button>
       </section>`;
   }
 }

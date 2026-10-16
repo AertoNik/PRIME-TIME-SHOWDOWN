@@ -328,18 +328,18 @@ export class Match implements BroadcastHost {
     if (hand.energy < CARDS[card].cost) return fail('energy');
     if (f.glitch > 0) return fail('glitched');
     if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return fail('stunned');
-    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'prime_pulse';
-    if (card === 'prime_pulse' && f.pulseCd > 0) return fail('cooldown');
+    const needsBody = card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'directors_cut';
+    if (card === 'directors_cut' && f.cutCd > 0) return fail('cooldown');
     const a = f.action.kind;
     let defer = false;
     if (needsBody) {
-      if (a === 'windup' || a === 'rush' || a === 'recover') return fail('busy');
+      if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut') return fail('busy');
       if (a === 'dash') {
         if (card === 'dash' || this.deferred[side]) return fail('busy');
         defer = true;
       }
     }
-    if (card === 'adrenaline' && (a === 'windup' || a === 'rush')) return fail('busy');
+    if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut')) return fail('busy');
 
     hand.consume(index);
     const combo = this.combos.detect(side, card, this.time);
@@ -407,6 +407,7 @@ export class Match implements BroadcastHost {
     if (target.ko) return;
     target.ko = true;
     target.hp = 0;
+    this.abilities.cancelCut(target);
     target.action = { kind: 'none' };
     target.stun = 0;
     target.glitch = 0;
@@ -450,6 +451,7 @@ export class Match implements BroadcastHost {
     for (const f of this.fighters) {
       f.adrenaline = 0;
       f.overdrive = 0;
+      this.abilities.cancelCut(f);
       if (f.action.kind !== 'none') f.action = { kind: 'none' };
     }
     this.emit({ type: 'phase', phase: 'outro' });

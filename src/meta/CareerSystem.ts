@@ -36,6 +36,8 @@ export interface MatchApplyOptions {
   moneyLabel?: string;
   /** Classic Duel picks the next opponent after a match; modes leave it alone. */
   rotateRival?: boolean;
+  /** A Classic Duel: a win counts towards BOSS FIGHT access (FighterProgress.classicWins). */
+  classic?: boolean;
 }
 
 /** What a direct payout (Survival, first-clear bonuses) changed. */
@@ -234,6 +236,7 @@ export class CareerSystem {
     if (r.outcome === 'win') {
       s.wins++;
       fp.wins++;
+      if (opts.classic) fp.classicWins++;
       if (diff === 'pro') s.proWins++;
       if (diff === 'champion') s.championWins++;
     } else if (r.outcome === 'loss') {

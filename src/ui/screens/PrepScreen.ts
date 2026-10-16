@@ -1,5 +1,5 @@
 import { CARDS, COMBOS } from '../../config/cards';
-import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
+import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
 import { bossById } from '../../config/boss.config';
 import { COSMETICS } from '../../config/cosmetics.config';
@@ -131,7 +131,7 @@ export class PrepScreen implements Screen {
   }
 
   /** Right side of the matchup and the middle section for the game modes. */
-  private modeParts(): { title: string; side: string; note: string; section: string; start: string } | null {
+  private modeParts(): { title: string; side: string; note: string; section: string; start: string; locked?: boolean } | null {
     const g = this.g;
     const mode = this.mode;
     if (mode.kind === 'survival') {
@@ -173,22 +173,42 @@ export class PrepScreen implements Screen {
       const moves = def.moves
         .map((mv) => `<div class="bp-move"><span class="bp-mname">${esc(mv.name)}<small>с фазы ${mv.from}</small></span><span class="bp-mdesc">${esc(mv.desc)}</span><span class="bp-mcounter">${esc(mv.counter)}</span></div>`)
         .join('');
-      // a short, deck-aware hint: the champion's heavy hits are answered with DASH / SHIELD
+      // a short, deck-aware hint: the champion's heavy shots are answered with DASH / SHIELD
       const d = this.deck;
       let tip = '';
-      if (!d.includes('dash') && !d.includes('shield')) tip = 'В колоде нет ни DASH, ни SHIELD — от тарана PRIME RUSH и луча SPOTLIGHT SHOT будет нечем защититься.';
-      else if (!d.includes('shield')) tip = 'SHIELD гасит PRIME RUSH и помогает пережить STAR POWER. Против чемпиона он очень полезен.';
+      if (!d.includes('dash') && !d.includes('shield'))
+        tip = d.includes('shock')
+          ? 'В колоде нет ни DASH, ни SHIELD: против DIRECTOR\'S CUT остаётся только сорвать серию SHOCK, пока чемпион вскидывает винтовку.'
+          : 'В колоде нет ни DASH, ни SHIELD — от выстрелов DIRECTOR\'S CUT и луча SPOTLIGHT SHOT будет нечем защититься.';
+      else if (!d.includes('shield')) tip = 'SHIELD гасит выстрелы DIRECTOR\'S CUT и помогает пережить STAR POWER. Против чемпиона он очень полезен.';
+      else if (!d.includes('dash')) tip = 'DASH в момент, когда линия прицела застыла, уводит от выстрела DIRECTOR\'S CUT и возвращает 1 энергию.';
       else if (d.includes('adrenaline') && !d.includes('overdrive')) tip = 'Бой длинный: OVERDRIVE чаще окупается против чемпиона, чем ADRENALINE.';
+      // access: Classic Duel wins with the selected fighter
+      const sel = g.save.data.selected;
+      const acc = g.modes.bossAccess(def.id, sel);
+      const roster = FIGHTER_ORDER.filter((id) => g.save.data.fighters[id].unlocked)
+        .map((id) => {
+          const a = g.modes.bossAccess(def.id, id);
+          return `<span class="ba-f ${a.open ? 'open' : ''} ${id === sel ? 'sel' : ''}">${esc(FIGHTERS[id].name)} <b>${a.open ? '✓' : `${a.wins}/${a.need}`}</b></span>`;
+        })
+        .join('');
+      const lock = acc.open
+        ? ''
+        : `<div class="boss-lock">${UI_ICONS.lock.replace('<svg', '<svg width="18" height="18"')}<div>
+            <b>Вызов закрыт · ${esc(FIGHTERS[sel].name)} ${acc.wins}/${acc.need}</b>
+            <span>Чемпион принимает вызов от бойцов, у которых ${acc.need} побед в Classic Duel. Побеждайте в обычных дуэлях этим бойцом или выберите другого кнопкой «Сменить».</span>
+            <div class="ba-roster">${roster}</div>
+          </div></div>`;
       return {
         title: 'Boss Fight',
         side: `<div class="mside b boss-side">${portraitHTML(g.portraits[rival.look], rival.theme.main, rival.theme.dark)}<div class="mname">${esc(rival.name)}</div><span class="chip gold">ЛЕГЕНДА</span></div>`,
         note: `<b class="bp-full">${esc(rival.fullName)}</b> · ${esc(def.kicker)}. ${esc(rival.bio)}`,
-        section: `<div class="section panel boss-rules">
+        section: `${lock}<div class="section panel boss-rules">
             <div class="section-title"><span class="h2">${esc(def.title)}</span><span class="label">3 фазы</span></div>
             <div class="bp-phases">${phases}</div>
             <ul class="mode-rules">
               <li>Бой длится ${Math.floor(def.duration / 60)}:${String(def.duration % 60).padStart(2, '0')}. Победа — только нокаутом: если время выйдет, титул останется у чемпиона.</li>
-              <li>Каждый мощный удар чемпион показывает красной зоной и предупреждением на экране.</li>
+              <li>Каждый мощный выстрел чемпион показывает линией прицела и предупреждением на экране: линия следит за бойцом, застывает — и выстрел идёт ровно по ней.</li>
             </ul>
             <div class="label bp-label">Фирменные приёмы</div>
             <div class="bp-moves">${moves}</div>
@@ -199,7 +219,8 @@ export class PrepScreen implements Screen {
                 : `<span>Первая победа <b>+$${fw.money} · +${fw.fans} фанатов · +${fw.rep}★</b></span><span>Титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span>${p.attempts ? `<span>Лучшее <b>фаза ${p.bestPhase}/3</b></span>` : ''}`
             }</div>
           </div>`,
-        start: 'Выйти на бой',
+        start: acc.open ? 'Выйти на бой' : `Закрыто · ${acc.wins}/${acc.need}`,
+        locked: !acc.open,
       };
     }
     if (mode.kind === 'challenge') {
@@ -304,7 +325,7 @@ export class PrepScreen implements Screen {
         </div>
       </div>
       <div style="padding:8px 12px 0">
-        <button class="btn big wide ${this.deck.length === 4 ? '' : 'disabled'}" data-act="start"><span class="shine"></span>${mp ? mp.start : 'Начать эфир'}</button>
+        <button class="btn big wide ${this.deck.length === 4 && !mp?.locked ? '' : 'disabled'}" data-act="start"><span class="shine"></span>${mp ? mp.start : 'Начать эфир'}</button>
       </div>`;
   }
 }

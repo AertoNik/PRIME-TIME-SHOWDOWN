@@ -8,7 +8,6 @@ import {
   MeshBasicMaterial,
   PlaneGeometry,
   SphereGeometry,
-  TorusGeometry,
   Sprite,
   SpriteMaterial,
   Vector3,
@@ -17,10 +16,11 @@ import { RECOIL } from '../config/animation';
 import { ARENA } from '../config/balance';
 import { CARDS } from '../config/cards';
 import type { Side, WeaponType } from '../config/types';
+import { lineReach } from '../combat/CombatSystem';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
 import type { MatchEvent, Projectile } from '../combat/types';
-import { damp, lerp, Rng } from '../core/math';
+import { clamp01, damp, lerp, Rng } from '../core/math';
 import type { Arena } from './Arena';
 import type { CameraRig } from './CameraRig';
 import { defaultInput, type AnimInput } from './FighterAnimator';
@@ -60,9 +60,6 @@ interface ProjVis {
   glow: Sprite;
   glowMat: SpriteMaterial;
   ring: Sprite;
-  /** RESONANCE DISC rim (PRIME OSCILLATOR shots), hidden for every other weapon. */
-  disc: Mesh;
-  discMat: MeshBasicMaterial;
   id: number;
   y: number;
   used: boolean;
@@ -112,6 +109,8 @@ export class BattleView {
   private match: Match | null = null;
   private t = 0;
   private finishTimer = -1;
+  /** Side whose DIRECTOR'S CUT line is on screen (-1 = none). */
+  private cutOwner = -1;
 
   constructor(r: Renderer, arena: Arena, vfx: VFX, cam: CameraRig, models: ModelCache, timeFx: TimeFx) {
     this.r = r;
@@ -122,9 +121,6 @@ export class BattleView {
     this.timeFx = timeFx;
     r.scene.add(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
-    // flat glowing ring for the boss's resonance discs (lies in the XZ plane)
-    const discGeo = new TorusGeometry(1, 0.16, 6, 28);
-    discGeo.rotateX(Math.PI / 2);
     const streakGeo = new PlaneGeometry(1, 1);
     streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
     for (let i = 0; i < 48; i++) {
@@ -150,13 +146,8 @@ export class BattleView {
       g.add(glow);
       const ring = new Sprite(new SpriteMaterial({ map: glowTexture(), blending: AdditiveBlending, depthWrite: false, transparent: true }));
       g.add(ring);
-      const discMat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: AdditiveBlending, depthWrite: false });
-      const disc = new Mesh(discGeo, discMat);
-      disc.visible = false;
-      disc.renderOrder = 7;
-      g.add(disc);
       this.root.add(g);
-      this.pvis.push({ group: g, core, coreMat, streak, streakMat, streakLen: 1, streakWidth: 0.15, flicker: false, glow, glowMat, ring, disc, discMat, id: -1, y: 1.1, used: false });
+      this.pvis.push({ group: g, core, coreMat, streak, streakMat, streakLen: 1, streakWidth: 0.15, flicker: false, glow, glowMat, ring, id: -1, y: 1.1, used: false });
     }
   }
 
@@ -281,6 +272,8 @@ export class BattleView {
       g.on = 0;
       g.update(0, 0, 0);
     }
+    this.vfx.cutLane.hide();
+    this.cutOwner = -1;
     this.slots = [];
     this.match = null;
   }
@@ -381,6 +374,7 @@ export class BattleView {
     inp.facing = f.facing;
     inp.action = f.action.kind;
     inp.actionCard = f.action.kind === 'windup' ? f.action.card : null;
+    inp.cutStage = f.action.kind === 'cut' ? f.action.stage : null;
     inp.actionT = 't' in f.action ? f.action.t : 0;
     inp.actionTotal = 'total' in f.action ? f.action.total : 1;
     if (f.action.kind === 'rush' || f.action.kind === 'dash') {
@@ -415,7 +409,20 @@ export class BattleView {
     else fx.auraMat.uniforms.uColor.value.set(0xff6a1a);
     const winding = f.action.kind === 'windup';
     fx.laneOn = damp(fx.laneOn, winding ? 1 : 0, winding ? 14 : 20, dt);
-    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : 0, 12, dt);
+    const ca = f.action;
+    const cutCharge = ca.kind === 'cut' && ca.stage === 'lock' ? 0.45 + clamp01(ca.t / ca.total) * 0.75 : ca.kind === 'cut' && ca.stage === 'prep' ? 0.35 : 0;
+    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : cutCharge, 12, dt);
+    // DIRECTOR'S CUT: the warning line is drawn straight from the simulation state every frame
+    // (same origin, direction, width and barrier-clipped length as the hit test)
+    if (ca.kind === 'cut' && (ca.stage === 'aim' || ca.stage === 'lock') && !f.ko) {
+      const i = ca.shot;
+      const len = lineReach(f.x, f.z, ca.dirX, ca.dirZ, ca.tune.length[i]);
+      this.vfx.cutLane.show(this.t, f.x, f.z, ca.dirX, ca.dirZ, ca.tune.halfWidth[i], len, ca.stage === 'lock', clamp01(ca.t / ca.total), ca.empowered, i === 2);
+      this.cutOwner = s.side;
+    } else if (this.cutOwner === s.side) {
+      this.vfx.cutLane.hide();
+      this.cutOwner = -1;
+    }
     const muzzle = s.model.rig.muzzles[0].getWorldPosition(_v2);
     fx.update(dt, this.t, x, z, f.aimX, f.aimZ, muzzle);
     const g = this.vfx.glitch[s.side];
@@ -499,22 +506,14 @@ export class BattleView {
         v.streakLen = 2.4;
         v.streakWidth = 0.11;
         break;
-      case 'disc':
-        // RESONANCE DISC: a flat bright lens inside a spinning ring, with a short wake
-        r = 0.2;
-        elong = 1;
-        v.streakLen = 0.9;
-        v.streakWidth = 0.22;
+      case 'slug':
+        // CHAMPION BURST: a fat gold slug with a long hot tracer
+        r = 0.13;
+        elong = 3.2;
+        v.streakLen = 2.1;
+        v.streakWidth = 0.26;
         break;
       case 'power':
-        if (p.weapon === 'oscillator') {
-          // SPOTLIGHT SHOT from the resonator: a big, fast disc
-          r = 0.36;
-          elong = 1;
-          v.streakLen = 2.6;
-          v.streakWidth = 0.5;
-          break;
-        }
         if (p.weapon === 'pulse_rifle') {
           // CHARGED SHOT: a long white-hot rail beam
           r = 0.18;
@@ -540,21 +539,15 @@ export class BattleView {
         v.streakLen = 1.6;
         v.streakWidth = 0.14;
     }
-    const isDisc = p.weapon === 'oscillator' && (p.kind === 'disc' || p.kind === 'power');
-    v.core.scale.set(r, isDisc ? r * 0.28 : r, r * elong);
-    v.disc.visible = isDisc;
-    if (isDisc) {
-      v.disc.scale.setScalar(r * 1.25);
-      v.discMat.color.copy(accent).lerp(_c.set(0xffffff), 0.25).multiplyScalar(p.kind === 'power' ? 3 : 2.4);
-    }
+    v.core.scale.set(r, r, r * elong);
     v.coreMat.color.copy(accent).lerp(_c.set(0xffffff), 0.55).multiplyScalar(p.kind === 'power' ? 4 : 3);
     _c.copy(accent);
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
     if (p.electric) _c.set(0xffe14d);
     v.streakMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.9);
     v.glowMat.color.copy(_c).multiplyScalar(p.kind === 'power' ? 2.4 : 1.4);
-    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'pellet' ? 0.6 : 0.6);
-    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle' && !isDisc;
+    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' ? 1 : 0.6);
+    v.ring.visible = p.kind === 'power' && p.weapon !== 'pulse_rifle';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;
@@ -566,11 +559,6 @@ export class BattleView {
     v.y = damp(v.y, ARENA.shotHeight + (p.kind === 'power' ? 0.1 : 0), 6, dt);
     v.group.position.set(x, v.y, z);
     v.core.rotation.set(0, Math.atan2(p.vx, p.vz), 0);
-    if (v.disc.visible) {
-      // the disc spins flat and wobbles slightly so it reads as a resonance ring in flight
-      v.disc.rotation.set(Math.sin(this.t * 9 + p.id) * 0.18, this.t * 14 + p.id, 0);
-      v.core.rotation.y = this.t * 14 + p.id;
-    }
 
     // camera-facing tracer streak oriented along travel
     const sp = Math.hypot(p.vx, p.vz) || 1;
@@ -670,6 +658,10 @@ export class BattleView {
           this.arena.hype(e.crit ? 0.8 : 0.4);
         } else if (weapon === 'boom_cannon') {
           this.cam.addTrauma(0.025);
+        } else if (weapon === 'breaker') {
+          // CHAMPION BURST slugs land with weight: a moderate jolt when they hit the player
+          this.cam.addTrauma(e.side === 0 ? 0.08 : 0.03);
+          if (e.side === 0) this.cam.kick(0.1);
         } else {
           this.cam.addTrauma(e.side === 0 ? 0.04 : 0.02);
         }
@@ -793,6 +785,45 @@ export class BattleView {
         s.fx.laneWidth = ko ? 1.5 : 1.0;
         s.fx.laneMat.color.copy(e.side === 1 ? _c.set(0xff3a2a) : _c.set(0x2ad8ff)).multiplyScalar(e.player ? 0.9 : 1.6);
         s.fx.ringMat.color.copy(s.fx.laneMat.color);
+        break;
+      }
+      case 'cutStart': {
+        // the champion raises PRIME BREAKER over his head: spotlight burst and a camera beat
+        const s = this.slots[e.side];
+        const gold = _c.set(0xffc23a);
+        this.vfx.rays(s.pos.x, 2.2, s.pos.z, gold, 1, e.empowered ? 5.5 : 4.2, 0.6, 2.4);
+        this.vfx.ring(s.pos.x, s.pos.z, gold, 0.6, e.empowered ? 5 : 4, 0.5, 2.8);
+        this.vfx.flash(s.pos.x, 2.6, s.pos.z, _c.set(0xfff0c0), 1, 3.2, 0.3, 2.6);
+        this.vfx.burst(s.pos.x, 2.4, s.pos.z, gold, 24, 5, 0.16, 0.5, 2.4, -2, 2);
+        this.cam.focusAccent(s.pos, 0.5);
+        this.cam.kick(0.25);
+        this.arena.hype(0.6);
+        break;
+      }
+      case 'cutAim': {
+        const s = this.slots[e.side];
+        this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xff4a2a), 0.4, 2.2, 0.3, 2);
+        break;
+      }
+      case 'cutLock': {
+        const s = this.slots[e.side];
+        const mz = s.model.rig.muzzles[0].getWorldPosition(_v);
+        this.vfx.flash(mz.x, mz.y, mz.z, _c.set(0xff5a3a), 0.6, 1.8, 0.16, 3);
+        this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffd0c0), 0.5, 2.6, 0.25, 2.6);
+        break;
+      }
+      case 'cutShot': {
+        const s = this.slots[e.side];
+        s.model.anim.fire(0, true);
+        const from = s.model.rig.muzzles[0].getWorldPosition(_v);
+        _v2.set(e.ex, ARENA.shotHeight, e.ez);
+        const col = e.empowered ? _c.set(0xffb02a) : _c.set(0xff5a2a);
+        this.vfx.cutBeam(from, _v2, col, e.final, e.empowered);
+        if (e.outcome === 'miss' || e.outcome === 'dodged') this.vfx.wallHit(e.ex, e.ez, col, true);
+        this.cam.addTrauma(e.final ? 0.42 : 0.22);
+        this.cam.kick(e.final ? 0.75 : 0.35);
+        this.r.pulseFlash(e.empowered ? 0xffc23a : 0xff7a4a, e.final ? 1.8 : 1.1);
+        if (e.final) this.arena.hype(0.8);
         break;
       }
       case 'aimLock': {

@@ -15,6 +15,11 @@ export interface FighterProgress {
   losses: number;
   draws: number;
   matches: number;
+  /**
+   * v6 (1.3.3): wins in Classic Duel only (BOSS FIGHT access). `wins` also counts
+   * Prime Challenge and boss wins.
+   */
+  classicWins: number;
   bestRating: number;
   deck: CardId[];
 }
@@ -189,7 +194,8 @@ export interface SaveData {
 // `version` records the schema and sanitize() fills anything missing.
 const KEY = 'primetime-showdown-save-v1';
 // v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes. v5 (1.3.1): boss fight.
-const VERSION = 5;
+// v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access).
+const VERSION = 6;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -202,6 +208,7 @@ export function defaultSave(): SaveData {
       losses: 0,
       draws: 0,
       matches: 0,
+      classicWins: 0,
       bestRating: 0,
       deck: f.defaultDeck.slice(),
     };
@@ -498,6 +505,22 @@ export function sanitize(raw: unknown): SaveData {
   d.cosmetics = sanitizeCosmetics(r.cosmetics);
   // v4: game modes (absent before Alpha 1.3 -> empty records)
   d.modes = sanitizeModes(r.modes);
+  // v6: Classic Duel wins per fighter. Older saves did not keep them apart, so they are
+  // estimated as all of the fighter's wins minus their BOSS FIGHT wins (before 1.3 every
+  // win was a Classic one; Prime Challenge wins from 1.3–1.3.2 cannot be told apart and count).
+  if (r.fighters && typeof r.fighters === 'object') {
+    for (const id of FIGHTER_ORDER) {
+      const f = (r.fighters as Record<string, Partial<FighterProgress>>)[id];
+      if (!f) continue;
+      const t = d.fighters[id];
+      if (typeof f.classicWins === 'number' && Number.isFinite(f.classicWins)) t.classicWins = Math.min(t.wins, count(f.classicWins));
+      else {
+        let bossWins = 0;
+        for (const b of Object.values(d.modes.boss)) bossWins += b.winsByFighter[id] ?? 0;
+        t.classicWins = Math.max(0, Math.floor(t.wins) - bossWins);
+      }
+    }
+  }
   return d;
 }
 
