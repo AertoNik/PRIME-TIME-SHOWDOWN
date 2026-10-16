@@ -76,7 +76,21 @@ export class AudioSystem {
     comp.ratio.value = 4;
     comp.attack.value = 0.004;
     comp.release.value = 0.2;
-    comp.connect(ctx.destination);
+    // Alpha 1.5.5: headroom on the very end. The glue compressor is not a limiter and the
+    // browser adds make-up gain to it, so in a crowded moment (heavy hits + KO + crowd + kick)
+    // the output measured up to 0.95–0.97 of full scale — one more voice and it clips (crackle).
+    // A hard-knee limiter catches the peaks and a fixed trim keeps the result below the ceiling.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.12;
+    const trim = ctx.createGain();
+    trim.gain.value = 0.85;
+    comp.connect(limiter);
+    limiter.connect(trim);
+    trim.connect(ctx.destination);
     this.master = ctx.createGain();
     this.master.gain.value = this.soundOn ? 0.9 : 0;
     this.master.connect(comp);
@@ -184,7 +198,15 @@ export class AudioSystem {
     const t0 = ctx.currentTime + (o.delay ?? 0);
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
-    src.playbackRate.value = 0.8 + Math.random() * 0.4;
+    const rate = 0.8 + Math.random() * 0.4;
+    src.playbackRate.value = rate;
+    // Alpha 1.5.5: the random start inside the 2 s noise buffer must leave room for the whole
+    // sound — before, long noises (0.6–1.4 s) could run off the end of the buffer mid-envelope
+    // and stop abruptly (an audible click). Very long ones simply loop the noise.
+    const need = o.dur * rate + 0.03;
+    const room = this.noiseBuf.duration - need;
+    if (room < 0) src.loop = true;
+    const offset = room > 0 ? Math.random() * Math.min(1.5, room) : 0;
     const f = ctx.createBiquadFilter();
     f.type = o.type ?? 'lowpass';
     f.frequency.setValueAtTime(o.f0 ?? 2000, t0);
@@ -196,7 +218,7 @@ export class AudioSystem {
     g.gain.exponentialRampToValueAtTime(peak, t0 + (o.attack ?? 0.004));
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
     src.connect(f).connect(g).connect(o.bus === 'music' ? this.music : this.sfx);
-    src.start(t0, Math.random() * 1.5);
+    src.start(t0, offset);
     src.stop(t0 + o.dur + 0.02);
   }
 
@@ -351,6 +373,12 @@ export class AudioSystem {
     this.tone({ type: 'sawtooth', f0: 400, f1: 1800, dur: 0.18, gain: 0.08, filter: { type: 'lowpass', f0: 5000 } });
     this.tone({ type: 'sine', f0: NOTE(86), dur: 0.25, gain: 0.05, delay: 0.08 });
     this.cheer(0.6);
+  }
+
+  /** Alpha 1.5.5 — Zoe's SHOCK charging in her hand: a rising buzz the player can react to. */
+  zapCharge(dur: number): void {
+    this.tone({ type: 'sawtooth', f0: 90, f1: 420, dur, gain: 0.07, attack: 0.03, filter: { type: 'bandpass', f0: 900, f1: 2600, q: 4 } });
+    this.noise({ dur, gain: 0.12, type: 'bandpass', f0: 2000, f1: 5200, q: 3, attack: 0.04 });
   }
 
   electric(dur = 0.5, gain = 0.3): void {

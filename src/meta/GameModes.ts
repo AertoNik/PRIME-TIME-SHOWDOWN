@@ -98,6 +98,8 @@ export interface BossOutcome {
   firstWin: { money: number; fans: number; rep: number; cosmetic: CosmeticId } | null;
   /** The cosmetic was newly added to the collection. */
   cosmeticNew: boolean;
+  /** Alpha 1.5.5: the personal title this fighter earned with this win (its first over the champion). */
+  personal: { cosmetic: CosmeticId; fighter: FighterId } | null;
   newBestTime: boolean;
   newBestRating: boolean;
   progress: BossProgress;
@@ -440,9 +442,20 @@ export class GameModes {
     let newBestRating = false;
     let firstWin: BossOutcome['firstWin'] = null;
     let cosmeticNew = false;
+    let personal: BossOutcome['personal'] = null;
     if (won) {
+      const fighterFirst = (p.winsByFighter[fighter] ?? 0) === 0;
       p.wins++;
       p.winsByFighter[fighter] = (p.winsByFighter[fighter] ?? 0) + 1;
+      // Alpha 1.5.5: the title is personal — every fighter earns their own with their first win
+      // over the champion (the money, fans and reputation stay a one-time reward per career)
+      if (fighterFirst) {
+        const id = def.rewards.firstWin.cosmetic;
+        if (this.grantCosmetic(id, `boss-${def.id}`, fighter)) {
+          cosmeticNew = true;
+          personal = { cosmetic: id, fighter };
+        }
+      }
       if (p.bestTime === 0 || time < p.bestTime) {
         p.bestTime = time;
         p.bestFighter = fighter;
@@ -457,7 +470,6 @@ export class GameModes {
         const fw = def.rewards.firstWin;
         firstWin = { ...fw };
         this.career.grant({ money: fw.money, fans: fw.fans, rep: fw.rep }, fighter);
-        cosmeticNew = this.grantCosmetic(fw.cosmetic, `boss-${def.id}`);
       }
     } else if (r.method !== 'forfeit') {
       p.bestBossHp = Math.min(p.bestBossHp, bossHp);
@@ -465,12 +477,12 @@ export class GameModes {
     p.history.unshift({ at: this.clock(), fighter, won, time, rating: r.rating, phase, bossHp });
     if (p.history.length > 10) p.history.length = 10;
     this.store.save();
-    return { def, won, phase, bossHp, firstWin, cosmeticNew, newBestTime, newBestRating, progress: { ...p, history: p.history.slice() } };
+    return { def, won, phase, bossHp, firstWin, cosmeticNew, personal, newBestTime, newBestRating, progress: { ...p, history: p.history.slice() } };
   }
 
   /** Add a cosmetic to MY COLLECTION once; a newly obtained item is equipped right away (like event rewards). */
-  private grantCosmetic(id: CosmeticId, source: string): boolean {
-    return new Collection(this.store, this.clock).grant(id, source);
+  private grantCosmetic(id: CosmeticId, source: string, fighter?: FighterId): boolean {
+    return new Collection(this.store, this.clock).grant(id, source, fighter);
   }
 
 

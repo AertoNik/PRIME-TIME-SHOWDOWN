@@ -1,5 +1,5 @@
 import type { MeshBasicMaterial } from 'three';
-import { GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
+import { FIRE_STYLE, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type FireStyle, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
 import type { CardId, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
 import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
 import type { FighterRig } from './FighterModel';
@@ -29,6 +29,10 @@ export interface AnimInput {
   overdrive: boolean;
   /** Alpha 1.5 — FALSE START read window is open (coiled, ready to counter). */
   reading: boolean;
+  /** Alpha 1.5.5: seconds until the next auto shot while the fighter wants to fire (-1 = not firing). */
+  fireIn: number;
+  /** Alpha 1.5.5: Zoe's SHOCK is charging in her hand. */
+  zap: boolean;
 }
 
 export function defaultInput(): AnimInput {
@@ -54,6 +58,8 @@ export function defaultInput(): AnimInput {
     glitch: false,
     overdrive: false,
     reading: false,
+    fireIn: -1,
+    zap: false,
   };
 }
 
@@ -124,6 +130,7 @@ export class FighterAnimator {
   readonly victoryStyle: VictoryStyle;
   readonly gait: GaitProfile;
   readonly recoil: RecoilProfile;
+  readonly fireStyle: FireStyle;
   events: AnimEvents = {};
 
   private t = Math.random() * 10;
@@ -156,6 +163,29 @@ export class FighterAnimator {
   /** Alpha 1.5: the little sway when a run stops (fore-aft and sideways). */
   private settle = new Spring(70, 7);
   private settleSide = new Spring(70, 7);
+  // Alpha 1.5.5 — how a shot moves the body (weapon fire styles)
+  private shotTwist = new Spring(240, 15);
+  private shotChest = new Spring(190, 13);
+  private shotDip = new Spring(170, 12);
+  private shotNod = new Spring(260, 16);
+  private shotSway = 0;
+  private lastShotT = -10;
+  private seriesIdx = 0;
+  private altSign = 1;
+  private braceW = 0;
+  /** Recent small hits soften the next flinch (no exaggerated reaction to every pellet). */
+  private hitHeat = 0;
+  private hitAlt = 1;
+  /** Gait direction with hysteresis (no flicker between running forward and backpedalling). */
+  private backpedal = false;
+  /** After a dash: a short recovery into the stance, leaning against the momentum. */
+  private dashRecT = -1;
+  private dashLX = 0;
+  private dashLZ = 1;
+  private readonly heavyBody: boolean;
+  /** Face mimicry (Kai): seconds to the next single-brow flash, and how long the current one lasts. */
+  private browT = 3 + Math.random() * 4;
+  private browUp = 0;
   private flash = 0;
   private blinkT = 2;
   private blinkDur = 0;
@@ -217,6 +247,8 @@ export class FighterAnimator {
     this.victoryStyle = victory;
     this.gait = GAITS[idle];
     this.recoil = RECOIL[rig.look.weapon];
+    this.fireStyle = FIRE_STYLE[rig.look.weapon];
+    this.heavyBody = idle === 'heavy' || idle === 'champion' || idle === 'brawler';
     this.recoilR = new Spring(this.recoil.stiffness, this.recoil.damping);
     this.recoilL = new Spring(this.recoil.stiffness, this.recoil.damping);
     this.weaponBaseR = rig.weaponR?.position.y ?? 0;
@@ -234,6 +266,13 @@ export class FighterAnimator {
     this.spinT = -1;
     this.staggerT = -1;
     this.twirlT = this.pumpT = this.tapT = -1;
+    this.dashRecT = -1;
+    this.lastShotT = -10;
+    this.seriesIdx = 0;
+    this.braceW = 0;
+    this.hitHeat = 0;
+    this.shotSway = 0;
+    this.backpedal = false;
     this.flash = 0;
     this.flourishDone = false;
     this.yaw = yaw;
@@ -243,7 +282,7 @@ export class FighterAnimator {
     this.aimW = 0;
     this.accX = this.accZ = 0;
     this.stopArmed = false;
-    for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide]) s.reset();
+    for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide, this.shotTwist, this.shotChest, this.shotDip, this.shotNod]) s.reset();
     this.cur = zeroPose();
     const rig = this.rig;
     rig.body.visible = true;
@@ -264,8 +303,25 @@ export class FighterAnimator {
 
   // ----------------------------------------------------------- triggers
   fire(muzzle: number, heavy: boolean): void {
+    // a knocked-out or celebrating fighter does not shoot (late events are ignored)
+    if (this.koT >= 0 || this.victoryT >= 0) return;
     const r = this.recoil;
     const k = heavy ? 2.4 : 1;
+    // Alpha 1.5.5 — fire style: a committed opening shot, then a lighter cadence for the series
+    const fs = this.fireStyle;
+    const first = this.t - this.lastShotT > 0.8;
+    this.seriesIdx = first ? 0 : (this.seriesIdx + 1) % fs.series.length;
+    this.lastShotT = this.t;
+    const sk = (first ? fs.firstShot : fs.series[this.seriesIdx]) * (heavy ? 1.8 : 1);
+    // standing, the legs and chest take the kick; on the move only the upper body does
+    const moving = Math.min(1, this.speedN * 1.6);
+    const side = this.rig.look.weapon === 'twin_blasters' ? (muzzle === 1 ? -1 : 1) : 1;
+    this.altSign = -this.altSign;
+    this.shotTwist.kick(fs.twist * 30 * sk * side * (1 + moving * 0.25));
+    this.shotChest.kick(fs.chest * 26 * sk * (1 - moving * 0.35));
+    this.shotDip.kick(fs.dip * 24 * sk * (1 - moving * 0.7));
+    this.shotNod.kick(fs.nod * 30 * sk);
+    this.shotSway = fs.sway * this.altSign * sk;
     if (muzzle === 1) this.recoilL.kick(r.kick * k);
     else this.recoilR.kick(r.kick * k);
     // Two-handed weapons rock both arms (Kai's trick pistol is one-handed: his free hand stays loose).
@@ -288,12 +344,18 @@ export class FighterAnimator {
     const c = Math.cos(-this.yaw);
     const lx = dx * c + dz * s;
     const lz = -dx * s + dz * c;
-    const k = heavy ? HIT_REACTION.heavy : HIT_REACTION.light;
+    // Alpha 1.5.5: a quick stream of small hits flinches less each time (heavy hits always land in full)
+    const soft = heavy ? 1 : 1 / (1 + this.hitHeat * 1.4);
+    this.hitHeat = Math.min(3, this.hitHeat + (heavy ? 0.2 : 0.45));
+    this.hitAlt = -this.hitAlt;
+    const k = (heavy ? HIT_REACTION.heavy : HIT_REACTION.light) * soft;
     this.hitPitch.kick(lz * 7 * k);
     this.hitRoll.kick(-lx * 6 * k);
     this.headSnap.kick(lz * 11 * k);
-    this.headRoll.kick(-lx * 9 * k);
+    this.headRoll.kick((-lx * 9 + this.hitAlt * 2.5) * k);
     this.squash.kick(4 * k);
+    // a heavy hit shoves the body along the blow; the feet catch it in the stagger
+    if (heavy && this.koT < 0) this.shove.kick(lz * 4);
     this.flash = heavy ? 1 : 0.7;
     this.mouthT = heavy ? 0.5 : 0.22;
     this.lastHitX = dx;
@@ -307,6 +369,7 @@ export class FighterAnimator {
   dash(dx: number, dz: number): void {
     this.dashT = 0;
     this.dashLanded = false;
+    this.dashRecT = -1;
     this.dashYaw = Math.atan2(dx, dz);
   }
 
@@ -434,7 +497,12 @@ export class FighterAnimator {
       lx = (inp.vx * cy + inp.vz * sy) / speed;
       lz = (-inp.vx * sy + inp.vz * cy) / speed;
       const a = Math.atan2(lx, lz);
-      if (Math.abs(a) <= 1.95) {
+      // switch between running forward and backpedalling with a margin, so the legs never flicker
+      const absA = Math.abs(a);
+      if (this.backpedal) {
+        if (absA < 1.75) this.backpedal = false;
+      } else if (absA > 2.15) this.backpedal = true;
+      if (!this.backpedal) {
         hipOff = clamp(a, -0.85, 0.85);
         resid = a - hipOff;
       } else {
@@ -528,6 +596,8 @@ export class FighterAnimator {
     }
     // Shoulders counter-rotate against the stride (applied after the aim pose).
     const twist = sinP * A * 0.09 * fwdK;
+    // The chest leads a fast turn toward the target, the hips follow a beat later.
+    P.hipsRY -= clamp(this.yawRate * 0.018, -0.14, 0.14) * sN;
     // Foot contact beats
     const contact = Math.abs(sinP);
     if (A > 0.35 && contact > 0.97 && this.t - this.lastContact > 0.18) {
@@ -688,6 +758,22 @@ export class FighterAnimator {
           P.headRZ += (Math.floor(t * 1.3) % 3 === 0 ? 0.08 : 0) * idleW;
           break;
         }
+        case 'tactician': {
+          // Zoe: low ready, weight forward, the head scanning the arena in short deliberate stops
+          const scan = Math.sin(Math.floor(t * 0.9) * 2.4) * 0.22;
+          P.kneeL += 0.22 * idleW;
+          P.kneeR += 0.22 * idleW;
+          P.legLX -= 0.1 * idleW;
+          P.legRX -= 0.06 * idleW;
+          P.legLZ += 0.06 * idleW;
+          P.legRZ -= 0.06 * idleW;
+          P.spineRX += 0.1 * idleW;
+          P.bodyY -= 0.02 * idleW;
+          P.headRY += scan * idleW;
+          P.headRX += 0.03 * idleW;
+          P.spineRY += scan * 0.2 * idleW;
+          break;
+        }
         case 'champion': {
           // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
           const br = Math.sin(t * 1.05);
@@ -721,10 +807,16 @@ export class FighterAnimator {
     const aiming = inp.combat && !inp.ko && !inp.stunned && !inp.knockback && this.victoryT < 0;
     this.aimW = damp(this.aimW, aiming ? 1 : 0, 10, dt);
     const aw = this.aimW;
+    // Alpha 1.5.5 — brace: some weapons settle into the stance just before the trigger
+    // (the real fire timer of the simulation), the heavier ones dropping lower
+    const fs = this.fireStyle;
+    const bracing = aiming && fs.brace > 0 && inp.fireIn >= 0 && inp.fireIn < fs.brace && inp.action === 'none';
+    this.braceW = damp(this.braceW, bracing ? 1 : 0, bracing ? 16 : 7, dt);
+    const brace = this.braceW * fs.braceAmt;
     if (aw > 0.001) {
       this.w = aw;
-      // breathing / step bob of the aimed arms keeps the stance alive
-      const bob = Math.sin(ph * 2) * G.armBob * A + Math.sin(t * 2.1) * 0.02 * (1 - A);
+      // breathing / step bob of the aimed arms keeps the stance alive (held still while bracing)
+      const bob = (Math.sin(ph * 2) * G.armBob * A + Math.sin(t * 2.1) * 0.02 * (1 - A)) * (1 - brace * 0.85);
       switch (rig.look.weapon) {
         case 'twin_blasters':
           this.to('shRX', -1.42 + bob);
@@ -804,6 +896,16 @@ export class FighterAnimator {
       }
     }
     P.spineRY += twist * (1 - 0.6 * aw);
+    if (brace > 0.01) {
+      P.kneeL += 0.12 * brace * (1 - sN);
+      P.kneeR += 0.12 * brace * (1 - sN);
+      P.bodyY -= 0.025 * brace * (1 - sN);
+      P.spineRX += 0.04 * brace;
+    }
+    // the controlled shot-to-shot tilt fades between shots
+    this.shotSway = damp(this.shotSway, 0, 6, dt);
+    P.spineRZ += this.shotSway * aw;
+    this.hitHeat = Math.max(0, this.hitHeat - dt * 1.5);
 
     // ------------------------------------------------ shot flourishes
     if (this.pumpT >= 0) {
@@ -968,18 +1070,31 @@ export class FighterAnimator {
       P.shRZ = -0.8;
     } else if (inp.action === 'feint') {
       // FALSE START: a sharp shimmy to one side — low, twisted, the blaster kept up
+      // two beats: the shoulders sell the wrong side first, then she drops low into the real step
       const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
-      const k = Math.sin(p * Math.PI);
+      const fake = p < 0.35 ? Math.sin((p / 0.35) * Math.PI) : 0;
+      const k = p > 0.2 ? Math.sin(clamp01((p - 0.2) / 0.8) * Math.PI) : 0;
       const side = inp.dashX * cy + inp.dashZ * sy >= 0 ? 1 : -1;
-      P.rollRZ += -side * 0.32 * k;
-      P.spineRY += side * 0.3 * k;
+      P.rollRZ += side * 0.18 * fake - side * 0.32 * k;
+      P.spineRY += -side * 0.24 * fake + side * 0.3 * k;
       P.spineRX += 0.16 * k;
-      P.kneeL += 0.45 * k;
-      P.kneeR += 0.45 * k;
+      P.kneeL += 0.45 * k + 0.15 * fake;
+      P.kneeR += 0.45 * k + 0.15 * fake;
       P.legLZ += 0.22 * k;
       P.legRZ -= 0.22 * k;
       P.bodyY -= 0.1 * k;
-      P.headRZ += side * 0.12 * k;
+      P.headRZ += side * 0.12 * k - side * 0.08 * fake;
+    }
+    if (inp.zap && !terminal && !inp.stunned) {
+      // Zoe's SHOCK: the free hand comes off the carbine and reaches toward the target, sparks crawling over it
+      const j = Math.sin(t * 50) * 0.04;
+      P.shLX = -1.55 + j;
+      P.shLZ = -0.12;
+      P.elL = -0.25;
+      P.spineRY += 0.18;
+      P.spineRX -= 0.04;
+      P.headRX += 0.04;
+      this.glowPulse = Math.max(this.glowPulse, 1.2);
     }
     if (inp.reading && inp.action === 'none' && !terminal) {
       // FALSE START read window: coiled, waiting for the attack to answer it
@@ -1076,11 +1191,41 @@ export class FighterAnimator {
       if (p >= 1) {
         if (!this.dashLanded) {
           this.dashLanded = true;
-          this.squash.kick(this.dashStyle === 'lunge' ? 6 : 4);
+          this.squash.kick(this.dashStyle === 'lunge' ? (this.heavyBody ? 8 : 6) : 4);
           if (this.dashStyle === 'lunge') this.events.onStep?.(true);
           else if (this.dashStyle === 'slide' || this.dashStyle === 'spin') this.events.onStep?.(false);
+          // the body carries on along the dash for a moment, then the stance catches it
+          const rel = this.dashYaw - this.yaw;
+          this.dashLX = Math.sin(rel);
+          this.dashLZ = Math.cos(rel);
+          const inertia = this.dashStyle === 'blink' ? 0.35 : this.heavyBody ? 1.25 : 0.9;
+          this.settle.kick(this.dashLZ * inertia);
+          this.settleSide.kick(-this.dashLX * inertia * 0.8);
+          this.dashRecT = 0;
         }
         this.dashT = -1;
+      }
+    }
+    // ---------------------------------------------------- dash recovery
+    if (this.dashRecT >= 0 && this.dashT < 0 && !terminal) {
+      this.dashRecT += dt;
+      const dur = this.dashStyle === 'lunge' ? (this.heavyBody ? 0.5 : 0.38) : this.dashStyle === 'slide' ? 0.22 : this.dashStyle === 'blink' ? 0.18 : 0.3;
+      const rp = this.dashRecT / dur;
+      if (rp >= 1) this.dashRecT = -1;
+      else {
+        // knees soak the stop, the free arms balance, then the aim settles back in
+        const w = 1 - ease.inOutCubic(rp);
+        const deep = this.heavyBody ? 1.3 : 1;
+        P.kneeL += 0.3 * w * deep;
+        P.kneeR += 0.3 * w * deep;
+        P.legLX -= 0.12 * w * deep;
+        P.legRX -= 0.12 * w * deep;
+        P.bodyY -= 0.045 * w * deep;
+        P.spineRX += 0.08 * w;
+        P.shLZ += 0.28 * w * (1 - aw * 0.7);
+        P.shRZ -= 0.28 * w * (1 - aw * 0.7);
+        if (this.dashStyle === 'roll') P.spineRX += 0.14 * w; // coming up out of the roll
+        if (this.dashStyle === 'spin') P.headRZ += 0.1 * w; // Kai finishes the pirouette with a tilt
       }
     }
 
@@ -1257,22 +1402,26 @@ export class FighterAnimator {
     const sv = this.shove.update(dt);
     const st = this.settle.update(dt);
     const ss = this.settleSide.update(dt);
+    const tw = this.shotTwist.update(dt);
+    const ch = this.shotChest.update(dt);
+    const dp = this.shotDip.update(dt);
+    const nd = this.shotNod.update(dt);
 
     rig.root.rotation.y = this.yaw + this.yawAdd;
-    rig.body.position.set(C.bodyX, C.bodyY + koLift, koSlide + sv * 0.035);
+    rig.body.position.set(C.bodyX, C.bodyY + koLift - dp * 0.12, koSlide + sv * 0.035);
     rig.body.rotation.x = -koFall;
-    rig.roll.rotation.set(C.rollRX + rollSpin - rb * 0.012 + st, 0, C.rollRZ + ss);
+    rig.roll.rotation.set(C.rollRX + rollSpin - rb * 0.012 + st - ch * 0.3, 0, C.rollRZ + ss);
     rig.hips.rotation.set(0, C.hipsRY, C.hipsRZ);
-    rig.spine.rotation.set(C.spineRX + hp * 0.06 - rb * 0.02 - (rR + rL) * 0.004 + st * 0.5, C.spineRY + (rR - rL) * 0.01, C.spineRZ + hr * 0.05);
-    rig.head.rotation.set(C.headRX + hp * 0.05 + hs * 0.06 - st * 0.6, C.headRY, C.headRZ + hr * 0.04 + hrl * 0.05);
+    rig.spine.rotation.set(C.spineRX + hp * 0.06 - rb * 0.02 - (rR + rL) * 0.004 + st * 0.5 - ch, C.spineRY + (rR - rL) * 0.01 + tw, C.spineRZ + hr * 0.05);
+    rig.head.rotation.set(C.headRX + hp * 0.05 + hs * 0.06 - st * 0.6 - nd + ch * 0.5, C.headRY - tw * 0.5, C.headRZ + hr * 0.04 + hrl * 0.05);
     rig.shoulderL.rotation.set(C.shLX - rL * 0.05, 0, C.shLZ);
     rig.shoulderR.rotation.set(C.shRX - rR * 0.05, 0, C.shRZ);
     rig.elbowL.rotation.set(C.elL - rL * 0.06, 0, 0);
     rig.elbowR.rotation.set(C.elR - rR * 0.06, 0, 0);
-    rig.legL.rotation.set(C.legLX, 0, C.legLZ);
-    rig.legR.rotation.set(C.legRX, 0, C.legRZ);
-    rig.kneeL.rotation.set(C.kneeL, 0, 0);
-    rig.kneeR.rotation.set(C.kneeR, 0, 0);
+    rig.legL.rotation.set(C.legLX - dp * 0.5, 0, C.legLZ);
+    rig.legR.rotation.set(C.legRX - dp * 0.5, 0, C.legRZ);
+    rig.kneeL.rotation.set(C.kneeL + dp, 0, 0);
+    rig.kneeR.rotation.set(C.kneeR + dp, 0, 0);
     // weapon slides back along its barrel on each shot (+y is "back" in forearm space);
     // wSpin rolls it around the barrel, wFlip spins it around the hand (revolver twirl)
     const slide = this.recoil.slide;
@@ -1305,6 +1454,17 @@ export class FighterAnimator {
     rig.mouth.visible = !open;
     rig.mouthOpen.visible = open;
     rig.brows.position.y = damp(rig.brows.position.y, inp.action !== 'none' || this.flash > 0.3 ? -0.025 : this.victoryT >= 0 ? 0.03 : 0, 14, dt);
+    if (rig.look.face?.browFlash) {
+      // Alpha 1.5.5 (Kai): now and then one brow flashes up — the cocky showman look
+      this.browT -= dt;
+      if (this.browT <= 0) {
+        this.browUp = 0.7;
+        this.browT = 4 + Math.random() * 5;
+      }
+      if (this.browUp > 0) this.browUp -= dt;
+      const up = (this.browUp > 0 && this.koT < 0 && !inp.stunned) || this.victoryT >= 0;
+      rig.brows.rotation.z = damp(rig.brows.rotation.z, up ? -0.08 : 0, 14, dt);
+    }
 
     // ------------------------------------------------------- material
     this.flash = Math.max(0, this.flash - dt * 7);

@@ -1,6 +1,6 @@
 import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
 import { CARDS, COMBOS } from '../config/cards';
-import type { BehaviorDef, CardId, Side } from '../config/types';
+import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
 import { clamp } from '../core/math';
 import type { BankSolution } from './CombatSystem';
 import type { FighterSim } from './FighterSim';
@@ -21,7 +21,11 @@ export interface AIProfile {
   comboPlanning: number;
   usesCards: boolean;
   behavior: BehaviorDef;
+  /** Alpha 1.5.5: rival-only limits on control cards (Zoe). */
+  control?: RivalControl;
 }
+
+const isControl = (card: CardId) => card === 'shock' || card === 'system_overload';
 
 const bankScore: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
 
@@ -71,6 +75,9 @@ export class FighterAI {
   private plantTimer: number;
   private recent: CardId[] = [];
   private plan: ComboPlan | null = null;
+  /** Alpha 1.5.5: match time from which a control card may be played again (rivals with a control profile). */
+  private ctrlReadyAt = 0;
+  private ovlReadyAt = 0;
 
   constructor(m: Match, side: Side, profile: AIProfile) {
     this.m = m;
@@ -350,6 +357,7 @@ export class FighterAI {
   private tryPlay(card: CardId): boolean {
     const i = this.has(card);
     if (i < 0) return false;
+    if (isControl(card) && !this.controlAllowed(card)) return false;
     const ok = this.m.playCard(this.side, i) === null;
     if (ok) this.remember(card);
     return ok;
@@ -358,6 +366,26 @@ export class FighterAI {
   private remember(card: CardId): void {
     this.recent.unshift(card);
     if (this.recent.length > 3) this.recent.pop();
+    const c = this.profile.control;
+    if (c && isControl(card)) this.ctrlReadyAt = this.m.time + c.gap;
+    if (c && card === 'system_overload') this.ovlReadyAt = this.m.time + c.overloadGap;
+  }
+
+  /**
+   * Alpha 1.5.5 — a rival with a control profile (Zoe) keeps its SHOCK / SYSTEM OVERLOAD fair:
+   * a cooldown between control cards, none while the target is still stunned / glitched or
+   * just recovering (the player always gets a window to act), and none mid-charge.
+   */
+  private controlAllowed(card: CardId | null = null): boolean {
+    const c = this.profile.control;
+    if (!c) return true;
+    const m = this.m;
+    const f = m.fighters[this.side];
+    const foe = m.fighters[1 - this.side];
+    if (m.time < this.ctrlReadyAt || f.zap > 0) return false;
+    if (card === 'system_overload' && m.time < this.ovlReadyAt) return false;
+    if (foe.stun > 0 || foe.glitch > 0 || m.time - foe.ctrlEnd < c.recovery) return false;
+    return true;
   }
 
   private detectThreat(f: FighterSim, foe: FighterSim): { key: string; kind: 'windup' | 'incoming' } | null {
@@ -420,7 +448,10 @@ export class FighterAI {
           const charging = foe.action.kind === 'windup' || (foe.action.kind === 'cut' && foe.action.stage === 'prep');
           // FALSE START reads a charge whose aim already froze (the shot comes within the window)
           const locked = foe.action.kind === 'windup' && foe.action.locked;
-          if (charging && (this.tryPlay('shock') || this.tryPlay('system_overload') || (locked && this.tryPlay('false_start')) || this.tryPlay('shield'))) return;
+          // a control rival only sometimes answers with SHOCK / OVERLOAD (its roll comes after the usual one)
+          const c = prof.control;
+          const zapOk = !c || (this.controlAllowed() && m.rng.chance(c.interruptMult));
+          if (charging && ((zapOk && (this.tryPlay('shock') || this.tryPlay('system_overload'))) || (locked && this.tryPlay('false_start')) || this.tryPlay('shield'))) return;
         } else if (this.tryPlay('dash') || this.tryPlay('false_start') || this.tryPlay('shield')) {
           return;
         }
@@ -473,6 +504,7 @@ export class FighterAI {
       const cost = CARDS[card].cost;
       if (hand.energy < cost) continue;
       let s = this.score(card, f, foe, dist);
+      if (isControl(card) && !this.controlAllowed(card)) s = -10;
       if (hand.energy - cost < b.energyReserve && s < 7) s *= 0.5;
       // variety: repeating recent cards is boring and predictable
       if (this.recent[0] === card) s -= 2.5;

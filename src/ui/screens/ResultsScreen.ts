@@ -185,10 +185,11 @@ export class ResultsScreen implements Screen {
           ${verdict}
           <div class="row between bb-row"><span class="bb-line">${line}</span><span class="bb-pips">${pips}</span></div>
           ${fw ? `<div class="ch-first">${UI_ICONS.star}<span>Первая победа над легендой: <b>+${formatMoney(fw.money)}</b> · <b>+${formatNumber(fw.fans)}</b> фанатов · <b>+${fw.rep}★</b> · титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span></div>` : ''}
+          ${bo.personal && !fw ? `<div class="ch-first">${UI_ICONS.star}<span>Личный титул <b>${esc(COSMETICS[bo.personal.cosmetic].name)}</b> теперь и у бойца <b>${esc(FIGHTERS[bo.personal.fighter].name)}</b></span></div>` : ''}
           <div class="ch-best">${bo.newBestTime && bo.won && !fw ? `<span class="chip gold">${MODE_ICONS.trophy.replace('<svg', '<svg width="11" height="11"')} Новый рекорд времени</span>` : ''}<span class="muted">Побед ${pr.wins} из ${pr.attempts}${pr.bestTime ? ` · лучшее время <b>${pr.bestTime} с</b>` : ''}${pr.bestRating ? ` · лучший рейтинг <b>${pr.bestRating}</b>` : ''}</span></div>
         </div>`;
     }
-    const titleId = this.g.save.data.cosmetics.equipped.title;
+    const titleId = this.g.collection.equippedFor('title', p.fighter);
     const champion = r.outcome === 'win' && !!titleId;
     this.el.classList.toggle('champion', champion);
     this.el.classList.remove('instant');
@@ -279,12 +280,13 @@ export class ResultsScreen implements Screen {
     later(delayAfterLines + 1.2, () => {
       finished = true;
     });
-    // first win over the champion: reveal the title, already equipped
-    if (bo?.firstWin && bo.cosmeticNew) later(delayAfterLines + 0.9, () => this.revealTitle(bo.firstWin!.cosmetic));
+    // this fighter's first win over the champion: reveal the personal title, already worn by them
+    if (bo?.personal) later(delayAfterLines + 0.9, () => this.revealTitle(bo.personal!.cosmetic, bo.personal!.fighter));
   }
 
-  private revealTitle(id: keyof typeof COSMETICS): void {
+  private revealTitle(id: keyof typeof COSMETICS, fighter: FighterId): void {
     const c = COSMETICS[id];
+    const who = FIGHTERS[fighter].name;
     const g = this.g;
     if (g.ui.modalOpen) return;
     g.audio.reward();
@@ -292,10 +294,10 @@ export class ResultsScreen implements Screen {
       `<div class="reward-pop rarity-${c.rarity}">
          <div class="rp-rays"></div>
          <div class="rp-art">${REWARD_ART[c.art]}</div>
-         <div class="label rp-kind">Новый титул · Легендарный</div>
+         <div class="label rp-kind">Личный титул · ${esc(who)}</div>
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>
-         <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже надето · ${esc(c.where)}</div>
+         <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже надето: ${esc(who)} · ${esc(c.where)}</div>
          <div class="modal-actions"><button class="btn teal wide" data-a="ok">Отлично!</button></div>
        </div>`,
       (root, close) => {

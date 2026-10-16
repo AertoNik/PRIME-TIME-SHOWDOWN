@@ -27,7 +27,7 @@ export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'cr
 export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide';
 /** Victory set key (render only): picks which family of victory animations a fighter performs. */
 export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 
@@ -125,7 +125,30 @@ export interface RivalDef {
     idleStyle?: IdleStyle;
     victoryStyle?: VictoryStyle;
     dashStyle?: DashStyle;
+    /** Alpha 1.5.5: limits on how this rival uses its control cards (SHOCK / SYSTEM OVERLOAD). */
+    control?: RivalControl;
   };
+}
+
+/**
+ * Alpha 1.5.5 — fair control for a rival built around SHOCK / SYSTEM OVERLOAD (Zoe).
+ * Rival-only: the player's cards and every other fighter keep the standard rules.
+ */
+export interface RivalControl {
+  /** Seconds after one of its control cards before the AI may play another. */
+  gap: number;
+  /** Seconds between two of its SYSTEM OVERLOADs (the longest control: no cards at all). */
+  overloadGap: number;
+  /** No new control while the target is stunned / glitched, nor for this long after it ends. */
+  recovery: number;
+  /** Multiplier on the chance to answer a charge with a control card. */
+  interruptMult: number;
+  /** Its SHOCK is a visible charge (s) followed by a dodgeable bolt instead of an instant hit. */
+  shockCharge: number;
+  shockSpeed: number;
+  shockRadius: number;
+  /** How much of the target's movement the bolt leads (0 = straight at it, 1 = full lead). */
+  shockLead: number;
 }
 
 export interface CardDef {

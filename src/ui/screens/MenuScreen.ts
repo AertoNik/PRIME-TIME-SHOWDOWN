@@ -46,7 +46,8 @@ export class MenuScreen implements Screen {
     const unclaimed = g.career.unclaimed();
     const em = g.events;
     const ev = em.active;
-    const title = ThemeManager.titleName(s.cosmetics.equipped);
+    // the nameplate title as the selected fighter wears it (personal titles only on their owners)
+    const title = ThemeManager.titleName(g.collection.effectiveEquipped(s.selected));
     // seasonal entry: the main way into the Events screen
     let entry = '';
     if (ev && em.playable) {

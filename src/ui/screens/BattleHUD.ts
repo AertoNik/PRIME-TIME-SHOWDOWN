@@ -53,6 +53,8 @@ interface RatingPop {
 /** Status chips under the health bars, most important first; only the top 3 show. */
 const STATUS_ORDER: { key: string; label: string; color: string }[] = [
   { key: 'stun', label: 'ОГЛУШЁН', color: '#ffe14d' },
+  // Alpha 1.5.5: Zoe's SHOCK charge — the cue for DASH or SHIELD
+  { key: 'zap', label: 'ШОКЕР!', color: '#ffe14d' },
   { key: 'glitch', label: 'ВЗЛОМ', color: '#ff4fd8' },
   { key: 'shield', label: 'ЩИТ', color: '#9ad8ff' },
   // Alpha 1.5: FALSE START read window (the next suitable attack is answered) and RIPOSTE ready
@@ -629,6 +631,7 @@ export class BattleHUD implements Screen {
         ironSkin: f.ironSkin > 0,
         overclock: f.overclock > 0,
         feint: f.feint > 0,
+        zap: f.zap > 0,
         riposte: f.riposte,
       };
       const st: string[] = [];

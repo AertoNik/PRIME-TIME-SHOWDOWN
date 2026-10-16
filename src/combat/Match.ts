@@ -181,6 +181,7 @@ export class Match implements BroadcastHost {
       cardSmarts: d.cardSmarts,
       usesCards: true,
       behavior: BEHAVIORS[this.rival.behavior],
+      control: this.rival.mods?.control,
     };
     this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, enemyProfile)];
     // Alpha 1.4: the stage's set pieces (Classic default: the original studio's speaker stacks)

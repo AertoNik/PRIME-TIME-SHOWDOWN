@@ -414,6 +414,8 @@ export class BattleView {
       inp.dashZ = f.action.dirZ;
     }
     inp.reading = f.feint > 0;
+    inp.fireIn = f.wantFire && !f.ko ? f.fireTimer : -1;
+    inp.zap = f.zap > 0;
     inp.stunned = f.stun > 0;
     inp.knockback = f.knockback > 0;
     inp.ko = f.ko;
@@ -444,7 +446,13 @@ export class BattleView {
     fx.laneOn = damp(fx.laneOn, winding ? 1 : 0, winding ? 14 : 20, dt);
     const ca = f.action;
     const cutCharge = ca.kind === 'cut' && ca.stage === 'lock' ? 0.45 + clamp01(ca.t / ca.total) * 0.75 : ca.kind === 'cut' && ca.stage === 'prep' ? 0.35 : 0;
-    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : cutCharge, 12, dt);
+    // Alpha 1.5.5: Zoe's SHOCK charge glows in her hand until the bolt leaves
+    const zapCharge = f.zap > 0 ? 0.9 + Math.sin(this.t * 40) * 0.3 : 0;
+    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : Math.max(cutCharge, zapCharge), 12, dt);
+    if (f.zap > 0 && rng.chance(dt * 30)) {
+      const h = s.model.rig.handR.getWorldPosition(_v3);
+      this.vfx.burst(h.x, h.y, h.z, _c.set(0xffe14d), 3, 2.5, 0.06, 0.18, 2.4);
+    }
     // DIRECTOR'S CUT: the warning line is drawn straight from the simulation state every frame
     // (same origin, direction, width and barrier-clipped length as the hit test)
     if (ca.kind === 'cut' && (ca.stage === 'aim' || ca.stage === 'lock') && !f.ko) {
@@ -614,6 +622,14 @@ export class BattleView {
         v.streakLen = 2.8;
         v.streakWidth = 0.26;
         break;
+      case 'zap':
+        // Alpha 1.5.5 — Zoe's SHOCK bolt: a crackling yellow ball of lightning
+        r = 0.24;
+        elong = 1;
+        v.streakLen = 1.6;
+        v.streakWidth = 0.4;
+        v.flicker = true;
+        break;
       default:
         r = 0.095;
         elong = 3.6;
@@ -626,11 +642,11 @@ export class BattleView {
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
     if (p.kind === 'bank') _c.set(0xff9a4a).lerp(accent, 0.25);
     if (p.electric) _c.set(0xffe14d);
-    const big = p.kind === 'power' || p.kind === 'bank';
+    const big = p.kind === 'power' || p.kind === 'bank' || p.kind === 'zap';
     v.streakMat.color.copy(_c).multiplyScalar(big ? 2.4 : p.kind === 'counter' ? 2.6 : 1.9);
     v.glowMat.color.copy(_c).multiplyScalar(big ? 2.4 : 1.4);
-    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bank' ? 1.5 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' || p.kind === 'counter' ? 1 : 0.6);
-    v.ring.visible = (p.kind === 'power' && p.weapon !== 'pulse_rifle') || p.kind === 'bank';
+    v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bank' || p.kind === 'zap' ? 1.5 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' || p.kind === 'counter' ? 1 : 0.6);
+    v.ring.visible = (p.kind === 'power' && p.weapon !== 'pulse_rifle') || p.kind === 'bank' || p.kind === 'zap';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;
@@ -1147,6 +1163,19 @@ export class BattleView {
         this.requestTime(0.35, 0.18);
         this.cam.addTrauma(0.15);
         this.arena.hype(0.8);
+        break;
+      }
+      // Alpha 1.5.5 — Zoe's SHOCK: a visible charge, then a dodgeable bolt
+      case 'zapCharge': {
+        const s = this.slots[e.side];
+        const h = s.model.rig.handR.getWorldPosition(_v);
+        this.vfx.flash(h.x, h.y, h.z, _c.set(0xffe14d), 0.8, 2.4, 0.2, 2.4);
+        this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffe14d), 0.3, 2.4, e.duration, 2.2);
+        break;
+      }
+      case 'zapFizzle': {
+        const s = this.slots[e.side];
+        this.vfx.burst(s.pos.x, 1.2, s.pos.z, _c.set(0xffe14d), 8, 2, 0.08, 0.3, 2);
         break;
       }
       case 'feintEnd': {

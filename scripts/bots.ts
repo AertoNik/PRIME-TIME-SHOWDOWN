@@ -22,6 +22,14 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
   // the red lane locks (or a charge is incoming), each after a reaction delay.
   const fa = foe.action;
   const me = m.fighters[0];
+  // Alpha 1.5.5: Zoe's SHOCK sparks in her hand before the bolt leaves — DASH or SHIELD after a reaction delay
+  if (foe.zap > 0) {
+    const key = 'zap:' + Math.round((m.time + foe.zap) * 20);
+    if (st.reactKey !== key) {
+      st.reactKey = key;
+      st.react = reaction;
+    }
+  }
   if (fa.kind === 'windup' || fa.kind === 'rush') {
     const key = fa.kind + ':' + (m.time - fa.t).toFixed(1) + (fa.kind === 'windup' && fa.locked ? 'L' : '');
     if (st.reactKey !== key) {
@@ -48,6 +56,11 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
       const shi = h.hand.indexOf('shock');
       // Alpha 1.5: FALSE START reads a locked line / charge like a dodge would
       const fi = h.hand.indexOf('false_start');
+      if (foe.zap > 0 || m.projectiles.some((p) => p.alive && p.kind === 'zap' && p.owner === 1)) {
+        if (di >= 0 && h.energy >= 2) m.playCard(0, di);
+        else if (si >= 0 && h.energy >= 3 && me.shield <= 0) m.playCard(0, si);
+        return;
+      }
       if (fa.kind === 'cut') {
         if (fa.stage === 'prep' && shi >= 0 && h.energy >= 4) m.playCard(0, shi);
         else if (cutLane && di >= 0 && h.energy >= 2) m.playCard(0, di);

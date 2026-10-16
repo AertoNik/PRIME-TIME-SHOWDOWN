@@ -111,13 +111,13 @@ function result(p: Partial<MatchResultData>): MatchResultData {
     proWins: 8,
     fighters: { ray: { unlocked: true, fans: 9000, wins: 30 }, bruno: { unlocked: true }, nika: { unlocked: true }, vega: { unlocked: true } },
     cosmetics: { owned: ['card_pumpkin', 'title_prime_legend', 'card_pumpkin'], equipped: { cardStyle: 'card_pumpkin', title: 'title_prime_legend' }, history: [{ id: 'card_pumpkin', event: 'halloween-2026', at: 5 }] },
-    modes: { survival: { runs: 3, completions: 1 }, challenges: { spotlight: { attempts: 2, clears: 1, firstClearAt: 9 }, high_stakes: { attempts: 1, clears: 1, firstClearAt: 11 } }, boss: { vale: { attempts: 3, wins: 1, firstWinAt: 12 } } },
+    modes: { survival: { runs: 3, completions: 1 }, challenges: { spotlight: { attempts: 2, clears: 1, firstClearAt: 9 }, high_stakes: { attempts: 1, clears: 1, firstClearAt: 11 } }, boss: { vale: { attempts: 3, wins: 1, firstWinAt: 12, winsByFighter: { ray: 1 } } } },
     arena: 'casino',
   };
   const s = sanitize(JSON.parse(JSON.stringify(v7)));
-  check('migration: a v7 save becomes v8 with money, wins, records and the arena kept', s.version === 8 && s.money === 4321 && s.wins === 40 && s.modes.boss.vale.wins === 1 && s.arena === 'casino');
+  check('migration: a v7 save becomes v9 with money, wins, records and the arena kept', s.version === 9 && s.money === 4321 && s.wins === 40 && s.modes.boss.vale.wins === 1 && s.arena === 'casino');
   check('migration: duplicate owned items collapse to one', s.cosmetics.owned.length === 2 && s.cosmetics.owned.filter((id) => id === 'card_pumpkin').length === 1);
-  check('migration: equipped items and history are kept', s.cosmetics.equipped.cardStyle === 'card_pumpkin' && s.cosmetics.equipped.title === 'title_prime_legend' && s.cosmetics.history.length === 1);
+  check('migration: equipped items and history are kept (the Victor title now worn by Ray, who beat him)', s.cosmetics.equipped.cardStyle === 'card_pumpkin' && s.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && s.cosmetics.equipped.title === undefined && s.cosmetics.history.length === 1);
   check('migration: items owned before 1.5 are not flagged NEW', s.cosmetics.seen.length === 2 && new Collection({ data: s, save() {} }).freshCount() === 0);
   check('migration: no career reward is paid automatically', s.careerClaimed.length === 0);
   check('migration: Kai and Rina join locked with their default decks', FIGHTER_ORDER.includes('kai') && FIGHTER_ORDER.includes('rina') && !s.fighters.kai.unlocked && !s.fighters.rina.unlocked && s.fighters.kai.deck.includes('bank_shot') && s.fighters.rina.deck.includes('false_start'));
@@ -201,6 +201,63 @@ function result(p: Partial<MatchResultData>): MatchResultData {
   check('contracts: with the level and the money Kai and Rina can be signed', career.canSign('kai').ok && career.canSign('rina').ok);
   career.sign('rina');
   check('contracts: signing Rina charges the fee once and selects her', store.data.fighters.rina.unlocked && store.data.money === 99999 - rina.cost && store.data.selected === 'rina' && !career.canSign('rina').ok);
+}
+
+// ------------------------------------------------------------ Alpha 1.5.5: personal rewards
+{
+  const store = new MemSave();
+  const col = new Collection(store, clock);
+  const id = 'title_prime_legend' as const;
+  check('personal: a personal reward needs a fighter', !col.grant(id, 'boss-vale'));
+  const ray = col.grant(id, 'boss-vale', 'ray');
+  check('personal: Ray beats Victor — the title is Ray\'s and Ray wears it', ray && col.ownsFor(id, 'ray') && col.isEquipped(id, 'ray') && col.equippedFor('title', 'ray') === id);
+  check('personal: Bruno has not beaten Victor — he cannot wear it', !col.ownsFor(id, 'bruno') && col.equippedFor('title', 'bruno') === null && !col.setEquipped(id, true, 'bruno'));
+  check('personal: the common slot never carries a personal title', col.equipped('title') === null);
+  const again = col.grant(id, 'boss-vale', 'ray');
+  check('personal: a second win by Ray adds nothing', !again && store.data.cosmetics.personal[id]?.length === 1 && store.data.cosmetics.owned.filter((x) => x === id).length === 1);
+  col.grant(id, 'boss-vale', 'bruno');
+  check('personal: Bruno beats Victor himself — now both own it, one definition, two owners', col.owners(id).join() === 'ray,bruno' && col.ownsFor(id, 'bruno') && store.data.cosmetics.owned.filter((x) => x === id).length === 1);
+  col.setEquipped(id, false, 'ray');
+  check('personal: Ray takes it off, Bruno still wears his', !col.isEquipped(id, 'ray') && col.isEquipped(id, 'bruno'));
+  col.grant('title_prime_star', 'career-star');
+  col.setEquipped('title_prime_star', true);
+  check('personal: common producer titles still work for every fighter', col.equippedFor('title', 'nika') === 'title_prime_star' && col.equippedFor('title', 'ray') === 'title_prime_star');
+  check('personal: a fighter\'s own title wins over the common one', col.equippedFor('title', 'bruno') === id);
+  col.setEquipped('title_prime_star', true, 'bruno');
+  check('personal: putting on a common title for Bruno takes his personal one off (what you tap is what you see)', col.equippedFor('title', 'bruno') === 'title_prime_star' && col.owners(id).includes('bruno'));
+  store.save();
+  const re = new Collection(store, clock);
+  check('personal: owners and per-fighter equipment survive a reload', re.owners(id).join() === 'ray,bruno' && !re.isEquipped(id, 'bruno') && !re.isEquipped(id, 'ray') && re.equipped('title') === 'title_prime_star');
+  // the achievement reads the real boss records (who has a win over the champion)
+  store.data.modes.boss.vale = { attempts: 3, wins: 2, firstWinAt: 5, bestTime: 90, bestRating: 80, bestPhase: 3, bestBossHp: 0, bestFighter: 'ray', winsByFighter: { ray: 1, bruno: 1 }, history: [] };
+  const ach = re.achievements().find((a) => a.id === 'boss-vale');
+  check('personal: the boss achievement lists who earned it', !!ach && ach.done && (ach.fighters ?? []).join() === 'ray,bruno' && ach.note.includes('РЭЙ') && ach.note.includes('БРУНО'));
+}
+// legacy title the records cannot tie to anyone: assigned once by the player
+{
+  const store = new MemSave();
+  store.data = sanitize({ version: 8, cosmetics: { owned: ['title_prime_legend'], equipped: { title: 'title_prime_legend' } }, fighters: { bruno: { unlocked: true } } });
+  const col = new Collection(store, clock);
+  const money = store.data.money;
+  check('legacy: an old title with no fighter on record is kept, not given to everyone', store.data.cosmetics.owned.includes('title_prime_legend') && col.unassigned().includes('title_prime_legend') && col.equippedFor('title', 'ray') === null && col.equippedFor('title', 'bruno') === null);
+  check('legacy: the collection badge asks the player to look', col.freshCount() >= 1);
+  const ok1 = col.assignLegacy('title_prime_legend', 'bruno');
+  const ok2 = col.assignLegacy('title_prime_legend', 'ray');
+  check('legacy: the player names Bruno once; a second choice is refused; no money paid', ok1 && !ok2 && col.owners('title_prime_legend').join() === 'bruno' && col.isEquipped('title_prime_legend', 'bruno') && store.data.money === money);
+  store.save();
+  check('legacy: the choice is saved and not asked again', new Collection(store, clock).unassigned().length === 0 && store.data.cosmetics.personal.title_prime_legend?.join() === 'bruno');
+}
+// seasonal items stay a surprise until obtained
+{
+  const store = new MemSave();
+  const col = new Collection(store, clock);
+  const seasonalIds = COSMETIC_ORDER.filter((id) => COSMETICS[id].source === 'season');
+  check('seasons: unearned seasonal items are not shown in the collection at all', col.cosmetics().every((v) => v.def.source !== 'season') && seasonalIds.every((id) => !col.visible(id)));
+  check('seasons: boss and career items stay visible as goals', col.visible('title_prime_legend') && col.visible('frame_legendary'));
+  col.grant('card_pumpkin', 'halloween-2026');
+  check('seasons: an obtained seasonal item appears — and only that one', col.visible('card_pumpkin') && col.cosmetics().filter((v) => v.def.source === 'season').map((v) => v.def.id).join() === 'card_pumpkin');
+  now = T('2027-02-01T12:00:00Z');
+  check('seasons: after the season it is still there and wearable', col.visible('card_pumpkin') && col.setEquipped('card_pumpkin', true) && col.equipped('cardStyle') === 'card_pumpkin');
 }
 
 let ok = true;

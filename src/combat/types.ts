@@ -5,7 +5,7 @@ export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
 export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'cut' | 'bank' | 'counter';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline' | 'bank' | 'counter';
+export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline' | 'bank' | 'counter' | 'zap';
 
 export interface Projectile {
   id: number;
@@ -174,6 +174,9 @@ export type MatchEvent =
   | { type: 'decoy'; side: Side; id: number; x: number; z: number; duration: number }
   | { type: 'decoyPop'; side: Side; id: number; x: number; z: number; hit: boolean }
   | { type: 'shock'; side: Side; fromX: number; fromZ: number; toX: number; toZ: number; hit: boolean }
+  /** Alpha 1.5.5 — Zoe's SHOCK: the visible charge before the bolt (`duration` s), then the bolt leaves. */
+  | { type: 'zapCharge'; side: Side; duration: number }
+  | { type: 'zapFizzle'; side: Side }
   | { type: 'overload'; side: Side; x: number; z: number; hit: boolean }
   | { type: 'buff'; side: Side; buff: 'overdrive' | 'adrenaline'; duration: number }
   | { type: 'passive'; side: Side; passive: PassiveId }

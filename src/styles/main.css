@@ -6744,3 +6744,80 @@ input {
     height: 48px;
   }
 }
+
+/* Alpha 1.5.5 — personal rewards in MY COLLECTION */
+.cc-owners {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+.cc-owners:empty {
+  display: none;
+}
+.cc-ol {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.cc-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.cc-owner.on {
+  background: linear-gradient(160deg, #ffd23a, #c27a00);
+  color: #1a1000;
+  box-shadow: none;
+}
+.cc-owner.sel:not(.on) {
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+}
+.cc-missing {
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.col-legacy {
+  margin: 10px 12px 0;
+  padding: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 58, 0.45);
+}
+.col-legacy .cl-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.col-legacy .cc-art {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+.col-legacy .cl-text {
+  font-size: 11.5px;
+  margin-top: 4px;
+}
+.col-legacy .cl-fighters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.col-legacy .cl-f {
+  padding: 8px 12px;
+  font-size: 11px;
+  border-radius: 12px;
+}

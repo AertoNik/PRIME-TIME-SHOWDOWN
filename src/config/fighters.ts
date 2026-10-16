@@ -313,8 +313,17 @@ export const RIVALS: Record<RivalId, RivalDef> = {
     behavior: 'tactical',
     look: 'zoe',
     deck: ['shock', 'power_shot', 'dash', 'system_overload'],
-    bio: 'Читает бой как код: прерывает заряды и строит комбо. Держите DASH под рукой.',
+    bio: 'Читает бой как код: прерывает заряды и строит комбо. Её шокер сначала искрит в руке — это сигнал для DASH или SHIELD.',
     theme: { main: '#14c97a', accent: '#2bff88', dark: '#062a1a' },
+    // Alpha 1.5.5: she chained SHOCK and SYSTEM OVERLOAD into near-permanent control (1% Champion
+    // wins for deliberate play, 15–23% of every fight without cards). Her own limits, not a
+    // global change: a visible SHOCK charge and a dodgeable bolt, a cooldown between control
+    // cards, a recovery window for the player and fewer reflex interrupts. (Zoe audit in the 1.5.5 report.)
+    mods: {
+      // her own body language (render only): a low, scanning tactician instead of Nika's sway
+      idleStyle: 'tactician',
+      control: { gap: 9, overloadGap: 22, recovery: 2.5, interruptMult: 0.5, shockCharge: 0.45, shockSpeed: 24, shockRadius: 0.42, shockLead: 0.7 },
+    },
   },
   // Alpha 1.2.5: relentless brawler. A lighter, faster-firing take on the
   // shotgun archetype with its own "reckless" brain.

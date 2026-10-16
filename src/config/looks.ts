@@ -26,6 +26,23 @@ export interface LookDef {
   weaponDark: number;
   glow: number;
   rim: number;
+  /** Alpha 1.5.5: optional face traits that set a character apart (stylised, never realistic). */
+  face?: FaceTraits;
+}
+
+export interface FaceTraits {
+  /** Soft cheekbones: a highlight over each cheek and a gentle crease below (0..1). */
+  cheekbones: number;
+  /** A slightly fuller, defined jaw with a rounded chin (0..1) — never a sharp point. */
+  jaw: number;
+  /** Eye height multiplier (a touch lower reads older and more knowing). */
+  eyeHeight: number;
+  /** Thicker, arched brows, one cocked higher than the other. */
+  archedBrows: boolean;
+  /** A lopsided showman's grin with a dimple on the raised side. */
+  grin: boolean;
+  /** Mimicry: now and then one brow flashes up. */
+  browFlash: boolean;
 }
 
 export const LOOKS: Record<string, LookDef> = {
@@ -188,6 +205,8 @@ export const LOOKS: Record<string, LookDef> = {
     brow: 'cocky',
     mouth: 'smile',
     accessories: ['shades', 'earring', 'wristbands'],
+    // Alpha 1.5.5: his own face — a bit older and more charismatic than the rest of the roster
+    face: { cheekbones: 1, jaw: 1, eyeHeight: 0.9, archedBrows: true, grin: true, browFlash: true },
     weapon: 'ricochet',
     weaponColor: 0xd8843a,
     weaponDark: 0x1c2433,

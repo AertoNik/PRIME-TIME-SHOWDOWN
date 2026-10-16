@@ -170,6 +170,8 @@ export class CombatSystem {
 
   // ------------------------------------------------------------------ timers
   tickStatuses(f: FighterSim, dt: number): void {
+    if (f.stun > 0 || f.glitch > 0) f.ctrlEnd = this.m.time;
+    if (f.zap > 0) this.tickZap(f, dt);
     if (f.stun > 0) f.stun = Math.max(0, f.stun - dt);
     if (f.cutCd > 0) f.cutCd = Math.max(0, f.cutCd - dt);
     if (f.shield > 0) {
@@ -605,6 +607,40 @@ export class CombatSystem {
     return solveBank(f.x, f.z, tx, tz, out);
   }
 
+  /**
+   * Alpha 1.5.5 — Zoe's SHOCK charge. A stun, knockback or KO during the charge calls it off
+   * (a real window to punish her); otherwise the bolt leaves with a partial lead and no
+   * homing, so a DASH, a sidestep or a SHIELD answers it.
+   */
+  private tickZap(f: FighterSim, dt: number): void {
+    const m = this.m;
+    if (f.ko || f.stun > 0 || f.knockback > 0 || m.phase !== 'fight') {
+      f.zap = 0;
+      f.zapCombo = null;
+      m.emit({ type: 'zapFizzle', side: f.side });
+      return;
+    }
+    f.zap -= dt;
+    if (f.zap > 0) return;
+    f.zap = 0;
+    const ctl = m.rival.mods?.control;
+    const foe = m.fighters[1 - f.side];
+    const t = CARD_TUNING.shock;
+    const speed = ctl?.shockSpeed ?? 20;
+    const lead = (Math.hypot(foe.x - f.x, foe.z - f.z) / speed) * (ctl?.shockLead ?? 0);
+    const yaw = Math.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    this.spawn(f.side, 'zap', f.stats.attack.weapon, origin.x, origin.z, yaw, speed, t.damage * f.outgoingDamageMult(), ctl?.shockRadius ?? 0.32, 15, {
+      stun: t.stun,
+      electric: true,
+      heavy: true,
+      combo: f.zapCombo,
+    });
+    f.zapCombo = null;
+    m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'zap' });
+  }
+
   /** Alpha 1.5 — FALSE START read an attack: Rina fires straight back at the attacker. */
   private fireCounter(f: FighterSim, foe: FighterSim): void {
     const t = CARD_TUNING.false_start;
@@ -738,15 +774,23 @@ export class CombatSystem {
             if (p.kind === 'bank' && !p.bounced) dmg *= CARD_TUNING.bank_shot.directMult;
             const len = Math.hypot(p.vx, p.vz) || 1;
             const src = m.fighters[p.owner];
+            // Zoe's bolt keeps SHOCK's rule: it breaks a raised shield, which only shortens the stun
+            let stun = p.stun;
+            if (p.kind === 'zap' && foe.shield > 0) {
+              foe.shield = 0;
+              foe.shieldHp = 0;
+              m.emit({ type: 'shieldBreak', side: foe.side, x: foe.x, z: foe.z });
+              stun = CARD_TUNING.shock.shieldStun;
+            }
             const outcome = this.applyHit(foe, src, {
               damage: dmg,
-              kind: p.kind === 'power' ? 'power' : p.kind === 'adrenaline' ? 'adrenaline' : p.kind === 'bank' ? 'bank' : p.kind === 'counter' ? 'counter' : 'auto',
+              kind: p.kind === 'power' ? 'power' : p.kind === 'adrenaline' ? 'adrenaline' : p.kind === 'bank' ? 'bank' : p.kind === 'counter' ? 'counter' : p.kind === 'zap' ? 'shock' : 'auto',
               heavy: p.heavy,
               crit: p.crit || trick,
               electric: p.electric,
               combo: p.combo,
               knockback: p.knockback,
-              stun: p.stun,
+              stun,
               slowAmount: p.slowAmount,
               slowDuration: p.slowDuration,
               dx: p.vx / len,

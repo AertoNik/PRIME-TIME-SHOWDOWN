@@ -297,6 +297,8 @@ export class Game {
     this.screen = name;
     this.refreshSeason();
     this.setChampionStage(false);
+    // the selected fighter may have changed: show what that fighter wears
+    this.applyCosmetics();
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(f.look, f.theme.accent);
     this.cam.setMode('showcase', 1.0);
@@ -415,9 +417,12 @@ export class Game {
     return resolveArena(this.save.data.arena, season, () => rng.next());
   }
 
-  /** Push equipped cosmetics to the UI and the battle renderer. */
-  applyCosmetics(): void {
-    this.themes?.applyCosmetics(this.save.data.cosmetics.equipped);
+  /**
+   * Push equipped cosmetics to the UI and the battle renderer — as `fighter` wears them
+   * (Alpha 1.5.5: the producer's common items plus that fighter's own personal ones).
+   */
+  applyCosmetics(fighter: FighterId = this.save.data.selected): void {
+    this.themes?.applyCosmetics(this.collection.effectiveEquipped(fighter));
   }
 
   /** Re-fit the camera to the HUD after layout changes (rotation, address bar, window resize). */
@@ -527,6 +532,7 @@ export class Game {
     });
     this.match = match;
     this.matchMeta = { fighter, rival, difficulty, mode };
+    this.applyCosmetics(fighter);
     // Survival reports to the seasonal event once per attempt (see GameModes), not per wave.
     this.matchEventId = mode.kind !== 'survival' && this.events.playable ? this.events.active!.id : null;
     this.resultsShown = false;
@@ -651,7 +657,7 @@ export class Game {
       });
       boss = this.modes.recordBoss(mode.id, m.result, meta.fighter);
       outcome.levelAfter = this.career.level().level;
-      if (boss?.cosmeticNew) this.applyCosmetics();
+      if (boss?.cosmeticNew) this.applyCosmetics(meta.fighter);
     } else if (mode.kind === 'challenge') {
       const def = challengeById(mode.id)!;
       outcome = this.career.applyMatch(m.result, meta.fighter, meta.difficulty, meta.rival, {
@@ -917,7 +923,11 @@ export class Game {
     const a = this.audio;
     switch (e.type) {
       case 'shot':
-        a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank', e.side === 1);
+        if (e.kind === 'zap') a.electric(0.35, 0.3);
+        else a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank', e.side === 1);
+        break;
+      case 'zapCharge':
+        a.zapCharge(e.duration);
         break;
       case 'hit':
         if (e.kind !== 'dot') a.hit(e.heavy, e.crit, e.side === 0);

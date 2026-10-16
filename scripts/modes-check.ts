@@ -14,7 +14,7 @@ import { CareerSystem } from '../src/meta/CareerSystem';
 import { EventManager } from '../src/meta/EventManager';
 import { GameModes, evaluateChallenge } from '../src/meta/GameModes';
 import { defaultSave, emptyBoss as emptyBossProgress, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
-import { runMatch, type Mode } from './bots';
+import { comboBot, runMatch, type Mode } from './bots';
 
 class MemSave {
   data: SaveData = defaultSave();
@@ -258,7 +258,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   check('Alpha 1.2.5 save gets empty mode records', m.modes.survival.runs === 0 && m.modes.survival.active === null && Object.keys(m.modes.challenges).length === 0);
   const junk = sanitize({ modes: { survival: { bestWave: 99, runs: -3, active: { fighter: 'nobody', rivals: [] } }, challenges: { spotlight: { attempts: 'x', clears: 4, firstClearAt: 5 } } } });
   check('corrupt mode data is cleaned', junk.modes.survival.bestWave === 5 && junk.modes.survival.runs === 0 && junk.modes.survival.active === null && junk.modes.challenges.spotlight.attempts === 4);
-  check('save version is 8 (1.5: collection, career stages, new fighters)', defaultSave().version === 8);
+  check('save version is 9 (1.5.5: personal rewards per fighter)', defaultSave().version === 9);
 }
 
 // ----------------------------------------------------------------- boss fight
@@ -324,19 +324,22 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   const w1 = modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 97.2, rating: 88 }), 'vega')!;
   const fw = def.rewards.firstWin;
   const c = store.data.cosmetics;
-  check('first win pays money, fans, reputation and the PRIME LEGEND title once', !!w1.firstWin && store.data.money - m0 === fw.money && w1.cosmeticNew && c.owned.includes('title_prime_legend') && c.equipped.title === 'title_prime_legend');
+  // Alpha 1.5.5: the title is personal — Vega earned it, so Vega (and only Vega) wears it
+  check('first win pays money, fans, reputation once and gives Vega her personal PRIME LEGEND title', !!w1.firstWin && store.data.money - m0 === fw.money && w1.cosmeticNew && w1.personal?.fighter === 'vega' && c.owned.includes('title_prime_legend') && !!c.personal.title_prime_legend?.includes('vega') && c.personalEquipped.vega?.title === 'title_prime_legend' && c.equipped.title === undefined);
   check('first win recorded with time, rating and fighter', w1.progress.firstWinAt > 0 && w1.progress.wins === 1 && w1.progress.bestTime === 98 && w1.progress.bestRating === 88 && w1.progress.winsByFighter.vega === 1);
   const m1 = store.data.money;
   const w2 = modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 85, rating: 80 }), 'ray')!;
-  check('second win: no first-win reward again, new best time', w2.firstWin === null && !w2.cosmeticNew && store.data.money === m1 && w2.progress.bestTime === 85 && w2.newBestTime && w2.progress.bestRating === 88);
+  check('second win (Ray\'s first): no money again, Ray earns his own title, new best time', w2.firstWin === null && w2.personal?.fighter === 'ray' && store.data.money === m1 && w2.progress.bestTime === 85 && w2.newBestTime && w2.progress.bestRating === 88 && store.data.cosmetics.personal.title_prime_legend?.length === 2);
+  const wv = modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 90, rating: 70 }), 'vega')!;
+  check('Vega wins again: no new title, no money, no duplicate', wv.personal === null && !wv.cosmeticNew && store.data.money === m1 && store.data.cosmetics.personal.title_prime_legend?.filter((f) => f === 'vega').length === 1 && store.data.cosmetics.owned.filter((id) => id === 'title_prime_legend').length === 1);
   const f = modes.recordBoss('vale', result({ outcome: 'loss', method: 'forfeit', bossPhase: 1, enemyHpFrac: 0.05 }), 'ray')!;
-  check('forfeit counts as an attempt but never as a best result', !f.won && f.progress.attempts === 4 && Math.abs(f.progress.bestBossHp - 0.41) < 1e-9);
+  check('forfeit counts as an attempt but never as a best result', !f.won && f.progress.attempts === 5 && Math.abs(f.progress.bestBossHp - 0.41) < 1e-9);
   for (let i = 0; i < 12; i++) modes.recordBoss('vale', result({ outcome: 'loss', bossPhase: 1, enemyHpFrac: 0.9 }), 'nika');
   check('fight history keeps the last 10 attempts', modes.bossProgress('vale').history.length === 10);
   const back = world(Object.assign(new MemSave(), { data: sanitize(JSON.parse(JSON.stringify(store.data))) }));
   const m2 = back.store.data.money;
   const w3 = back.modes.recordBoss('vale', result({ outcome: 'win', method: 'ko', bossPhase: 3, enemyHpFrac: 0, duration: 99 }), 'ray')!;
-  check('after reload: records kept, first-win reward not paid again', w3.firstWin === null && back.store.data.money === m2 && w3.progress.wins === 3 && back.store.data.cosmetics.owned.filter((x) => x === 'title_prime_legend').length === 1);
+  check('after reload: records kept, first-win reward not paid again', w3.firstWin === null && back.store.data.money === m2 && w3.progress.wins === 4 && back.store.data.cosmetics.owned.filter((x) => x === 'title_prime_legend').length === 1);
   const v4 = sanitize({ version: 4, money: 900, modes: { survival: { runs: 3, bestWave: 4 }, challenges: { spotlight: { attempts: 2, clears: 1, firstClearAt: 5 } } } });
   check('Alpha 1.3 save (v4) loads: Survival/Challenge kept, empty boss records', v4.modes.survival.bestWave === 4 && v4.modes.challenges.spotlight.clears === 1 && Object.keys(v4.modes.boss).length === 0 && v4.money === 900);
   const junk = sanitize({ modes: { boss: { vale: { wins: 'x', attempts: 2, bestPhase: 9, bestBossHp: -1, history: [{ fighter: 'nobody' }, { fighter: 'ray', phase: 7, won: true }] } } } });
@@ -362,7 +365,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
   const accL = legacy.modes.bossAccess('vale', 'vega');
   check('a fighter who already beat the champion keeps access (legacy)', accL.open && accL.legacy && !legacy.modes.bossAccess('vale', 'nika').open);
   const after = sanitize(JSON.parse(JSON.stringify(a.store.data)));
-  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 8);
+  check('Classic win counter survives a reload', after.fighters.ray.classicWins === 5 && after.version === 9);
 }
 
 // ----------------------------------------------------------- DIRECTOR'S CUT
@@ -624,6 +627,78 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
     const d = Math.hypot(3 - b.x, 3 - b.z);
     check('while aiming the line points at the player', a.kind === 'cut' && a.stage === 'aim' && Math.abs(a.dirX - (3 - b.x) / d) < 0.02 && Math.abs(a.dirZ - (3 - b.z) / d) < 0.02);
   }
+}
+
+// ------------------------------------------------- Alpha 1.5.5: fair Zoe
+// Real headless fights against Zoe on Champion (her hardest setting) with the deliberate and the
+// spamming player: no stun-lock, no endless interrupt chain, her own control limits respected.
+{
+  const ctl = RIVALS.zoe.mods?.control;
+  check('Zoe has her own control limits; no other rival has them (no global SHOCK change)', !!ctl && RIVAL_ORDER.filter((r) => r !== 'zoe').every((r) => !RIVALS[r].mods?.control) && !RIVALS.vale.mods?.control);
+  let longest = 0;
+  let maxRow = 0;
+  let ctrlT = 0;
+  let fightT = 0;
+  let minGap = 99;
+  let minOvlGap = 99;
+  let chargeOk = true;
+  let zapBolts = 0;
+  let hits = 0;
+  for (const mode of ['combo', 'mash'] as Mode[]) {
+    for (const fighter of FIGHTER_ORDER) {
+      for (let i = 0; i < 3; i++) {
+        const m = new Match({ fighter, deck: FIGHTERS[fighter].defaultDeck, rival: 'zoe', difficulty: 'champion', seed: 3100 + i * 97, fans: 0, autoPlayer: mode === 'combo' ? undefined : { behavior: 'aggressive', smarts: 0, dodge: 0.2, reaction: 0.6, eagerness: 1.6 } });
+        const st = { think: 0, react: -1, reactKey: '' };
+        let lockStart = -1;
+        let lastCtrl = -10;
+        let row = 0;
+        let lastControlCard = -99;
+        let lastOverload = -99;
+        let chargeAt = -1;
+        let steps = 0;
+        while (m.phase !== 'over' && steps < 60 * 140) {
+          if (mode === 'combo') comboBot(m, st, 1 / 60);
+          m.step(1 / 60);
+          const me = m.fighters[0];
+          for (const e of m.drainEvents()) {
+            if (e.type === 'card' && e.side === 1 && (e.card === 'shock' || e.card === 'system_overload')) {
+              minGap = Math.min(minGap, m.time - lastControlCard);
+              lastControlCard = m.time;
+              if (e.card === 'system_overload') {
+                minOvlGap = Math.min(minOvlGap, m.time - lastOverload);
+                lastOverload = m.time;
+              }
+            }
+            if (e.type === 'zapCharge') chargeAt = m.time;
+            if (e.type === 'shot' && e.side === 1 && e.kind === 'zap') {
+              zapBolts++;
+              if (chargeAt < 0 || m.time - chargeAt < ctl!.shockCharge - 0.02) chargeOk = false;
+            }
+            if (e.type === 'hit' && e.side === 0 && e.kind === 'shock') hits++;
+            if (e.type === 'interrupt' && e.side === 0) maxRow = Math.max(maxRow, ++row);
+          }
+          if (me.action.kind === 'windup' && me.stun <= 0 && me.glitch <= 0 && m.time - lastCtrl > 1) row = 0;
+          if (m.phase === 'fight') {
+            fightT += 1 / 60;
+            if (me.stun > 0 || me.glitch > 0) {
+              ctrlT += 1 / 60;
+              if (lockStart < 0 || m.time - lastCtrl > 0.6) lockStart = m.time;
+              lastCtrl = m.time;
+              longest = Math.max(longest, m.time - lockStart);
+            }
+          }
+          steps++;
+        }
+      }
+    }
+  }
+  check(`Zoe: the longest stretch without control-free time stays short (${longest.toFixed(1)} s ≤ 5 s)`, longest <= 5);
+  check(`Zoe: no endless interrupt chain (max ${maxRow} in a row ≤ 2)`, maxRow <= 2);
+  check(`Zoe: the player is under control a small share of the fight (${((ctrlT / fightT) * 100).toFixed(1)}% < 15%)`, ctrlT / fightT < 0.15);
+  check(`Zoe: her control cards respect the cooldown (min gap ${minGap.toFixed(1)} s ≥ ${ctl!.gap} s)`, minGap >= ctl!.gap - 0.05);
+  check(`Zoe: SYSTEM OVERLOAD respects its own interval (min ${minOvlGap.toFixed(1)} s ≥ ${ctl!.overloadGap} s)`, minOvlGap >= ctl!.overloadGap - 0.05);
+  check(`Zoe: every SHOCK bolt is preceded by the visible charge (${zapBolts} bolts)`, chargeOk && zapBolts > 0);
+  check(`Zoe: her SHOCK still lands sometimes — she is not harmless (${hits} hits)`, hits > 0);
 }
 
 let ok = true;

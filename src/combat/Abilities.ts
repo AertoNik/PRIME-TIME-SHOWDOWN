@@ -111,6 +111,14 @@ export class Abilities {
       case 'shock': {
         const t = CARD_TUNING.shock;
         const target = foe;
+        // Alpha 1.5.5: a rival with a control profile (Zoe) charges a visible bolt instead of an instant hit
+        const ctl = f.side === 1 ? m.rival.mods?.control : undefined;
+        if (ctl && ctl.shockCharge > 0) {
+          f.zap = ctl.shockCharge;
+          f.zapCombo = comboId;
+          m.emit({ type: 'zapCharge', side: f.side, duration: ctl.shockCharge });
+          break;
+        }
         if (target.invuln > 0) {
           m.emit({ type: 'shock', side: f.side, fromX: f.x, fromZ: f.z, toX: target.x, toZ: target.z, hit: false });
           target.m.perfects++;

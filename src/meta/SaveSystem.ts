@@ -2,7 +2,7 @@ import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config
 import { CAREER_STAGES, CAREER_START, GOALS, type GoalId, type StageId } from '../config/career';
 import { UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
-import { COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { COSMETICS, COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 
@@ -50,10 +50,16 @@ export interface EventProgress {
 export interface CosmeticsState {
   owned: CosmeticId[];
   equipped: Partial<Record<CosmeticSlot, CosmeticId>>;
-  /** When and where each item was obtained. */
-  history: { id: CosmeticId; event: string; at: number }[];
+  /** When and where each item was obtained (`fighter`: who earned a personal item). */
+  history: { id: CosmeticId; event: string; at: number; fighter?: FighterId }[];
   /** v8 (1.5): items the player has already looked at in MY COLLECTION (the rest show "NEW"). */
   seen: CosmeticId[];
+  /** v9 (1.5.5): personal items — the fighters who earned each one («Победитель легенды»). */
+  personal: Partial<Record<CosmeticId, FighterId[]>>;
+  /** v9: personal items each fighter wears, on top of the producer's common slots. */
+  personalEquipped: Partial<Record<FighterId, Partial<Record<CosmeticSlot, CosmeticId>>>>;
+  /** v9: personal items from older saves whose fighter cannot be told from the records — the player assigns them once. */
+  unassigned: CosmeticId[];
 }
 
 /** One finished Survival wave (kept while the run is in progress). */
@@ -205,7 +211,8 @@ const KEY = 'primetime-showdown-save-v1';
 // v2 (1.1): settings.camera. v3 (1.2): events + cosmetics. v4 (1.3): game modes. v5 (1.3.1): boss fight.
 // v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access). v7 (1.4): arena preference.
 // v8 (1.5): new fighters (filled from defaults), MY COLLECTION "seen" marks, claimed career stages.
-const VERSION = 8;
+// v9 (1.5.5): personal rewards per fighter (cosmetics.personal / personalEquipped / unassigned).
+const VERSION = 9;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -251,7 +258,7 @@ export function defaultSave(): SaveData {
     seed: Math.floor(Math.random() * 1e9),
     hintsSeen: false,
     events: {},
-    cosmetics: { owned: [], equipped: {}, history: [], seen: [] },
+    cosmetics: { owned: [], equipped: {}, history: [], seen: [], personal: {}, personalEquipped: {}, unassigned: [] },
     modes: emptyModes(),
     arena: 'original',
     careerClaimed: [],
@@ -307,8 +314,25 @@ function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
   return out;
 }
 
-function sanitizeCosmetics(raw: unknown): CosmeticsState {
-  const c: CosmeticsState = { owned: [], equipped: {}, history: [], seen: [] };
+/**
+ * Which fighters earned a personal item, read from the records an older save already keeps
+ * (v9 migration). «Победитель легенды»: every fighter with a win over the champion
+ * (`winsByFighter`, kept since 1.3.1, and the fight history). Empty = cannot be told.
+ */
+function personalOwnersFromRecords(id: CosmeticId, modes: ModesState): FighterId[] {
+  const out: FighterId[] = [];
+  if (id === 'title_prime_legend') {
+    const b = modes.boss.vale;
+    if (b) {
+      for (const f of FIGHTER_ORDER) if ((b.winsByFighter[f] ?? 0) > 0) out.push(f);
+      for (const h of b.history) if (h.won && !out.includes(h.fighter)) out.push(h.fighter);
+    }
+  }
+  return out;
+}
+
+function sanitizeCosmetics(raw: unknown, modes: ModesState): CosmeticsState {
+  const c: CosmeticsState = { owned: [], equipped: {}, history: [], seen: [], personal: {}, personalEquipped: {}, unassigned: [] };
   if (!raw || typeof raw !== 'object') return c;
   const r = raw as Partial<CosmeticsState>;
   if (Array.isArray(r.owned)) c.owned = [...new Set(r.owned.filter(isCosmeticId))];
@@ -321,11 +345,50 @@ function sanitizeCosmetics(raw: unknown): CosmeticsState {
   }
   if (Array.isArray(r.history)) {
     for (const h of r.history) {
-      if (h && typeof h === 'object' && isCosmeticId(h.id)) c.history.push({ id: h.id, event: String(h.event ?? '').slice(0, 64), at: num(h.at, 0) });
+      if (h && typeof h === 'object' && isCosmeticId(h.id)) {
+        const e: CosmeticsState['history'][number] = { id: h.id, event: String(h.event ?? '').slice(0, 64), at: num(h.at, 0) };
+        if (isFighter(h.fighter)) e.fighter = h.fighter;
+        c.history.push(e);
+      }
     }
   }
   // v8: items owned before MY COLLECTION existed are not flagged as new
   c.seen = Array.isArray(r.seen) ? [...new Set(r.seen.filter((id): id is CosmeticId => isCosmeticId(id) && c.owned.includes(id)))] : c.owned.slice();
+  // v9: personal items belong to the fighters who earned them
+  const legacy = !r.personal || typeof r.personal !== 'object';
+  for (const id of c.owned) {
+    if (!COSMETICS[id].personal) continue;
+    const slot = COSMETICS[id].slot;
+    let owners: FighterId[];
+    if (legacy) {
+      // older save: bind the item to the fighters the records name — never to everyone
+      owners = personalOwnersFromRecords(id, modes);
+      if (!owners.length) c.unassigned.push(id);
+      else if (c.equipped[slot] === id) {
+        // it was worn before: each fighter who really earned it keeps wearing it
+        for (const f of owners) (c.personalEquipped[f] ??= {})[slot] = id;
+      }
+    } else {
+      const list = (r.personal as Record<string, unknown>)[id];
+      owners = Array.isArray(list) ? [...new Set(list.filter(isFighter))] : [];
+      // owned but bound to nobody (unassigned legacy item, or damaged data): the player picks the fighter once
+      if (!owners.length) c.unassigned.push(id);
+    }
+    if (owners.length) c.personal[id] = owners;
+    // a personal item is never a common slot item (it would show on every fighter)
+    if (c.equipped[slot] === id) delete c.equipped[slot];
+  }
+  if (!legacy && r.personalEquipped && typeof r.personalEquipped === 'object') {
+    for (const f of FIGHTER_ORDER) {
+      const worn: unknown = (r.personalEquipped as Record<string, unknown>)[f];
+      if (!worn || typeof worn !== 'object') continue;
+      for (const slot of COSMETIC_SLOTS) {
+        const id = (worn as Record<string, unknown>)[slot];
+        // only a fighter who earned the item can wear it
+        if (isCosmeticId(id) && COSMETICS[id].slot === slot && c.personal[id]?.includes(f)) (c.personalEquipped[f] ??= {})[slot] = id;
+      }
+    }
+  }
   return c;
 }
 
@@ -518,9 +581,10 @@ export function sanitize(raw: unknown): SaveData {
   d.hintsSeen = bool(r.hintsSeen, false);
   // v3: seasonal progress and cosmetics (absent before Alpha 1.2 -> empty)
   d.events = sanitizeEvents(r.events);
-  d.cosmetics = sanitizeCosmetics(r.cosmetics);
   // v4: game modes (absent before Alpha 1.3 -> empty records)
   d.modes = sanitizeModes(r.modes);
+  // (cosmetics after the mode records: the v9 migration reads who beat the champion)
+  d.cosmetics = sanitizeCosmetics(r.cosmetics, d.modes);
   // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)
   if (Array.isArray(r.careerClaimed)) {
     const ids = new Set(CAREER_STAGES.map((st) => st.id));

@@ -305,16 +305,16 @@ export class EventsScreen implements Screen {
     } else if (em.upcoming) {
       const up = em.upcoming;
       top = `${this.banner(up, false, `начнётся через <b data-start>${formatSpan(em.timeToStart(up))}</b>`)}
-        <div class="ev-hint">Задания, ${esc(up.currency?.name ?? 'жетоны')} и уникальные награды откроются в день премьеры.</div>`;
+        <div class="ev-hint">Задания, ${esc(up.currency?.name ?? 'жетоны')} и награды сезона — сюрприз: они откроются в день премьеры.</div>`;
     } else {
       top = `<div class="ev-empty panel">${ICONS.calendar}<div class="h2">Сейчас нет события</div><div class="muted">Следите за обновлениями: новые сезоны PRIME TIME появляются в календаре автоматически.</div></div>`;
     }
-    // the season's own reward lineup (owned items marked); everything earned lives in MY COLLECTION
+    // Alpha 1.5.5: no reward lineup outside a running event — future rewards stay a surprise.
+    // Items the player already earned in this season are shown (they live in MY COLLECTION).
     const season = active ?? em.upcoming;
-    const lineup = season && (season.shop.length || season.grandPrize)
-      ? [...season.shop.map((x) => x.cosmetic), ...(season.grandPrize ? [season.grandPrize.cosmetic] : [])].map((id) => this.rewardCard(COSMETICS[id], null, season)).join('')
-      : '';
-    return `${top}${lineup ? `<div class="section-title ev-coll-title"><span class="h2">Награды сезона</span><span class="label">${esc(season!.title)}</span></div><div class="ev-rewards">${lineup}</div>` : ''}
+    const ownedHere = season ? [...season.shop.map((x) => x.cosmetic), ...(season.grandPrize ? [season.grandPrize.cosmetic] : [])].filter((id) => em.owns(id)) : [];
+    const lineup = ownedHere.map((id) => this.rewardCard(COSMETICS[id], null, season!)).join('');
+    return `${top}${lineup ? `<div class="section-title ev-coll-title"><span class="h2">Ваши награды сезона</span><span class="label">${esc(season!.title)}</span></div><div class="ev-rewards">${lineup}</div>` : ''}
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
 }

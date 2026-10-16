@@ -44,6 +44,11 @@ export interface CosmeticDef {
   sourceLabel: string;
   /** How to get it, shown on a locked card. */
   howTo: string;
+  /**
+   * Alpha 1.5.5: a personal reward — it belongs to each fighter who earned it (a fighter who
+   * has not earned it cannot wear it). Common producer items leave this unset.
+   */
+  personal?: boolean;
 }
 
 export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
@@ -117,14 +122,15 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     id: 'title_prime_legend',
     slot: 'title',
     name: 'PRIME LEGEND',
-    desc: 'Победитель легендарного чемпиона Виктора Вейла: золотой титул на табличке бойца и чемпионский победный экран.',
-    where: 'Меню и экран победы',
+    desc: 'Победитель легендарного чемпиона Виктора Вейла: золотой титул на табличке бойца и чемпионский победный экран. Личная награда: её носит только тот боец, который сам победил легенду.',
+    where: 'Меню и экран победы этого бойца',
     art: 'belt',
     rarity: 'legendary',
     eventId: 'boss-vale',
     source: 'boss',
     sourceLabel: 'Boss Fight · Виктор Вейл',
-    howTo: 'Первая победа над Виктором Вейлом в Boss Fight',
+    howTo: 'Победите Виктора Вейла в Boss Fight этим бойцом',
+    personal: true,
   },
   // Alpha 1.5: producer career milestones (CareerSystem stages)
   title_prime_star: {

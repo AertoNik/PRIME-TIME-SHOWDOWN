@@ -124,6 +124,20 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.03,
     turnRate: 10,
   },
+  // Alpha 1.5.5 — Zoe: a tactician — low and economical, quick small steps, eyes always working.
+  tactician: {
+    strideLength: 2.1,
+    legSwing: 0.7,
+    kneeLift: 1.15,
+    bob: 0.03,
+    sway: 0.04,
+    lean: 0.19,
+    accelLean: 0.085,
+    turnBank: 0.07,
+    armBob: 0.04,
+    contactSquash: 0.02,
+    turnRate: 18,
+  },
   // Vega: composed and economical — long smooth strides, minimal bob, snaps onto targets.
   poise: {
     strideLength: 2.3,
@@ -169,6 +183,50 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   ricochet: { kick: 12, stiffness: 360, damping: 15, spine: 0.012, shove: 0.25, slide: 0.07, shake: 0 },
   // Alpha 1.5 — Rina's compact twin-barrel: crisp light double-tap, almost no body follow
   stinger: { kick: 7, stiffness: 560, damping: 28, spine: 0.005, shove: 0.12, slide: 0.045, shake: 0 },
+};
+
+/**
+ * Alpha 1.5.5 — how each weapon *feels* when it fires, on top of the recoil spring:
+ * the opening shot of a series commits harder than the follow-ups, the torso and
+ * shoulders take the kick, the legs absorb it when standing, and a few weapons brace
+ * just before the trigger (read from the simulation's real fire timer — visual only).
+ */
+export interface FireStyle {
+  /** Kick multiplier of the first shot after a pause (a committed opening shot). */
+  firstShot: number;
+  /** Relative kick of the follow-up shots: a short repeating cadence, not random noise. */
+  series: readonly number[];
+  /** Torso twist per shot toward the firing hand (rad). */
+  twist: number;
+  /** Chest lift / shoulders rocking back per shot (rad). */
+  chest: number;
+  /** Knee dip of a standing shot — the legs soak the kick (rad); a fraction of it while moving. */
+  dip: number;
+  /** Head nod with the shot (rad). */
+  nod: number;
+  /** Small alternating side tilt from shot to shot (controlled variation, rad). */
+  sway: number;
+  /** Seconds before the next shot to settle into the stance (0 = no anticipation). */
+  brace: number;
+  /** How deep that settle goes (0..1): lower stance, steadier arms. */
+  braceAmt: number;
+}
+
+export const FIRE_STYLE: Record<WeaponType, FireStyle> = {
+  // Ray (and Dex): quick, confident pistols — alternating hands, the torso snaps to each side, no wind-up
+  twin_blasters: { firstShot: 1.3, series: [1, 0.85, 0.95, 0.8], twist: 0.07, chest: 0.03, dip: 0.04, nod: 0.03, sway: 0.025, brace: 0, braceAmt: 0 },
+  // Bruno (Tank, Crash): a heavy cannon — sinks into the stance before the blast, the whole body takes it
+  boom_cannon: { firstShot: 1.25, series: [1, 0.9], twist: 0.06, chest: 0.12, dip: 0.17, nod: 0.08, sway: 0.04, brace: 0.16, braceAmt: 1 },
+  // Nika (Zoe): compact, technical carbine — tight and economical, almost no body follow
+  tech_carbine: { firstShot: 1.15, series: [1, 0.7, 0.8, 0.7], twist: 0.02, chest: 0.025, dip: 0.025, nod: 0.015, sway: 0.01, brace: 0.06, braceAmt: 0.4 },
+  // Vega: the marksman — holds her breath before the shot (steady arms), one clean kick into the shoulder
+  pulse_rifle: { firstShot: 1.2, series: [1], twist: 0.01, chest: 0.045, dip: 0.03, nod: 0.05, sway: 0, brace: 0.22, braceAmt: 0.8 },
+  // Victor: PRIME BREAKER — braced, heavy and controlled: every slug of the burst rocks him, never sways him
+  breaker: { firstShot: 1.2, series: [1, 0.85, 0.92], twist: 0.04, chest: 0.1, dip: 0.12, nod: 0.05, sway: 0, brace: 0.2, braceAmt: 1 },
+  // Kai: the showman — a flick of the wrist, the shoulders play to the camera, a varied rhythm
+  ricochet: { firstShot: 1.35, series: [1, 0.85, 1.1, 0.8], twist: 0.09, chest: 0.05, dip: 0.03, nod: 0.04, sway: 0.05, brace: 0.1, braceAmt: 0.3 },
+  // Rina: a sharp double tap — quick in, quick out, ready to step
+  stinger: { firstShot: 1.1, series: [1, 0.75], twist: 0.05, chest: 0.02, dip: 0.05, nod: 0.02, sway: 0.03, brace: 0, braceAmt: 0 },
 };
 
 export const HIT_REACTION = {

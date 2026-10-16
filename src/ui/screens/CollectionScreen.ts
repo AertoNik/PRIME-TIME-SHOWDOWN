@@ -1,5 +1,7 @@
 import { COSMETICS, COSMETIC_SLOTS, SLOT_LABELS, type CosmeticDef, type CosmeticId } from '../../config/cosmetics.config';
 import { EVENTS } from '../../config/events.config';
+import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
+import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { AchievementView, CollectionTab, CosmeticView } from '../../meta/Collection';
 import { el, esc } from '../dom';
@@ -60,12 +62,33 @@ export class CollectionScreen implements Screen {
       this.render();
     } else if (act === 'equip' || act === 'unequip') {
       const id = t.dataset.id as CosmeticId;
-      if (g.collection.setEquipped(id, act === 'equip')) {
+      // personal items are worn per fighter (the chip names who); common items by the producer
+      const fighter = (t.dataset.f as FighterId | undefined) ?? g.save.data.selected;
+      const personal = !!COSMETICS[id].personal;
+      if (g.collection.setEquipped(id, act === 'equip', fighter)) {
         g.audio.ui(act === 'equip' ? 'confirm' : 'click');
         g.applyCosmetics();
-        g.ui.toast(act === 'equip' ? `${COSMETICS[id].name}: надето` : `${COSMETICS[id].name}: снято, вернулось стандартное оформление`);
+        const who = personal ? ` (${FIGHTERS[fighter].name})` : '';
+        g.ui.toast(act === 'equip' ? `${COSMETICS[id].name}${who}: надето` : `${COSMETICS[id].name}${who}: снято`);
         this.render();
       }
+    } else if (act === 'assign') {
+      // one-time: tie an old personal reward to the fighter who earned it
+      const id = t.dataset.id as CosmeticId;
+      const f = t.dataset.f as FighterId;
+      g.confirm(
+        'Привязать награду?',
+        `«${COSMETICS[id].name}» станет личной наградой бойца ${FIGHTERS[f].name}. Выбор делается один раз.`,
+        'Привязать',
+        () => {
+          if (g.collection.assignLegacy(id, f)) {
+            g.audio.ui('confirm');
+            g.applyCosmetics();
+            g.ui.toast(`${COSMETICS[id].name}: теперь награда бойца ${FIGHTERS[f].name}`);
+            this.render();
+          }
+        },
+      );
     } else if (act === 'career') {
       g.audio.ui('click');
       g.goto('career');
@@ -78,14 +101,17 @@ export class CollectionScreen implements Screen {
   // ------------------------------------------------------------------ render
   private render(): void {
     const col = this.g.collection;
-    const all = col.cosmetics();
+    const sel = this.g.save.data.selected;
+    // only what may be shown: seasonal items appear once really obtained (no spoilers)
+    const all = col.cosmetics(undefined, sel);
     const owned = all.filter((v) => v.owned);
     const ach = col.achievements();
     const achDone = ach.filter((a) => a.done);
     const slots = COSMETIC_SLOTS.map((slot) => {
-      const id = col.equipped(slot);
+      const id = col.equippedFor(slot, sel);
       return `<div class="ca-slot ${id ? 'on' : ''}"><span>${esc(SLOT_LABELS[slot])}</span><b>${id ? esc(COSMETICS[id].name) : 'Стандарт'}</b></div>`;
     }).join('');
+    const legacy = col.unassigned().map((id) => this.legacyCard(id)).join('');
     let body = '';
     if (this.tab === 'all') body = this.renderAll(owned, achDone);
     else if (this.tab === 'cosmetics') body = this.renderCosmetics(all);
@@ -102,9 +128,10 @@ export class CollectionScreen implements Screen {
             <div class="ca-org">${esc(this.g.save.data.orgName)}</div>
             <div class="ca-count"><span><b>${owned.length}</b>/${all.length} предметов</span><span><b>${achDone.length}</b>/${ach.length} достижений</span></div>
           </div>
-          <div class="label ca-label">Сейчас в эфире</div>
+          <div class="label ca-label">Сейчас в эфире · ${esc(FIGHTERS[sel].name)}</div>
           <div class="ca-slots">${slots}</div>
         </div>
+        ${legacy}
         <div class="seg-control col-tabs">${TABS.map((t) => `<button class="${this.tab === t.id ? 'on' : ''}" data-act="tab" data-tab="${t.id}">${t.label}</button>`).join('')}</div>
         ${body}
       </div>`;
@@ -136,8 +163,13 @@ export class CollectionScreen implements Screen {
       ${todo.length ? `<div class="col-section-title"><span class="h2">В процессе</span><span class="label">${todo.length}</span></div><div class="col-list">${todo.map((a) => this.achievementCard(a)).join('')}</div>` : ''}`;
   }
 
+  /**
+   * Alpha 1.5.5: only seasonal items the player really obtained (they stay forever). A running
+   * event gets a short card pointing to «События», where its rewards are presented; nothing
+   * of a future season is revealed here.
+   */
   private renderSeasons(all: CosmeticView[]): string {
-    const seasonal = all.filter((v) => v.def.source === 'season');
+    const seasonal = all.filter((v) => v.def.source === 'season' && v.owned);
     const groups = new Map<string, CosmeticView[]>();
     for (const v of seasonal) {
       const list = groups.get(v.def.eventId) ?? [];
@@ -146,20 +178,38 @@ export class CollectionScreen implements Screen {
     }
     const em = this.g.events;
     const out: string[] = [];
+    const live = em.active && em.playable ? em.active : null;
+    if (live && !groups.has(live.id)) {
+      out.push(`<div class="col-season panel">
+          <div class="cs-head"><div><div class="cs-name">${esc(live.title)}</div><div class="label">Сезонные награды — в экране события</div></div><span class="chip orange">Идёт сейчас</span></div>
+          <button class="btn ghost wide cs-go" data-act="events">Задания и награды — в «Событиях»</button>
+        </div>`);
+    }
     for (const [eventId, items] of groups) {
       const ev = EVENTS.find((e) => e.id === eventId);
-      const running = em.active?.id === eventId && em.playable;
-      const ended = !!ev?.end && Date.parse(ev.end) <= em.now();
-      const state = running ? '<span class="chip orange">Идёт сейчас</span>' : ended ? '<span class="chip">Сезон завершён</span>' : '<span class="chip">Скоро</span>';
-      const got = items.filter((v) => v.owned).length;
+      const running = live?.id === eventId;
+      const state = running ? '<span class="chip orange">Идёт сейчас</span>' : '<span class="chip">Сезон завершён</span>';
       out.push(`<div class="col-season panel">
-          <div class="cs-head"><div><div class="cs-name">${esc(items[0].def.sourceLabel)}</div><div class="label">Получено ${got}/${items.length} · награды остаются навсегда</div></div>${state}</div>
-          ${running ? `<button class="btn ghost wide cs-go" data-act="events">Задания и обмен — в «Событиях»</button>` : ''}
+          <div class="cs-head"><div><div class="cs-name">${esc(ev?.title ?? items[0].def.sourceLabel)}</div><div class="label">Получено: ${items.length} · награды остаются навсегда</div></div>${state}</div>
+          ${running ? `<button class="btn ghost wide cs-go" data-act="events">Задания и награды — в «Событиях»</button>` : ''}
           <div class="col-list">${items.map((v) => this.cosmeticCard(v)).join('')}</div>
         </div>`);
     }
-    if (!out.length) out.push('<div class="col-hint muted">Сезонных наград пока нет.</div>');
+    if (!out.length) out.push('<div class="col-hint muted">Сезонных наград пока нет. Они появятся здесь, когда вы получите их во время события.</div>');
     return out.join('');
+  }
+
+  /** An old personal reward the records could not tie to a fighter: the player picks once. */
+  private legacyCard(id: CosmeticId): string {
+    const c = COSMETICS[id];
+    const s = this.g.save.data;
+    const fighters = FIGHTER_ORDER.filter((f) => s.fighters[f].unlocked);
+    return `<div class="col-legacy panel">
+        <div class="cl-head"><div class="cc-art">${REWARD_ART[c.art]}</div>
+          <div><div class="h2">${esc(c.name)}: чья это победа?</div>
+          <div class="muted cl-text">Эта награда получена до появления личных наград, и сохранение не помнит, какой боец её заработал. Выберите бойца — один раз, награду не придётся зарабатывать заново.</div></div></div>
+        <div class="cl-fighters">${fighters.map((f) => `<button class="btn ghost cl-f" data-act="assign" data-id="${id}" data-f="${f}">${esc(FIGHTERS[f].name)}</button>`).join('')}</div>
+      </div>`;
   }
 
   private cosmeticCard(v: CosmeticView): string {
@@ -167,7 +217,26 @@ export class CollectionScreen implements Screen {
     const fresh = this.freshOnOpen.has(c.id);
     let state: string;
     let btn = '';
-    if (v.owned) {
+    let owners = '';
+    if (c.personal) {
+      // a personal reward: who earned it (tap a fighter to put it on / take it off), who has not yet
+      const col = this.g.collection;
+      const sel = this.g.save.data.selected;
+      const chips = v.owners
+        .map((f) => {
+          const on = col.isEquipped(c.id, f);
+          return `<button class="cc-owner ${on ? 'on' : ''} ${f === sel ? 'sel' : ''}" data-act="${on ? 'unequip' : 'equip'}" data-id="${c.id}" data-f="${f}" aria-label="${on ? 'Снять' : 'Надеть'}: ${esc(FIGHTERS[f].name)}">${on ? UI_ICONS.check.replace('<svg', '<svg width="10" height="10"') : ''}${esc(FIGHTERS[f].name)}</button>`;
+        })
+        .join('');
+      const missing = FIGHTER_ORDER.filter((f) => !v.owners.includes(f)).map((f) => FIGHTERS[f].name);
+      owners = `<div class="cc-owners">${v.owners.length ? `<span class="cc-ol">Получено:</span>${chips}` : ''}</div>
+        ${missing.length ? `<div class="cc-missing">${v.owners.length ? 'Ещё не получено' : 'Пока ни у кого'}: ${esc(missing.join(', '))}</div>` : ''}`;
+      state = v.owners.length
+        ? v.owners.includes(sel)
+          ? `<span class="cc-state">Личная награда · нажмите на бойца, чтобы надеть или снять</span>`
+          : `<span class="cc-state locked">Для бойца ${esc(FIGHTERS[sel].name)}: ещё не получено</span>`
+        : `<span class="cc-state locked">${UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')} ${esc(c.howTo)}</span>`;
+    } else if (v.owned) {
       state = v.equipped ? `<span class="cc-state on">${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} Надето</span>` : '<span class="cc-state">В коллекции</span>';
       btn = v.equipped
         ? `<button class="btn ghost cc-btn" data-act="unequip" data-id="${c.id}">Снять</button>`
@@ -176,13 +245,15 @@ export class CollectionScreen implements Screen {
       state = `<span class="cc-state locked">${UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')} ${esc(c.howTo)}</span>`;
     }
     const when = v.owned && v.at ? ` · ${fmtDate(v.at)}` : '';
-    return `<div class="col-card rarity-${c.rarity} ${v.owned ? 'owned' : 'locked'} ${v.equipped ? 'equipped' : ''}">
+    const ownedHere = c.personal ? v.owners.length > 0 : v.owned;
+    return `<div class="col-card rarity-${c.rarity} ${ownedHere ? 'owned' : 'locked'} ${v.equipped ? 'equipped' : ''}">
         <div class="cc-art">${REWARD_ART[c.art]}</div>
         <div class="cc-body">
           <div class="cc-top"><span class="cc-type">${esc(SLOT_LABELS[c.slot])}</span><span class="cc-rarity">${RARITY[c.rarity]}</span>${fresh ? '<span class="cc-new">NEW</span>' : ''}</div>
           <div class="cc-name">${esc(c.name)}</div>
           <div class="cc-desc">${esc(c.desc)}</div>
           <div class="cc-meta">${esc(c.sourceLabel)}${when} · ${esc(c.where)}</div>
+          ${owners}
           <div class="cc-foot">${state}${btn}</div>
         </div>
       </div>`;

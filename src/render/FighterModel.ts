@@ -844,17 +844,37 @@ export function getRigGeometry(lookId: string): RigGeometry {
   // ----------------------------------------------------------------- head
   const R = d.headR;
   const cy = R * 0.84;
-  const hx = R;
-  const hy = R * 0.94;
+  // Alpha 1.5.5: face traits may make the face a touch longer and narrower (a little older)
+  const jawK = look.face?.jaw ?? 0;
+  const fx = 1 - 0.035 * jawK;
+  const fy = 1 + 0.035 * jawK;
+  const hx = R * fx;
+  const hy = R * 0.94 * fy;
   const hz = R * 0.92;
   const faceZ = (x: number, y: number) => hz * Math.sqrt(Math.max(0, 1 - (x / hx) ** 2 - (y / hy) ** 2));
   {
     const H = B.t('head');
     const HG = B.g('head');
-    H.add(sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [1, 0.94, 0.92] });
+    H.add(sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
     if (look.body === 'heavy') {
       // square jaw
       H.add(sph(R * 0.82, 20, 14), skin, { p: [0, cy - R * 0.3, -0.02], s: [1.14, 0.72, 0.9] });
+    }
+    const face = look.face;
+    if (face && face.jaw > 0) {
+      // Alpha 1.5.5: a slightly squarer jaw behind the face plane (it shapes the silhouette, no crease
+      // across the cheeks) and a small rounded chin at the bottom of the longer face
+      H.add(sph(R * 0.78, 22, 14), skin, { p: [0, cy - R * 0.36, -0.07], s: [0.93, 0.56, 0.8] });
+      H.add(sph(0.075, 14, 10), skin, { p: [0, cy - hy * 0.74, faceZ(0, -hy * 0.74) - 0.06], s: [1.35, 0.7, 0.8] });
+    }
+    if (face && face.cheekbones > 0) {
+      // soft cheekbones: a warm highlight high on each cheek, a gentle shadow crease under it
+      const c = face.cheekbones;
+      for (const s of [1, -1]) {
+        const x = s * 0.24;
+        H.add(sph(0.09, 14, 10), shade(skin, 1.1), { p: [x, cy - 0.07, faceZ(x, -0.07) - 0.045], s: [1.35, 0.6 * c, 0.55], r: [0, s * 0.6, -s * 0.22] });
+        H.add(sph(0.08, 12, 8), shade(skin, 0.84), { p: [x * 0.95, cy - 0.13, faceZ(x * 0.95, -0.13) - 0.04], s: [1.25, 0.32 * c, 0.45], r: [0, s * 0.6, -s * 0.3] });
+      }
     }
     // ears
     for (const s of [1, -1]) {
@@ -1103,7 +1123,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
     const x = s * eyeX;
     const z = faceZ(x, eyeY) - 0.03;
     const yaw = Math.asin(x / R) * 0.85;
-    const eh = look.body === 'heavy' ? 0.92 : 1.08;
+    const eh = (look.body === 'heavy' ? 0.92 : 1.08) * (look.face?.eyeHeight ?? 1);
     eyes.add(sph(0.1, 16, 12), 0xffffff, { p: [x, 0, z], s: [0.82, eh, 0.45], r: [0, yaw, 0] });
     eyes.add(sph(0.062, 14, 10), look.eyes, { p: [x * 0.97, -0.004, z + 0.03], s: [0.82, 1.06 * eh, 0.4], r: [0, yaw, 0] });
     eyes.add(sph(0.034, 10, 8), 0x0b0b12, { p: [x * 0.97, -0.006, z + 0.045], s: [0.85, 1.05 * eh, 0.4], r: [0, yaw, 0] });
@@ -1120,6 +1140,17 @@ export function getRigGeometry(lookId: string): RigGeometry {
         ? shade(look.hair.color, 0.7)
         : look.hair.color;
   for (const s of [1, -1]) {
+    if (look.face?.archedBrows) {
+      // Alpha 1.5.5: thick arched brows in two strokes, the right one cocked higher
+      const lift = s < 0 ? 0.02 : 0;
+      const yawI = Math.asin((s * (eyeX - 0.03)) / R) * 0.85;
+      const yawO = Math.asin((s * (eyeX + 0.06)) / R) * 0.85;
+      const byI = eyeY + 0.112 + lift;
+      const byO = eyeY + 0.124 + lift * 0.6;
+      brows.add(rbox(0.105, 0.056, 0.045, 0.024), browC, { p: [s * (eyeX - 0.03), cy + byI, faceZ(s * (eyeX - 0.03), byI) + 0.004], r: [0, yawI, s * (s < 0 ? 0.08 : 0.18)] });
+      brows.add(rbox(0.095, 0.044, 0.045, 0.019), browC, { p: [s * (eyeX + 0.06), cy + byO, faceZ(s * (eyeX + 0.06), byO) + 0.004], r: [0, yawO, -s * 0.36] });
+      continue;
+    }
     const x = s * eyeX;
     const by = eyeY + 0.135;
     const z = faceZ(x, by) + 0.0;
@@ -1138,11 +1169,18 @@ export function getRigGeometry(lookId: string): RigGeometry {
     brows.add(rbox(0.14, thick, 0.04, thick * 0.45), browC, { p: [x, cy + by + (look.brow === 'cocky' && s < 0 ? 0.02 : 0), z], r: [0, yaw, rz] });
   }
   const mouthY = look.body === 'heavy' ? -0.2 : -0.185;
-  const mouthPivot: V3 = [look.mouth === 'smirk' ? 0.04 : 0, cy + mouthY, faceZ(0, mouthY) + 0.012];
+  const grin = !!look.face?.grin;
+  const mouthPivot: V3 = [look.mouth === 'smirk' || grin ? 0.04 : 0, cy + mouthY, faceZ(0, mouthY) + 0.012];
   const mouth = new PartSet();
   const mouthOpen = new PartSet();
   const lip = 0x2a1418;
-  if (look.mouth === 'flat') {
+  if (grin) {
+    // Alpha 1.5.5: a lopsided showman's grin, wider on one side, with a dimple at the raised corner
+    const arc = tor(0.078, 0.016, Math.PI * 0.8, 14);
+    arc.rotateZ(Math.PI + Math.PI * 0.1);
+    mouth.add(arc, lip, { p: [0, 0.038, 0], r: [0, 0, 0.2] });
+    mouth.add(rbox(0.016, 0.05, 0.014, 0.006), shade(skin, 0.72), { p: [0.105, 0.022, -0.012], r: [0, 0.35, -0.3] });
+  } else if (look.mouth === 'flat') {
     mouth.add(rbox(0.13, 0.026, 0.03, 0.012), lip, { p: [0, 0, 0] });
   } else {
     const arc = tor(0.07, 0.015, Math.PI * 0.85, 14);

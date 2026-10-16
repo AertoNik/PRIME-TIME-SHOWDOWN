@@ -1,8 +1,8 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.5.0-alpha",
-  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.5: Rising Stars & Producer Legacy)",
+  "version": "1.5.5-alpha",
+  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.5.5: Combat Evolution & Final Polish)",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -16,7 +16,8 @@
     "events": "tsx scripts/events-check.ts",
     "modes": "tsx scripts/modes-check.ts",
     "arenas": "tsx scripts/arena-check.ts",
-    "collection": "tsx scripts/collection-check.ts"
+    "collection": "tsx scripts/collection-check.ts",
+    "anims": "tsx scripts/anim-check.ts"
   },
   "dependencies": {
     "@fontsource/rubik": "^5.3.0",

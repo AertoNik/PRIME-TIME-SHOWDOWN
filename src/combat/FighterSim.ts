@@ -136,6 +136,11 @@ export class FighterSim {
   /** Alpha 1.5 — FALSE START: seconds left in the read window, and its SUPERSTAR boost. */
   feint = 0;
   feintMult = 1;
+  /** Alpha 1.5.5 — Zoe's SHOCK: seconds left of the visible charge before the bolt, and its combo. */
+  zap = 0;
+  zapCombo: ComboId | null = null;
+  /** Alpha 1.5.5: match time this fighter was last stunned or glitched (control recovery window). */
+  ctrlEnd = -99;
   /** Alpha 1.5 — RIPOSTE (Rina): an empowered volley is ready / cooldown. */
   riposte = false;
   riposteCd = 0;
