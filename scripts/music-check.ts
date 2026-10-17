@@ -7,6 +7,7 @@
 import { ARENA_ORDER } from '../src/config/arenas.config';
 import { ARENA_MUSIC, MUSIC_MIX, MUSIC_TRACKS, trackGain, type MusicId } from '../src/config/music.config';
 import { loopWindow } from '../src/audio/MusicPlayer';
+import { CROWD_SR, VOICES, addClapper, addVoice, edgeLevel, normalize, type Stereo } from '../src/audio/CrowdKit';
 
 // Node's fs without @types/node (the project has none): the few calls this check needs
 interface Fs {
@@ -120,7 +121,57 @@ check('crowd: the audience answers 0.45–0.8 s after the moment (the hit / comb
 check('crowd: a second expressive moment soon after applause gets voices only (no second round)', /tier === 2 && now - this\.handsLast >= CROWD\.fresh/.test(audio));
 check('crowd: a TV banner gets at most an expressive reaction (the moment itself owns the spectacular one)', /this\.crowd\(tier >= 2 \? 2 : 1\);/.test(audio));
 check('crowd: the knockout roar always cuts in (never swallowed by a reaction a moment before)', /if \(playerWon\) this\.crowd\(3, true\);/.test(audio));
-check('crowd: applause is real hand-clapping, synthesised once into seamless loops (no node storm per reaction)', /this\.handsDense = this\.makeHands\(24, 6\);/.test(audio) && /const k = \(start \+ i\) % n;/.test(audio));
+// Alpha 1.6.6 — the crowd's sounds themselves (CrowdKit), synthesised here exactly as the game does
+{
+  const sr = CROWD_SR;
+  const mk = (secs: number): Stereo => ({ L: new Float32Array(Math.round(secs * sr)), R: new Float32Array(Math.round(secs * sr)) });
+  const measure = (b: Stereo) => {
+    const L = b.L;
+    let sum = 0;
+    let peak = 0;
+    for (let i = 0; i < L.length; i++) {
+      sum += L[i] * L[i];
+      peak = Math.max(peak, Math.abs(L[i]));
+    }
+    const rms = Math.sqrt(sum / L.length);
+    // how uneven it is from one 10 ms to the next: a wash of applause is low, separate «pops» are high
+    const w = Math.round(0.01 * sr);
+    const win: number[] = [];
+    for (let i = 0; i + w <= L.length; i += w) {
+      let q = 0;
+      for (let j = i; j < i + w; j++) q += L[j] * L[j];
+      win.push(Math.sqrt(q / w));
+    }
+    const mean = win.reduce((x, y) => x + y, 0) / win.length;
+    const sd = Math.sqrt(win.reduce((x, y) => x + (y - mean) ** 2, 0) / win.length);
+    return { crest: 20 * Math.log10(peak / rms), grain: sd / mean, peak };
+  };
+  const hands = (people: number) => {
+    const b = mk(6);
+    for (let p = 0; p < people; p++) addClapper(b, sr, p, people);
+    normalize(b, 0.8);
+    return measure(b);
+  };
+  const dense = hands(64);
+  const light = hands(26);
+  // 1.6.5 measured: dense crest 19.5 dB / grain 0.57, light 21.6 dB / 0.94 (the «popcorn»)
+  check(`crowd: applause is a soft wash, not popcorn — dense crest ${dense.crest.toFixed(1)} dB (was 19.5), grain ${dense.grain.toFixed(2)} (was 0.57)`, dense.crest < 17 && dense.grain < 0.36);
+  check(`crowd: the calmer applause too — crest ${light.crest.toFixed(1)} dB (was 21.6), grain ${light.grain.toFixed(2)} (was 0.94)`, light.crest < 19 && light.grain < 0.5);
+  const bad: string[] = [];
+  for (const [name, spec] of Object.entries(VOICES)) {
+    const b = mk(spec.secs);
+    for (let v = 0; v < spec.voices; v++) addVoice(b, sr, spec);
+    normalize(b, 0.7);
+    const m = measure(b);
+    if (!(m.peak <= 0.7001)) bad.push(`${name}: peak ${m.peak.toFixed(2)}`);
+    if (!spec.loop && edgeLevel(b, sr) > 0.001) bad.push(`${name}: starts / ends with a step`);
+    if (spec.chatter && m.grain < 0.3) bad.push(`${name}: a steady wash (grain ${m.grain.toFixed(2)})`);
+  }
+  check(`crowd: people's voices (cheer, roar, «ooh», «aww», shout, a talking hall) — safe peaks, one-shots start and end in silence, the hall talks in syllables (no steady wash)${bad.length ? ' — ' + bad.join('; ') : ''}`, bad.length === 0);
+  check('crowd: the sounds are made once after the first tap, one person per frame (no stutter), and the hall stays quiet until they are ready', /void this\.buildCrowd\(\);/.test(audio) && /await frame\(\);/.test(audio) && /if \(!k\.handsDense\) return;/.test(audio));
+  check('crowd: every reaction is people — voices first, the hands a beat later, then the hall talking', /k\.ooh\) this\.playCrowd\(k\.ooh/.test(audio) && /k\.cheers\) this\.playCrowd\(k\.cheers/.test(audio) && /k\.roar\) this\.playCrowd\(k\.roar/.test(audio) && /this\.handsOnce\(out, delay \+ 0\.12/.test(audio) && /CROWD\.murmur\.big : CROWD\.murmur\.small/.test(audio));
+  check('crowd: during a fight the talking hall is only a short snippet now and then — the bed stays the quiet murmur (no sea waves)', /len: 2\.2, attack: 0\.6/.test(audio) && /this\.crowdFilter\.type = 'lowpass';/.test(audio));
+}
 check('crowd: the end of the fight cancels a waiting small / expressive reaction', /endMatchMusic\(\): void \{[\s\S]{0,200}this\.cancelReactions\(\);/.test(audio));
 
 let ok = true;

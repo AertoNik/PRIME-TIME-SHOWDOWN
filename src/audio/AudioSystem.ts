@@ -2,6 +2,7 @@ import type { PropKind } from '../config/arenas.config';
 import { MUSIC_MIX, type MusicId } from '../config/music.config';
 import type { CardId, WeaponType } from '../config/types';
 import { MusicFiles, MusicPlayer } from './MusicPlayer';
+import { CROWD_SR, VOICES, addClapper, addVoice, normalize, type Stereo, type VoiceSpec } from './CrowdKit';
 
 type Wave = OscillatorType;
 
@@ -49,8 +50,11 @@ const MIN_LEAD = 0.01;
  * one at a time, with pauses; applause for a win. Levels were set by measurement against the
  * music (≈ −31 LUFS) and the fight SFX (≈ −29 LUFS) — the bed sits ~20 dB under the music.
  * Alpha 1.6.5 — the audience answers a moment instead of sounding with it (0.45–0.8 s later),
- * applause is real hand-clapping (see makeHands) and lasts 2–3 s, a win gets a full ovation
- * that settles into warm applause for as long as the results stay on screen.
+ * applause lasts 2–3 s, a win gets a full ovation that settles into warm applause for as long
+ * as the results stay on screen.
+ * Alpha 1.6.6 — the sounds themselves (CrowdKit): softer, denser applause without the popcorn
+ * crackle, and people — cheers, a roar, «ooh», «aww», shouts, a chattering hall — blended into
+ * one reaction with the hands.
  */
 const CROWD = {
   /** Murmur gain of the full fight bed (setCrowd(1)); a calm fight runs at `rest` of it. */
@@ -76,13 +80,33 @@ const CROWD = {
   smallChance: 0.55,
   /** Something small happens in the stands now and then while the fight goes on (seconds between). */
   ambient: [5, 12] as const,
-  /** Voice gains per tier (formant layers). */
-  voice: [0.2, 0.3, 0.45] as const,
-  /** Applause gains (makeHands buffers): an expressive moment, a spectacular one, the winner's ovation, the warm applause after it, a loser's polite hands. */
-  hands: { expressive: 0.5, spectacular: 0.7, ovation: 0.62, warm: 0.3, polite: 0.18 },
+  /**
+   * Gains of the CrowdKit buffers, set by measurement at the SFX bus (400 ms peaks, LUFS):
+   * a small «ooh» ≈ −41, an expressive reaction ≈ −35 (cheer and hands alike, the talking hall
+   * under them), a spectacular one ≈ −31, the ovation ≈ −33, the warm applause after it ≈ −42 —
+   * the applause a little softer than 1.6.5's, the voices in the same reaction with it.
+   * Voices: «ooh» (small moment), cheer (expressive), roar (spectacular), «aww», a single shout.
+   */
+  voices: { ooh: 0.048, cheer: 0.067, roar: 0.13, aww: 0.066, shout: 0.038 },
+  /** Applause: an expressive moment, a spectacular one, the winner's ovation, the warm applause after it, a loser's polite hands. */
+  hands: { expressive: 0.079, spectacular: 0.126, ovation: 0.141, warm: 0.072, polite: 0.08 },
+  /** The hall talking (murmur loop): after an expressive / a spectacular moment, during the ovation, the warm part, now and then in a fight. */
+  murmur: { small: 0.048, big: 0.077, ovation: 0.086, warm: 0.038, ambient: 0.027 },
   /** A single hand clap in the stands. */
-  clap: 0.05,
+  clap: 0.04,
 };
+
+/** Alpha 1.6.6: the crowd's sounds, synthesised once after the first tap (filled in as they are ready). */
+interface CrowdBufs {
+  handsDense?: AudioBuffer;
+  handsLight?: AudioBuffer;
+  cheers?: AudioBuffer[];
+  roar?: AudioBuffer;
+  ooh?: AudioBuffer;
+  aww?: AudioBuffer;
+  shouts?: AudioBuffer[];
+  murmur?: AudioBuffer;
+}
 
 /**
  * Procedural SFX synthesised on demand and the crowd ambience; the soundtrack
@@ -122,9 +146,8 @@ export class AudioSystem {
   private handsLast = -99;
   private exciteAt = -99;
   private exciteAmt = 0;
-  /** Pre-synthesised applause: many people clapping (loops seamlessly). */
-  private handsDense: AudioBuffer | null = null;
-  private handsLight: AudioBuffer | null = null;
+  /** Alpha 1.6.6: the crowd's synthesised sounds (CrowdKit). */
+  private crowdBufs: CrowdBufs = {};
   /** The celebration on the results screen after a win (one at a time). */
   private celebration: { out: GainNode; sources: AudioBufferSourceNode[]; timer: number; nextExtra: number } | null = null;
 
@@ -207,9 +230,8 @@ export class AudioSystem {
     src.connect(hp).connect(this.crowdFilter).connect(this.crowdGain).connect(this.sfx);
     src.start();
 
-    // Alpha 1.6.5: applause, synthesised once (≈20 ms) so a reaction never builds hundreds of nodes
-    this.handsDense = this.makeHands(24, 6);
-    this.handsLight = this.makeHands(9, 6);
+    // Alpha 1.6.6: the crowd's hands and voices, synthesised once in small slices (one per frame)
+    void this.buildCrowd();
 
     // Alpha 1.6.3: the soundtrack, on the music bus
     this.player = new MusicPlayer(ctx, this.music, this.musicFiles);
@@ -271,9 +293,10 @@ export class AudioSystem {
     if (now - this.crowdLast < 4) return;
     // something small in the stands, never the same twice in a row on purpose
     const r = Math.random();
-    if (r < 0.4) this.noise({ dur: 1.6, gain: 0.07, attack: 0.5, type: 'bandpass', f0: 480, f1: 420, q: 1.2 });
-    else if (r < 0.7) this.claps(2 + Math.floor(Math.random() * 3), 0.8, CROWD.clap * 0.7, 0.1);
-    else if (r < 0.93) this.shout(0.05, 0.06);
+    const mur = this.crowdBufs.murmur;
+    if (r < 0.38 && mur) this.playCrowd(mur, this.sfx, 0.05, CROWD.murmur.ambient, { loop: true, offset: Math.random() * mur.duration, len: 2.2, attack: 0.6, release: 1 });
+    else if (r < 0.62) this.claps(2 + Math.floor(Math.random() * 3), 0.8, CROWD.clap * 0.8, 0.1);
+    else if (r < 0.92) this.shout(0.05, CROWD.voices.shout * 0.55);
     else this.whistle(0.05);
   }
 
@@ -836,10 +859,12 @@ export class AudioSystem {
       if (tier === 3 && now - this.crowdLast3 < CROWD.gap3) return;
       if (tier === 1 && Math.random() > CROWD.smallChance) return;
     }
+    // the crowd's sounds are made in the first seconds after the tap; until then the hall stays quiet
+    const k = this.crowdBufs;
+    if (!k.handsDense) return;
     const [d0, d1] = CROWD.delay[tier - 1];
     const delay = d0 + Math.random() * (d1 - d0);
     const hot = 0.85 + 0.3 * Math.min(1, Math.max(0, this.intensity));
-    const v = CROWD.voice[tier - 1] * hot;
     const hands = tier === 3 || (tier === 2 && now - this.handsLast >= CROWD.fresh);
     const len = tier === 1 ? 0.9 : hands ? (tier === 2 ? 2.5 : 3) : 1.4;
     const out = this.openReaction(delay + len + 1);
@@ -851,15 +876,22 @@ export class AudioSystem {
     this.crowdUntil = now + delay + len * 0.8;
     this.exciteAt = now + delay;
     this.exciteAmt = tier === 3 ? 1 : tier === 2 ? 0.6 : 0.25;
-    // voices: two vowel formants ("ah" ~700 / ~1250 Hz) — a shout, not broadband hiss
-    const vl = tier === 1 ? 0.9 : tier === 2 ? 1.3 : 2.2;
-    this.noise({ dur: vl, gain: v, attack: tier === 1 ? 0.06 : 0.12, type: 'bandpass', f0: 720, f1: 620, q: 1.4, delay, out });
-    this.noise({ dur: vl * 0.85, gain: v * 0.45, attack: 0.1, type: 'bandpass', f0: 1250, f1: 1100, q: 2, delay, out });
-    if (tier === 3) this.noise({ dur: vl * 0.7, gain: v * 0.2, attack: 0.15, type: 'bandpass', f0: 2100, f1: 1800, q: 2.5, delay, out });
-    // hands: a real round of applause — it swells for a moment, holds, and dies away
-    if (hands) this.handsOnce(out, delay + 0.08, len, (tier === 3 ? CROWD.hands.spectacular : CROWD.hands.expressive) * hot);
+    // Alpha 1.6.6: one reaction of people — voices first («ooh!» / «ye-eah!» / the roar), the
+    // hands a beat later, then the hall talking about it for a few seconds; a whistle or a lone
+    // shout on top. Every take is a little different (pitch, the buffer, the point it starts).
+    const rate = 0.95 + Math.random() * 0.1;
+    const V = CROWD.voices;
+    if (tier === 1 && k.ooh) this.playCrowd(k.ooh, out, delay, V.ooh * hot, { rate });
+    else if (tier === 2 && k.cheers) this.playCrowd(k.cheers[Math.floor(Math.random() * k.cheers.length)], out, delay, V.cheer * (hands ? 1 : 0.85) * hot, { rate });
+    else if (tier === 3 && k.roar) this.playCrowd(k.roar, out, delay, V.roar * hot, { rate });
+    // hands: a round of applause — it swells for a moment, holds, and dies away
+    if (hands) this.handsOnce(out, delay + 0.12, len, (tier === 3 ? CROWD.hands.spectacular : CROWD.hands.expressive) * hot);
+    if (tier >= 2 && k.murmur) {
+      const m = k.murmur;
+      this.playCrowd(m, out, delay + 0.4, (tier === 3 ? CROWD.murmur.big : CROWD.murmur.small) * hot, { loop: true, offset: Math.random() * m.duration, len: tier === 3 ? 4.5 : 3.4, attack: 0.7, release: 2 });
+    }
     if (tier === 3 && Math.random() < 0.6) this.whistle(delay + 0.3 + Math.random() * 0.5, out);
-    else if (tier === 2 && !hands && Math.random() < 0.5) this.shout(delay + 0.35, v * 0.35, out);
+    else if (tier === 2 && Math.random() < 0.5) this.shout(delay + 0.3 + Math.random() * 0.3, V.shout * hot, out);
   }
 
   /** «Ooh» / «aww»: a missed big shot (now and then) or the player's fighter going down. */
@@ -869,11 +901,14 @@ export class AudioSystem {
     const now = ctx.currentTime;
     if (!big && (now - this.crowdLast < CROWD.gap[0] || Math.random() > 0.5)) return;
     const delay = 0.3 + Math.random() * 0.2;
-    const out = this.openReaction(delay + 1.4);
+    const k = this.crowdBufs;
+    const buf = big ? k.aww : k.ooh;
+    if (!buf) return;
+    const out = this.openReaction(delay + 2);
     this.crowdLast = now;
     this.crowdTier = big ? 2 : 1;
     this.crowdUntil = now + delay + 0.9;
-    this.noise({ dur: big ? 1.6 : 1, gain: big ? 0.3 : 0.2, type: 'bandpass', f0: 520, f1: 330, q: 1.8, attack: 0.12, delay, out });
+    this.playCrowd(buf, out, delay, big ? CROWD.voices.aww : CROWD.voices.ooh * 0.8, { rate: 0.95 + Math.random() * 0.1 });
   }
 
   /**
@@ -900,7 +935,8 @@ export class AudioSystem {
    */
   celebrate(): void {
     const ctx = this.ctx;
-    if (!ctx || !this.soundOn || !this.handsDense || !this.handsLight) return;
+    const k = this.crowdBufs;
+    if (!ctx || !this.soundOn || !k.handsDense || !k.handsLight) return;
     this.stopCelebration(0.2);
     // the ovation brings its own roar: whatever reaction is still sounding (even the KO roar) makes way
     this.cancelReactions(true);
@@ -908,23 +944,33 @@ export class AudioSystem {
     const t0 = now + 0.35;
     const out = ctx.createGain();
     out.connect(this.sfx);
-    const ov = this.loopHands(this.handsDense, out, t0);
+    const ov = this.loopHands(k.handsDense, out, t0);
     ov.gain.gain.setValueAtTime(0, now);
     ov.gain.gain.linearRampToValueAtTime(CROWD.hands.ovation, t0 + 0.6);
     ov.gain.gain.setValueAtTime(CROWD.hands.ovation, t0 + 4.4);
     ov.gain.gain.linearRampToValueAtTime(0, t0 + 8.4);
-    const warm = this.loopHands(this.handsLight, out, t0 + 4);
+    const warm = this.loopHands(k.handsLight, out, t0 + 4);
     warm.gain.gain.setValueAtTime(0, now);
     warm.gain.gain.setValueAtTime(0, t0 + 4.4);
     warm.gain.gain.linearRampToValueAtTime(CROWD.hands.warm, t0 + 8.4);
-    // the roar with it, a whistle on top
-    const v = CROWD.voice[2];
-    this.noise({ dur: 2.6, gain: v * 0.6, attack: 0.3, type: 'bandpass', f0: 700, f1: 600, q: 1.4, delay: 0.4, out });
-    this.noise({ dur: 2.2, gain: v * 0.25, attack: 0.25, type: 'bandpass', f0: 1250, f1: 1100, q: 2, delay: 0.4, out });
+    // Alpha 1.6.6: people with it — a roar, a second cheer, then the whole hall talking and
+    // laughing (louder through the ovation, calmer under the warm applause), whistles on top
+    const sources = [ov.src, warm.src];
+    if (k.roar) this.playCrowd(k.roar, out, 0.5, CROWD.voices.roar * 0.85);
+    if (k.cheers) this.playCrowd(k.cheers[0], out, 1.9, CROWD.voices.cheer * 0.6, { rate: 1.04 });
+    if (k.murmur) {
+      const m = this.loopHands(k.murmur, out, t0 + 0.6);
+      m.gain.gain.setValueAtTime(0, now);
+      m.gain.gain.setValueAtTime(0, t0 + 0.6);
+      m.gain.gain.linearRampToValueAtTime(CROWD.murmur.ovation, t0 + 2.2);
+      m.gain.gain.setValueAtTime(CROWD.murmur.ovation, t0 + 4.4);
+      m.gain.gain.linearRampToValueAtTime(CROWD.murmur.warm, t0 + 9);
+      sources.push(m.src);
+    }
     this.whistle(0.9, out);
     this.whistle(2.1, out);
     const timer = window.setInterval(() => this.celebrationTick(), 1000);
-    this.celebration = { out, sources: [ov.src, warm.src], timer, nextExtra: now + 6 };
+    this.celebration = { out, sources, timer, nextExtra: now + 6 };
     this.crowdLast = this.crowdLast2 = this.crowdLast3 = this.handsLast = now;
   }
 
@@ -937,9 +983,10 @@ export class AudioSystem {
     if (now < c.nextExtra) return;
     c.nextExtra = now + 4 + Math.random() * 5;
     const r = Math.random();
-    if (r < 0.4) this.whistle(0.05, c.out);
-    else if (r < 0.8) this.shout(0.05, 0.08, c.out);
-    else this.noise({ dur: 1.4, gain: 0.08, attack: 0.4, type: 'bandpass', f0: 650, f1: 560, q: 1.3, out: c.out });
+    const k = this.crowdBufs;
+    if (r < 0.3) this.whistle(0.05, c.out);
+    else if (r < 0.7) this.shout(0.05, CROWD.voices.shout * 0.8, c.out);
+    else if (k.cheers) this.playCrowd(k.cheers[Math.floor(Math.random() * k.cheers.length)], c.out, 0.05, CROWD.voices.cheer * 0.35, { rate: 0.95 + Math.random() * 0.1 });
   }
 
   /** The celebration fades out over `fade` s and lets go of its nodes. */
@@ -965,16 +1012,18 @@ export class AudioSystem {
   /** Alpha 1.6.5 — the player lost: the hall sighs, a few polite hands, then quiet. */
   consolation(): void {
     const ctx = this.ctx;
-    if (!ctx || !this.soundOn || !this.handsLight) return;
+    const k = this.crowdBufs;
+    if (!ctx || !this.soundOn || !k.handsLight) return;
     const out = this.openReaction(4);
     this.crowdTier = 1;
     this.crowdUntil = ctx.currentTime + 1;
-    this.noise({ dur: 1.8, gain: 0.12, attack: 0.3, type: 'bandpass', f0: 460, f1: 360, q: 1.5, delay: 0.5, out });
-    this.handsOnce(out, 1.1, 2.6, CROWD.hands.polite, this.handsLight);
+    if (k.aww) this.playCrowd(k.aww, out, 0.5, CROWD.voices.aww * 0.6, { rate: 0.97 });
+    this.handsOnce(out, 1.1, 2.6, CROWD.hands.polite, k.handsLight);
+    if (k.murmur) this.playCrowd(k.murmur, out, 1.2, CROWD.murmur.small * 0.7, { loop: true, offset: Math.random() * k.murmur.duration, len: 3, attack: 0.6, release: 1.8 });
   }
 
   /** One round of applause from a hands buffer: swells in 0.25 s, holds, then dies away. */
-  private handsOnce(out: AudioNode, delay: number, len: number, gain: number, buf = this.handsDense): void {
+  private handsOnce(out: AudioNode, delay: number, len: number, gain: number, buf = this.crowdBufs.handsDense): void {
     const ctx = this.ctx;
     if (!ctx || !buf) return;
     const t = ctx.currentTime + Math.max(MIN_LEAD, delay);
@@ -1003,72 +1052,85 @@ export class AudioSystem {
   }
 
   /**
-   * Alpha 1.6.5 — applause, synthesised: `people` virtual spectators each clap at their own
-   * pace (3.4–5.2 claps/s, a little uneven), with their own hands (a band-passed noise burst
-   * of 0.6 ms attack and a 6–14 ms decay, centred somewhere in 0.9–2.4 kHz — the part of a clap
-   * a phone speaker plays well) and their own place left / right. Written around the end of
-   * the buffer, so it loops without a seam. Normalised to a safe peak (0.8).
+   * Alpha 1.6.6 — synthesise the crowd's sounds (CrowdKit) once, one person per frame, so the
+   * first seconds after the tap never stutter: the hands and the reactions' voices first, the
+   * chattering hall last. Each buffer is usable the moment it is done.
    */
-  private makeHands(people: number, secs: number): AudioBuffer {
+  private async buildCrowd(): Promise<void> {
     const ctx = this.ctx!;
-    const sr = ctx.sampleRate;
-    const n = Math.round(secs * sr);
-    const buf = ctx.createBuffer(2, n, sr);
-    const L = buf.getChannelData(0);
-    const R = buf.getChannelData(1);
-    const clapLen = Math.round(0.035 * sr);
-    for (let p = 0; p < people; p++) {
-      const rate = 3.4 + Math.random() * 1.8;
-      const pan = (Math.random() * 2 - 1) * 0.8;
-      const gl = Math.cos(((pan + 1) * Math.PI) / 4);
-      const gr = Math.sin(((pan + 1) * Math.PI) / 4);
-      const f0 = 900 + Math.random() * 1500;
-      const q = 1.1 + Math.random() * 1.2;
-      const loud = 0.45 + Math.random() * 0.55;
-      // band-pass biquad (RBJ), this person's hands
-      const w = (2 * Math.PI * f0) / sr;
-      const alpha = Math.sin(w) / (2 * q);
-      const a0 = 1 + alpha;
-      const b0 = alpha / a0;
-      const b2 = -alpha / a0;
-      const a1 = (-2 * Math.cos(w)) / a0;
-      const a2 = (1 - alpha) / a0;
-      let t = Math.random() / rate;
-      while (t < secs) {
-        const start = Math.round(t * sr);
-        const tau = (0.006 + Math.random() * 0.008) * sr;
-        const atk = 0.0006 * sr;
-        const amp = loud * (0.7 + Math.random() * 0.3);
-        let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-        for (let i = 0; i < clapLen; i++) {
-          const env = (i < atk ? i / atk : Math.exp(-(i - atk) / tau)) * amp;
-          const x = (Math.random() * 2 - 1) * env;
-          const y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
-          x2 = x1;
-          x1 = x;
-          y2 = y1;
-          y1 = y;
-          const k = (start + i) % n;
-          L[k] += y * gl;
-          R[k] += y * gr;
-        }
-        t += (1 / rate) * (0.86 + Math.random() * 0.28);
+    const frame = () => new Promise<void>((r) => setTimeout(r, 16));
+    const make = (secs: number): Stereo => ({ L: new Float32Array(Math.round(secs * CROWD_SR)), R: new Float32Array(Math.round(secs * CROWD_SR)) });
+    const toBuffer = (s: Stereo, peak: number): AudioBuffer => {
+      normalize(s, peak);
+      const b = ctx.createBuffer(2, s.L.length, CROWD_SR);
+      b.getChannelData(0).set(s.L);
+      b.getChannelData(1).set(s.R);
+      return b;
+    };
+    const hands = async (people: number, secs: number) => {
+      const s = make(secs);
+      for (let p = 0; p < people; p++) {
+        addClapper(s, CROWD_SR, p, people);
+        if (p % 4 === 3) await frame();
       }
+      return toBuffer(s, 0.8);
+    };
+    const voices = async (spec: VoiceSpec) => {
+      const s = make(spec.secs);
+      for (let v = 0; v < spec.voices; v++) {
+        addVoice(s, CROWD_SR, spec);
+        await frame();
+      }
+      return toBuffer(s, 0.7);
+    };
+    const k = this.crowdBufs;
+    try {
+      k.handsDense = await hands(64, 6);
+      k.cheers = [await voices(VOICES.cheer)];
+      k.ooh = await voices(VOICES.ooh);
+      k.roar = await voices(VOICES.roar);
+      k.handsLight = await hands(26, 6);
+      k.aww = await voices(VOICES.aww);
+      k.cheers.push(await voices(VOICES.cheer));
+      const shouts: AudioBuffer[] = [];
+      for (let i = 0; i < 4; i++) shouts.push(await voices(VOICES.shout));
+      k.shouts = shouts;
+      k.murmur = await voices(VOICES.murmur);
+    } catch {
+      // a context closed mid-way: the hall simply stays quieter
     }
-    let peak = 0;
-    for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
-    const k = peak > 0 ? 0.8 / peak : 1;
-    for (let i = 0; i < n; i++) {
-      L[i] *= k;
-      R[i] *= k;
-    }
-    return buf;
   }
 
-  /** A single voice from the stands: a short «hey!» / «woo!» (a vowel sliding up). */
+  /** One of the crowd's buffers into `out`, from `delay` s: an envelope, an optional loop / start point / length / speed. */
+  private playCrowd(buf: AudioBuffer, out: AudioNode, delay: number, gain: number, o: { rate?: number; offset?: number; len?: number; attack?: number; release?: number; loop?: boolean } = {}): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const t = now + Math.max(MIN_LEAD, delay);
+    const rate = o.rate ?? 1;
+    const len = o.len ?? buf.duration / rate;
+    const atk = Math.min(o.attack ?? 0.01, len / 3);
+    const rel = Math.min(o.release ?? 0.05, len / 2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    src.loop = !!o.loop;
+    const g = ctx.createGain();
+    src.connect(g).connect(out);
+    g.gain.setValueAtTime(0, now);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + atk);
+    g.gain.setValueAtTime(gain, t + len - rel);
+    g.gain.linearRampToValueAtTime(0, t + len);
+    src.start(t, (o.offset ?? 0) % buf.duration);
+    src.stop(t + len + 0.05);
+  }
+
+  /** A single voice from the stands: a short «hey!» / «woo!» (CrowdKit shouts). */
   private shout(delay: number, gain: number, out?: AudioNode): void {
-    const f = 560 + Math.random() * 260;
-    this.noise({ dur: 0.45, gain, attack: 0.05, type: 'bandpass', f0: f, f1: f * 1.35, q: 3, delay, out });
+    const sh = this.crowdBufs.shouts;
+    if (!sh || !this.soundOn) return;
+    this.playCrowd(sh[Math.floor(Math.random() * sh.length)], out ?? this.sfx, delay, gain, { rate: 0.92 + Math.random() * 0.16 });
   }
 
   /**
@@ -1099,14 +1161,14 @@ export class AudioSystem {
     for (let i = 0; i < n; i++) this.clap(delay + spread * Math.pow(Math.random(), 1.4), gain, out);
   }
 
-  /** One hand clap: a 30–60 ms burst of band-passed noise with an instant attack. */
+  /** One hand clap: a soft 50–80 ms burst of warm band-passed noise (Alpha 1.6.6: no instant click). */
   private clap(delay: number, gain: number, out?: AudioNode): void {
-    this.noise({ dur: 0.03 + Math.random() * 0.03, gain: gain * (0.55 + Math.random() * 0.45), attack: 0.0015, type: 'bandpass', f0: 1300 + Math.random() * 1300, q: 1.1, delay, out });
+    this.noise({ dur: 0.05 + Math.random() * 0.03, gain: gain * (0.55 + Math.random() * 0.45), attack: 0.004, type: 'bandpass', f0: 800 + Math.random() * 900, q: 0.9, delay, out });
   }
 
   /** A fan's whistle: a quick rising glide. */
   private whistle(delay: number, out?: AudioNode): void {
-    this.tone({ type: 'sine', f0: 1900 + Math.random() * 300, f1: 2700 + Math.random() * 300, dur: 0.32, gain: 0.025, attack: 0.04, delay, out });
+    this.tone({ type: 'sine', f0: 1900 + Math.random() * 300, f1: 2700 + Math.random() * 300, dur: 0.32, gain: 0.018, attack: 0.05, delay, out });
   }
 
   countdown(n: number): void {
