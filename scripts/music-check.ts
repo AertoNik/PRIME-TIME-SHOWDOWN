@@ -1,9 +1,11 @@
 // Headless checks for Alpha 1.6.3 — PRIME SOUNDTRACK (npm run music): the seven MP3 files are
 // where the game loads them from, every place has its track, and the loop window (the audible
 // part of a song that MusicPlayer repeats) is found correctly on synthetic songs.
+// Alpha 1.6.4 — SOUND POLISH: levelling by full-range + phone-speaker loudness, menu no louder
+// than the fights, the match-end fade, and the crowd's limits (bed level, one reaction at a time).
 // The browser plays and decodes the real files; that part is checked in the game, not here.
 import { ARENA_ORDER } from '../src/config/arenas.config';
-import { ARENA_MUSIC, MUSIC_MIX, MUSIC_TRACKS, type MusicId } from '../src/config/music.config';
+import { ARENA_MUSIC, MUSIC_MIX, MUSIC_TRACKS, trackGain, type MusicId } from '../src/config/music.config';
 import { loopWindow } from '../src/audio/MusicPlayer';
 
 // Node's fs without @types/node (the project has none): the few calls this check needs
@@ -48,13 +50,17 @@ check("mapping: BOSS FIGHT plays victor_boss first, whatever the set", /spec\.bo
 check('mapping: the Halloween menu follows the active event (EventManager), not the theme of a screen', /events\.active\?\.themeId === 'halloween' \? 'prime_menu_halloween' : 'prime_menu'/.test(game));
 
 // ----------------------------------------------------------------- mix
-const level = (id: MusicId) => (MUSIC_TRACKS[id].role === 'menu' ? MUSIC_MIX.menu : MUSIC_MIX.battle) * Math.pow(10, (MUSIC_MIX.reference - MUSIC_TRACKS[id].lufs) / 20);
-const outLufs = ids.map((id) => MUSIC_TRACKS[id].lufs + 20 * Math.log10(level(id) * 0.32));
-const menus = ids.filter((id) => MUSIC_TRACKS[id].role === 'menu').map((id) => outLufs[ids.indexOf(id)]);
-const fights = ids.filter((id) => MUSIC_TRACKS[id].role === 'battle').map((id) => outLufs[ids.indexOf(id)]);
-check(`mix: all menu tracks come out equally loud (${menus.map((v) => v.toFixed(1)).join(', ')} LUFS at the music bus)`, Math.max(...menus) - Math.min(...menus) < 0.05);
-check(`mix: all fight tracks come out equally loud and quieter than the menu (${fights.map((v) => v.toFixed(1)).join(', ')})`, Math.max(...fights) - Math.min(...fights) < 0.05 && fights[0] < menus[0]);
-check('mix: no track gain above unity (nothing is pushed into the limiter)', ids.every((id) => level(id) < 1));
+const at = (id: MusicId, key: 'lufs' | 'phone') => MUSIC_TRACKS[id][key] + 20 * Math.log10(trackGain(id) * 0.32);
+const fullRange = ids.map((id) => at(id, 'lufs'));
+const phone = ids.map((id) => at(id, 'phone'));
+const spread = (v: number[]) => Math.max(...v) - Math.min(...v);
+check(`mix: the seven tracks come out within 0.5 dB of each other on a phone speaker (${phone.map((v) => v.toFixed(1)).join(', ')} dB at the music bus)`, spread(phone) <= 0.5);
+check(`mix: …and within 0.5 dB full-range (${fullRange.map((v) => v.toFixed(1)).join(', ')} LUFS at the music bus)`, spread(fullRange) <= 0.5);
+check('mix: the menu is not louder than the fights (same role level)', MUSIC_MIX.menu <= MUSIC_MIX.battle);
+check(`mix: the music sits around −31 LUFS at the music bus (${(fullRange.reduce((a, v) => a + v, 0) / fullRange.length).toFixed(1)})`, Math.abs(fullRange.reduce((a, v) => a + v, 0) / fullRange.length + 31) < 0.6);
+check('mix: no track gain above unity (nothing is pushed into the limiter)', ids.every((id) => trackGain(id) < 1));
+check(`fades: a fight swells in over 1–2 s (${MUSIC_MIX.fadeIn.battle} s), the match end fades out over 1.5–2 s (${MUSIC_MIX.endFade} s)`, MUSIC_MIX.fadeIn.battle >= 1 && MUSIC_MIX.fadeIn.battle <= 2 && MUSIC_MIX.endFade >= 1.5 && MUSIC_MIX.endFade <= 2);
+check("fades: the fight music starts fading the moment the fight ends (phase 'outro'), not at the results", /case 'phase':\s*if \(e\.phase === 'outro'\) a\.endMatchMusic\(\);/.test(game));
 
 // ------------------------------------------------------------ loop window
 const SR = 48000;
@@ -102,6 +108,13 @@ check('loop: a broken / very short file falls back to looping all of it', ta ===
 const audio = readFileSync('src/audio/AudioSystem.ts', 'utf8');
 check('soundtrack: the procedural background music (step sequencer) is gone — no second music stream', !/menuStep|battleStep|seqTimer|setInterval/.test(audio));
 check('soundtrack: one MusicPlayer, created with the AudioContext', (audio.match(/new MusicPlayer\(/g) ?? []).length === 1);
+
+// --------------------------------------------------------------- crowd
+check('crowd: the bed is no longer swept by a filter LFO (the "sea waves") and loops its own 9 s buffer', !/createOscillator\(\)[\s\S]{0,200}crowdFilter\.frequency/.test(audio) && /bedLen = ctx\.sampleRate \* 9/.test(audio));
+check('crowd: the old hiss cheer (re-triggered every 400 ms) is gone — every reaction goes through crowd(tier)', !/cheer\(/.test(audio) && !/\.cheer\(/.test(game));
+check('crowd: one reaction at a time — a smaller or equal one never stacks on a reaction in progress', /if \(now < this\.crowdUntil && tier <= this\.crowdTier\) return;/.test(audio));
+check('crowd: a plain heavy hit only gets a small, occasional reaction; crits / combo hits and perfect dodges an expressive one', /a\.crowd\(e\.crit \|\| e\.combo \? 2 : 1\)/.test(game) && /e\.perfect && e\.side === 0\) a\.crowd\(2\)/.test(game));
+check('crowd: the win gets applause', /victory\(\): void \{[\s\S]{0,600}this\.applause\(\);/.test(audio));
 
 let ok = true;
 for (const [name, pass] of checks) {

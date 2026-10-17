@@ -16,6 +16,8 @@ interface ToneOpts {
   detune?: number;
   filter?: { type: BiquadFilterType; f0: number; f1?: number; q?: number };
   bus?: 'sfx' | 'music';
+  /** Alpha 1.6.4: a node of its own to play into (one crowd reaction), instead of the bus. */
+  out?: AudioNode;
 }
 
 interface NoiseOpts {
@@ -28,6 +30,8 @@ interface NoiseOpts {
   f1?: number;
   q?: number;
   bus?: 'sfx' | 'music';
+  /** Alpha 1.6.4: a node of its own to play into (one crowd reaction), instead of the bus. */
+  out?: AudioNode;
 }
 
 const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
@@ -39,6 +43,29 @@ const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
  * as late.
  */
 const MIN_LEAD = 0.01;
+
+/**
+ * Alpha 1.6.4 — the audience. A quiet murmur under the fight; short reactions to real moments,
+ * one at a time, with pauses; applause for a win. Levels were set by measurement against the
+ * music (≈ −31 LUFS) and the fight SFX (≈ −29 LUFS) — the bed sits ~20 dB under the music,
+ * a small reaction ≈ −39, an expressive one ≈ −34, a spectacular one / the applause ≈ −30.
+ */
+const CROWD = {
+  /** Murmur gain of the full fight bed (setCrowd(1)); a calm fight runs at `rest` of it. */
+  bed: 0.022,
+  rest: 0.75,
+  /** Seconds a new reaction waits after the previous one: small / expressive / spectacular. */
+  gap: [3.5, 1.2, 0] as const,
+  /** An expressive reaction does not repeat sooner than this (a spectacular one may cut in). */
+  gap2: 2.5,
+  /** Small moments get a reaction only now and then. */
+  smallChance: 0.55,
+  /** A quiet murmur swell now and then while the fight goes on (seconds between). */
+  ambient: [7, 15] as const,
+  /** Voice gains per tier (formant layers) and clap gains. */
+  voice: [0.2, 0.32, 0.5] as const,
+  clap: [0.05, 0.075, 0.1] as const,
+};
 
 /**
  * Procedural SFX synthesised on demand and the crowd ambience; the soundtrack
@@ -62,8 +89,17 @@ export class AudioSystem {
   private readonly musicFiles = new MusicFiles(import.meta.env.BASE_URL, MUSIC_MIX.keepFiles);
   /** The track asked for before the context existed. */
   private musicWant: MusicId | null = null;
-  /** Show rating 0..1: a hotter show gets a louder crowd (cheer). */
+  /** Show rating 0..1: a hotter show gets a slightly louder crowd. */
   intensity = 0.3;
+  /** Alpha 1.6.4 crowd state (audio-clock times). */
+  private crowdLast = -99;
+  private crowdLast2 = -99;
+  private crowdTier = 0;
+  private crowdUntil = 0;
+  private ambientAt = 0;
+  private bedLevel = -1;
+  /** The reaction playing now (its own gain node): a bigger moment fades it out before it starts. */
+  private crowdBus: GainNode | null = null;
 
   get ready(): boolean {
     return this.ctx !== null && this.ctx.state === 'running';
@@ -120,23 +156,28 @@ export class AudioSystem {
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
 
-    // crowd bed
+    // crowd bed — Alpha 1.6.4: the low murmur of a full house, steady and quiet. Before, it was
+    // band-passed noise swept by a 0.3 Hz filter LFO (the "sea waves"), looping a 2 s buffer
+    // and rising with the show rating to within ~3 dB of the music (the constant "shhh").
+    // Now: its own 9 s noise loop (no audible repetition), 140–650 Hz, no sweep.
+    const bedLen = ctx.sampleRate * 9;
+    const bedBuf = ctx.createBuffer(1, bedLen, ctx.sampleRate);
+    const bd = bedBuf.getChannelData(0);
+    for (let i = 0; i < bedLen; i++) bd[i] = Math.random() * 2 - 1;
     const src = ctx.createBufferSource();
-    src.buffer = this.noiseBuf;
+    src.buffer = bedBuf;
     src.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 140;
+    hp.Q.value = 0.6;
     this.crowdFilter = ctx.createBiquadFilter();
-    this.crowdFilter.type = 'bandpass';
-    this.crowdFilter.frequency.value = 900;
+    this.crowdFilter.type = 'lowpass';
+    this.crowdFilter.frequency.value = 650;
     this.crowdFilter.Q.value = 0.6;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 0.3;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 250;
-    lfo.connect(lfoGain).connect(this.crowdFilter.frequency);
-    lfo.start();
     this.crowdGain = ctx.createGain();
     this.crowdGain.gain.value = 0;
-    src.connect(this.crowdFilter).connect(this.crowdGain).connect(this.sfx);
+    src.connect(hp).connect(this.crowdFilter).connect(this.crowdGain).connect(this.sfx);
     src.start();
 
     // Alpha 1.6.3: the soundtrack, on the music bus
@@ -170,11 +211,32 @@ export class AudioSystem {
     return this.player?.state ?? null;
   }
 
-  /** 0..1 crowd loudness. */
+  /** 0..1 loudness of the crowd murmur (1 = a fight at a hot show; menus run it very low). */
   setCrowd(level: number): void {
-    if (!this.ctx) return;
-    this.crowdGain.gain.setTargetAtTime(level * 0.11, this.ctx.currentTime, 0.4);
-    this.crowdFilter.Q.value = 0.5 + level * 0.4;
+    if (!this.ctx || Math.abs(level - this.bedLevel) < 0.005) return;
+    this.bedLevel = level;
+    this.crowdGain.gain.setTargetAtTime(level * CROWD.bed, this.ctx.currentTime, 0.6);
+  }
+
+  /**
+   * Alpha 1.6.4: the audience during a fight, every frame. The murmur rises only a little with
+   * the show rating (+2.5 dB at most); while the fight runs, a quiet murmur swell comes now and
+   * then — never right after a reaction.
+   */
+  crowdTick(fighting: boolean, rating: number): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.setCrowd(CROWD.rest + (1 - CROWD.rest) * Math.min(1, Math.max(0, rating)));
+    if (!fighting || !this.soundOn) return;
+    const now = ctx.currentTime;
+    const [a, b] = CROWD.ambient;
+    if (this.ambientAt === 0 || this.ambientAt - now > b) this.ambientAt = now + a + Math.random() * (b - a);
+    if (now < this.ambientAt) return;
+    this.ambientAt = now + a + Math.random() * (b - a);
+    if (now - this.crowdLast < 4) return;
+    // a ripple through the stands: a low swell, sometimes a few hands
+    this.noise({ dur: 1.6, gain: 0.07, attack: 0.5, type: 'bandpass', f0: 480, f1: 420, q: 1.2 });
+    if (Math.random() < 0.35) this.claps(3 + Math.floor(Math.random() * 3), 0.9, CROWD.clap[0] * 0.6, 0.2);
   }
 
   private throttle(key: string, ms: number): boolean {
@@ -211,7 +273,7 @@ export class AudioSystem {
       node.connect(f);
       node = f;
     }
-    node.connect(g).connect(o.bus === 'music' ? this.music : this.sfx);
+    node.connect(g).connect(o.out ?? (o.bus === 'music' ? this.music : this.sfx));
     osc.start(t0);
     osc.stop(t0 + o.dur + 0.02);
   }
@@ -241,7 +303,7 @@ export class AudioSystem {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(peak, t0 + (o.attack ?? 0.004));
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
-    src.connect(f).connect(g).connect(o.bus === 'music' ? this.music : this.sfx);
+    src.connect(f).connect(g).connect(o.out ?? (o.bus === 'music' ? this.music : this.sfx));
     src.start(t0, offset);
     src.stop(t0 + o.dur + 0.02);
   }
@@ -456,7 +518,7 @@ export class AudioSystem {
     switch (kind) {
       case 'tagHit':
         [0, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(84 + n), dur: 0.2, gain: 0.07, delay: i * 0.05 }));
-        this.cheer(0.5);
+        this.crowd(2);
         break;
       case 'push':
         this.noise({ dur: 0.12, gain: 0.14, type: 'lowpass', f0: 900 });
@@ -534,7 +596,7 @@ export class AudioSystem {
   /** Alpha 1.5 — a BANK SHOT landed after the ricochet: a short brass "ta-da" over the crowd. */
   trickShot(): void {
     [0, 4, 7].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(79 + n), dur: 0.12, gain: 0.05, delay: 0.04 + i * 0.06, filter: { type: 'lowpass', f0: 4000 } }));
-    this.cheer(0.7);
+    this.crowd(2);
   }
 
   /** Alpha 1.5 — FALSE START read an attack: a whip-crack snap and a rising sting. */
@@ -542,7 +604,7 @@ export class AudioSystem {
     this.noise({ dur: 0.05, gain: 0.26, type: 'highpass', f0: 2800 });
     this.tone({ type: 'sawtooth', f0: 400, f1: 1800, dur: 0.18, gain: 0.08, filter: { type: 'lowpass', f0: 5000 } });
     this.tone({ type: 'sine', f0: NOTE(86), dur: 0.25, gain: 0.05, delay: 0.08 });
-    this.cheer(0.6);
+    this.crowd(2);
   }
 
   /** Alpha 1.5.5 — Zoe's SHOCK charging in her hand: a rising buzz the player can react to. */
@@ -700,7 +762,7 @@ export class AudioSystem {
       [0, 4, 7, 11, 14].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(79 + n), dur: 0.9, gain: 0.045, delay: 0.32, attack: 0.02, filter: { type: 'lowpass', f0: 3800 } }));
       this.tone({ type: 'sine', f0: 110, f1: 40, dur: 0.5, gain: 0.5, delay: 0.3 });
     }
-    this.cheer(ultra ? 1.3 : 0.9);
+    this.crowd(ultra ? 3 : 2);
   }
 
   reaction(tier: number): void {
@@ -708,20 +770,111 @@ export class AudioSystem {
     const base = tier >= 3 ? 74 : 70;
     [0, 7, 12].forEach((n, i) => this.tone({ type: 'sawtooth', f0: NOTE(base + n), dur: 0.5, gain: 0.05, delay: i * 0.02, attack: 0.01, filter: { type: 'lowpass', f0: 2500 } }));
     this.tone({ type: 'sine', f0: NOTE(base + 24), dur: 0.4, gain: 0.05, delay: 0.08 });
-    this.cheer(tier >= 3 ? 1 : 0.6);
+    this.crowd(tier >= 3 ? 3 : tier >= 2 ? 2 : 1);
   }
 
-  cheer(amount: number): void {
-    if (!this.throttle('cheer', 400)) return;
-    // a hotter show gets a louder crowd
-    amount *= 0.6 + this.intensity * 0.8;
-    this.noise({ dur: 1.4 + amount, gain: 0.16 * amount, type: 'bandpass', f0: 1100, f1: 900, q: 0.7, attack: 0.15 });
-    this.noise({ dur: 1.2 + amount, gain: 0.08 * amount, type: 'bandpass', f0: 2400, f1: 1800, q: 1.2, attack: 0.2 });
+  /**
+   * Alpha 1.6.4 — the audience reacts: 1 = a small «oh!» (only now and then), 2 = an
+   * expressive «yeah!» with a few hands (combo, heavy crit, perfect dodge, trick shot),
+   * 3 = a roar with applause (ultra combo, KO, boss phase). One reaction at a time: a smaller
+   * or equal one never stacks on a reaction in progress, only a bigger moment cuts in.
+   * (Before: a 2–3 s band of hiss on almost every event, re-triggered every 400 ms.)
+   */
+  crowd(tier: 1 | 2 | 3): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.soundOn) return;
+    const now = ctx.currentTime;
+    if (now < this.crowdUntil && tier <= this.crowdTier) return;
+    if (now - this.crowdLast < CROWD.gap[tier - 1]) return;
+    if (tier === 2 && now - this.crowdLast2 < CROWD.gap2) return;
+    if (tier === 1 && Math.random() > CROWD.smallChance) return;
+    const hot = 0.85 + 0.3 * Math.min(1, Math.max(0, this.intensity));
+    const v = CROWD.voice[tier - 1] * hot;
+    const len = tier === 1 ? 0.9 : tier === 2 ? 1.5 : 2.4;
+    const out = this.openReaction(len + 2);
+    this.crowdLast = now;
+    if (tier >= 2) this.crowdLast2 = now;
+    this.crowdTier = tier;
+    this.crowdUntil = now + len * 0.8;
+    // voices: two vowel formants ("ah" ~700 / ~1250 Hz), not broadband hiss
+    this.noise({ dur: len, gain: v, attack: tier === 1 ? 0.06 : 0.12, type: 'bandpass', f0: 720, f1: 620, q: 1.4, out });
+    this.noise({ dur: len * 0.85, gain: v * 0.45, attack: 0.1, type: 'bandpass', f0: 1250, f1: 1100, q: 2, out });
+    if (tier === 3) this.noise({ dur: len * 0.7, gain: v * 0.2, attack: 0.15, type: 'bandpass', f0: 2100, f1: 1800, q: 2.5, out });
+    // hands
+    const claps = tier === 1 ? 3 + Math.floor(Math.random() * 3) : tier === 2 ? 12 : 30;
+    this.claps(claps, tier === 1 ? 0.6 : tier === 2 ? 1.1 : 1.9, CROWD.clap[tier - 1] * hot, 0.05, out);
+    if (tier === 3 && Math.random() < 0.6) this.whistle(0.25 + Math.random() * 0.4, out);
   }
 
-  ooh(): void {
-    if (!this.throttle('ooh', 600)) return;
-    this.noise({ dur: 0.9, gain: 0.1, type: 'bandpass', f0: 500, f1: 350, q: 2, attack: 0.1 });
+  /** «Ooh» / «aww»: a missed big shot (now and then) or the player's fighter going down. */
+  ooh(big = false): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.soundOn) return;
+    const now = ctx.currentTime;
+    if (!big && (now - this.crowdLast < CROWD.gap[0] || Math.random() > 0.5)) return;
+    const out = this.openReaction(1.4);
+    this.crowdLast = now;
+    this.crowdTier = big ? 2 : 1;
+    this.crowdUntil = now + 0.9;
+    this.noise({ dur: big ? 1.4 : 1, gain: big ? 0.3 : 0.2, type: 'bandpass', f0: 520, f1: 330, q: 1.8, attack: 0.12, out });
+  }
+
+  /** Alpha 1.6.4 — a win: full applause for ~3.5 s (claps swelling and thinning out), voices and a whistle. */
+  applause(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.soundOn) return;
+    const now = ctx.currentTime;
+    const out = this.openReaction(3.7);
+    this.crowdLast = this.crowdLast2 = now;
+    this.crowdTier = 3;
+    this.crowdUntil = now + 3;
+    this.noise({ dur: 2.6, gain: CROWD.voice[2] * 0.6, attack: 0.25, type: 'bandpass', f0: 700, f1: 600, q: 1.4, out });
+    this.noise({ dur: 2.2, gain: CROWD.voice[2] * 0.25, attack: 0.2, type: 'bandpass', f0: 1250, f1: 1100, q: 2, out });
+    // ~75 hands over 3.6 s: dense at first, thinning towards the end
+    for (let i = 0; i < 75; i++) {
+      const t = 3.6 * Math.pow(Math.random(), 1.35);
+      const fade = 1 - (t / 3.6) * 0.75;
+      this.clap(t + 0.05, CROWD.clap[2] * 0.9 * fade, out);
+    }
+    this.whistle(0.3, out);
+  }
+
+  /**
+   * A gain node for one reaction lasting `secs`. A reaction still sounding is faded out in
+   * ~0.1 s first, so two never pile up (a combo and its hit in the same instant).
+   */
+  private openReaction(secs: number): GainNode {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const prev = this.crowdBus;
+    if (prev && now < this.crowdUntil) {
+      prev.gain.cancelScheduledValues(now);
+      prev.gain.setTargetAtTime(0, now, 0.04);
+    }
+    const bus = ctx.createGain();
+    bus.connect(this.sfx);
+    this.crowdBus = bus;
+    // let go of the node once everything in it has played
+    setTimeout(() => {
+      bus.disconnect();
+      if (this.crowdBus === bus) this.crowdBus = null;
+    }, (secs + 4.5) * 1000);
+    return bus;
+  }
+
+  /** `n` hand claps spread over `spread` s (more of them early), from `delay` s. */
+  private claps(n: number, spread: number, gain: number, delay: number, out?: AudioNode): void {
+    for (let i = 0; i < n; i++) this.clap(delay + spread * Math.pow(Math.random(), 1.4), gain, out);
+  }
+
+  /** One hand clap: a 30–60 ms burst of band-passed noise with an instant attack. */
+  private clap(delay: number, gain: number, out?: AudioNode): void {
+    this.noise({ dur: 0.03 + Math.random() * 0.03, gain: gain * (0.55 + Math.random() * 0.45), attack: 0.0015, type: 'bandpass', f0: 1300 + Math.random() * 1300, q: 1.1, delay, out });
+  }
+
+  /** A fan's whistle: a quick rising glide. */
+  private whistle(delay: number, out?: AudioNode): void {
+    this.tone({ type: 'sine', f0: 1900 + Math.random() * 300, f1: 2700 + Math.random() * 300, dur: 0.32, gain: 0.025, attack: 0.04, delay, out });
   }
 
   countdown(n: number): void {
@@ -733,7 +886,7 @@ export class AudioSystem {
       this.tone({ type: 'sawtooth', f0: NOTE(71), dur: 0.8, gain: 0.1, filter: { type: 'lowpass', f0: 3000 } });
       this.tone({ type: 'sine', f0: 90, f1: 40, dur: 0.6, gain: 0.5 });
       this.noise({ dur: 0.8, gain: 0.25, type: 'lowpass', f0: 6000, f1: 300 });
-      this.cheer(1);
+      this.crowd(2);
     }
   }
 
@@ -745,14 +898,16 @@ export class AudioSystem {
       this.tone({ type: 'triangle', f0: 880, dur: 0.9, gain: 0.12, delay: 0.12 + i * 0.28 });
       this.tone({ type: 'sine', f0: 2210, dur: 0.6, gain: 0.04, delay: 0.12 + i * 0.28 });
     }
-    if (playerWon) this.cheer(1.4);
-    else this.ooh();
+    if (playerWon) this.crowd(3);
+    else this.ooh(true);
   }
 
   victory(): void {
     const seq = [0, 4, 7, 12, 7, 12, 16, 19];
     seq.forEach((n, i) => this.tone({ type: 'square', f0: NOTE(67 + n), dur: 0.18, gain: 0.08, delay: i * 0.09, filter: { type: 'lowpass', f0: 3500 } }));
     [0, 4, 7].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(67 + 12 + n), dur: 1.2, gain: 0.05, delay: 0.75, attack: 0.02, filter: { type: 'lowpass', f0: 2500 } }));
+    // Alpha 1.6.4: the house applauds the winner
+    this.applause();
   }
 
   /** Short seasonal accent (opening the Events screen, season start). */
@@ -764,7 +919,7 @@ export class AudioSystem {
       [0, 7, 12, 16].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(55 + n), dur: 1.1, gain: 0.05, delay: 0.05, attack: 0.03, filter: { type: 'lowpass', f0: 1800, f1: 3200 } }));
       [0, 4, 7, 12].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(67 + n), dur: 0.22, gain: 0.05, delay: 0.55 + i * 0.09, filter: { type: 'lowpass', f0: 3500 } }));
       this.tone({ type: 'sine', f0: NOTE(91), dur: 1.2, gain: 0.035, delay: 0.95, attack: 0.01 });
-      this.cheer(1.2);
+      this.crowd(3);
       return;
     }
     if (kind === 'spooky') {
@@ -787,7 +942,7 @@ export class AudioSystem {
     this.tone({ type: 'sawtooth', f0: 180, f1: phase >= 3 ? 1400 : 900, dur: 0.6, gain: 0.07, filter: { type: 'lowpass', f0: 500, f1: 5000, q: 6 } });
     const base = phase >= 3 ? 50 : 53;
     [0, 3, 7, 12].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(base + n), dur: 1.2, gain: 0.05, delay: 0.25, attack: 0.04, filter: { type: 'lowpass', f0: 2200 } }));
-    this.cheer(1.4);
+    this.crowd(3);
   }
 
   /** BOSS FIGHT signature move warning (SPOTLIGHT SHOT). */
@@ -805,7 +960,7 @@ export class AudioSystem {
     const base = empowered ? 50 : 52;
     [0, 7, 12].forEach((n) => this.tone({ type: 'sawtooth', f0: NOTE(base + n), dur: 0.5, gain: 0.07, delay: 0.06, attack: 0.02, filter: { type: 'lowpass', f0: 2600, f1: 900 } }));
     this.tone({ type: 'sawtooth', f0: 90, f1: 420, dur: 0.6, gain: 0.07, delay: 0.1, attack: 0.3, filter: { type: 'lowpass', f0: 300, f1: 2400, q: 5 } });
-    this.cheer(0.5);
+    this.crowd(1);
   }
 
   /** A new DIRECTOR'S CUT line: a rising targeting whine over the tracking time. */
@@ -830,7 +985,7 @@ export class AudioSystem {
     this.noise({ dur: 0.12, gain: 0.2, type: 'highpass', f0: 2600 });
     if (final) {
       [0, 7, 12].forEach((n, i) => this.tone({ type: 'sawtooth', f0: NOTE((empowered ? 50 : 52) + n), dur: 0.7, gain: 0.04, delay: 0.08 + i * 0.02, filter: { type: 'lowpass', f0: 2400 } }));
-      this.cheer(empowered ? 1.1 : 0.8);
+      this.crowd(2);
     }
   }
 
@@ -879,9 +1034,18 @@ export class AudioSystem {
    * Alpha 1.6.3: the soundtrack track for the current screen (null: none). The same track
    * again does nothing — it keeps playing. Before the first tap it is remembered.
    */
-  playTrack(track: MusicId | null): void {
+  playTrack(track: MusicId | null, fadeOut?: number): void {
     this.musicWant = track;
-    this.player?.play(track);
+    this.player?.play(track, fadeOut);
+  }
+
+  /**
+   * Alpha 1.6.4: the fight is over (KO, time up, forfeit) — its music starts fading out right
+   * now, over MUSIC_MIX.endFade, so the KO, the fanfare and the applause come out clear and
+   * the music never cuts off. Nothing brings the fight music back afterwards.
+   */
+  endMatchMusic(): void {
+    this.playTrack(null, MUSIC_MIX.endFade);
   }
 
   /** Decode a track that is about to be needed, so it starts without waiting (see MusicPlayer.prepare). */

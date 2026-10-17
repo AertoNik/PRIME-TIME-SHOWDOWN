@@ -1,4 +1,4 @@
-import { MUSIC_MIX, MUSIC_TRACKS, type MusicId } from '../config/music.config';
+import { MUSIC_MIX, MUSIC_TRACKS, trackGain, type MusicId } from '../config/music.config';
 
 /** One scheduled pass through the song. */
 interface Voice {
@@ -10,8 +10,10 @@ interface Voice {
 interface Playing {
   id: MusicId;
   buffer: AudioBuffer;
-  /** Track level × fades. */
+  /** Track level × fade-in. */
   gain: GainNode;
+  /** Alpha 1.6.4: the fade-out (1 → 0), after `gain`, so it never needs to know the level of a fade-in in progress. */
+  fader: GainNode;
   voices: Voice[];
   /** Loop window: the audible part of the song, seconds into the buffer. */
   a: number;
@@ -26,6 +28,19 @@ const SEAM_OUT = 0.04;
 const SEAM_IN = 0.012;
 /** Every start is scheduled at least this far ahead of the audio clock (a start "now" can lose its first samples). */
 const LEAD = 0.03;
+
+/**
+ * Alpha 1.6.4: fade shapes. Out: (1 − x)³ — the level falls smoothly and evenly by ear (−7.5 dB
+ * at a quarter, −18 dB halfway) and reaches silence without a step; a straight ramp sounded
+ * like a cut. In: x² — a gentle swell instead of a jump in the first moment.
+ */
+const curve = (f: (x: number) => number): Float32Array => {
+  const c = new Float32Array(64);
+  for (let i = 0; i < 64; i++) c[i] = f(i / 63);
+  return c;
+};
+const FADE_OUT = curve((x) => Math.pow(1 - x, 3));
+const FADE_IN = curve((x) => x * x);
 
 /**
  * Alpha 1.6.3 — PRIME SOUNDTRACK. Plays the MP3 soundtrack through the game's AudioContext
@@ -54,6 +69,8 @@ export class MusicPlayer {
   private failed = new Set<MusicId>();
   /** A track decoded ahead of time (the menu music during the results sting). */
   private prepared: { id: MusicId; buffer: AudioBuffer } | null = null;
+  /** How long the next fade-out of the current track takes (see play). */
+  private fadeNext: number = MUSIC_MIX.fadeOut;
 
   constructor(
     private readonly ctx: AudioContext,
@@ -65,10 +82,14 @@ export class MusicPlayer {
     ctx.addEventListener('statechange', () => this.sync());
   }
 
-  /** The track the game asks for (null: no music). Asking again for the same track does nothing. */
-  play(id: MusicId | null): void {
+  /**
+   * The track the game asks for (null: no music). Asking again for the same track does nothing.
+   * `fadeOut`: how long the track playing now takes to fade out (the end of a match: longer).
+   */
+  play(id: MusicId | null, fadeOut: number = MUSIC_MIX.fadeOut): void {
     if (id === this.want) return;
     this.want = id;
+    this.fadeNext = fadeOut;
     // a file that failed (offline for a moment) gets another try when it is asked for again
     if (id) this.failed.delete(id);
     // something else was asked for: a track decoded ahead for later is not needed now
@@ -113,9 +134,10 @@ export class MusicPlayer {
     const target = this.enabled ? this.want : null;
     if (this.cur?.id === target) return;
     if (this.cur) {
-      this.fadeOut(this.cur);
+      this.fadeOut(this.cur, this.fadeNext);
       this.cur = null;
     }
+    this.fadeNext = MUSIC_MIX.fadeOut;
     if (!target || this.failed.has(target)) {
       this.prepared = null;
       return;
@@ -158,16 +180,21 @@ export class MusicPlayer {
   // ----------------------------------------------------------------- playback
   private start(id: MusicId, buffer: AudioBuffer): void {
     const ctx = this.ctx;
-    const def = MUSIC_TRACKS[id];
-    const level = (def.role === 'menu' ? MUSIC_MIX.menu : MUSIC_MIX.battle) * Math.pow(10, (MUSIC_MIX.reference - def.lufs) / 20);
+    const level = trackGain(id);
+    const fadeIn = MUSIC_MIX.fadeIn[MUSIC_TRACKS[id].role];
     const [a, b] = loopWindow(buffer, MUSIC_MIX.tailDb);
     const gain = ctx.createGain();
-    gain.connect(this.out);
+    const fader = ctx.createGain();
+    gain.connect(fader).connect(this.out);
     const when = Math.max(ctx.currentTime + LEAD, this.quietAt);
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.setValueAtTime(0, when);
-    gain.gain.linearRampToValueAtTime(level, when + MUSIC_MIX.fadeIn);
-    const p: Playing = { id, buffer, gain, voices: [], a, b, nextAt: when, alive: true };
+    try {
+      gain.gain.setValueCurveAtTime(FADE_IN.map((v) => v * level), when, fadeIn);
+    } catch {
+      gain.gain.setValueAtTime(0, when);
+      gain.gain.linearRampToValueAtTime(level, when + fadeIn);
+    }
+    const p: Playing = { id, buffer, gain, fader, voices: [], a, b, nextAt: when, alive: true };
     this.cur = p;
     // one pass playing, the next one already queued
     this.pass(p);
@@ -202,20 +229,18 @@ export class MusicPlayer {
     };
   }
 
-  private fadeOut(p: Playing): void {
+  private fadeOut(p: Playing, secs: number): void {
     const ctx = this.ctx;
-    const now = ctx.currentTime;
-    const g = p.gain.gain;
+    const start = ctx.currentTime + 0.005;
     p.alive = false;
-    // hold the level it has right now (it may still be fading in), then ramp to silence
-    if (typeof g.cancelAndHoldAtTime === 'function') g.cancelAndHoldAtTime(now);
-    else {
-      const v = g.value;
-      g.cancelScheduledValues(now);
-      g.setValueAtTime(v, now);
+    // the fader only ever does this one fade (1 → 0), whatever the fade-in on `gain` is doing
+    try {
+      p.fader.gain.setValueCurveAtTime(FADE_OUT, start, secs);
+    } catch {
+      p.fader.gain.setValueAtTime(1, start);
+      p.fader.gain.linearRampToValueAtTime(0, start + secs);
     }
-    const end = now + MUSIC_MIX.fadeOut;
-    g.linearRampToValueAtTime(0, end);
+    const end = start + secs;
     this.quietAt = Math.max(this.quietAt, end);
     for (const v of p.voices) {
       try {
@@ -230,6 +255,7 @@ export class MusicPlayer {
   /** Drop the nodes and the decoded audio of a track that has faded out. */
   private release(p: Playing): void {
     p.gain.disconnect();
+    p.fader.disconnect();
     this.fading = this.fading.filter((x) => x !== p);
   }
 }

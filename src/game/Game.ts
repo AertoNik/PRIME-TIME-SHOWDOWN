@@ -568,7 +568,7 @@ export class Game {
     this.updateLayoutFraming();
     // Alpha 1.6.3: the champion's theme always wins; otherwise the music of the studio set
     this.audio.playTrack(spec.boss ? 'victor_boss' : ARENA_MUSIC[stage]);
-    this.audio.cheer(1);
+    this.audio.crowd(1);
     // Started while the phone is sideways (overlay visible): wait paused.
     if (isBlockedLandscape()) this.pause();
   }
@@ -912,7 +912,8 @@ export class Game {
       const events = m.drainEvents();
       for (const e of events) this.handleEvent(e);
       this.audio.intensity = m.broadcast.rating / 100;
-      this.audio.setCrowd(0.22 + (m.broadcast.rating / 100) * 0.7);
+      // Alpha 1.6.4: a quiet murmur, rising only a little with the show; small swells while the fight runs
+      this.audio.crowdTick(m.phase === 'fight', m.broadcast.rating / 100);
       if (m.phase === 'over' && !this.resultsShown) this.finishMatch();
     } else {
       this.showcase.update(dtReal);
@@ -947,7 +948,8 @@ export class Game {
         break;
       case 'hit':
         if (e.kind !== 'dot') a.hit(e.heavy, e.crit, e.side === 0);
-        if (e.heavy && e.source === 0) a.cheer(0.5);
+        // Alpha 1.6.4: the crowd answers a crit / combo hit; a plain heavy hit only gets an «oh!» now and then
+        if (e.heavy && e.source === 0) a.crowd(e.crit || e.combo ? 2 : 1);
         break;
       case 'card':
         a.card(e.card);
@@ -967,7 +969,7 @@ export class Game {
       }
       case 'dodge':
         a.dodge(e.perfect);
-        if (e.perfect && e.side === 0) a.cheer(0.6);
+        if (e.perfect && e.side === 0) a.crowd(2);
         break;
       case 'miss':
         a.miss();
@@ -992,6 +994,10 @@ export class Game {
         break;
       case 'ko':
         a.ko(e.side === 1);
+        break;
+      // Alpha 1.6.4: the fight just ended (KO / time up / forfeit) — its music fades out from here
+      case 'phase':
+        if (e.phase === 'outro') a.endMatchMusic();
         break;
       case 'timeUp':
         a.countdown(0);
