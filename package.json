@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.6.4-alpha",
+  "version": "1.6.5-alpha",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.6: Card Revolution)",
   "type": "module",
   "scripts": {
@@ -20,7 +20,8 @@
     "anims": "tsx scripts/anim-check.ts",
     "cards": "tsx scripts/cards-check.ts",
     "cardsim": "tsx scripts/card-balance.ts",
-    "music": "tsx scripts/music-check.ts"
+    "music": "tsx scripts/music-check.ts",
+    "tutorial": "tsx scripts/tutorial-check.ts"
   },
   "dependencies": {
     "@fontsource/rubik": "^5.3.0",

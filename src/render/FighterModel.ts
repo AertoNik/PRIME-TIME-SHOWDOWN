@@ -852,7 +852,32 @@ export function getRigGeometry(lookId: string): RigGeometry {
   const hy = R * 0.94 * fy;
   const hz = R * 0.92;
   const faceZ = (x: number, y: number) => hz * Math.sqrt(Math.max(0, 1 - (x / hx) ** 2 - (y / hy) ** 2));
-  {
+  if (look.robot) {
+    // Alpha 1.6.5 — PRIME TRAINING BOT: a rounded steel helmet with a dark visor, ear discs with
+    // a glowing ring, a chin speaker and an antenna with a lamp on top
+    const H = B.t('head');
+    const HG = B.g('head');
+    const metal = look.skin;
+    H.add(rbox(R * 1.9, R * 1.72, R * 1.78, R * 0.42), metal, { p: [0, cy + 0.01, 0.0] });
+    H.add(rbox(R * 1.96, R * 0.16, R * 1.84, R * 0.07), look.top.main, { p: [0, cy + R * 0.66, 0.0] });
+    // visor: a dark glass band across the face
+    H.add(rbox(R * 1.56, R * 0.7, 0.07, 0.06), 0x10141f, { p: [0, cy - 0.02, R * 0.86] });
+    H.add(rbox(R * 1.64, R * 0.06, 0.08, 0.02), shade(metal, 0.7), { p: [0, cy + R * 0.38, R * 0.86] });
+    // chin speaker
+    H.add(rbox(R * 0.7, R * 0.16, 0.06, 0.04), shade(metal, 0.62), { p: [0, cy - R * 0.62, R * 0.86] });
+    for (const s of [1, -1]) {
+      const ear = cyl(R * 0.3, R * 0.3, 0.1, 20);
+      ear.rotateZ(Math.PI / 2);
+      H.add(ear, look.top.main, { p: [s * R * 0.98, cy, 0] });
+      const ring = tor(R * 0.2, 0.018, Math.PI * 2, 20);
+      ring.rotateY(Math.PI / 2);
+      HG.add(ring, look.glow, { p: [s * R * 1.04, cy, 0] }, GLOW);
+    }
+    // antenna with a lamp
+    H.add(cyl(0.018, 0.024, R * 0.55, 8), shade(metal, 0.7), { p: [R * 0.32, cy + R * 1.1, -0.02] });
+    HG.add(sph(0.055, 12, 10), look.glow, { p: [R * 0.32, cy + R * 1.4, -0.02] }, GLOW);
+  }
+  if (!look.robot) {
     const H = B.t('head');
     const HG = B.g('head');
     H.add(sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
@@ -1401,15 +1426,18 @@ export function getRigGeometry(lookId: string): RigGeometry {
     FG.add(cuffRing, gl, { p: [0, -d.foreArm * 0.8, 0] }, GLOW);
   }
 
+  // Alpha 1.6.5 — the robot's face lives on its visor: amber eye slots (they blink like eyes),
+  // a red «X X» when it is knocked out (powered down), visor brows, a speaker LED for a mouth
+  const face = look.robot ? robotFace(look, R, cy) : null;
   const geo: RigGeometry = {
     look,
     dims: d,
     bones: B.build(),
-    eyes: eyes.build()!,
-    koEyes: koEyes.build()!,
-    brows: brows.build()!,
-    mouth: mouth.build()!,
-    mouthOpen: mouthOpen.build()!,
+    eyes: (face?.eyes ?? eyes).build()!,
+    koEyes: (face?.koEyes ?? koEyes).build()!,
+    brows: (face?.brows ?? brows).build()!,
+    mouth: (face?.mouth ?? mouth).build()!,
+    mouthOpen: (face?.mouthOpen ?? mouthOpen).build()!,
     eyePivot,
     mouthPivot,
     headCenterY: cy,
@@ -1421,6 +1449,32 @@ export function getRigGeometry(lookId: string): RigGeometry {
   // expression scaling happen around the right point.
   geoCache.set(lookId, geo);
   return geo;
+}
+
+/**
+ * Alpha 1.6.5 — the PRIME TRAINING BOT's face parts, authored like the human ones relative to
+ * the eye pivot (eyes, KO eyes) and the mouth pivot (mouth, open mouth), so blinking, KO and
+ * expressions work unchanged.
+ */
+function robotFace(look: LookDef, R: number, cy: number): { eyes: PartSet; koEyes: PartSet; brows: PartSet; mouth: PartSet; mouthOpen: PartSet } {
+  const z = R * 0.86 + 0.04;
+  const eyes = new PartSet();
+  const koEyes = new PartSet();
+  const brows = new PartSet();
+  const mouth = new PartSet();
+  const mouthOpen = new PartSet();
+  for (const s of [1, -1]) {
+    const x = s * R * 0.36;
+    eyes.add(rbox(0.17, 0.11, 0.03, 0.05), look.eyes, { p: [x, 0, z] });
+    eyes.add(rbox(0.08, 0.035, 0.035, 0.015), 0xfff6d8, { p: [x - s * 0.02, 0.02, z + 0.01] });
+    koEyes.add(rbox(0.16, 0.03, 0.03, 0.012), 0xff3b3b, { p: [x, 0, z + 0.01], r: [0, 0, 0.785] });
+    koEyes.add(rbox(0.16, 0.03, 0.03, 0.012), 0xff3b3b, { p: [x, 0, z + 0.01], r: [0, 0, -0.785] });
+    brows.add(rbox(0.16, 0.022, 0.03, 0.01), shade(look.eyes, 0.55), { p: [x, cy + 0.04 + 0.1, z] });
+  }
+  // the mouth pivot sits on the face sphere; the robot's speaker LED is on its chin, a bit lower and in front
+  mouth.add(rbox(0.14, 0.026, 0.03, 0.012), look.eyes, { p: [0, -0.01, 0.07] });
+  mouthOpen.add(rbox(0.2, 0.05, 0.03, 0.02), look.eyes, { p: [0, -0.01, 0.07] });
+  return { eyes, koEyes, brows, mouth, mouthOpen };
 }
 
 // ------------------------------------------------------------------ rig

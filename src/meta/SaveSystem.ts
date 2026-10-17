@@ -205,7 +205,16 @@ export interface SaveData {
   careerClaimed: StageId[];
   /** v10 (1.6): the new universal cards bought in the career (each once, kept for good). */
   cards: CardsState;
+  /** 1.6.5: FIRST BROADCAST, the first-run tutorial (see TutorialState). */
+  tutorial: TutorialState;
 }
+
+/**
+ * 1.6.5 — FIRST BROADCAST. 'pending': a new player, the tutorial starts after the first tap;
+ * 'done' / 'skipped': played through or skipped (never forced again; replay from the settings);
+ * 'veteran': a save from before 1.6.5 with real progress — never forced into the tutorial.
+ */
+export type TutorialState = 'pending' | 'done' | 'skipped' | 'veteran';
 
 /** v10 (1.6): bought cards. Only the fifteen shop cards can be in here. */
 export interface CardsState {
@@ -221,6 +230,8 @@ const KEY = 'primetime-showdown-save-v1';
 // v9 (1.5.5): personal rewards per fighter (cosmetics.personal / personalEquipped / unassigned).
 // v10 (1.6): bought cards (cards.owned); decks may hold them. Older saves own none.
 // v11 (1.6.1): SIDE CAM was replaced by SECOND TAKE — a bought SIDE CAM becomes SECOND TAKE and decks swap it in place.
+// 1.6.5: `tutorial` (FIRST BROADCAST) — no version bump: a save without it predates the tutorial and is
+// judged by its progress (see hasProgress), so existing players are never sent through it.
 const VERSION = 11;
 
 /** Cards renamed or replaced between versions (old id → new id). */
@@ -276,6 +287,7 @@ export function defaultSave(): SaveData {
     arena: 'original',
     careerClaimed: [],
     cards: { owned: [] },
+    tutorial: 'pending',
   };
 }
 
@@ -653,7 +665,23 @@ export function sanitize(raw: unknown): SaveData {
       }
     }
   }
+  // 1.6.5: FIRST BROADCAST. A save without the flag is from before the tutorial existed: a
+  // career with any progress is a veteran (never forced into it); an untouched one is new.
+  // (The missing flag alone proves nothing — every older save lacks it.)
+  if (r.tutorial === 'pending' || r.tutorial === 'done' || r.tutorial === 'skipped' || r.tutorial === 'veteran') d.tutorial = r.tutorial;
+  else d.tutorial = hasProgress(d) ? 'veteran' : 'pending';
   return d;
+}
+
+/**
+ * 1.6.5: has this career been played? Any match, money or reputation that moved, a hint seen
+ * after a fight, a signed fighter, a bought card or item, a claimed stage, a mode record.
+ */
+export function hasProgress(d: SaveData): boolean {
+  if (d.matches > 0 || d.wins > 0 || d.totalEarned > 0 || d.fansEarned > 0 || d.reputation > 0 || d.money !== CAREER_START.money || d.hintsSeen) return true;
+  if (FIGHTER_ORDER.some((id) => d.fighters[id].matches > 0 || (d.fighters[id].unlocked && FIGHTERS[id].contract !== null))) return true;
+  if (d.cards.owned.length > 0 || d.cosmetics.owned.length > 0 || d.careerClaimed.length > 0) return true;
+  return JSON.stringify(d.modes) !== JSON.stringify(emptyModes());
 }
 
 /** localStorage persistence. All access is guarded (private mode, quota, disabled storage). */

@@ -1,7 +1,7 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
 export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina';
-export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale';
+export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale' | 'bot';
 export type CardId =
   | 'dash'
   | 'power_shot'

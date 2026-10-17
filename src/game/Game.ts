@@ -38,6 +38,7 @@ import { SurvivalScreen } from '../ui/screens/SurvivalScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
 import { ThemeManager } from './ThemeManager';
+import { FirstBroadcast, TUTORIAL } from './FirstBroadcast';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
 export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'battle' | 'results' | 'survival';
@@ -47,7 +48,9 @@ export type ModeSession =
   | { kind: 'classic' }
   | { kind: 'survival'; runId: number; wave: WaveSetup }
   | { kind: 'challenge'; id: string }
-  | { kind: 'boss'; id: string };
+  | { kind: 'boss'; id: string }
+  /** Alpha 1.6.5 — FIRST BROADCAST: the first-run tutorial (no career, event, mode or deck progress). */
+  | { kind: 'tutorial' };
 
 /** Everything needed to set up one fight. */
 interface LaunchSpec {
@@ -77,7 +80,7 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale'];
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>
@@ -129,7 +132,9 @@ export class Game {
   private screen: ScreenName = 'title';
   private stage: HTMLElement;
   private title: TitleScreen;
-  private hud!: BattleHUD;
+  hud!: BattleHUD;
+  /** Alpha 1.6.5 — FIRST BROADCAST while it runs. */
+  private tutorial: FirstBroadcast | null = null;
   private started = false;
   private bootDone = false;
   private debugTimer = new URLSearchParams(location.search).has('timerloop');
@@ -286,6 +291,11 @@ export class Game {
     this.audio.setSound(this.save.data.settings.sound);
     this.audio.setMusic(this.save.data.settings.music);
     this.audio.ui('confirm');
+    // Alpha 1.6.5: a brand-new player starts with FIRST BROADCAST (older careers never do — SaveSystem)
+    if (this.save.data.tutorial === 'pending') {
+      this.startTutorial();
+      return;
+    }
     this.goto('menu');
     if (this.abandoned) {
       const s = this.abandoned;
@@ -310,6 +320,8 @@ export class Game {
     this.arena.setScreen({ mode: 'menu', headline: this.save.data.orgName });
     this.audio.playTrack(this.menuMusic());
     this.audio.setCrowd(0.12);
+    // Alpha 1.6.5: the winner's applause fades out as the results are left
+    this.audio.stopCelebration();
     this.ui.showSoundFab(true);
     this.ui.show(name, param);
     this.frameShowcase();
@@ -421,6 +433,8 @@ export class Game {
   }
 
   private stageFor(mode: ModeSession, seed: number): ArenaId {
+    // FIRST BROADCAST: the Original Prime Arena, always
+    if (mode.kind === 'tutorial') return 'original';
     const season = this.events.themeId;
     if (mode.kind === 'survival') {
       const run = this.modes.activeRun;
@@ -523,8 +537,48 @@ export class Game {
     this.audio.sting('champion');
   }
 
+  /**
+   * Alpha 1.6.5 — FIRST BROADCAST: the short first-run tutorial (see FirstBroadcast). Runs for a
+   * new player after the first tap, or from Settings → «Пройти обучение» (a replay changes
+   * nothing but the tutorial itself). The player's real deck and progress are never touched:
+   * the tutorial match brings its own deck and counts for nothing.
+   */
+  startTutorial(): void {
+    this.tutorial?.close();
+    const s = this.save.data;
+    const fighter = s.fighters[s.selected]?.unlocked ? s.selected : 'ray';
+    this.tutorial = new FirstBroadcast(this);
+    this.launch({ fighter, deck: TUTORIAL.deck.slice(), rival: 'bot', difficulty: 'rookie', mods: TUTORIAL.mods }, { kind: 'tutorial' });
+    this.arena.setScreen({ headline: 'FIRST BROADCAST' });
+  }
+
+  /** FIRST BROADCAST ended: remember it (a skip never undoes a finished run), back to the menu. */
+  endTutorial(how: 'done' | 'skipped'): void {
+    if (!this.tutorial) return;
+    this.tutorial.close();
+    this.tutorial = null;
+    const s = this.save.data;
+    if (how === 'done' || s.tutorial === 'pending') s.tutorial = how;
+    this.save.save();
+    this.goto('menu');
+  }
+
+  /** «ПРОПУСТИТЬ»: leave the tutorial now, no penalty. */
+  skipTutorial(): void {
+    if (!this.tutorial) return;
+    this.audio.ui('click');
+    this.endTutorial('skipped');
+  }
+
+  /** The end of the first broadcast: a TV flash and the audience on its feet. */
+  tutorialCheer(): void {
+    this.renderer.pulseFlash(0xffd76a, 1.2);
+    this.audio.celebrate();
+  }
+
   private launch(spec: LaunchSpec, mode: ModeSession): void {
     if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
+    this.audio.stopCelebration(0.6);
     const s = this.save.data;
     const { fighter, rival, difficulty } = spec;
     const seed = (s.seed + s.matches * 7919 + Math.floor(performance.now())) >>> 0;
@@ -547,7 +601,7 @@ export class Game {
     this.matchMeta = { fighter, rival, difficulty, mode };
     this.applyCosmetics(fighter);
     // Survival reports to the seasonal event once per attempt (see GameModes), not per wave.
-    this.matchEventId = mode.kind !== 'survival' && this.events.playable ? this.events.active!.id : null;
+    this.matchEventId = mode.kind !== 'survival' && mode.kind !== 'tutorial' && this.events.playable ? this.events.active!.id : null;
     this.resultsShown = false;
     this.paused = false;
     this.acc = 0;
@@ -557,7 +611,7 @@ export class Game {
     this.showcase.hide();
     this.battleView.setup(match);
     // TV caption of the set: when it changes, and on every new set except between Survival waves
-    const showStage = switched || (stage !== 'original' && !(mode.kind === 'survival' && mode.wave.index > 0));
+    const showStage = mode.kind !== 'tutorial' && (switched || (stage !== 'original' && !(mode.kind === 'survival' && mode.wave.index > 0)));
     this.hud.setup(match, mode, { stage: showStage, halloween: this.themes.id === 'champion_halloween' });
     this.cam.setMode('battle', 1.9);
     this.cam.finishShift = 0.04;
@@ -584,14 +638,19 @@ export class Game {
     this.audio.ui('click');
     const render = () => {
       const s = this.save.data.settings;
+      // Alpha 1.6.5: in FIRST BROADCAST the pause offers to skip the tutorial instead of a forfeit
+      const tut = this.matchMeta?.mode.kind === 'tutorial';
       this.ui.modal(
         `<div class="h1">Пауза</div>
          <div class="toggle-row"><span>Звук</span><button class="switch ${s.sound ? 'on' : ''}" data-t="sound"></button></div>
          <div class="toggle-row"><span>Музыка</span><button class="switch ${s.music ? 'on' : ''}" data-t="music"></button></div>
          <div class="modal-actions">
            <button class="btn teal wide" data-a="resume">Продолжить</button>
-           <button class="btn ghost wide" data-a="help">Как играть</button>
-           <button class="btn ghost wide" data-a="forfeit">Сдаться</button>
+           ${
+             tut
+               ? '<button class="btn ghost wide" data-a="skip">Пропустить обучение</button>'
+               : '<button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Сдаться</button>'
+           }
          </div>`,
         (root, close) => {
           root.addEventListener('click', (e) => {
@@ -607,6 +666,10 @@ export class Game {
             if (a === 'resume') {
               close();
               this.resume();
+            } else if (a === 'skip') {
+              close();
+              this.paused = false;
+              this.skipTutorial();
             } else if (a === 'help') {
               this.openHelp(() => this.pause());
             } else if (a === 'forfeit') {
@@ -648,6 +711,9 @@ export class Game {
     this.resultsShown = true;
     const meta = this.matchMeta;
     const mode = meta.mode;
+    // Alpha 1.6.5: FIRST BROADCAST ends on its own («ГОТОВ К ЭФИРУ!» → menu): no results, no
+    // career, money, fans, rating, Classic wins, boss access, events or modes — nothing counts
+    if (mode.kind === 'tutorial') return;
     if (!this.save.data.hintsSeen) {
       this.save.data.hintsSeen = true;
       this.save.save();
@@ -760,6 +826,7 @@ export class Game {
          <div class="muted" style="font-size:11px;margin-top:6px">Сейчас: ${this.renderer.quality === 'high' ? 'высокое' : this.renderer.quality === 'medium' ? 'среднее' : 'низкое'}${this.save.persistent ? '' : ' · ⚠ сохранения недоступны в этом режиме браузера'}</div>
          <div class="modal-actions">
            <button class="btn ghost wide" data-a="help">Как играть</button>
+           <button class="btn ghost wide" data-a="tutorial">Пройти обучение</button>
            <button class="btn ghost wide" data-a="reset">Сбросить прогресс</button>
            <button class="btn teal wide" data-a="close">Готово</button>
          </div>`,
@@ -793,9 +860,20 @@ export class Game {
               close();
             } else if (a === 'help') {
               this.openHelp(() => this.openSettings());
+            } else if (a === 'tutorial') {
+              // Alpha 1.6.5: FIRST BROADCAST once more — no rewards, the real deck stays as it is
+              this.audio.ui('confirm');
+              close();
+              this.startTutorial();
             } else if (a === 'reset') {
               this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Это действие нельзя отменить.', 'Сбросить', () => {
+                // the tutorial already seen is not forced again after a reset
+                const seen = this.save.data.tutorial !== 'pending';
                 this.save.reset();
+                if (seen) {
+                  this.save.data.tutorial = 'done';
+                  this.save.save();
+                }
                 this.applyCosmetics();
                 this.ui.toast('Прогресс сброшен. Новый сезон начинается!');
                 this.goto('menu');
@@ -910,7 +988,11 @@ export class Game {
     if (m && this.battleView.active) {
       this.battleView.update(dt, alpha);
       const events = m.drainEvents();
-      for (const e of events) this.handleEvent(e);
+      for (const e of events) {
+        this.handleEvent(e);
+        this.tutorial?.onEvent(e);
+      }
+      this.tutorial?.update(paused ? 0 : dtReal);
       this.audio.intensity = m.broadcast.rating / 100;
       // Alpha 1.6.4: a quiet murmur, rising only a little with the show; small swells while the fight runs
       this.audio.crowdTick(m.phase === 'fight', m.broadcast.rating / 100);

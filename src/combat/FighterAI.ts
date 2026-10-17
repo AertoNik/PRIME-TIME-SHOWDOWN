@@ -72,6 +72,11 @@ export class FighterAI {
   private reactKind: 'windup' | 'incoming' = 'incoming';
   private surgeT = 0;
   private surgeTimer: number;
+  /**
+   * Alpha 1.6.5 — FIRST BROADCAST: the fighter stands where it is and holds fire (the training
+   * bot keeps still while a beginner lines up the first POWER SHOT). Never set in a real fight.
+   */
+  hold = false;
   private plantT = 0;
   private plantTimer: number;
   private recent: CardId[] = [];
@@ -97,7 +102,7 @@ export class FighterAI {
     const m = this.m;
     const f = m.fighters[this.side];
     const foe = m.fighters[1 - this.side];
-    if (f.ko || m.phase !== 'fight' || foe.ko) {
+    if (f.ko || m.phase !== 'fight' || foe.ko || this.hold) {
       f.intentSpeed = 0;
       f.wantFire = false;
       return;

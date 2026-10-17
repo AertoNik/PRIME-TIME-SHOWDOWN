@@ -106,7 +106,7 @@ check('loop: a broken / very short file falls back to looping all of it', ta ===
 
 // ------------------------------------------------------- old music gone
 const audio = readFileSync('src/audio/AudioSystem.ts', 'utf8');
-check('soundtrack: the procedural background music (step sequencer) is gone — no second music stream', !/menuStep|battleStep|seqTimer|setInterval/.test(audio));
+check('soundtrack: the procedural background music (step sequencer) is gone — no second music stream', !/menuStep|battleStep|seqTimer/.test(audio));
 check('soundtrack: one MusicPlayer, created with the AudioContext', (audio.match(/new MusicPlayer\(/g) ?? []).length === 1);
 
 // --------------------------------------------------------------- crowd
@@ -114,7 +114,14 @@ check('crowd: the bed is no longer swept by a filter LFO (the "sea waves") and l
 check('crowd: the old hiss cheer (re-triggered every 400 ms) is gone — every reaction goes through crowd(tier)', !/cheer\(/.test(audio) && !/\.cheer\(/.test(game));
 check('crowd: one reaction at a time — a smaller or equal one never stacks on a reaction in progress', /if \(now < this\.crowdUntil && tier <= this\.crowdTier\) return;/.test(audio));
 check('crowd: a plain heavy hit only gets a small, occasional reaction; crits / combo hits and perfect dodges an expressive one', /a\.crowd\(e\.crit \|\| e\.combo \? 2 : 1\)/.test(game) && /e\.perfect && e\.side === 0\) a\.crowd\(2\)/.test(game));
-check('crowd: the win gets applause', /victory\(\): void \{[\s\S]{0,600}this\.applause\(\);/.test(audio));
+check('crowd: the win gets a celebration (ovation, then warm applause while the results stay on screen)', /victory\(\): void \{[\s\S]{0,700}this\.celebrate\(\);/.test(audio));
+check('crowd: the celebration ends when the results are left (menu, a new fight, sound off)', /setCrowd\(0\.12\);[\s\S]{0,200}stopCelebration\(\)/.test(game) && /private launch\([\s\S]{0,300}stopCelebration\(/.test(game) && /if \(!on\) this\.stopCelebration/.test(audio));
+check('crowd: the audience answers 0.45–0.8 s after the moment (the hit / combo sound is heard first)', /delay: \[\s*\[0\.45, 0\.6\],\s*\[0\.55, 0\.75\],\s*\[0\.6, 0\.8\],\s*\]/.test(audio));
+check('crowd: a second expressive moment soon after applause gets voices only (no second round)', /tier === 2 && now - this\.handsLast >= CROWD\.fresh/.test(audio));
+check('crowd: a TV banner gets at most an expressive reaction (the moment itself owns the spectacular one)', /this\.crowd\(tier >= 2 \? 2 : 1\);/.test(audio));
+check('crowd: the knockout roar always cuts in (never swallowed by a reaction a moment before)', /if \(playerWon\) this\.crowd\(3, true\);/.test(audio));
+check('crowd: applause is real hand-clapping, synthesised once into seamless loops (no node storm per reaction)', /this\.handsDense = this\.makeHands\(24, 6\);/.test(audio) && /const k = \(start \+ i\) % n;/.test(audio));
+check('crowd: the end of the fight cancels a waiting small / expressive reaction', /endMatchMusic\(\): void \{[\s\S]{0,200}this\.cancelReactions\(\);/.test(audio));
 
 let ok = true;
 for (const [name, pass] of checks) {

@@ -28,6 +28,12 @@ export interface LookDef {
   rim: number;
   /** Alpha 1.5.5: optional face traits that set a character apart (stylised, never realistic). */
   face?: FaceTraits;
+  /**
+   * Alpha 1.6.5: a robot (the PRIME TRAINING BOT) — the same skeleton and animations, but a
+   * metal head with a glowing visor face and an antenna instead of skin, hair, ears and nose.
+   * `skin` is the metal colour, `eyes` the visor glow.
+   */
+  robot?: boolean;
 }
 
 export interface FaceTraits {
@@ -281,5 +287,28 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x22232a,
     glow: 0xffc84a,
     rim: 0xffe39a,
+  },
+  // Alpha 1.6.5: PRIME TRAINING BOT — a chunky retro-future studio mannequin: pale steel,
+  // safety-orange panels, a dark visor with amber eyes, an antenna with a lamp
+  bot: {
+    id: 'bot',
+    body: 'heavy',
+    skin: 0xc9d1de,
+    hair: { style: 'buzz', color: 0x3a4152, color2: 0xff9a1f },
+    top: { style: 'pads', main: 0xff8a1a, accent: 0xfff0c2, trim: 0x39404f, inner: 0x9aa4b6 },
+    pants: { style: 'cargo', main: 0x4a5264, accent: 0xff8a1a },
+    shoes: { main: 0x39404f, accent: 0xff8a1a, sole: 0x1c2029, boots: true },
+    gloves: 0x5a6375,
+    fingerless: false,
+    eyes: 0xffb52e,
+    brow: 'stern',
+    mouth: 'flat',
+    accessories: [],
+    weapon: 'twin_blasters',
+    weaponColor: 0xb8c2d3,
+    weaponDark: 0x2c323f,
+    glow: 0xffb52e,
+    rim: 0xfff0c2,
+    robot: true,
   },
 };

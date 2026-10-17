@@ -372,6 +372,33 @@ export const RIVALS: Record<RivalId, RivalDef> = {
       dashStyle: 'lunge',
     },
   },
+  /**
+   * Alpha 1.6.5 — FIRST BROADCAST: the PRIME TRAINING BOT, opponent of the first-run tutorial only
+   * (src/game/FirstBroadcast.ts). Built like every rival on an existing fighter (Ray's frame and
+   * AI), but harmless: slow, weak, visible shots, and it plays no cards (the tutorial gives it no
+   * energy). Never in any rotation, never in Classic / Survival / Challenge / Boss.
+   */
+  bot: {
+    id: 'bot',
+    name: 'PRIME BOT',
+    nickname: 'ТРЕНИРОВКА',
+    fullName: 'PRIME TRAINING BOT',
+    archetype: 'ray',
+    behavior: 'cautious',
+    look: 'bot',
+    deck: ['dash', 'power_shot', 'shield', 'smoke'],
+    bio: 'Тренировочный робот-манекен студии PRIME TIME. Стреляет медленно и не больно, зато честно держит удар.',
+    theme: { main: '#ffb52e', accent: '#fff0c2', dark: '#2a1a00' },
+    mods: {
+      style: 'Тренировочный манекен',
+      speedMult: 0.55,
+      // slow, soft, easy-to-read shots: it is there to be hit, not to win
+      attack: { interval: 1.5, damage: 6, speed: 10, inaccuracy: 0.18 },
+      idleStyle: 'brawler',
+      victoryStyle: 'showman',
+      dashStyle: 'slide',
+    },
+  },
 };
 
 /** Regular opponents (Classic Duel rotation, Survival waves). The boss is not one of them. */

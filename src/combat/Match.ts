@@ -45,7 +45,7 @@ export interface MatchConfig {
 export interface MatchMods {
   /** Fight length in seconds (default MATCH.duration). */
   duration?: number;
-  /** Player / rival energy regeneration multipliers. */
+  /** Player / rival energy regeneration multipliers (rivalEnergyMult 0: the rival has no energy at all — it never plays a card). */
   energyMult?: number;
   rivalEnergyMult?: number;
   /** Player starts with this fraction of max HP (Survival carry-over). */
@@ -59,6 +59,8 @@ export interface MatchMods {
   introTime?: number;
   /** Who wins when time runs out: 'hp' (default: lost the smaller share of HP) or 'rival' (BOSS FIGHT: knockout only). */
   timeUpRule?: 'hp' | 'rival';
+  /** Alpha 1.6.5: combo window in seconds (default MATCH.comboWindow) — FIRST BROADCAST gives a beginner time to read. */
+  comboWindow?: number;
 }
 
 interface Deferred {
@@ -141,12 +143,15 @@ export class Match implements BroadcastHost {
     this.fighters = [player, enemy];
 
     this.hands = [new CardHand(cfg.deck, mods.energyMult ?? 1), new CardHand(this.rival.deck, d.energyMult * (mods.rivalEnergyMult ?? 1))];
+    // Alpha 1.6.5: a rival with no energy at all (FIRST BROADCAST's training bot) does not even get the starting 4
+    if (mods.rivalEnergyMult === 0) this.hands[1].energy = 0;
 
     this.broadcast = new BroadcastSystem(this);
     this.combat = new CombatSystem(this);
     this.abilities = new Abilities(this);
     this.objects = new StageObjects(this);
     this.combos.ready = (side, c, prev) => this.comboReady(side, c, prev);
+    if (cfg.mods?.comboWindow) this.combos.window = cfg.mods.comboWindow;
 
     const auto = cfg.autoPlayer;
     const playerProfile: AIProfile = auto

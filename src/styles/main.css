@@ -6923,3 +6923,228 @@ input {
   font-size: 11px;
   border-radius: 12px;
 }
+
+/* ------------------------------------------------ Alpha 1.6.5 FIRST BROADCAST */
+/* The tutorial layer lives in the battle HUD and shows only in the tutorial match. */
+.tut-cap,
+.tut-ask,
+.tut-skip,
+.tut-finale {
+  display: none;
+}
+.hud[data-mode='tutorial'] .tut-skip {
+  display: block;
+}
+/* the tutorial has no pause button, viewer count or clock — just LIVE */
+.hud[data-mode='tutorial'] .pause-btn,
+.hud[data-mode='tutorial'] .viewers,
+.hud[data-mode='tutorial'] .timer-box .time,
+.hud[data-mode='tutorial'] .combo-strip {
+  display: none;
+}
+.hud[data-mode='tutorial'] .timer-box .live {
+  animation: tutLive 1.6s ease-in-out infinite;
+}
+.ms-tag.tut {
+  color: #fff;
+  background: linear-gradient(90deg, #ff3b5c, #ff8a1a);
+}
+.tut-skip {
+  flex: none;
+  padding: 6px 10px 5px;
+  border-radius: 9px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(var(--shade-rgb), 0.78);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 3px 10px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+.tut-skip:active {
+  transform: scale(0.95);
+}
+/* the TV caption at the top, under the strip — clear of the fighters */
+.tut-cap {
+  pointer-events: none !important;
+  position: relative;
+  z-index: 3;
+  margin: 12px 14px 0;
+  text-align: center;
+}
+.tut-cap.on {
+  display: block;
+  animation: tutCapIn 0.45s cubic-bezier(0.2, 1.3, 0.3, 1);
+}
+.tut-cap b {
+  display: inline-block;
+  padding: 7px 16px 6px;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 19px;
+  font-size: clamp(15px, 5.2cqw, 24px);
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  color: #fff;
+  background: linear-gradient(90deg, rgba(255, 59, 92, 0.94), rgba(255, 138, 26, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28), 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 26px rgba(255, 110, 60, 0.35);
+  transform: skewX(-8deg);
+}
+.tut-cap span {
+  display: table;
+  margin: 7px auto 0;
+  padding: 3px 10px 2px;
+  border-radius: 8px;
+  background: rgba(var(--shade-rgb), 0.72);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 12px;
+  font-size: clamp(11px, 3.6cqw, 14px);
+  letter-spacing: 0.08em;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+}
+@keyframes tutCapIn {
+  from {
+    transform: translateY(-10px) scale(0.92);
+    opacity: 0;
+  }
+}
+/* the instruction just above the hand, pointing at the card */
+.tut-ask.on {
+  display: block;
+  position: absolute;
+  left: var(--tx, 50%);
+  bottom: calc(100% + 16px);
+  z-index: 5;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 9px 16px 8px;
+  border-radius: 13px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 15px;
+  font-size: clamp(13px, 4.4cqw, 17px);
+  letter-spacing: 0.03em;
+  color: #2a1400;
+  background: linear-gradient(180deg, #fff3a0, #ffb21a);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset, 0 8px 20px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 190, 60, 0.45);
+  pointer-events: none !important;
+  animation: tutAskIn 0.35s cubic-bezier(0.2, 1.3, 0.3, 1), tutBob 1.6s ease-in-out 0.35s infinite;
+}
+.tut-ask.on::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-left: -9px;
+  border: 9px solid transparent;
+  border-top-color: #ffb21a;
+}
+@keyframes tutAskIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px) scale(0.85);
+  }
+}
+@keyframes tutBob {
+  50% {
+    transform: translate(-50%, -5px);
+  }
+}
+/* the card to press breathes with a soft gold glow; the others step back */
+.hand-slot.tut-target .hand-card:not(.played) {
+  animation: tutGlow 1.6s ease-in-out infinite;
+}
+.hand-slot.tut-off .hand-card:not(.played) {
+  filter: saturate(0.2) brightness(0.5);
+  transform: scale(0.93);
+  transition: filter 0.3s ease, transform 0.3s ease;
+}
+@keyframes tutGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(255, 210, 80, 0.85), 0 0 14px rgba(255, 190, 60, 0.45);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(255, 236, 140, 1), 0 0 30px rgba(255, 190, 60, 0.85);
+    transform: translateY(-4px);
+  }
+}
+@keyframes tutLive {
+  50% {
+    opacity: 0.45;
+  }
+}
+/* «ГОТОВ К ЭФИРУ!» */
+.tut-finale {
+  pointer-events: none !important;
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* high, so the winner the camera closes in on stays in view */
+  top: calc(var(--safe-top) + 13%);
+  z-index: 6;
+  text-align: center;
+}
+.tut-finale.on {
+  display: block;
+}
+.tut-finale b {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 40px;
+  font-size: clamp(32px, 12cqw, 58px);
+  line-height: 1.05;
+  background: linear-gradient(180deg, #fff3a0 0%, #ffb23a 45%, #ff5a1a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 5px 0 #6a1a00) drop-shadow(0 0 30px rgba(255, 120, 40, 0.8));
+  animation: tutFinaleIn 0.7s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.tut-finale span {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+  animation: tutCapIn 0.5s ease 0.35s both;
+}
+.tut-finale .tf-flash {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 245, 200, 0.85), rgba(255, 200, 80, 0.25) 45%, rgba(255, 200, 80, 0) 75%);
+  animation: tutFlash 0.9s ease-out forwards;
+}
+@keyframes tutFinaleIn {
+  0% {
+    transform: scale(2.4) skewX(-8deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.95) skewX(-8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) skewX(-8deg);
+  }
+}
+@keyframes tutFlash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

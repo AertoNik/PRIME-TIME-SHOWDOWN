@@ -179,6 +179,8 @@ export class BattleView {
       this.root.add(model.rig.root);
       model.anim.reset(f.facing);
       model.rig.root.visible = true;
+      // Alpha 1.6.5: a training bot powered down last time lights up again (rigs are reused)
+      if (model.rig.look.robot && !model.rig.holo) (model.rig.glowMat as MeshBasicMaterial).color.setScalar(1);
       model.rig.root.position.set(f.x, 0, f.z);
       const accent = new Color(model.rig.look.glow);
       let fx = this.vfx.fighterFX[f.side];
@@ -1177,6 +1179,15 @@ export class BattleView {
         this.vfx.burst(s.pos.x, 1.2, s.pos.z, s.accent, 80, 14, 0.25, 0.9, 2.8, 6, 2);
         this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffffff), 1, 9, 0.7, 3);
         this.vfx.debrisBurst(s.pos.x, 1, s.pos.z, s.accent, 16);
+        // Alpha 1.6.5: the PRIME TRAINING BOT shorts out and powers down (its lamps go dark, X on the visor)
+        if (s.model.rig.look.robot) {
+          const head = s.model.rig.head.getWorldPosition(_v);
+          for (let i = 0; i < 6; i++) {
+            this.vfx.bolt(_v2.set(head.x, head.y + 0.35, head.z), _v3.set(head.x + rng.range(-1.1, 1.1), head.y + rng.range(-0.7, 0.9), head.z + rng.range(-1.1, 1.1)), _c.set(0xffd23a), 0.07, 0.4, 0.45);
+          }
+          this.vfx.burst(head.x, head.y, head.z, _c.set(0xffd23a), 46, 9, 0.12, 0.55, 3, 5, 1.5);
+          if (!s.model.rig.holo) (s.model.rig.glowMat as MeshBasicMaterial).color.setScalar(0.18);
+        }
         this.cam.addTrauma(0.8);
         this.cam.kick(1.4);
         this.requestTime(0.25, 1.15);

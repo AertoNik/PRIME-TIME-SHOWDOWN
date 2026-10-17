@@ -9,7 +9,7 @@ import { defaultInput, type AnimInput } from '../src/render/FighterAnimator';
 import { ModelCache } from '../src/render/ModelCache';
 import type { FighterRig } from '../src/render/FighterModel';
 
-const LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale'];
+const LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
 const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
 const models = new ModelCache();

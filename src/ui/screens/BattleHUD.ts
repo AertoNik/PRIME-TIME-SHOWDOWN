@@ -148,6 +148,13 @@ export class BattleHUD implements Screen {
   /** DIRECTOR'S CUT: the big alert and the live shot tracker under the mode strip. */
   private cutAlertEl: HTMLElement | null = null;
   private cutEl: HTMLElement | null = null;
+  /** Alpha 1.6.5 — FIRST BROADCAST: the tutorial layer (caption, instruction, skip, finale). */
+  private tut = false;
+  private tutTarget: CardId | null = null;
+  private tutCap!: HTMLElement;
+  private tutAsk!: HTMLElement;
+  private tutFinaleEl!: HTMLElement;
+  private tutAskT = 0;
 
   constructor(g: Game) {
     this.g = g;
@@ -199,12 +206,16 @@ export class BattleHUD implements Screen {
           <div class="txt"><span class="tier"><span class="rt-pre">РЕЙТИНГ · </span><span data-tier>ТИХО</span></span><span data-rating>30</span></div>
         </div>
         <div class="viewers">${UI_ICONS.eye}<span data-viewers>0</span></div>
+        <button class="tut-skip" data-act="tut-skip">ПРОПУСТИТЬ</button>
       </div>
       <div class="mode-strip"></div>
+      <div class="tut-cap"></div>
       <div class="rating-pops"></div>
       <div class="banner-zone"></div>
       <div class="big-center"></div>
+      <div class="tut-finale"></div>
       <div class="hud-bottom">
+        <div class="tut-ask"></div>
         <div class="combo-strip"><span class="cname">ВРЕМЯ НА КОМБО</span><div class="ctrack"><i></i></div></div>
         <div class="hand-row">
           <div class="next-slot"><div class="label" style="font-size:8px">ДАЛЕЕ</div><div data-next style="width:100%"></div></div>
@@ -250,6 +261,9 @@ export class BattleHUD implements Screen {
     this.slots = [0, 1, 2].map((i) => q(`[data-slot="${i}"]`));
     this.hudBottomEl = q('.hud-bottom');
     this.modeStrip = q('.mode-strip');
+    this.tutCap = q('.tut-cap');
+    this.tutAsk = q('.tut-ask');
+    this.tutFinaleEl = q('.tut-finale');
 
     for (let i = 0; i < 28; i++) {
       const e = el('div', 'dmg');
@@ -272,7 +286,12 @@ export class BattleHUD implements Screen {
       });
     });
     this.el.addEventListener('click', (e) => {
-      const t = (e.target as HTMLElement).closest('[data-act="pause"]');
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-act="tut-skip"]')) {
+        this.g.skipTutorial();
+        return;
+      }
+      const t = target.closest('[data-act="pause"]');
       if (t) this.g.pause();
     });
   }
@@ -452,6 +471,17 @@ export class BattleHUD implements Screen {
     this.el.classList.remove('boss-p1', 'boss-p2', 'boss-p3');
     this.el.classList.toggle('has-mode', mode.kind !== 'classic');
     this.el.dataset.mode = mode.kind;
+    // Alpha 1.6.5 — FIRST BROADCAST
+    this.tut = mode.kind === 'tutorial';
+    this.tutTarget = null;
+    this.tutorialCaption(null);
+    this.tutorialAsk(null, null);
+    this.tutFinaleEl.classList.remove('on');
+    this.tutFinaleEl.innerHTML = '';
+    if (mode.kind === 'tutorial') {
+      this.modeStrip.innerHTML = `<span class="ms-tag tut">FIRST BROADCAST</span><span class="ms-main">ПЕРВЫЙ ЭФИР · <b>LIVE</b></span>`;
+      return `<div class="mi-cap">FIRST BROADCAST · ПЕРВЫЙ ЭФИР</div>`;
+    }
     if (mode.kind === 'boss') {
       const def = bossById(mode.id);
       if (!def) return '';
@@ -507,6 +537,16 @@ export class BattleHUD implements Screen {
   tapCard(i: number): void {
     const m = this.m;
     if (!m || this.g.paused) return;
+    // Alpha 1.6.5 — FIRST BROADCAST: only the card the tutorial points at plays
+    if (this.tut && (!this.tutTarget || m.hands[0].hand[i] !== this.tutTarget)) {
+      const card = this.slots[i].querySelector('.hand-card:not(.played)') as HTMLElement | null;
+      if (card) {
+        card.classList.remove('shake');
+        void card.offsetWidth;
+        card.classList.add('shake');
+      }
+      return;
+    }
     // Real-time double-tap guard: the card that slides into this slot must not
     // be played by the second half of an accidental double tap.
     const now = performance.now();
@@ -611,6 +651,13 @@ export class BattleHUD implements Screen {
 
   // ------------------------------------------------------------- update
   update(dt: number): void {
+    if (this.tut) {
+      this.tutAskT -= dt;
+      if (this.tutAskT <= 0) {
+        this.tutAskT = 0.25;
+        this.syncTutorialCards();
+      }
+    }
     const m = this.m;
     if (!m) return;
     const g = this.g;
@@ -747,7 +794,7 @@ export class BattleHUD implements Screen {
     this.comboStrip.classList.toggle('on', !!comboPrimed && win > 0);
     this.comboStrip.classList.toggle('urgent', !!comboPrimed && win > 0 && win < 1);
     if (comboPrimed) {
-      this.comboTrack.style.transform = `scaleX(${win / MATCH.comboWindow})`;
+      this.comboTrack.style.transform = `scaleX(${Math.min(1, win / m.combos.window)})`;
       if (!this.hints.combo && !g.save.data.hintsSeen) {
         this.hints.combo = true;
         this.showHint(`<b>КОМБО ГОТОВО</b><br/>Золотая карта сработает как комбо — сыграйте её за ${MATCH.comboWindow} с, пока идёт полоска!`);
@@ -906,6 +953,8 @@ export class BattleHUD implements Screen {
 
   /** Tutorial hint, docked just above the hand so it never covers the cards. */
   private showHint(html: string, dur = 4.5): void {
+    // the tutorial has its own captions
+    if (this.tut) return;
     this.hintEl?.remove();
     this.hintEl = el('div', 'hint', html);
     this.hudBottomEl.appendChild(this.hintEl);
@@ -936,11 +985,17 @@ export class BattleHUD implements Screen {
     if (!m) return;
     switch (e.type) {
       case 'countdown':
+        // Alpha 1.6.5 — FIRST BROADCAST goes straight on air, no countdown numbers
+        if (this.tut) {
+          if (e.n <= 0) this.big('ON AIR!', 'fight');
+          break;
+        }
         this.big(e.n > 0 ? String(e.n) : 'FIGHT!', e.n > 0 ? '' : 'fight');
         break;
       case 'phase':
         if (e.phase === 'outro') this.clearCut();
-        if (e.phase === 'fight' && !this.hints.start && !this.g.save.data.hintsSeen) {
+        // (after FIRST BROADCAST the player already knows this one)
+        if (e.phase === 'fight' && !this.hints.start && !this.g.save.data.hintsSeen && this.g.save.data.tutorial !== 'done') {
           this.hints.start = true;
           setTimeout(
             () => this.showHint('<b>ВЫ — ПРОДЮСЕР</b><br/>Боец сражается сам. Нажимайте карточки внизу — это ваши команды. Энергия копится автоматически.', 5.5),
@@ -1130,6 +1185,65 @@ export class BattleHUD implements Screen {
         break;
       default:
         break;
+    }
+  }
+
+  // ------------------------------------------------------ FIRST BROADCAST
+  /** Alpha 1.6.5: the big TV caption at the top (null hides it). */
+  tutorialCaption(head: string | null, sub = ''): void {
+    if (!head) {
+      this.tutCap.classList.remove('on');
+      this.tutCap.innerHTML = '';
+      return;
+    }
+    this.tutCap.innerHTML = `<b>${esc(head)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
+    // replay the entrance for every new caption
+    this.tutCap.classList.remove('on');
+    void this.tutCap.offsetWidth;
+    this.tutCap.classList.add('on');
+  }
+
+  /** Alpha 1.6.5: the instruction above the hand and the one card it points at (null: no card plays). */
+  tutorialAsk(text: string | null, target: CardId | null): void {
+    this.tutTarget = target;
+    this.tutAskT = 0;
+    if (!text) {
+      this.tutAsk.classList.remove('on');
+      this.tutAsk.textContent = '';
+    } else {
+      this.tutAsk.textContent = text;
+      this.tutAsk.classList.remove('on');
+      void this.tutAsk.offsetWidth;
+      this.tutAsk.classList.add('on');
+    }
+    this.syncTutorialCards();
+  }
+
+  /** Alpha 1.6.5: «ГОТОВ К ЭФИРУ!» — the end of the first broadcast. */
+  tutorialFinale(): void {
+    this.tutorialCaption(null);
+    this.tutorialAsk(null, null);
+    this.tutFinaleEl.innerHTML = `<i class="tf-flash"></i><b>ГОТОВ К ЭФИРУ!</b><span>FIRST BROADCAST · COMPLETE</span>`;
+    this.tutFinaleEl.classList.remove('on');
+    void this.tutFinaleEl.offsetWidth;
+    this.tutFinaleEl.classList.add('on');
+  }
+
+  /** Light up the card the tutorial points at, dim the others, aim the arrow at it. */
+  private syncTutorialCards(): void {
+    const m = this.m;
+    if (!m) return;
+    const hand = m.hands[0].hand;
+    let at = -1;
+    for (let i = 0; i < 3; i++) {
+      const on = this.tut && !!this.tutTarget && hand[i] === this.tutTarget;
+      if (on && at < 0) at = i;
+      this.slots[i].classList.toggle('tut-target', on);
+      this.slots[i].classList.toggle('tut-off', this.tut && !on);
+    }
+    if (at >= 0) {
+      const slot = this.slots[at];
+      this.tutAsk.style.setProperty('--tx', `${slot.offsetLeft + slot.offsetWidth / 2}px`);
     }
   }
 

@@ -17,10 +17,12 @@ export class ComboSystem {
   ];
   /** Alpha 1.6: the match rejects combos whose setup is gone (Match.comboReady). */
   ready: ((side: Side, c: ComboDef, prev: CardId) => boolean) | null = null;
+  /** Seconds the second card of a pair may follow the first (Alpha 1.6.5: the tutorial gives a beginner longer). */
+  window: number = MATCH.comboWindow;
 
   detect(side: Side, card: CardId, now: number): ComboDef | null {
     const l = this.last[side];
-    if (!l.card || now - l.time > MATCH.comboWindow) return null;
+    if (!l.card || now - l.time > this.window) return null;
     const ready = this.ready;
     return comboFor(l.card, card, l.combo, ready ? (c, prev) => ready(side, c, prev) : undefined);
   }
@@ -34,7 +36,7 @@ export class ComboSystem {
   windowLeft(side: Side, now: number): number {
     const l = this.last[side];
     if (!l.card) return 0;
-    return Math.max(0, MATCH.comboWindow - (now - l.time));
+    return Math.max(0, this.window - (now - l.time));
   }
 
   primed(side: Side): CardId | null {
