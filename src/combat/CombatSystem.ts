@@ -1,12 +1,13 @@
-import { ARENA, BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING } from '../config/balance';
-import type { Side, WeaponType } from '../config/types';
-import { clamp, clampRoundedRect, dampAngle, segmentCircleHit, wrapAngle, type ClampResult } from '../core/math';
+import { ARENA, BROADCAST, CARD_TUNING, COMBO_TUNING, MATCH, PASSIVE_TUNING } from '../config/balance';
+import type { ComboId, Side, WeaponType } from '../config/types';
+import { clamp, clampRoundedRect, dampAngle, segSegDist, segmentCircleHit, wrapAngle, type ClampResult } from '../core/math';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
-import type { HitInfo, Projectile, ProjectileKind } from './types';
+import type { HitInfo, HitKind, Projectile, ProjectileKind, StageObject } from './types';
 
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 const bankTmp = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
+const aimTmp = { x: 0, z: 0 };
 
 export interface SpawnOpts {
   homing?: number;
@@ -22,10 +23,42 @@ export interface SpawnOpts {
   pierce?: number;
   /** BANK SHOT: reflections off the barrier. */
   bounces?: number;
+  /** Alpha 1.6: combo multiplier already in the damage (SPOTLIGHT TAG never stacks on it). */
+  boost?: number;
+  /** Alpha 1.6 BLINDSIDE: the target's fighter does not sidestep it. */
+  blind?: boolean;
+  /** Alpha 1.6 CROSS ANGLE: passes the owner's own STAGE BARRIER. */
+  ownPass?: boolean;
 }
 
-/** Alpha 1.5 — attacks a FALSE START can read (instant SHOCK / OVERLOAD, poison ticks, slams and shockwaves cannot). */
-const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter']);
+/**
+ * Alpha 1.5 — attacks a FALSE START can read (instant SHOCK / OVERLOAD, poison ticks, slams and shockwaves cannot).
+ * Alpha 1.6: the new card shots are shots too; PROP DROP and PRESSURE MINE are areas, not attacks to read.
+ */
+const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter', 'split', 'disc', 'cable', 'cam', 'release']);
+/** Alpha 1.6 — card hits a SPOTLIGHT TAG boosts. */
+const TAG_KINDS = new Set<HitKind>(['power', 'bank', 'knockout', 'disc', 'prop', 'cam']);
+/** Alpha 1.6 — regular fire a HOLO DECOY soaks (card shots and charged attacks go through the hologram). */
+const HOLO_SOAK = new Set<ProjectileKind>(['auto', 'pellet', 'bolt', 'rail', 'slug', 'adrenaline', 'counter', 'split', 'release']);
+/** Alpha 1.6 — what a FRAME CATCH can stop (not CHARGED SHOT, not Zoe's SHOCK bolt). */
+const CATCHABLE = new Set<ProjectileKind>(['auto', 'pellet', 'bolt', 'rail', 'slug', 'power', 'adrenaline', 'bank', 'counter', 'split', 'disc', 'cable', 'cam', 'release']);
+const HIT_KIND: Record<ProjectileKind, HitKind> = {
+  auto: 'auto',
+  pellet: 'auto',
+  bolt: 'auto',
+  rail: 'auto',
+  slug: 'auto',
+  power: 'power',
+  adrenaline: 'adrenaline',
+  bank: 'bank',
+  counter: 'counter',
+  zap: 'shock',
+  split: 'split',
+  disc: 'disc',
+  cable: 'cable',
+  cam: 'cam',
+  release: 'release',
+};
 
 /** Alpha 1.5 — a BANK SHOT solution: first leg direction, the bounce point and both leg lengths. */
 export interface BankSolution {
@@ -204,6 +237,35 @@ export class CombatSystem {
       f.counterT -= dt;
       if (f.counterT <= 0) f.counterShots = 0;
     }
+    // Alpha 1.6 timers
+    if (f.tag > 0) {
+      f.tag = Math.max(0, f.tag - dt);
+      // the fighter's own smoke hides them from the spotlight
+      if (f.tag > 0 && this.m.inOwnSmoke(f)) f.tag = 0;
+      if (f.tag <= 0) this.m.emit({ type: 'tagEnd', side: f.side });
+    }
+    if (f.tether > 0) {
+      f.tether -= dt;
+      if (f.tether <= 0) this.releaseTether(f, false);
+    }
+    if (f.tetherCd > 0) f.tetherCd = Math.max(0, f.tetherCd - dt);
+    // Alpha 1.6: holds are never endless — after `holdMax` s of nets / cables in a row the fighter
+    // breaks free and shrugs them off for `holdImmune` s (the heat cools while free)
+    const hr = CARD_TUNING.hold;
+    if (f.holdImmune > 0) f.holdImmune = Math.max(0, f.holdImmune - dt);
+    else if (f.netSlow < 1 || f.tether > 0) {
+      f.holdHeat += dt;
+      if (f.holdHeat >= hr.holdMax) {
+        f.holdHeat = 0;
+        f.holdImmune = hr.immune;
+        f.netSlow = 1;
+        if (f.tether > 0) this.releaseTether(f, true);
+        this.m.emit({ type: 'breakFree', side: f.side, x: f.x, z: f.z });
+      }
+    } else f.holdHeat = Math.max(0, f.holdHeat - dt * hr.cool);
+    if (f.frame > 0) f.frame = Math.max(0, f.frame - dt);
+    if (f.caught > 0) f.caught = Math.max(0, f.caught - dt);
+    if (f.stakesCd > 0) f.stakesCd = Math.max(0, f.stakesCd - dt);
     if (f.knockback > 0) f.knockback = Math.max(0, f.knockback - dt);
     if (f.glitch > 0) {
       f.glitch = Math.max(0, f.glitch - dt);
@@ -259,7 +321,9 @@ export class CombatSystem {
     let tvz = 0;
     let accel = 32;
     const a = f.action;
-    if (a.kind === 'dash' || a.kind === 'rush' || a.kind === 'feint') {
+    // Alpha 1.6: a CABLE SNARE snaps on any real move away (DASH, FALSE START, BACKTRACK, a charge, a knockback)
+    if (f.tether > 0 && (a.kind === 'dash' || a.kind === 'feint' || a.kind === 'rewind' || a.kind === 'rush' || f.knockback > 0)) this.releaseTether(f, true);
+    if (a.kind === 'dash' || a.kind === 'rush' || a.kind === 'feint' || a.kind === 'rewind') {
       tvx = a.dirX * a.speed;
       tvz = a.dirZ * a.speed;
       accel = a.kind === 'feint' ? 120 : 400;
@@ -280,7 +344,8 @@ export class CombatSystem {
     const dvz = tvz - f.vz;
     const dv = Math.hypot(dvx, dvz);
     const maxDv = accel * dt;
-    if (dv <= maxDv || dv < 1e-6) {
+    // Alpha 1.6 BACKTRACK: an exact glide back along the tape (lands where it started from)
+    if (a.kind === 'rewind' || dv <= maxDv || dv < 1e-6) {
       f.vx = tvx;
       f.vz = tvz;
     } else {
@@ -288,10 +353,11 @@ export class CombatSystem {
       f.vz += (dvz / dv) * maxDv;
     }
     this.integrate(f, dt);
+    if (f.tether > 0) this.holdTether(f);
 
     // Aim / facing (model turns toward its aim point).
     const desired = a.kind === 'cut' ? Math.atan2(a.dirX, a.dirZ) : Math.atan2(f.aimX - f.x, f.aimZ - f.z);
-    if (a.kind === 'rush' || a.kind === 'dash') {
+    if (a.kind === 'rush' || a.kind === 'dash' || a.kind === 'rewind') {
       // Keep facing; view handles the dash pose.
     } else if (f.stun <= 0) {
       f.facing = dampAngle(f.facing, desired, a.kind === 'windup' ? 10 : a.kind === 'cut' ? 12 : 15, dt);
@@ -301,11 +367,27 @@ export class CombatSystem {
   }
 
   private integrate(f: FighterSim, dt: number): void {
-    const nx = f.x + f.vx * dt;
-    const nz = f.z + f.vz * dt;
+    // Alpha 1.6: a PULSE PUSH / mine blast slides the fighter on top of its own movement
+    const sh = f.shoveX !== 0 || f.shoveZ !== 0;
+    const nx = f.x + (f.vx + f.shoveX) * dt;
+    const nz = f.z + (f.vz + f.shoveZ) * dt;
     clampRoundedRect(nx, nz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmpClamp);
     f.x = tmpClamp.x;
     f.z = tmpClamp.z;
+    if (sh) {
+      // the push dies at the barrier (never a wall slam) and fades out
+      if (tmpClamp.hit) {
+        const sin = f.shoveX * tmpClamp.nx + f.shoveZ * tmpClamp.nz;
+        if (sin > 0) {
+          f.shoveX -= sin * tmpClamp.nx;
+          f.shoveZ -= sin * tmpClamp.nz;
+        }
+      }
+      const k = Math.exp(-CARD_TUNING.pulse_push.decay * dt);
+      f.shoveX *= k;
+      f.shoveZ *= k;
+      if (f.shoveX * f.shoveX + f.shoveZ * f.shoveZ < 0.01) f.shoveX = f.shoveZ = 0;
+    }
     if (tmpClamp.hit) {
       const speed = Math.hypot(f.vx, f.vz);
       const into = f.vx * tmpClamp.nx + f.vz * tmpClamp.nz;
@@ -378,12 +460,14 @@ export class CombatSystem {
         if (!a.locked) {
           if (a.card === 'bank_shot') {
             // BANK SHOT aims at the bounce point (re-solved as both fighters move)
-            this.bankAim(f, bankTmp);
+            this.bankAim(f, bankTmp, a.combo === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
             a.dirX = bankTmp.dirX;
             a.dirZ = bankTmp.dirZ;
           } else {
-            const dx = f.aimX - f.x;
-            const dz = f.aimZ - f.z;
+            // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
+            this.windupAim(f, a.card, a.combo, aimTmp);
+            const dx = aimTmp.x - f.x;
+            const dz = aimTmp.z - f.z;
             const d = Math.hypot(dx, dz) || 1;
             a.dirX = dx / d;
             a.dirZ = dz / d;
@@ -399,8 +483,15 @@ export class CombatSystem {
       }
       case 'dash':
       case 'feint':
+      case 'rewind':
         a.t += dt;
-        if (a.t >= a.total) f.action = { kind: 'none' };
+        if (a.t >= a.total) {
+          f.action = { kind: 'none' };
+          // Alpha 1.6 BACKTRACK ends on the spot (no slide past the point it rewound to)
+          if (a.kind === 'rewind') f.vx = f.vz = 0;
+          // Alpha 1.6 CATCH & RELEASE: the caught shot goes back once the DASH lands
+          if (a.kind === 'dash' && f.releaseDmg > 0) this.fireRelease(f, foe);
+        }
         break;
       case 'rush':
         a.t += dt;
@@ -593,12 +684,11 @@ export class CombatSystem {
   }
 
   /** Where Kai's BANK SHOT would go right now: aimed at where the target will be when the round arrives. */
-  bankAim(f: FighterSim, out: BankSolution): BankSolution {
+  bankAim(f: FighterSim, out: BankSolution, lead = 0.85): BankSolution {
     const t = CARD_TUNING.bank_shot;
     // first guess at where the target stands, then lead it by the time the bank path takes
     solveBank(f.x, f.z, f.seenX, f.seenZ, out);
     const time = (out.len1 + out.len2) / t.speed;
-    const lead = 0.85;
     let tx = f.seenX + f.seenVX * time * lead;
     let tz = f.seenZ + f.seenVZ * time * lead;
     clampRoundedRect(tx, tz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmpClamp);
@@ -703,8 +793,226 @@ export class CombatSystem {
     p.pierce = o.pierce ?? 0;
     p.bounces = o.bounces ?? 0;
     p.bounced = false;
+    p.boost = o.boost ?? 1;
+    p.blind = o.blind ?? false;
+    p.ownPass = o.ownPass ?? false;
+    p.ret = false;
+    p.mask = 0;
+    p.life = 0;
     this.m.projectiles.push(p);
     return p;
+  }
+
+  // ------------------------------------------------- Alpha 1.6 — card shots
+  /**
+   * Where a charged attack / card shot goes: the real fighter as this fighter's brain sees
+   * it (smoke and SMOKE→DASH phantoms still fool it, a HOLO DECOY does not), led by its
+   * flight time. SPOTLIGHT combos lead fully and without aim error.
+   */
+  leadAim(f: FighterSim, speed: number, k: number, out: { x: number; z: number }): { x: number; z: number } {
+    const dist = Math.hypot(f.seenX - f.x, f.seenZ - f.z);
+    const time = (dist / Math.max(1, speed)) * k;
+    out.x = f.seenX + f.seenVX * time;
+    out.z = f.seenZ + f.seenVZ * time;
+    return out;
+  }
+
+  windupAim(f: FighterSim, card: string, combo: ComboId | null, out: { x: number; z: number }): { x: number; z: number } {
+    if (combo === 'spotlight') {
+      const speed = card === 'charged_shot' ? CARD_TUNING.charged_shot.speed : CARD_TUNING.power_shot.speed;
+      return this.leadAim(f, speed, COMBO_TUNING.spotlightLead, out);
+    }
+    out.x = f.cardAimX;
+    out.z = f.cardAimZ;
+    return out;
+  }
+
+  /** SPLIT SHOT: one wide volley of three bolts instead of the next regular one (the weapon's own burst is skipped). */
+  fireSplit(f: FighterSim, tight: boolean): void {
+    const t = CARD_TUNING.split_shot;
+    const yaw = Math.atan2(f.cardAimX - f.x, f.cardAimZ - f.z);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    const fan = tight ? COMBO_TUNING.tightFan : t.fan;
+    const dmg = t.damage * f.outgoingDamageMult();
+    for (let i = 0; i < t.bolts; i++) {
+      const y = yaw - fan / 2 + (fan * i) / (t.bolts - 1);
+      this.spawn(f.side, 'split', f.stats.attack.weapon, origin.x, origin.z, y, t.speed, dmg, t.radius, t.range, { falloff: t.falloff, crit: tight });
+    }
+    f.burstLeft = 0;
+    f.fireTimer = Math.max(f.fireTimer, f.stats.attack.interval / f.fireRateMult());
+    f.m.shots++;
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'split' });
+  }
+
+  /** REBOUND DISC: straight out to its turn point, then home to the thrower (BOOMERANG: turns right past the held target). */
+  fireDisc(f: FighterSim, combo: ComboId | null): void {
+    const t = CARD_TUNING.rebound_disc;
+    const at = combo === 'spotlight' ? this.leadAim(f, t.speed, COMBO_TUNING.spotlightLead, aimTmp) : { x: f.cardAimX, z: f.cardAimZ };
+    const yaw = Math.atan2(at.x - f.x, at.z - f.z);
+    f.facing = yaw;
+    let reach: number = t.reach;
+    if (combo === 'boomerang') reach = clamp(Math.hypot(f.seenX - f.x, f.seenZ - f.z) + COMBO_TUNING.boomerangPast, t.minReach, t.reach);
+    const origin = this.muzzleWorld(f, 0, yaw);
+    this.spawn(f.side, 'disc', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, reach, { crit: combo !== null });
+    f.fireTimer = Math.max(f.fireTimer, 0.3);
+  }
+
+  /** CABLE SNARE: the cable shot (the tether comes with a hit, see updateProjectiles). */
+  fireCable(f: FighterSim): void {
+    const t = CARD_TUNING.cable_snare;
+    this.leadAim(f, t.speed, f.leadK, aimTmp);
+    const yaw = Math.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    this.spawn(f.side, 'cable', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, t.range, {});
+    f.fireTimer = Math.max(f.fireTimer, 0.25);
+  }
+
+  /** SIDE CAM: the one bolt along the camera's frozen line. */
+  fireCam(f: FighterSim, o: StageObject): void {
+    const t = CARD_TUNING.side_cam;
+    const yaw = Math.atan2(o.dirX, o.dirZ);
+    this.spawn(f.side, 'cam', f.stats.attack.weapon, o.x + o.dirX * 0.5, o.z + o.dirZ * 0.5, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, t.range, {
+      heavy: true,
+      blind: o.combo === 'blindside',
+      ownPass: o.combo === 'cross_angle',
+      crit: o.combo !== null,
+    });
+  }
+
+  /** CATCH & RELEASE: the caught shot goes back at the opponent after the DASH. */
+  private fireRelease(f: FighterSim, foe: FighterSim): void {
+    const dmg = f.releaseDmg;
+    f.releaseDmg = 0;
+    if (foe.ko || this.m.phase !== 'fight') return;
+    const speed = COMBO_TUNING.releaseSpeed;
+    this.leadAim(f, speed, f.leadK, aimTmp);
+    const yaw = Math.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    this.spawn(f.side, 'release', f.stats.attack.weapon, origin.x, origin.z, yaw, speed, dmg, 0.3, 12, { crit: true });
+    f.m.shots++;
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'release' });
+  }
+
+  /** Slide a fighter (PULSE PUSH, mine blast): not a knockback — no interrupt, no stun, no wall slam. */
+  shove(f: FighterSim, ux: number, uz: number, force: number): void {
+    if (f.ko || force <= 0) return;
+    let k = 1;
+    if (f.stats.armor > 0) k *= CARD_TUNING.pulse_push.heavyMult;
+    if (f.side === 1 && this.m.boss) {
+      // the champion barely moves and never during DIRECTOR'S CUT
+      if (f.action.kind === 'cut') return;
+      k *= CARD_TUNING.pulse_push.bossMult;
+    }
+    f.shoveX += ux * force * k;
+    f.shoveZ += uz * force * k;
+    // one push at a time: never faster than a single full push
+    const l = Math.hypot(f.shoveX, f.shoveZ);
+    const cap = Math.max(force * k, CARD_TUNING.pulse_push.force);
+    if (l > cap) {
+      f.shoveX *= cap / l;
+      f.shoveZ *= cap / l;
+    }
+  }
+
+  /**
+   * PULSE PUSH: a short wave towards the opponent; only an opponent within reach slides.
+   * STAGE PUSH: the wave leaves from the fighter's barrier. MINE DRIVE: it bends towards
+   * the fighter's mine (never more than the set angle) and pushes a little harder.
+   */
+  pulsePush(f: FighterSim, foe: FighterSim, combo: ComboId | null): void {
+    const m = this.m;
+    const t = CARD_TUNING.pulse_push;
+    let ox = f.x;
+    let oz = f.z;
+    let force: number = t.force;
+    if (combo === 'wall_push') {
+      const b = m.objects.own(f.side, 'barrier');
+      if (b) {
+        ox = b.x;
+        oz = b.z;
+        force *= COMBO_TUNING.wallPushForce;
+      }
+    }
+    const dx = foe.x - ox;
+    const dz = foe.z - oz;
+    const d = Math.hypot(dx, dz) || 1;
+    let ux = dx / d;
+    let uz = dz / d;
+    const inReach = !foe.ko && d <= t.range + foe.radius * 0.5;
+    const hit = inReach && foe.invuln <= 0;
+    m.emit({ type: 'push', side: f.side, x: ox, z: oz, dx: ux, dz: uz, range: t.range, hit });
+    if (!hit) {
+      if (inReach) {
+        // dashed through the wave
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: false, heavy: false });
+        this.onEvade(foe);
+      }
+      return;
+    }
+    if (combo === 'mine_drive') {
+      const mine = m.objects.nearestMine(f.side, foe.x, foe.z);
+      if (mine) {
+        const mx = mine.x - foe.x;
+        const mz = mine.z - foe.z;
+        const ml = Math.hypot(mx, mz);
+        if (ml > 0.05) {
+          const want = Math.atan2(mx / ml, mz / ml);
+          const cur = Math.atan2(ux, uz);
+          const turn = clamp(wrapAngle(want - cur), -COMBO_TUNING.mineDriveAngle, COMBO_TUNING.mineDriveAngle);
+          ux = Math.sin(cur + turn);
+          uz = Math.cos(cur + turn);
+        }
+      }
+      force *= COMBO_TUNING.mineDriveForce;
+    }
+    this.shove(foe, ux, uz, force);
+    // the wave throws the aim off: the next regular shot comes a little later (cards are not touched)
+    foe.fireTimer = Math.max(foe.fireTimer, 0) + t.aimDelay;
+    foe.burstLeft = 0;
+  }
+
+  /** CABLE SNARE landed: hold the target near this spot (shorter and looser on the champion). */
+  private tetherTo(target: FighterSim): void {
+    if (target.ko || target.tether > 0 || target.tetherCd > 0 || target.holdImmune > 0) return;
+    const t = CARD_TUNING.cable_snare;
+    const boss = target.side === 1 && !!this.m.boss;
+    target.tether = boss ? t.bossDuration : t.duration;
+    target.tetherR = boss ? t.bossTether : t.tether;
+    target.tetherX = target.x;
+    target.tetherZ = target.z;
+    this.m.emit({ type: 'tether', side: target.side, ax: target.x, az: target.z, radius: target.tetherR, duration: target.tether });
+  }
+
+  /** The cable lets go: ran out (broke = false) or snapped by a move. A short immunity follows. */
+  releaseTether(f: FighterSim, broke: boolean): void {
+    f.tether = 0;
+    f.tetherCd = CARD_TUNING.cable_snare.immunity;
+    this.m.emit({ type: 'tetherEnd', side: f.side, broke });
+  }
+
+  /** Keeps a tethered fighter within the cable's reach (a smooth limit, never a teleport). */
+  private holdTether(f: FighterSim): void {
+    const dx = f.x - f.tetherX;
+    const dz = f.z - f.tetherZ;
+    const d = Math.hypot(dx, dz);
+    if (d <= f.tetherR) return;
+    const ux = dx / d;
+    const uz = dz / d;
+    f.x = f.tetherX + ux * f.tetherR;
+    f.z = f.tetherZ + uz * f.tetherR;
+    const out = f.vx * ux + f.vz * uz;
+    if (out > 0) {
+      f.vx -= out * ux;
+      f.vz -= out * uz;
+    }
+    const sout = f.shoveX * ux + f.shoveZ * uz;
+    if (sout > 0) {
+      f.shoveX -= sout * ux;
+      f.shoveZ -= sout * uz;
+    }
   }
 
   // ------------------------------------------------------------- projectiles
@@ -717,29 +1025,36 @@ export class CombatSystem {
       p.px = p.x;
       p.pz = p.z;
       const foe = m.fighters[1 - p.owner];
+      // Alpha 1.6 FREEZE FRAME: regular projectiles crawl inside a slow-motion zone (range is kept in metres)
+      const sdt = dt * m.objects.freezeScale(p);
 
-      if (p.homing > 0 && !foe.ko) {
+      if (p.kind === 'disc') {
+        if (!this.steerDisc(p, sdt)) continue;
+      } else if (p.homing > 0 && !foe.ko) {
         const desired = Math.atan2(foe.x - p.x, foe.z - p.z);
         const cur = Math.atan2(p.vx, p.vz);
         const diff = wrapAngle(desired - cur);
         if (Math.abs(diff) < 1.5) {
-          const turn = clamp(diff, -p.homing * dt, p.homing * dt);
+          const turn = clamp(diff, -p.homing * sdt, p.homing * sdt);
           const ny = cur + turn;
           p.vx = Math.sin(ny) * p.speed;
           p.vz = Math.cos(ny) * p.speed;
         }
       }
 
-      p.x += p.vx * dt;
-      p.z += p.vz * dt;
-      p.traveled += p.speed * dt;
+      p.x += p.vx * sdt;
+      p.z += p.vz * sdt;
+      p.traveled += p.speed * sdt;
 
-      // Decoys soak hostile fire.
+      // Decoys soak hostile fire (Alpha 1.6: a HOLO DECOY only soaks regular fire, and a whole volley)
       let consumed = false;
       for (const d of m.decoys) {
         if (!d.alive || d.owner === p.owner) continue;
+        if (d.kind === 'holo' && !HOLO_SOAK.has(p.kind)) continue;
         if (segmentCircleHit(p.px, p.pz, p.x, p.z, d.x, d.z, MATCH.fighterRadius + p.radius) >= 0) {
-          m.popDecoy(d);
+          if (d.kind === 'holo') {
+            if (d.soak < 0) d.soak = CARD_TUNING.holo_decoy.soak;
+          } else m.popDecoy(d);
           m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'decoy', heavy: p.heavy, weapon: p.weapon });
           p.alive = false;
           consumed = true;
@@ -748,7 +1063,30 @@ export class CombatSystem {
       }
       if (consumed) continue;
 
-      if (!foe.ko && !p.passThrough) {
+      // Alpha 1.6 STAGE BARRIER: a screen stops projectiles of both sides
+      const screen = m.objects.barrierHit(p);
+      if (screen) {
+        m.objects.damageBarrier(screen, p.damage, p.x, p.z);
+        m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'shield', heavy: p.heavy, weapon: p.weapon });
+        p.alive = false;
+        continue;
+      }
+
+      // Alpha 1.6 FRAME CATCH: the first enemy projectile through the frame is destroyed
+      if (foe.frame > 0 && CATCHABLE.has(p.kind) && !(p.kind === 'power' && p.pierce > 0) && this.frameHit(foe, p)) {
+        foe.frame = 0;
+        foe.caught = CARD_TUNING.frame_catch.memory;
+        foe.caughtDmg = p.damage;
+        // stopping a heavy shot is a timing read, like a PERFECT BLOCK
+        if (p.heavy) foe.m.perfects++;
+        m.emit({ type: 'frameCatch', side: foe.side, x: p.x, z: p.z });
+        p.alive = false;
+        continue;
+      }
+
+      // REBOUND DISC: one hit per pass (out / back), the disc flies on
+      const discDone = p.kind === 'disc' && (p.mask & (p.ret ? 2 : 1)) !== 0;
+      if (!foe.ko && !p.passThrough && !discDone) {
         const t = segmentCircleHit(p.px, p.pz, p.x, p.z, foe.x, foe.z, foe.radius + p.radius);
         if (t >= 0) {
           if (foe.invuln > 0) {
@@ -768,7 +1106,7 @@ export class CombatSystem {
           }
           if (foe.invuln <= 0 && !p.passThrough) {
             const prog = clamp(p.traveled / p.range, 0, 1);
-            let dmg = p.damage * (1 + (p.falloff - 1) * prog);
+            let dmg = p.kind === 'disc' ? p.damage : p.damage * (1 + (p.falloff - 1) * prog);
             // BANK SHOT: a straight hit before the ricochet is only a graze; after it, a TRICK SHOT
             const trick = p.kind === 'bank' && p.bounced;
             if (p.kind === 'bank' && !p.bounced) dmg *= CARD_TUNING.bank_shot.directMult;
@@ -784,7 +1122,7 @@ export class CombatSystem {
             }
             const outcome = this.applyHit(foe, src, {
               damage: dmg,
-              kind: p.kind === 'power' ? 'power' : p.kind === 'adrenaline' ? 'adrenaline' : p.kind === 'bank' ? 'bank' : p.kind === 'counter' ? 'counter' : p.kind === 'zap' ? 'shock' : 'auto',
+              kind: HIT_KIND[p.kind],
               heavy: p.heavy,
               crit: p.crit || trick,
               electric: p.electric,
@@ -798,6 +1136,7 @@ export class CombatSystem {
               sure: false,
               projectile: p,
               pierce: p.pierce,
+              boost: p.boost,
             });
             if (outcome === 'dodged') {
               // FALSE START read it: the shot flies on past her
@@ -812,6 +1151,12 @@ export class CombatSystem {
               const refund = CARD_TUNING.bank_shot.energyRefund;
               m.hands[src.side].gain(refund);
               m.emit({ type: 'trickShot', side: src.side, x: p.x, z: p.z, refund });
+            }
+            if (p.kind === 'cable' && outcome === 'hit') this.tetherTo(foe);
+            if (p.kind === 'disc' && outcome === 'hit') {
+              // the disc keeps spinning on its path (a shield stops it)
+              p.mask |= p.ret ? 2 : 1;
+              continue;
             }
             p.alive = false;
             continue;
@@ -838,6 +1183,7 @@ export class CombatSystem {
         }
       }
 
+      if (p.kind === 'disc') continue; // turns and expiry: steerDisc
       if (p.traveled >= p.range) {
         p.alive = false;
         m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'expire', heavy: p.heavy, weapon: p.weapon });
@@ -881,6 +1227,75 @@ export class CombatSystem {
       else this.pool.push(p);
     }
     list.length = w;
+  }
+
+  /**
+   * Alpha 1.6 — REBOUND DISC flight: straight out until its turn point or the barrier, then
+   * back towards where its thrower stands now (it follows the thrower, never the target).
+   * Caught near the thrower; gone after maxTime. Returns false when the disc is finished.
+   */
+  private steerDisc(p: Projectile, dt: number): boolean {
+    const m = this.m;
+    const t = CARD_TUNING.rebound_disc;
+    const owner = m.fighters[p.owner];
+    p.life += dt;
+    if (p.life >= t.maxTime || owner.ko) {
+      p.alive = false;
+      m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'expire', heavy: false, weapon: p.weapon });
+      return false;
+    }
+    if (!p.ret) {
+      const nx = p.x + p.vx * dt;
+      const nz = p.z + p.vz * dt;
+      if (p.traveled >= p.range || !inArenaWall(nx, nz)) {
+        p.ret = true;
+        // the way back is a fresh approach for dodge bookkeeping
+        p.closest = 999;
+        p.dodgeLogged = false;
+        p.sidestepped = false;
+        m.emit({ type: 'disc', side: p.owner, x: p.x, z: p.z, what: 'turn' });
+      }
+      return true;
+    }
+    const dx = owner.x - p.x;
+    const dz = owner.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d < t.catchRadius) {
+      p.alive = false;
+      m.emit({ type: 'disc', side: p.owner, x: owner.x, z: owner.z, what: 'catch' });
+      return false;
+    }
+    const desired = Math.atan2(dx, dz);
+    const cur = Math.atan2(p.vx, p.vz);
+    const ny = cur + clamp(wrapAngle(desired - cur), -t.turnRate * dt, t.turnRate * dt);
+    p.vx = Math.sin(ny) * p.speed;
+    p.vz = Math.cos(ny) * p.speed;
+    // never leaves the ring on the way home
+    const nx = p.x + p.vx * dt;
+    const nz = p.z + p.vz * dt;
+    if (!inArenaWall(nx, nz)) {
+      clampRoundedRect(nx, nz, ARENA.wallX - 0.1, ARENA.wallZ - 0.1, ARENA.wallCorner, tmpClamp);
+      p.vx = (tmpClamp.x - p.x) / Math.max(dt, 1e-4);
+      p.vz = (tmpClamp.z - p.z) / Math.max(dt, 1e-4);
+      const l = Math.hypot(p.vx, p.vz);
+      if (l > p.speed) {
+        p.vx *= p.speed / l;
+        p.vz *= p.speed / l;
+      }
+    }
+    return true;
+  }
+
+  /** FRAME CATCH geometry: a short segment `ahead` m in front of the fighter, across its facing. */
+  private frameHit(f: FighterSim, p: Projectile): boolean {
+    const t = CARD_TUNING.frame_catch;
+    const fx = Math.sin(f.facing);
+    const fz = Math.cos(f.facing);
+    const cx = f.x + fx * t.ahead;
+    const cz = f.z + fz * t.ahead;
+    // only shots coming at the front of the frame
+    if (p.vx * fx + p.vz * fz >= 0) return false;
+    return segSegDist(p.px, p.pz, p.x, p.z, cx + fz * t.halfWidth, cz - fx * t.halfWidth, cx - fz * t.halfWidth, cz + fx * t.halfWidth) <= p.radius + 0.12;
   }
 
   /** Called when a fighter successfully avoids an attack. */
@@ -942,6 +1357,17 @@ export class CombatSystem {
     }
     if (target.feint > 0 && this.tryFeint(target, source, h)) return 'dodged';
     let dmg = h.damage;
+    // Alpha 1.6 SPOTLIGHT TAG: the marked hit lands harder once — never on top of a combo bonus (the larger counts)
+    let tagged = false;
+    if (target.tag > 0 && target.tagBy === source.side && TAG_KINDS.has(h.kind)) {
+      const mult = CARD_TUNING.spotlight_tag.mult;
+      const boost = h.boost ?? 1;
+      if (mult > boost) dmg *= mult / boost;
+      target.tag = 0;
+      tagged = true;
+      m.emit({ type: 'tagHit', side: source.side, x: target.x, z: target.z });
+      m.emit({ type: 'tagEnd', side: target.side });
+    }
     if (target.glitch > 0) dmg *= CARD_TUNING.system_overload.damageTakenMult;
     if (h.kind !== 'dot' && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;
     dmg *= 1 - target.stats.armor;
@@ -986,7 +1412,7 @@ export class CombatSystem {
       dz: h.dz,
       kind: h.kind,
       heavy: h.heavy,
-      crit: h.crit,
+      crit: h.crit || tagged,
       combo: h.combo,
       electric: h.electric,
     });

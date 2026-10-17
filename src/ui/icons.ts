@@ -87,6 +87,122 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M8 6 H34 L30 14 H4 Z" fill="#fff"/>
      <path d="M12 6 L8 14 M20 6 L16 14 M28 6 L24 14" stroke="#7a1020" stroke-width="3"/>`,
   ),
+  // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+  // studio spotlight lighting a target marker
+  spotlight_tag: S(
+    `<path d="M23 7 L30 17 L58 45 L41 58 Z" fill="#fff" opacity=".32"/>
+     <path d="M6 10 L21 3 L28 17 L13 24 Z" fill="#fff" ${STROKE}/>
+     <path d="M21 3 L28 17" stroke="#ffd23a" stroke-width="3.5" stroke-linecap="round"/>
+     <circle cx="47" cy="49" r="9" fill="none" stroke="#fff" stroke-width="4.5"/>
+     <circle cx="47" cy="49" r="3.5" fill="#ffd23a"/>
+     <path d="M54 8 L56 14 L62 16 L56 18 L54 24 L52 18 L46 16 L52 14 Z" fill="#fff"/>`,
+  ),
+  // three tracers fanning out of one muzzle
+  split_shot: S(
+    `<path d="M17 32 L58 32" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+     <path d="M17 30 L53 11" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+     <path d="M17 34 L53 53" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+     <circle cx="58" cy="32" r="4.5" fill="#d6ffb0"/><circle cx="53" cy="11" r="4" fill="#d6ffb0"/><circle cx="53" cy="53" r="4" fill="#d6ffb0"/>
+     <circle cx="11" cy="32" r="8" fill="#fff" ${STROKE}/>`,
+  ),
+  // a spinning disc on an out-and-back path
+  rebound_disc: S(
+    `<path d="M8 46 C14 10 50 6 57 28" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="6 5"/>
+     <path d="M57 32 C53 48 32 54 15 51" fill="none" stroke="#bff4ff" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="6 5"/>
+     <path d="M20 45 L13 51 L21 56" fill="none" stroke="#bff4ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+     <ellipse cx="36" cy="30" rx="15" ry="9" fill="#fff" ${STROKE}/>
+     <ellipse cx="36" cy="30" rx="6" ry="3.5" fill="#38e1ff"/>`,
+  ),
+  // a foam star falling onto a warning circle
+  prop_drop: S(
+    `<ellipse cx="32" cy="54" rx="23" ry="7" fill="none" stroke="#fff" stroke-width="3.5" stroke-dasharray="6 4"/>
+     <circle cx="32" cy="54" r="3" fill="#ffd23a"/>
+     <path d="M32 6 L36.1 16.3 L47.2 17.1 L38.7 24.2 L41.4 34.9 L32 29 L22.6 34.9 L25.3 24.2 L16.8 17.1 L27.9 16.3 Z" fill="#fff" ${STROKE}/>
+     <path d="M24 40 V46 M32 38 V47 M40 40 V46" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>`,
+  ),
+  // a wave rolling forward from the fighter
+  pulse_push: S(
+    `<circle cx="11" cy="32" r="7" fill="#fff" ${STROKE}/>
+     <path d="M21 17 C28 24 28 40 21 47" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+     <path d="M31 11 C40 22 40 42 31 53" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+     <path d="M41 6 C52 20 52 44 41 58" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".5"/>
+     <path d="M50 32 L62 32 M56 26 L62 32 L56 38" fill="none" stroke="#e2d4ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
+  // a glowing floor grid around a dropped generator
+  gravity_net: S(
+    `<ellipse cx="32" cy="42" rx="27" ry="15" fill="none" stroke="#fff" stroke-width="4"/>
+     <path d="M7 42 H57 M14 33 L50 51 M14 51 L50 33 M32 27 V57" stroke="#fff" stroke-width="2.5" opacity=".7"/>
+     <circle cx="32" cy="42" r="6" fill="#4dffd2" stroke="#fff" stroke-width="3"/>
+     <path d="M32 4 V18 M25 12 L32 19 L39 12" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
+  // a blinking pulse mine on the floor
+  pressure_mine: S(
+    `<ellipse cx="32" cy="46" rx="21" ry="8" fill="#fff" ${STROKE}/>
+     <path d="M15 44 C17 33 47 33 49 44 Z" fill="#fff" ${STROKE}/>
+     <circle cx="32" cy="37" r="4.5" fill="#ff3a5c"/>
+     <path d="M21 22 C27 16 37 16 43 22 M14 15 C24 5 40 5 50 15" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".85"/>`,
+  ),
+  // a translucent stage screen on a lit base stopping a shot
+  stage_barrier: S(
+    `<rect x="24" y="5" width="20" height="45" rx="3" fill="#cfeaff" ${STROKE}/>
+     <path d="M28 13 H40 M28 21 H40 M28 29 H40 M28 37 H40" stroke="#3d8bff" stroke-width="2.5" stroke-linecap="round" opacity=".8"/>
+     <rect x="16" y="50" width="36" height="8" rx="3" fill="#fff" ${STROKE}/>
+     <path d="M3 28 H15" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+     <circle cx="19" cy="28" r="4.5" fill="#9ad8ff" stroke="#fff" stroke-width="2"/>
+     <path d="M14 20 L18 23 M14 36 L18 33" stroke="#fff" stroke-width="3" stroke-linecap="round"/>`,
+  ),
+  // a cable shot looping round its catch point
+  cable_snare: S(
+    `<path d="M7 55 C15 41 21 53 29 39 C35 29 40 37 44 27" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/>
+     <circle cx="49" cy="19" r="11" fill="none" stroke="#fff" stroke-width="5"/>
+     <circle cx="49" cy="19" r="4" fill="#e9ff70"/>
+     <circle cx="7" cy="55" r="5.5" fill="#fff" ${STROKE}/>
+     <path d="M36 50 A16 6 0 0 0 62 50" fill="none" stroke="#e9ff70" stroke-width="3" stroke-dasharray="4 4"/>`,
+  ),
+  // the fighter and a scan-lined hologram copy
+  holo_decoy: S(
+    `<circle cx="42" cy="16" r="8" fill="#bff8ff" opacity=".6"/><path d="M30 57 V37 C30 27 54 27 54 37 V57 Z" fill="#bff8ff" opacity=".6"/>
+     <path d="M30 36 H54 M30 43 H54 M30 50 H54" stroke="#fff" stroke-width="2" opacity=".9"/>
+     <circle cx="21" cy="18" r="8" fill="#fff" ${STROKE}/><path d="M9 58 V38 C9 28 33 28 33 38 V58 Z" fill="#fff" ${STROKE}/>`,
+  ),
+  // an energy frame with a caught round
+  frame_catch: S(
+    `<path d="M8 21 V8 H21 M43 8 H56 V21 M56 43 V56 H43 M21 56 H8 V43" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+     <circle cx="32" cy="32" r="8" fill="#fff" ${STROKE}/>
+     <path d="M32 21 V15 M32 43 V49 M21 32 H15 M43 32 H49" stroke="#c6ff4d" stroke-width="3.5" stroke-linecap="round"/>`,
+  ),
+  // the rewind symbol over a dashed track
+  backtrack: S(
+    `<path d="M58 14 L35 32 L58 50 Z" fill="#fff" opacity=".55" ${STROKE}/>
+     <path d="M35 14 L11 32 L35 50 Z" fill="#fff" ${STROKE}/>
+     <path d="M6 58 H58" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 5"/>
+     <circle cx="8" cy="58" r="3.5" fill="#ff7ad9"/>`,
+  ),
+  // a show chip: health on one side, energy on the other
+  high_stakes: S(
+    `<circle cx="32" cy="32" r="27" fill="#fff" ${STROKE}/>
+     <circle cx="32" cy="32" r="21" fill="none" stroke="#9c1030" stroke-width="4" stroke-dasharray="6 5"/>
+     <path d="M21 41 C14 36 11 32 11 28 C11 24 14 22 17 22 C19 22 20.5 23 21 25 C21.5 23 23 22 25 22 C28 22 31 24 31 28 C31 32 28 36 21 41 Z" fill="#ff3a5c"/>
+     <path d="M45 18 L35 33 H42 L39 46 L51 30 H44 L48 18 Z" fill="#ffd23a" stroke="#9c1030" stroke-width="1.5" stroke-linejoin="round"/>`,
+  ),
+  // a studio camera on the barrier taking one shot
+  side_cam: S(
+    `<rect x="3" y="5" width="6" height="54" rx="2" fill="#fff" opacity=".85"/>
+     <path d="M9 27 H15" stroke="#fff" stroke-width="4"/>
+     <rect x="14" y="17" width="25" height="17" rx="3" fill="#fff" ${STROKE}/>
+     <path d="M39 20 L50 14 V37 L39 31 Z" fill="#fff" ${STROKE}/>
+     <circle cx="20" cy="23" r="3" fill="#ff3a3a"/>
+     <path d="M48 30 L61 56" stroke="#ff4f6d" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4"/>`,
+  ),
+  // a stopwatch frozen on pause
+  freeze_frame: S(
+    `<circle cx="32" cy="35" r="24" fill="#fff" ${STROKE}/>
+     <rect x="27" y="4" width="10" height="7" rx="2" fill="#fff"/>
+     <path d="M49 13 L54 8" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+     <rect x="23.5" y="24" width="6" height="22" rx="2" fill="#1e4f8f"/>
+     <rect x="34.5" y="24" width="6" height="22" rx="2" fill="#1e4f8f"/>
+     <path d="M12 35 H16 M48 35 H52 M32 15 V19 M32 51 V55" stroke="#1e4f8f" stroke-width="2.5" stroke-linecap="round"/>`,
+  ),
 };
 
 export const PASSIVE_ICONS: Record<PassiveId, string> = {

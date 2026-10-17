@@ -4,7 +4,7 @@ import type { FighterId } from '../../config/types';
 import { formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
-import { cardHTML, el, esc, portraitHTML } from '../dom';
+import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { PASSIVE_ICONS, UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
@@ -59,7 +59,7 @@ export class RosterScreen implements Screen {
     this.backTo = typeof params === 'string' ? 'career' : (params as { back?: 'prep' } | undefined)?.back === 'prep' ? 'prep' : 'menu';
     const id = (typeof params === 'string' ? params : this.g.save.data.selected) as FighterId;
     this.idx = Math.max(0, FIGHTER_ORDER.indexOf(id));
-    this.render();
+    this.render(false);
   }
 
   private onClick(e: Event): void {
@@ -102,7 +102,7 @@ export class RosterScreen implements Screen {
     }
   }
 
-  private render(): void {
+  private render(keep = true): void {
     const g = this.g;
     const s = g.save.data;
     const id = this.viewing;
@@ -147,7 +147,9 @@ export class RosterScreen implements Screen {
         ${c.ok ? '' : `<div class="center muted" style="font-size:11.5px;margin-top:8px">Побеждайте в эфирах, чтобы заработать репутацию и деньги</div>`}`;
     }
 
-    this.el.innerHTML = `
+    setScreenHTML(
+      this.el,
+      `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="h1">Мои бойцы</div>
@@ -187,6 +189,8 @@ export class RosterScreen implements Screen {
         </div>
         <div class="spacer-8"></div>
         ${action}
-      </div>`;
+      </div>`,
+      keep,
+    );
   }
 }

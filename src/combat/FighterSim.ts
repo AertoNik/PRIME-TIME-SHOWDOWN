@@ -50,6 +50,15 @@ export interface RecoverAction {
   t: number;
   total: number;
 }
+/** Alpha 1.6 — BACKTRACK: a straight glide back to an earlier position (no invulnerability). */
+export interface RewindAction {
+  kind: 'rewind';
+  t: number;
+  total: number;
+  dirX: number;
+  dirZ: number;
+  speed: number;
+}
 /**
  * DIRECTOR'S CUT (boss): prep pose, then for each of the three shots a tracking line
  * ('aim'), a frozen line ('lock') and a short pause after the shot ('gap').
@@ -73,7 +82,7 @@ export interface CutAction {
   tune: CutTuning;
   empowered: boolean;
 }
-export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction | FeintAction;
+export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction | FeintAction | RewindAction;
 
 export interface FighterMatchStats {
   damageDealt: number;
@@ -182,6 +191,42 @@ export class FighterSim {
   /** Time (match clock) the last heavy hit landed on this fighter. */
   lastHeavyTaken = -99;
 
+  // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+  /** Where this fighter's brain aims cards and charged attacks (HOLO DECOY only fools regular fire). */
+  cardAimX = 0;
+  cardAimZ = 0;
+  /** How much of the target's motion this brain leads (AI profile aimLead). */
+  leadK = 0.85;
+  /** SPOTLIGHT TAG on this fighter: seconds left and who marked it. */
+  tag = 0;
+  tagBy: Side = 0;
+  /** PULSE PUSH / mine blast: a sliding push on top of the fighter's own movement (not a knockback). */
+  shoveX = 0;
+  shoveZ = 0;
+  /** GRAVITY NET: speed factor this step (1 = free). */
+  netSlow = 1;
+  /** CABLE SNARE: seconds held, anchor, radius; `tetherCd` = no new tether yet. */
+  tether = 0;
+  tetherX = 0;
+  tetherZ = 0;
+  tetherR = 0;
+  tetherCd = 0;
+  /** Seconds held by nets / cables lately, and the break-free immunity that follows (no endless holds). */
+  holdHeat = 0;
+  holdImmune = 0;
+  /** FRAME CATCH: seconds the frame stays up; a catch is remembered `caught` s (CATCH & RELEASE, SAFE BET). */
+  frame = 0;
+  caught = 0;
+  caughtDmg = 0;
+  /** CATCH & RELEASE: fire the caught shot back when the DASH ends. */
+  releaseDmg = 0;
+  /** HIGH STAKES: cooldown and uses this fight. */
+  stakesCd = 0;
+  stakesUses = 0;
+  /** BACKTRACK: positions sampled every CARD_TUNING.backtrack.sample s (ring buffer). */
+  readonly hist: number[] = [];
+  histT = 0;
+
   readonly m: FighterMatchStats = {
     damageDealt: 0,
     damageTaken: 0,
@@ -224,7 +269,10 @@ export class FighterSim {
     if (this.overdrive > 0) m *= CARD_TUNING.overdrive.speed;
     if (this.momentum > 0) m *= PASSIVE_TUNING.momentum.speed;
     if (this.adrenaline > 0) m *= CARD_TUNING.adrenaline.speed;
-    if (this.slow > 0) m *= 1 - this.slowAmount;
+    // slows never stack: the strongest one counts (weapon slow, Alpha 1.6 GRAVITY NET)
+    let slowF = this.slow > 0 ? 1 - this.slowAmount : 1;
+    if (this.netSlow < slowF) slowF = this.netSlow;
+    m *= slowF;
     if (this.glitch > 0) m *= CARD_TUNING.system_overload.moveMult;
     if (this.action.kind === 'windup') m *= 0.3;
     // DIRECTOR'S CUT: planted while a line is frozen, a slow step otherwise

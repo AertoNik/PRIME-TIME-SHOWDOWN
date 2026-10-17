@@ -4,7 +4,7 @@ import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { AchievementView, CollectionTab, CosmeticView } from '../../meta/Collection';
-import { el, esc } from '../dom';
+import { el, esc, setScreenHTML } from '../dom';
 import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
@@ -45,7 +45,7 @@ export class CollectionScreen implements Screen {
     const col = this.g.collection;
     this.freshOnOpen = new Set(col.cosmetics().filter((v) => v.fresh).map((v) => v.def.id));
     col.markAllSeen();
-    this.render();
+    this.render(false);
   }
 
   private onClick(e: Event): void {
@@ -99,7 +99,7 @@ export class CollectionScreen implements Screen {
   }
 
   // ------------------------------------------------------------------ render
-  private render(): void {
+  private render(keep = true): void {
     const col = this.g.collection;
     const sel = this.g.save.data.selected;
     // only what may be shown: seasonal items appear once really obtained (no spoilers)
@@ -117,7 +117,9 @@ export class CollectionScreen implements Screen {
     else if (this.tab === 'cosmetics') body = this.renderCosmetics(all);
     else if (this.tab === 'achievements') body = this.renderAchievements(ach);
     else body = this.renderSeasons(all);
-    this.el.innerHTML = `
+    setScreenHTML(
+      this.el,
+      `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="col-head"><div class="h1">Моя коллекция</div><div class="col-sub">PRIME TIME STAR ARCHIVE</div></div>
@@ -134,7 +136,9 @@ export class CollectionScreen implements Screen {
         ${legacy}
         <div class="seg-control col-tabs">${TABS.map((t) => `<button class="${this.tab === t.id ? 'on' : ''}" data-act="tab" data-tab="${t.id}">${t.label}</button>`).join('')}</div>
         ${body}
-      </div>`;
+      </div>`,
+      keep,
+    );
   }
 
   private renderAll(owned: CosmeticView[], achDone: AchievementView[]): string {

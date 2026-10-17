@@ -142,6 +142,30 @@ export function segmentCircleHit(
   return t >= 0 && t <= 1 ? t : -1;
 }
 
+/** Distance from point (px, pz) to segment a–b (2D). */
+export function pointSegDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const l = dx * dx + dz * dz;
+  const t = l < 1e-9 ? 0 : clamp(((px - ax) * dx + (pz - az) * dz) / l, 0, 1);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+
+/** Closest distance between segments p1–p2 and q1–q2 (2D); 0 when they cross. */
+export function segSegDist(p1x: number, p1z: number, p2x: number, p2z: number, q1x: number, q1z: number, q2x: number, q2z: number): number {
+  const d1 = (q2x - q1x) * (p1z - q1z) - (q2z - q1z) * (p1x - q1x);
+  const d2 = (q2x - q1x) * (p2z - q1z) - (q2z - q1z) * (p2x - q1x);
+  const d3 = (p2x - p1x) * (q1z - p1z) - (p2z - p1z) * (q1x - p1x);
+  const d4 = (p2x - p1x) * (q2z - p1z) - (p2z - p1z) * (q2x - p1x);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(
+    pointSegDist(p1x, p1z, q1x, q1z, q2x, q2z),
+    pointSegDist(p2x, p2z, q1x, q1z, q2x, q2z),
+    pointSegDist(q1x, q1z, p1x, p1z, p2x, p2z),
+    pointSegDist(q2x, q2z, p1x, p1z, p2x, p2z),
+  );
+}
+
 export interface ClampResult {
   x: number;
   z: number;

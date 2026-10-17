@@ -1,6 +1,6 @@
 import { FAME_TIERS, GOALS, LEVEL_THRESHOLDS, LEVEL_TITLES, REWARDS, type GoalDef, type GoalId, type StageId } from '../config/career';
 import type { CosmeticId } from '../config/cosmetics.config';
-import { COMBOS, UNIVERSAL_CARDS } from '../config/cards';
+import { CARDS, COMBOS, NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { DIFFICULTIES, FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import type { MatchResultData } from '../combat/types';
@@ -120,14 +120,70 @@ export class CareerSystem {
     return this.level().level >= DIFFICULTIES[d].unlockLevel;
   }
 
+  /** Cards this fighter can put in a deck: the basic six, its signature and the bought shop cards. */
   availableCards(id: FighterId): CardId[] {
-    return [...UNIVERSAL_CARDS, FIGHTERS[id].signature];
+    return [...UNIVERSAL_CARDS, FIGHTERS[id].signature, ...NEW_CARDS.filter((c) => this.s.cards.owned.includes(c))];
   }
 
   setDeck(id: FighterId, deck: CardId[]): void {
     if (deck.length !== 4) return;
+    // only cards this fighter may use (another fighter's signature or an unbought card never gets in)
+    const allowed = new Set(this.availableCards(id));
+    if (deck.some((c) => !allowed.has(c)) || new Set(deck).size !== 4) return;
     this.s.fighters[id].deck = deck.slice();
     this.store.save();
+  }
+
+  // ------------------------------------------------- Alpha 1.6 — card shop
+  /** The shop cards not bought yet, in shop order. */
+  shopCards(): CardId[] {
+    return NEW_CARDS.filter((c) => !this.s.cards.owned.includes(c));
+  }
+
+  owns(card: CardId): boolean {
+    return this.s.cards.owned.includes(card);
+  }
+
+  /** The purchase is open: producer level, or the career stage named by the card (whichever comes first). */
+  cardOpen(card: CardId): boolean {
+    const shop = CARDS[card].shop;
+    if (!shop) return false;
+    if (this.level().level >= shop.level) return true;
+    return !!shop.stage && this.stages().some((st) => st.def.id === shop.stage && st.reached);
+  }
+
+  /** How a card opens, in words for the shop («Уровень 3» / «Уровень 5 или этап RISING BROADCAST»). */
+  cardRequirement(card: CardId): string {
+    const shop = CARDS[card].shop;
+    if (!shop) return '';
+    const stage = shop.stage ? this.stages().find((st) => st.def.id === shop.stage) : null;
+    return stage ? `Уровень продюсера ${shop.level} или этап ${stage.def.title}` : `Уровень продюсера ${shop.level}`;
+  }
+
+  canBuyCard(card: CardId): { ok: boolean; reason: string } {
+    const shop = CARDS[card].shop;
+    if (!shop) return { ok: false, reason: 'Эта карта не продаётся' };
+    if (this.owns(card)) return { ok: false, reason: 'Карта уже ваша' };
+    if (!this.cardOpen(card)) {
+      const req = this.cardRequirement(card);
+      return { ok: false, reason: `Откроется: ${req.charAt(0).toLowerCase()}${req.slice(1)}` };
+    }
+    if (this.s.money < shop.price) return { ok: false, reason: `Не хватает $${shop.price - Math.floor(this.s.money)}` };
+    return { ok: true, reason: '' };
+  }
+
+  /**
+   * Buys a shop card once with the existing money. It goes into the collection for good and
+   * for every fighter; the deck is not touched (the player puts it in). Saved at once, so a
+   * reload can neither take the money twice nor lose the card.
+   */
+  buyCard(card: CardId): boolean {
+    const c = this.canBuyCard(card);
+    if (!c.ok) return false;
+    this.s.money -= CARDS[card].shop!.price;
+    this.s.cards.owned = NEW_CARDS.filter((x) => x === card || this.s.cards.owned.includes(x));
+    this.store.save();
+    return true;
   }
 
   select(id: FighterId): boolean {

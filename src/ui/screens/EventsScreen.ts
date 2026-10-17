@@ -2,7 +2,7 @@ import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosme
 import type { EventDef } from '../../config/events.config';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
-import { el, esc } from '../dom';
+import { el, esc, setScreenHTML } from '../dom';
 import { ICONS, REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -48,7 +48,7 @@ export class EventsScreen implements Screen {
     const p = params as { tab?: 'quests' | 'rewards' } | undefined;
     if (p?.tab) this.tab = p.tab;
     const fresh = this.ticker === null;
-    this.render();
+    this.render(false);
     if (fresh) this.g.themes.sting();
     // keep the countdown fresh while the screen is open
     if (this.ticker !== null) clearInterval(this.ticker);
@@ -154,18 +154,22 @@ export class EventsScreen implements Screen {
   }
 
   // ------------------------------------------------------------------ render
-  private render(): void {
+  private render(keep = true): void {
     const em = this.g.events;
     const e = em.active;
     let body: string;
     if (e && em.playable) body = this.renderEvent(e);
     else body = this.renderIdle(e);
-    this.el.innerHTML = `
+    setScreenHTML(
+      this.el,
+      `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="h1">События</div>
       </div>
-      <div class="fill scroll ev-scroll">${body}</div>`;
+      <div class="fill scroll ev-scroll">${body}</div>`,
+      keep,
+    );
   }
 
   private banner(e: EventDef, live: boolean, sub: string): string {

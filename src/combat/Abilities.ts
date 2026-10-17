@@ -7,6 +7,26 @@ import type { Match } from './Match';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 const bank: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
+const aim = { x: 0, z: 0 };
+
+/** Alpha 1.6: the new cards announce their activation (gesture + sound in the view). */
+const CAST_CARDS = new Set<CardId>([
+  'spotlight_tag',
+  'split_shot',
+  'rebound_disc',
+  'prop_drop',
+  'pulse_push',
+  'gravity_net',
+  'pressure_mine',
+  'stage_barrier',
+  'cable_snare',
+  'holo_decoy',
+  'frame_catch',
+  'backtrack',
+  'high_stakes',
+  'side_cam',
+  'freeze_frame',
+]);
 
 /** Card effects. Every card changes the simulation state — nothing is cosmetic only. */
 export class Abilities {
@@ -19,14 +39,37 @@ export class Abilities {
     const m = this.m;
     const foe = m.foe(f.side);
     const comboId = combo?.id ?? null;
+    if (CAST_CARDS.has(card)) m.emit({ type: 'cast', side: f.side, card });
     switch (card) {
       case 'dash': {
         const t = CARD_TUNING.dash;
-        const dir = this.chooseDashDir(f, foe);
+        let dir = this.chooseDashDir(f, foe);
+        let dist: number = t.distance;
         const fromX = f.x;
         const fromZ = f.z;
         if (comboId === 'phantom_step') m.spawnDecoy(f, COMBO_TUNING.phantomDecoyTime);
-        f.action = { kind: 'dash', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: t.distance / t.duration, style: f.def.dashStyle };
+        // Alpha 1.6 BACKSTAGE: the dash ends behind the fighter's own barrier
+        const screen = comboId === 'backstage' ? m.objects.own(f.side, 'barrier') : null;
+        if (screen) {
+          const bx = screen.x - foe.x;
+          const bz = screen.z - foe.z;
+          const bl = Math.hypot(bx, bz) || 1;
+          const hx = screen.x + (bx / bl) * 1.1 - f.x;
+          const hz = screen.z + (bz / bl) * 1.1 - f.z;
+          const hl = Math.hypot(hx, hz);
+          if (hl > 0.4) {
+            dir = { x: hx / hl, z: hz / hl };
+            dist = Math.min(dist, hl);
+          }
+        }
+        // Alpha 1.6 TIME SLIP: a longer dash out of the slow-motion zone
+        if (comboId === 'time_slip') dist *= COMBO_TUNING.timeSlipDist;
+        // Alpha 1.6 CATCH & RELEASE: the caught shot is fired back when the dash lands
+        if (comboId === 'catch_release' && f.caught > 0) {
+          f.releaseDmg = Math.min(f.caughtDmg * COMBO_TUNING.releaseShare, COMBO_TUNING.releaseCap);
+          f.caught = 0;
+        }
+        f.action = { kind: 'dash', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: dist / t.duration, style: f.def.dashStyle };
         f.invuln = Math.max(f.invuln, t.invuln);
         f.lastDash = m.time;
         f.counterShots = f.stats.attack.alternate ? 2 : 1;
@@ -37,7 +80,8 @@ export class Abilities {
           foe.action.kind === 'cut' ||
           m.projectiles.some((p) => p.owner !== f.side && p.heavy && p.alive);
         f.stun = 0;
-        clampRoundedRect(fromX + dir.x * t.distance, fromZ + dir.z * t.distance, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
+        clampRoundedRect(fromX + dir.x * dist, fromZ + dir.z * dist, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
+        if (comboId === 'time_slip') m.objects.moveFreeze(f.side, tmp.x, tmp.z);
         m.emit({ type: 'dash', side: f.side, fromX, fromZ, toX: tmp.x, toZ: tmp.z, style: f.def.dashStyle });
         break;
       }
@@ -49,11 +93,13 @@ export class Abilities {
           card === 'power_shot' ? CARD_TUNING.power_shot : card === 'charged_shot' ? CARD_TUNING.charged_shot : card === 'bank_shot' ? CARD_TUNING.bank_shot : CARD_TUNING.knockout;
         const telegraph = f.side === 1;
         const total = telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup;
-        let dx = f.aimX - f.x;
-        let dz = f.aimZ - f.z;
+        // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
+        m.combat.windupAim(f, card, comboId, aim);
+        let dx = aim.x - f.x;
+        let dz = aim.z - f.z;
         if (card === 'bank_shot') {
           // the line points at the bounce point on the barrier, not at the target
-          m.combat.bankAim(f, bank);
+          m.combat.bankAim(f, bank, comboId === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
           dx = bank.dirX;
           dz = bank.dirZ;
         }
@@ -99,7 +145,8 @@ export class Abilities {
       case 'shield': {
         const t = CARD_TUNING.shield;
         f.shield = t.duration;
-        f.shieldHp = t.absorb;
+        // Alpha 1.6 INSURANCE (HIGH STAKES → SHIELD): a sturdier dome
+        f.shieldHp = t.absorb + (comboId === 'insurance' ? COMBO_TUNING.insuranceAbsorb : 0);
         f.shieldAbsorbed = 0;
         m.emit({ type: 'shieldUp', side: f.side });
         break;
@@ -159,7 +206,8 @@ export class Abilities {
       case 'overdrive': {
         const t = CARD_TUNING.overdrive;
         const iron = comboId === 'iron_rush';
-        f.overdrive = t.duration * (iron ? COMBO_TUNING.ironRushDurationMult : 1);
+        // Alpha 1.6 ALL IN (HIGH STAKES → OVERDRIVE): a little longer
+        f.overdrive = t.duration * (iron ? COMBO_TUNING.ironRushDurationMult : 1) + (comboId === 'all_in' ? COMBO_TUNING.allInTime : 0);
         m.emit({ type: 'buff', side: f.side, buff: 'overdrive', duration: f.overdrive });
         if (iron) {
           f.shield = 0;
@@ -248,7 +296,108 @@ export class Abilities {
         });
         break;
       }
+
+      // ------------------------------------------------- Alpha 1.6 — CARD REVOLUTION
+      case 'spotlight_tag': {
+        // the spotlight finds what the fighter can see: not a DASH in the air, not someone in their own smoke
+        const t = CARD_TUNING.spotlight_tag;
+        const hit = !foe.ko && foe.invuln <= 0 && !m.inOwnSmoke(foe);
+        if (hit) {
+          foe.tag = t.duration;
+          foe.tagBy = f.side;
+        }
+        m.emit({ type: 'tag', side: f.side, target: foe.side, hit, duration: hit ? t.duration : 0 });
+        break;
+      }
+      case 'split_shot':
+        m.combat.fireSplit(f, comboId === 'tight_spread');
+        break;
+      case 'rebound_disc':
+        m.combat.fireDisc(f, comboId);
+        break;
+      case 'prop_drop':
+        m.objects.spawnProp(f, comboId);
+        break;
+      case 'pulse_push':
+        m.combat.pulsePush(f, foe, comboId);
+        break;
+      case 'gravity_net':
+        m.objects.spawnNet(f, comboId);
+        break;
+      case 'pressure_mine':
+        m.objects.spawnMine(f, comboId);
+        break;
+      case 'stage_barrier':
+        m.objects.spawnBarrier(f);
+        break;
+      case 'cable_snare':
+        m.combat.fireCable(f);
+        break;
+      case 'holo_decoy':
+        m.spawnHolo(f, foe);
+        break;
+      case 'frame_catch': {
+        const t = CARD_TUNING.frame_catch;
+        f.frame = t.duration;
+        m.emit({ type: 'frame', side: f.side, duration: t.duration });
+        break;
+      }
+      case 'backtrack':
+        this.backtrack(f, comboId);
+        break;
+      case 'high_stakes':
+        this.highStakes(f, comboId);
+        break;
+      case 'side_cam':
+        m.objects.spawnCam(f, comboId);
+        break;
+      case 'freeze_frame':
+        m.objects.spawnFreeze(f);
+        break;
     }
+  }
+
+  /**
+   * Alpha 1.6 — BACKTRACK: glide back to where the fighter stood `lookback` s ago (on the
+   * floor, never through the barrier). No invulnerability, no health back. DOUBLE TAKE leaves
+   * a phantom where the DASH ended; REWIND TRAP arms the fighter's mines; REPLAY erases the
+   * opponent's projectiles stuck in the fighter's freeze zone.
+   */
+  private backtrack(f: FighterSim, combo: string | null): void {
+    const m = this.m;
+    const t = CARD_TUNING.backtrack;
+    const n = f.hist.length / 2;
+    let tx = f.x;
+    let tz = f.z;
+    if (n > 0) {
+      const i = Math.max(0, n - 1 - Math.round(t.lookback / t.sample));
+      tx = f.hist[i * 2];
+      tz = f.hist[i * 2 + 1];
+    }
+    clampRoundedRect(tx, tz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
+    tx = tmp.x;
+    tz = tmp.z;
+    if (combo === 'double_take') m.spawnDecoy(f, COMBO_TUNING.doubleTakeTime);
+    if (combo === 'rewind_trap') m.objects.armMines(f.side);
+    if (combo === 'replay') m.objects.erase(f.side);
+    const dx = tx - f.x;
+    const dz = tz - f.z;
+    const d = Math.hypot(dx, dz);
+    m.emit({ type: 'rewind', side: f.side, fromX: f.x, fromZ: f.z, toX: tx, toZ: tz, duration: t.duration });
+    f.action = { kind: 'rewind', t: 0, total: t.duration, dirX: d > 0.01 ? dx / d : 0, dirZ: d > 0.01 ? dz / d : 0, speed: d / t.duration };
+  }
+
+  /** Alpha 1.6 — HIGH STAKES: health for energy (rules in Match.cardRules keep it safe and rare). */
+  private highStakes(f: FighterSim, combo: string | null): void {
+    const m = this.m;
+    const t = CARD_TUNING.high_stakes;
+    const cost = Math.round(f.maxHp * t.hpCost * (combo === 'safe_bet' ? COMBO_TUNING.safeBetCost : 1));
+    f.hp = Math.max(1, f.hp - cost);
+    if (combo === 'safe_bet') f.caught = 0;
+    m.hands[f.side].gain(t.energy);
+    f.stakesCd = t.cooldown;
+    f.stakesUses++;
+    m.emit({ type: 'stakes', side: f.side, hp: cost, energy: t.energy });
   }
 
   /** Called when a windup finishes. */
@@ -259,8 +408,9 @@ export class Abilities {
     let dirX = a.dirX;
     let dirZ = a.dirZ;
     if (!a.locked) {
-      const dx = f.aimX - f.x;
-      const dz = f.aimZ - f.z;
+      m.combat.windupAim(f, a.card, a.combo, aim);
+      const dx = aim.x - f.x;
+      const dz = aim.z - f.z;
       const d = Math.hypot(dx, dz) || 1;
       dirX = dx / d;
       dirZ = dz / d;
@@ -269,11 +419,12 @@ export class Abilities {
     if (a.combo === 'counter_strike') mult = COMBO_TUNING.counterStrikeMult;
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
+    else if (a.combo === 'jackpot') mult = COMBO_TUNING.jackpotMult;
 
     if (a.card === 'bank_shot') {
       // re-solve the bank path from where Kai stands now (the AI's telegraph keeps its locked line)
       if (!a.locked) {
-        m.combat.bankAim(f, bank);
+        m.combat.bankAim(f, bank, a.combo === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
         dirX = bank.dirX;
         dirZ = bank.dirZ;
       } else {
@@ -285,6 +436,7 @@ export class Abilities {
         electric: a.combo === 'electro_blast',
         stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
         combo: a.combo,
+        boost: mult,
       });
       f.fireTimer = Math.max(f.fireTimer, 0.35);
     } else if (a.card === 'power_shot' || a.card === 'charged_shot') {
@@ -300,6 +452,8 @@ export class Abilities {
           electric: a.combo === 'electro_blast',
           stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
           combo: a.combo,
+          boost: mult,
+          blind: a.combo === 'blindside',
         },
         charged,
       );
@@ -443,7 +597,7 @@ export class Abilities {
     let decoyAlong = Infinity;
     let decoy = null;
     for (const d of m.decoys) {
-      if (!d.alive || d.owner === f.side) continue;
+      if (!d.alive || d.owner === f.side || d.kind !== 'phantom') continue;
       const al = this.inCutLane(f, a.dirX, a.dirZ, w, len, d.x, d.z, 0.5);
       if (al >= 0 && al < decoyAlong) {
         decoyAlong = al;
@@ -516,9 +670,9 @@ export class Abilities {
   updateRush(f: FighterSim, foe: FighterSim, a: RushAction): void {
     const m = this.m;
     const t = CARD_TUNING.knockout;
-    // Decoys absorb the charge.
+    // Decoys absorb the charge (a HOLO DECOY does not: the charge is aimed at the real fighter).
     for (const d of m.decoys) {
-      if (d.alive && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) {
+      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) {
         m.popDecoy(d);
       }
     }
@@ -560,6 +714,7 @@ export class Abilities {
           dz: kz,
           sure: true,
           projectile: null,
+          boost: mult,
         });
         if (r === 'dodged') {
           // FALSE START read the charge: it rushes on past her

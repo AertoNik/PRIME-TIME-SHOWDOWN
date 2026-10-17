@@ -1,6 +1,6 @@
 import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { CAREER_STAGES, CAREER_START, GOALS, type GoalId, type StageId } from '../config/career';
-import { UNIVERSAL_CARDS } from '../config/cards';
+import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETICS, COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
@@ -203,6 +203,13 @@ export interface SaveData {
   arena: ArenaPref;
   /** v8 (1.5): career stages whose reward has been paid (each once). */
   careerClaimed: StageId[];
+  /** v10 (1.6): the new universal cards bought in the career (each once, kept for good). */
+  cards: CardsState;
+}
+
+/** v10 (1.6): bought cards. Only the fifteen shop cards can be in here. */
+export interface CardsState {
+  owned: CardId[];
 }
 
 // The key never changes between versions so existing careers keep loading;
@@ -212,7 +219,8 @@ const KEY = 'primetime-showdown-save-v1';
 // v6 (1.3.3): per-fighter Classic Duel wins (BOSS FIGHT access). v7 (1.4): arena preference.
 // v8 (1.5): new fighters (filled from defaults), MY COLLECTION "seen" marks, claimed career stages.
 // v9 (1.5.5): personal rewards per fighter (cosmetics.personal / personalEquipped / unassigned).
-const VERSION = 9;
+// v10 (1.6): bought cards (cards.owned); decks may hold them. Older saves own none.
+const VERSION = 10;
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -262,6 +270,7 @@ export function defaultSave(): SaveData {
     modes: emptyModes(),
     arena: 'original',
     careerClaimed: [],
+    cards: { owned: [] },
   };
 }
 
@@ -419,7 +428,7 @@ function sanitizeWave(raw: unknown): WaveLog | null {
   };
 }
 
-function sanitizeRun(raw: unknown): SurvivalRun | null {
+function sanitizeRun(raw: unknown, owned: readonly CardId[]): SurvivalRun | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Partial<SurvivalRun>;
   if (!isFighter(r.fighter) || !Array.isArray(r.rivals)) return null;
@@ -433,7 +442,7 @@ function sanitizeRun(raw: unknown): SurvivalRun | null {
   return {
     id: num(r.id, 0),
     fighter: r.fighter,
-    deck: validDeck(r.fighter, r.deck),
+    deck: validDeck(r.fighter, r.deck, owned),
     rivals,
     wave: Math.min(SURVIVAL.waves.length, count(r.wave)),
     hpFrac: Math.min(1, Math.max(0, num(r.hpFrac, 1))),
@@ -447,7 +456,7 @@ function sanitizeRun(raw: unknown): SurvivalRun | null {
   };
 }
 
-function sanitizeModes(raw: unknown): ModesState {
+function sanitizeModes(raw: unknown, owned: readonly CardId[]): ModesState {
   const m = emptyModes();
   if (!raw || typeof raw !== 'object') return m;
   const r = raw as Partial<ModesState>;
@@ -467,7 +476,7 @@ function sanitizeModes(raw: unknown): ModesState {
       }
     }
     t.firstClearPaid = bool(s.firstClearPaid, false);
-    t.active = sanitizeRun(s.active);
+    t.active = sanitizeRun(s.active, owned);
   }
   if (r.challenges && typeof r.challenges === 'object') {
     for (const [id, v] of Object.entries(r.challenges as Record<string, unknown>)) {
@@ -522,12 +531,29 @@ function sanitizeModes(raw: unknown): ModesState {
   return m;
 }
 
-function validDeck(id: FighterId, deck: unknown): CardId[] {
-  const allowed = new Set<CardId>([...UNIVERSAL_CARDS, FIGHTERS[id].signature]);
+/**
+ * A deck this fighter may take into a fight: four different cards from the basic six, the
+ * fighter's own signature and (v10) the shop cards the producer bought. Anything else —
+ * another fighter's signature, an unknown id, a card that was never bought — resets the
+ * deck to the fighter's default rather than playing with a broken one.
+ */
+export function validDeck(id: FighterId, deck: unknown, owned: readonly CardId[] = []): CardId[] {
+  const allowed = new Set<CardId>([...UNIVERSAL_CARDS, FIGHTERS[id].signature, ...owned]);
   if (!Array.isArray(deck)) return FIGHTERS[id].defaultDeck.slice();
   const out: CardId[] = [];
   for (const c of deck) if (allowed.has(c as CardId) && !out.includes(c as CardId)) out.push(c as CardId);
   if (out.length !== 4) return FIGHTERS[id].defaultDeck.slice();
+  return out;
+}
+
+/** v10: the bought cards — shop cards only, each once, in the shop order. */
+function sanitizeCards(raw: unknown): CardsState {
+  const out: CardsState = { owned: [] };
+  if (!raw || typeof raw !== 'object') return out;
+  const owned = (raw as Partial<CardsState>).owned;
+  if (!Array.isArray(owned)) return out;
+  const set = new Set(owned.filter((c): c is CardId => typeof c === 'string'));
+  out.owned = NEW_CARDS.filter((c) => set.has(c));
   return out;
 }
 
@@ -554,7 +580,7 @@ export function sanitize(raw: unknown): SaveData {
       t.draws = Math.max(0, num(f.draws, 0));
       t.matches = Math.max(0, num(f.matches, 0));
       t.bestRating = Math.max(0, num(f.bestRating, 0));
-      t.deck = validDeck(id, f.deck);
+      // (decks are checked below, once the bought cards are known)
     }
   }
   if (typeof r.selected === 'string' && FIGHTER_ORDER.includes(r.selected as FighterId) && d.fighters[r.selected as FighterId].unlocked) {
@@ -579,10 +605,18 @@ export function sanitize(raw: unknown): SaveData {
   if (typeof r.lastRival === 'string' && RIVAL_ORDER.includes(r.lastRival as RivalId)) d.lastRival = r.lastRival as RivalId;
   d.seed = num(r.seed, d.seed);
   d.hintsSeen = bool(r.hintsSeen, false);
+  // v10: bought cards (absent before 1.6 -> none); read before the decks below are re-checked
+  d.cards = sanitizeCards(r.cards);
+  if (r.fighters && typeof r.fighters === 'object') {
+    for (const id of FIGHTER_ORDER) {
+      const f = (r.fighters as Record<string, Partial<FighterProgress>>)[id];
+      if (f) d.fighters[id].deck = validDeck(id, f.deck, d.cards.owned);
+    }
+  }
   // v3: seasonal progress and cosmetics (absent before Alpha 1.2 -> empty)
   d.events = sanitizeEvents(r.events);
   // v4: game modes (absent before Alpha 1.3 -> empty records)
-  d.modes = sanitizeModes(r.modes);
+  d.modes = sanitizeModes(r.modes, d.cards.owned);
   // (cosmetics after the mode records: the v9 migration reads who beat the champion)
   d.cosmetics = sanitizeCosmetics(r.cosmetics, d.modes);
   // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)

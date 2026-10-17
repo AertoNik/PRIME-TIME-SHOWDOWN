@@ -15,7 +15,7 @@ import {
 import { RECOIL } from '../config/animation';
 import { ARENA } from '../config/balance';
 import { CARDS } from '../config/cards';
-import type { Side, WeaponType } from '../config/types';
+import type { CastKind, Side, WeaponType } from '../config/types';
 import { lineReach } from '../combat/CombatSystem';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
@@ -23,6 +23,7 @@ import type { MatchEvent, Projectile } from '../combat/types';
 import { clamp01, clampRoundedRect, damp, lerp, Rng, type ClampResult } from '../core/math';
 import type { Arena } from './Arena';
 import type { CameraRig } from './CameraRig';
+import { CardVisuals } from './CardVisuals';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache } from './ModelCache';
 import type { Renderer } from './Renderer';
@@ -116,6 +117,8 @@ export class BattleView {
   private finishTimer = -1;
   /** Side whose DIRECTOR'S CUT line is on screen (-1 = none). */
   private cutOwner = -1;
+  /** Alpha 1.6: nets, mines, barriers, props, cameras, freeze zones, tags, cables and frames. */
+  private cards: CardVisuals;
 
   constructor(r: Renderer, arena: Arena, vfx: VFX, cam: CameraRig, models: ModelCache, timeFx: TimeFx) {
     this.r = r;
@@ -125,6 +128,7 @@ export class BattleView {
     this.models = models;
     this.timeFx = timeFx;
     r.scene.add(this.root);
+    this.cards = new CardVisuals(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
     const streakGeo = new PlaneGeometry(1, 1);
     streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
@@ -284,6 +288,7 @@ export class BattleView {
     }
     this.vfx.cutLane.hide();
     this.cutOwner = -1;
+    this.cards.reset();
     this.slots = [];
     this.match = null;
   }
@@ -355,6 +360,9 @@ export class BattleView {
       }
     }
 
+    // Alpha 1.6: the new cards' set pieces and fighter states
+    this.cards.update(dt, this.t, m, (side) => this.slots[side].pos);
+
     // FALSE START afterimage: stands where Rina feinted and fades out
     const gh = this.ghost;
     if (gh) {
@@ -389,7 +397,9 @@ export class BattleView {
       d.anim.update(dt, inp);
       if (d.rig.holoMat) {
         d.rig.holoMat.uniforms.uTime.value = this.t;
-        d.rig.holoMat.uniforms.uOpacity.value = Math.min(1, (dec.duration - dec.t) * 2) * (0.8 + Math.sin(this.t * 30) * 0.2);
+        // Alpha 1.6 HOLO DECOY: digital interference — dropouts, harder after it soaked a volley
+        const glitch = dec.kind === 'holo' ? (Math.sin(this.t * 53 + dec.id) > (dec.soak >= 0 ? 0.2 : 0.85) ? 0.25 : 1) : 1;
+        d.rig.holoMat.uniforms.uOpacity.value = Math.min(1, (dec.duration - dec.t) * 2) * (0.8 + Math.sin(this.t * 30) * 0.2) * glitch;
       }
     }
   }
@@ -409,7 +419,7 @@ export class BattleView {
     inp.cutStage = f.action.kind === 'cut' ? f.action.stage : null;
     inp.actionT = 't' in f.action ? f.action.t : 0;
     inp.actionTotal = 'total' in f.action ? f.action.total : 1;
-    if (f.action.kind === 'rush' || f.action.kind === 'dash' || f.action.kind === 'feint') {
+    if (f.action.kind === 'rush' || f.action.kind === 'dash' || f.action.kind === 'feint' || f.action.kind === 'rewind') {
       inp.dashX = f.action.dirX;
       inp.dashZ = f.action.dirZ;
     }
@@ -630,6 +640,42 @@ export class BattleView {
         v.streakWidth = 0.4;
         v.flicker = true;
         break;
+      // Alpha 1.6 — card shots
+      case 'split':
+        // SPLIT SHOT: three bright green tracers
+        r = 0.12;
+        elong = 3;
+        v.streakLen = 1.5;
+        v.streakWidth = 0.24;
+        break;
+      case 'disc':
+        // REBOUND DISC: a flat spinning disc with a short wake
+        r = 0.36;
+        elong = 0.22;
+        v.streakLen = 1.1;
+        v.streakWidth = 0.5;
+        break;
+      case 'cable':
+        // CABLE SNARE: the clamp head with a long glowing cable behind it
+        r = 0.15;
+        elong = 1.4;
+        v.streakLen = 7;
+        v.streakWidth = 0.1;
+        break;
+      case 'cam':
+        // SIDE CAM: a fat red studio bolt
+        r = 0.2;
+        elong = 2.4;
+        v.streakLen = 2.6;
+        v.streakWidth = 0.42;
+        break;
+      case 'release':
+        // CATCH & RELEASE: the caught charge goes back white-gold
+        r = 0.14;
+        elong = 3.4;
+        v.streakLen = 2.4;
+        v.streakWidth = 0.3;
+        break;
       default:
         r = 0.095;
         elong = 3.6;
@@ -642,11 +688,17 @@ export class BattleView {
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
     if (p.kind === 'bank') _c.set(0xff9a4a).lerp(accent, 0.25);
     if (p.electric) _c.set(0xffe14d);
-    const big = p.kind === 'power' || p.kind === 'bank' || p.kind === 'zap';
+    // Alpha 1.6: card shots wear their card's colour
+    if (p.kind === 'split') _c.set(0x7cff6b);
+    else if (p.kind === 'disc') _c.set(0x38e1ff).lerp(accent, 0.2);
+    else if (p.kind === 'cable') _c.set(0xe9ff70);
+    else if (p.kind === 'cam') _c.set(0xff4f6d);
+    else if (p.kind === 'release') _c.set(0xfff0a0);
+    const big = p.kind === 'power' || p.kind === 'bank' || p.kind === 'zap' || p.kind === 'disc' || p.kind === 'cam';
     v.streakMat.color.copy(_c).multiplyScalar(big ? 2.4 : p.kind === 'counter' ? 2.6 : 1.9);
     v.glowMat.color.copy(_c).multiplyScalar(big ? 2.4 : 1.4);
     v.glow.scale.setScalar(p.kind === 'power' ? 2.2 : p.kind === 'bank' || p.kind === 'zap' ? 1.5 : p.kind === 'bolt' ? 0.8 : p.kind === 'slug' || p.kind === 'counter' ? 1 : 0.6);
-    v.ring.visible = (p.kind === 'power' && p.weapon !== 'pulse_rifle') || p.kind === 'bank' || p.kind === 'zap';
+    v.ring.visible = (p.kind === 'power' && p.weapon !== 'pulse_rifle') || p.kind === 'bank' || p.kind === 'zap' || p.kind === 'disc';
     (v.ring.material as SpriteMaterial).color.copy(_c).multiplyScalar(1.2);
     v.ring.scale.setScalar(3.2);
     v.streak.visible = true;
@@ -657,8 +709,9 @@ export class BattleView {
     const z = lerp(p.pz, p.z, alpha);
     v.y = damp(v.y, ARENA.shotHeight + (p.kind === 'power' ? 0.1 : 0), 6, dt);
     v.group.position.set(x, v.y, z);
-    // the BANK SHOT disc spins on its edge as it flies
-    v.core.rotation.set(0, Math.atan2(p.vx, p.vz), p.kind === 'bank' ? this.t * 30 : 0);
+    // the BANK SHOT disc spins on its edge as it flies; the REBOUND DISC spins flat
+    if (p.kind === 'disc') v.core.rotation.set(Math.PI / 2, this.t * 26, 0);
+    else v.core.rotation.set(0, Math.atan2(p.vx, p.vz), p.kind === 'bank' ? this.t * 30 : 0);
 
     // camera-facing tracer streak oriented along travel
     const sp = Math.hypot(p.vx, p.vz) || 1;
@@ -675,7 +728,7 @@ export class BattleView {
 
     // sparse particle wake (power shots and bolts only — tracers do the rest)
     const s = this.slots[p.owner];
-    const n = p.kind === 'power' ? 3 : p.kind === 'bank' ? 2 : p.kind === 'bolt' && rng.chance(0.5) ? 1 : 0;
+    const n = p.kind === 'power' ? 3 : p.kind === 'bank' || p.kind === 'disc' ? 2 : (p.kind === 'bolt' || p.kind === 'cable') && rng.chance(0.5) ? 1 : 0;
     for (let i = 0; i < n; i++) {
       this.vfx.sparks.spawn(
         x - p.vx * 0.01 + rng.range(-0.05, 0.05),
@@ -687,7 +740,7 @@ export class BattleView {
         p.kind === 'power' ? 0.35 : 0.2,
         p.kind === 'power' ? 0.45 : 0.14,
         0.02,
-        p.electric ? _c.set(0xffe14d) : p.kind === 'bank' ? _c.set(0xffb070) : s.accent,
+        p.electric ? _c.set(0xffe14d) : p.kind === 'bank' ? _c.set(0xffb070) : p.kind === 'disc' ? _c.set(0x7aeeff) : p.kind === 'cable' ? _c.set(0xe9ff70) : s.accent,
         2,
         2,
         0,
@@ -715,7 +768,7 @@ export class BattleView {
     switch (e.type) {
       case 'shot': {
         const s = this.slots[e.side];
-        const heavy = e.kind === 'power' || e.kind === 'bank';
+        const heavy = e.kind === 'power' || e.kind === 'bank' || e.kind === 'split';
         s.model.anim.fire(e.muzzle, heavy);
         const mz = s.model.rig.muzzles[e.muzzle] ?? s.model.rig.muzzles[0];
         mz.getWorldPosition(_v);
@@ -1002,7 +1055,9 @@ export class BattleView {
       }
       case 'decoy': {
         const look = m.fighters[e.side].look;
-        const holo = this.models.getHolo(look);
+        // Alpha 1.6: a HOLO DECOY uses its own twin, so it can stand next to a PHANTOM STEP decoy
+        const kind = m.decoys.find((x) => x.id === e.id)?.kind ?? 'phantom';
+        const holo = this.models.getHolo(look, kind === 'holo' ? 1 : 0);
         holo.anim.reset(m.fighters[e.side].facing);
         holo.rig.root.position.set(e.x, 0, e.z);
         this.root.add(holo.rig.root);
@@ -1192,8 +1247,214 @@ export class BattleView {
         this.arena.hype(e.tier === 3 ? 1 : 0.5);
         break;
       }
+      // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+      case 'cast': {
+        const s = this.slots[e.side];
+        const def = CARDS[e.card];
+        const kind: CastKind = def.cast ?? 'device';
+        s.model.anim.cast(kind, CAST_VARIANT[e.card] ?? 0);
+        const col = _c.set(def.color);
+        if (kind === 'device' || kind === 'signal') {
+          const h = s.model.rig.elbowL.getWorldPosition(_v);
+          this.vfx.flash(h.x, h.y, h.z, col, 0.3, 1.2, 0.22, 2.4);
+        }
+        break;
+      }
+      case 'tag': {
+        const s = this.slots[e.side];
+        const target = this.slots[e.target];
+        const from = s.model.rig.elbowL.getWorldPosition(_v);
+        _v2.set(target.pos.x, 2.4, target.pos.z);
+        if (!e.hit) _v2.x += 1;
+        const warm = _c.set(0xfff0b0);
+        this.vfx.bolt(from, _v2, warm, 0.07, 0.3, 0.04, 2.6);
+        if (e.hit) {
+          this.vfx.flash(target.pos.x, 3.4, target.pos.z, warm, 0.5, 2.2, 0.3, 2.6);
+          this.vfx.ring(target.pos.x, target.pos.z, warm, 0.4, 2.4, 0.4, 2.2);
+        } else this.vfx.burst(_v2.x, _v2.y, _v2.z, warm, 8, 3, 0.1, 0.3, 2);
+        break;
+      }
+      case 'tagHit': {
+        const gold = _c.set(0xffe27a);
+        this.vfx.rays(e.x, 1.4, e.z, gold, 1, 4, 0.5, 2.4);
+        this.vfx.flash(e.x, 3.2, e.z, gold, 1, 3.4, 0.35, 3);
+        this.vfx.ring(e.x, e.z, gold, 0.6, 4, 0.45, 2.6);
+        this.arena.hype(0.7);
+        break;
+      }
+      case 'push': {
+        const col = _c.set(0xb18cff);
+        this.vfx.cone(e.x + e.dx * 0.6, 1.1, e.z + e.dz * 0.6, e.dx, e.dz, col, 26, 9, 0.6, 0.16, 2.4);
+        this.vfx.ring(e.x + e.dx * 1.2, e.z + e.dz * 1.2, col, 0.6, e.range * 1.4, 0.3, 2.4);
+        if (e.hit) {
+          const t = this.slots[1 - e.side];
+          this.vfx.dust(t.pos.x, t.pos.z, 10, e.dx, e.dz);
+          this.vfx.flash(t.pos.x, 1.2, t.pos.z, col, 0.6, 2.2, 0.2, 2.2);
+          this.cam.addTrauma(0.18);
+        }
+        break;
+      }
+      case 'object':
+        this.objectEvent(e);
+        break;
+      case 'tether': {
+        const col = _c.set(0xe9ff70);
+        this.vfx.flash(e.ax, 0.6, e.az, col, 0.6, 2.4, 0.25, 2.6);
+        this.vfx.ring(e.ax, e.az, col, 0.5, e.radius * 2.2, 0.35, 2.2);
+        this.slots[e.side].model.anim.hit(0, 0, false);
+        break;
+      }
+      case 'tetherEnd': {
+        if (!e.broke) break;
+        const s = this.slots[e.side];
+        this.vfx.burst(s.pos.x, 0.9, s.pos.z, _c.set(0xe9ff70), 18, 6, 0.12, 0.35, 2.4);
+        break;
+      }
+      case 'frame': {
+        const s = this.slots[e.side];
+        const f = m.fighters[e.side];
+        this.vfx.flash(s.pos.x + Math.sin(f.facing) * 0.9, 1.15, s.pos.z + Math.cos(f.facing) * 0.9, _c.set(0xc6ff4d), 0.6, 2.2, 0.2, 2.4);
+        break;
+      }
+      case 'frameCatch': {
+        const s = this.slots[e.side];
+        const col = _c.set(0xc6ff4d);
+        s.model.anim.cue('brace');
+        this.vfx.flash(e.x, ARENA.shotHeight, e.z, col, 1, 2.8, 0.25, 3);
+        this.vfx.burst(e.x, ARENA.shotHeight, e.z, col, 24, 7, 0.14, 0.4, 2.6);
+        this.vfx.ring(s.pos.x, s.pos.z, col, 0.5, 3, 0.35, 2.4);
+        this.cam.addTrauma(0.12);
+        break;
+      }
+      case 'rewind': {
+        const s = this.slots[e.side];
+        const f = m.fighters[e.side];
+        const col = _c.set(0xff7ad9);
+        // a tape-rewind ghost stays where the fighter was, a scanline trail runs to where it goes
+        if (this.ghost) this.root.remove(this.ghost.model.rig.root);
+        const g = this.models.getGhost(f.look);
+        g.anim.reset(f.facing);
+        g.rig.root.position.set(e.fromX, 0, e.fromZ);
+        this.root.add(g.rig.root);
+        this.ghost = { model: g, t: 0, x: e.fromX, z: e.fromZ, yaw: f.facing };
+        const dx = e.toX - e.fromX;
+        const dz = e.toZ - e.fromZ;
+        for (let i = 0; i < 8; i++) {
+          const t = i / 8;
+          this.vfx.sparks.spawn(e.fromX + dx * t, rng.range(0.3, 2), e.fromZ + dz * t, 0, rng.range(-0.3, 0.3), 0, 0.35, 0.22, 0.02, i % 2 ? col : _c.set(0x7af0ff), 2.2, 2, 0);
+        }
+        this.vfx.ring(e.toX, e.toZ, col, 0.4, 2.4, 0.35, 2.2);
+        s.trailT = 0.3;
+        break;
+      }
+      case 'stakes': {
+        const s = this.slots[e.side];
+        this.vfx.burst(s.pos.x, 1.2, s.pos.z, _c.set(0xff3a5c), 22, 4, 0.14, 0.6, 2.4, -3, 3);
+        this.vfx.rays(s.pos.x, 1.6, s.pos.z, _c.set(0xffd23a), 1, 3.4, 0.45, 2.2);
+        this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffd23a), 0.5, 3.4, 0.4, 2.4);
+        this.r.pulseFlash(0xffd23a, 1);
+        this.arena.hype(0.6);
+        break;
+      }
+      case 'disc': {
+        const col = _c.set(0x38e1ff);
+        if (e.what === 'turn') this.vfx.ring(e.x, e.z, col, 0.3, 1.6, 0.25, 2);
+        else this.vfx.flash(e.x, 1.2, e.z, col, 0.5, 1.6, 0.2, 2.2);
+        break;
+      }
+      case 'breakFree': {
+        this.vfx.ring(e.x, e.z, _c.set(0xffffff), 0.5, 3, 0.3, 2.4);
+        this.vfx.burst(e.x, 1, e.z, _c.set(0xe9ff70), 16, 6, 0.12, 0.35, 2.2);
+        break;
+      }
+      case 'erase': {
+        this.vfx.burst(e.x, ARENA.shotHeight, e.z, _c.set(0xa6f0ff), 10, 3, 0.12, 0.3, 2.2);
+        break;
+      }
       default:
         break;
     }
   }
+
+  /** Alpha 1.6: beats of the new set pieces (spawn, land, arm, fire, trigger, hit, break). */
+  private objectEvent(e: Extract<MatchEvent, { type: 'object' }>): void {
+    switch (e.kind) {
+      case 'net':
+        if (e.what === 'land') {
+          const col = _c.set(0x4dffd2);
+          this.vfx.ring(e.x, e.z, col, 0.5, 4, 0.4, 2.4);
+          this.vfx.burst(e.x, 0.3, e.z, col, 16, 4, 0.12, 0.4, 2.2, 0, 2);
+        }
+        break;
+      case 'mine':
+        if (e.what === 'land') this.vfx.dust(e.x, e.z, 4);
+        else if (e.what === 'arm') this.vfx.ring(e.x, e.z, _c.set(0xff4a6e), 0.3, 2.2, 0.3, 2);
+        else if (e.what === 'trigger') {
+          const col = _c.set(0xff4a6e);
+          this.vfx.flash(e.x, 0.6, e.z, _c.set(0xffffff), 1, 3.4, 0.25, 3);
+          this.vfx.burst(e.x, 0.4, e.z, col, 34, 9, 0.18, 0.5, 2.6, 4, 3);
+          this.vfx.ring(e.x, e.z, col, 0.6, 4.4, 0.4, 2.8);
+          this.vfx.scorch(e.x, e.z, 1.6, 3);
+          this.cam.addTrauma(0.3);
+          this.arena.hype(0.6);
+        }
+        break;
+      case 'barrier': {
+        const col = _c.set(0x6ec8ff);
+        if (e.what === 'spawn') {
+          this.vfx.burst(e.x, 0.2, e.z, col, 20, 5, 0.12, 0.4, 2.4, 0, 3);
+          this.vfx.ring(e.x, e.z, col, 0.4, 2.8, 0.3, 2.2);
+        } else if (e.what === 'hit') {
+          this.cards.pulse(e.id);
+          this.vfx.burst(e.x, ARENA.shotHeight, e.z, col, 8, 4, 0.1, 0.25, 2.4);
+        } else if (e.what === 'break') {
+          this.vfx.burst(e.x, 1, e.z, col, 36, 8, 0.16, 0.5, 2.6, 6);
+          this.vfx.debrisBurst(e.x, 0.9, e.z, col, 10);
+          this.cam.addTrauma(0.2);
+        }
+        break;
+      }
+      case 'prop':
+        if (e.what === 'land') {
+          const col = _c.set(0xffb02a);
+          this.vfx.landImpact(e.x, e.z, 1, col);
+          this.vfx.dust(e.x, e.z, 14);
+          this.vfx.debrisBurst(e.x, 0.6, e.z, _c.set(0xffcf3f), 10);
+          this.vfx.ring(e.x, e.z, col, 0.6, 4.2, 0.4, 2.6);
+          this.cam.addTrauma(0.35);
+          this.cam.kick(0.35);
+          this.arena.hype(0.5);
+        }
+        break;
+      case 'cam': {
+        const col = _c.set(0xff3a4a);
+        if (e.what === 'spawn') this.vfx.burst(e.x, 0.6, e.z, col, 10, 3, 0.1, 0.3, 2);
+        else if (e.what === 'lock') this.vfx.flash(e.x, 1.4, e.z, col, 0.6, 2, 0.2, 2.6);
+        else if (e.what === 'fire') {
+          this.vfx.flash(e.x, 1.4, e.z, _c.set(0xffffff), 0.8, 2.6, 0.18, 3);
+          this.vfx.burst(e.x, 1.4, e.z, col, 16, 6, 0.12, 0.3, 2.6);
+          this.cam.addTrauma(0.12);
+        }
+        break;
+      }
+      case 'freeze':
+        if (e.what === 'spawn') {
+          const col = _c.set(0xa6f0ff);
+          this.vfx.ring(e.x, e.z, col, 0.5, 5, 0.45, 2.6);
+          this.vfx.rays(e.x, 1.2, e.z, col, 1, 3.2, 0.4, 2);
+          this.r.pulseFlash(0xa6f0ff, 0.8);
+        } else if (e.what === 'land') this.vfx.ring(e.x, e.z, _c.set(0xa6f0ff), 0.5, 4, 0.35, 2.4);
+        break;
+    }
+  }
 }
+
+/** Alpha 1.6: gesture variants (FighterAnimator.cast): lobs, two-handed devices, crew calls, arms up. */
+const CAST_VARIANT: Partial<Record<string, number>> = {
+  gravity_net: 1,
+  pressure_mine: 1,
+  freeze_frame: 1,
+  prop_drop: 1,
+  side_cam: 1,
+  high_stakes: 2,
+};

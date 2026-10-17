@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import { arenaById } from '../../config/arenas.config';
-import { MATCH } from '../../config/balance';
+import { CARD_TUNING, MATCH } from '../../config/balance';
 import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import { PERKS, PERK_ORDER, challengeById, type ChallengeDef } from '../../config/modes.config';
@@ -537,11 +537,15 @@ export class BattleHUD implements Screen {
       cardEl.classList.add('shake');
       if (res === 'energy') this.flashEnergyNeed(CARDS[card].cost);
       const need = Math.ceil(CARDS[card].cost - m.hands[0].energy);
+      const me = m.fighters[0];
       const msg: Record<string, string> = {
         energy: `Ещё ${Math.max(1, need)} ⚡`,
         stunned: 'Боец оглушён',
         glitched: 'Система взломана',
         busy: 'Боец занят',
+        // Alpha 1.6: HIGH STAKES limits
+        risk: 'Мало здоровья для ставки',
+        recharge: me.stakesUses >= CARD_TUNING.high_stakes.uses ? 'Ставки на этот бой кончились' : `Ставка через ${Math.ceil(me.stakesCd)} с`,
       };
       if (msg[res]) this.denyTip(i, msg[res]);
     }
@@ -694,7 +698,8 @@ export class BattleHUD implements Screen {
     }
     this.energyBar.classList.toggle('full', energy >= MATCH.maxEnergy - 0.01);
     let comboPrimed: string | null = null;
-    const primedNow = m.phase === 'fight' && hand.hand.some((c) => !!c && !!m.combos.wouldCombo(0, c, m.time));
+    // Alpha 1.6: a combo is hinted only when it is really playable (setup still there, rules, energy in the window)
+    const primedNow = m.phase === 'fight' && hand.hand.some((c) => !!c && !!m.comboHint(0, c));
     let openers = 0;
     for (let i = 0; i < 3; i++) {
       const c = hand.hand[i];
@@ -711,7 +716,7 @@ export class BattleHUD implements Screen {
       cardEl.classList.toggle('disabled', !can);
       const drain = cardEl.querySelector('.drain') as HTMLElement;
       drain.style.transform = `scaleY(${can ? 0 : 1 - energy / cost})`;
-      const combo = m.phase === 'fight' ? m.combos.wouldCombo(0, c, m.time) : null;
+      const combo = m.phase === 'fight' ? m.comboHint(0, c) : null;
       cardEl.classList.toggle('combo-ready', !!combo);
       // Chain badge: this card opens a combo with another card already in hand
       // (same rules as ComboSystem). Hidden while a combo is primed.
@@ -725,10 +730,13 @@ export class BattleHUD implements Screen {
       }
       const stunned = (p.stun > 0 || p.knockback > 0) && c !== 'shield';
       const glitched = p.glitch > 0;
-      cardEl.classList.toggle('stunned', stunned && !glitched);
+      // Alpha 1.6: HIGH STAKES shows when it cannot be bet (too little health / recharging)
+      const stake = c === 'high_stakes' && m.phase === 'fight' ? m.cardRules(0, c, null, true).fail : null;
+      const staked = stake === 'risk' || stake === 'recharge';
+      cardEl.classList.toggle('stunned', (stunned || staked) && !glitched);
       cardEl.classList.toggle('glitched', glitched);
       const lock = cardEl.querySelector('.lock-overlay') as HTMLElement;
-      const lt = glitched ? 'ERROR' : stunned ? 'STUN' : '';
+      const lt = glitched ? 'ERROR' : stunned ? 'STUN' : stake === 'risk' ? 'HP' : stake === 'recharge' ? (p.stakesUses >= CARD_TUNING.high_stakes.uses ? '—' : `${Math.ceil(p.stakesCd)}s`) : '';
       if (lock.textContent !== lt) lock.textContent = lt;
     }
     const win = m.combos.windowLeft(0, m.time);
@@ -1096,6 +1104,13 @@ export class BattleHUD implements Screen {
         if (e.completed) this.callout(e.side, 'ЧЕМПИОН ОТКРЫТ!', '#9dff5c');
         break;
       case 'cardFail':
+        break;
+      // Alpha 1.6: a fighter tore out of nets / cables (short immunity)
+      case 'breakFree':
+        this.callout(e.side, 'ВЫРВАЛСЯ!', '#e9ff70');
+        break;
+      case 'tagHit':
+        this.callout((1 - e.side) as Side, 'В ЦЕНТРЕ ВНИМАНИЯ', '#ffe27a');
         break;
       default:
         break;

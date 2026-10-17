@@ -29,6 +29,14 @@ interface NoiseOpts {
 }
 
 const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+/**
+ * Alpha 1.6: every voice starts at least this far ahead of the audio clock. A voice whose start
+ * falls on (or just behind) the clock — a sequencer tick that ran late after a stall of the main
+ * thread, or an effect fired "now" — skips part of its attack ramp; measured offline, a kick 3 ms
+ * late has a ~5× sharper first sample (an audible click). 10 ms is far below what the ear hears
+ * as late.
+ */
+const MIN_LEAD = 0.01;
 
 /**
  * Fully procedural audio (no files): SFX synthesised on demand, crowd
@@ -165,7 +173,7 @@ export class AudioSystem {
   private tone(o: ToneOpts): void {
     const ctx = this.ctx;
     if (!ctx || !this.soundOn) return;
-    const t0 = ctx.currentTime + (o.delay ?? 0);
+    const t0 = ctx.currentTime + Math.max(MIN_LEAD, o.delay ?? 0);
     const osc = ctx.createOscillator();
     osc.type = o.type ?? 'sine';
     osc.frequency.setValueAtTime(o.f0, t0);
@@ -195,7 +203,7 @@ export class AudioSystem {
   private noise(o: NoiseOpts): void {
     const ctx = this.ctx;
     if (!ctx || !this.soundOn) return;
-    const t0 = ctx.currentTime + (o.delay ?? 0);
+    const t0 = ctx.currentTime + Math.max(MIN_LEAD, o.delay ?? 0);
     const src = ctx.createBufferSource();
     src.buffer = this.noiseBuf;
     const rate = 0.8 + Math.random() * 0.4;
@@ -349,6 +357,141 @@ export class AudioSystem {
         }
         this.electric(0.7, 0.25);
         this.tone({ type: 'sawtooth', f0: 1200, f1: 80, dur: 0.6, gain: 0.08, filter: { type: 'bandpass', f0: 800, q: 4 } });
+        break;
+      // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+      case 'spotlight_tag':
+        // a studio lamp clunks on, then the two-note TV chime
+        this.noise({ dur: 0.06, gain: 0.14, type: 'lowpass', f0: 900 });
+        this.tone({ type: 'sine', f0: NOTE(84), dur: 0.28, gain: 0.08, delay: 0.05 });
+        this.tone({ type: 'sine', f0: NOTE(91), dur: 0.4, gain: 0.07, delay: 0.17 });
+        break;
+      case 'split_shot':
+        [0, 5, 9].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(74 + n), dur: 0.07, gain: 0.05, delay: i * 0.025, filter: { type: 'lowpass', f0: 4500 } }));
+        this.noise({ dur: 0.18, gain: 0.12, type: 'bandpass', f0: 1200, f1: 4200, q: 2 });
+        break;
+      case 'rebound_disc':
+        this.tone({ type: 'sawtooth', f0: 260, f1: 980, dur: 0.32, gain: 0.07, filter: { type: 'bandpass', f0: 900, f1: 2400, q: 3 } });
+        this.noise({ dur: 0.3, gain: 0.14, type: 'bandpass', f0: 700, f1: 3200, q: 2.5 });
+        break;
+      case 'prop_drop':
+        // a call to the crew: walkie click and a falling two-tone whistle
+        this.noise({ dur: 0.04, gain: 0.12, type: 'highpass', f0: 3000 });
+        this.tone({ type: 'sine', f0: NOTE(88), f1: NOTE(76), dur: 0.9, gain: 0.06, delay: 0.1, attack: 0.04 });
+        break;
+      case 'pulse_push':
+        this.tone({ type: 'sine', f0: 180, f1: 60, dur: 0.25, gain: 0.3 });
+        this.noise({ dur: 0.22, gain: 0.2, type: 'bandpass', f0: 2600, f1: 600, q: 1.6 });
+        break;
+      case 'gravity_net':
+        this.noise({ dur: 0.18, gain: 0.14, type: 'bandpass', f0: 800, f1: 2400, q: 2 });
+        this.tone({ type: 'sine', f0: 70, f1: 110, dur: 0.6, gain: 0.12, delay: 0.25, attack: 0.08 });
+        break;
+      case 'pressure_mine':
+        this.noise({ dur: 0.14, gain: 0.12, type: 'bandpass', f0: 900, f1: 2600, q: 2 });
+        this.tone({ type: 'square', f0: NOTE(84), dur: 0.05, gain: 0.04, delay: 0.5, filter: { type: 'lowpass', f0: 3000 } });
+        break;
+      case 'stage_barrier':
+        this.tone({ type: 'sine', f0: 200, f1: 1200, dur: 0.35, gain: 0.08 });
+        [0, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(67 + n), dur: 0.5, gain: 0.05, delay: 0.12 + i * 0.03, attack: 0.02 }));
+        break;
+      case 'cable_snare':
+        this.noise({ dur: 0.16, gain: 0.2, type: 'bandpass', f0: 1500, f1: 6000, q: 3 });
+        this.tone({ type: 'triangle', f0: 2200, f1: 1700, dur: 0.06, gain: 0.06, delay: 0.02 });
+        break;
+      case 'holo_decoy':
+        for (let i = 0; i < 6; i++) this.tone({ type: 'square', f0: 600 + Math.random() * 1600, dur: 0.04, gain: 0.04, delay: i * 0.035, filter: { type: 'lowpass', f0: 3500 } });
+        this.tone({ type: 'sine', f0: NOTE(79), f1: NOTE(91), dur: 0.4, gain: 0.05, attack: 0.03 });
+        break;
+      case 'frame_catch':
+        // a camera shutter
+        this.noise({ dur: 0.04, gain: 0.2, type: 'highpass', f0: 2500 });
+        this.noise({ dur: 0.05, gain: 0.14, type: 'highpass', f0: 2000, delay: 0.07 });
+        this.tone({ type: 'triangle', f0: 1400, dur: 0.06, gain: 0.05 });
+        break;
+      case 'backtrack':
+        // tape rewind: a fast warbling chirp
+        this.tone({ type: 'sawtooth', f0: 1600, f1: 300, dur: 0.32, gain: 0.06, filter: { type: 'bandpass', f0: 1400, q: 2 } });
+        this.tone({ type: 'square', f0: 900, f1: 2400, dur: 0.3, gain: 0.03, filter: { type: 'lowpass', f0: 3000 } });
+        this.noise({ dur: 0.3, gain: 0.1, type: 'bandpass', f0: 3000, f1: 800, q: 2 });
+        break;
+      case 'high_stakes':
+        [0, 4, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(72 + n), dur: 0.22, gain: 0.07, delay: i * 0.06 }));
+        this.tone({ type: 'sine', f0: 90, f1: 50, dur: 0.4, gain: 0.18, delay: 0.25 });
+        break;
+      case 'side_cam':
+        // a servo whine as the camera rises
+        this.tone({ type: 'square', f0: 420, f1: 760, dur: 0.35, gain: 0.03, filter: { type: 'lowpass', f0: 1800 } });
+        this.noise({ dur: 0.03, gain: 0.1, type: 'highpass', f0: 3000, delay: 0.35 });
+        break;
+      case 'freeze_frame':
+        // tape slowing down
+        this.tone({ type: 'sine', f0: 880, f1: 110, dur: 0.6, gain: 0.08 });
+        this.tone({ type: 'sine', f0: 1320, f1: 165, dur: 0.6, gain: 0.04 });
+        this.noise({ dur: 0.5, gain: 0.1, type: 'lowpass', f0: 3000, f1: 300 });
+        break;
+    }
+  }
+
+  /** Alpha 1.6 — the key moments of the new cards (activation sounds are in card()). */
+  cardFx(kind: 'tagHit' | 'push' | 'netLand' | 'mineArm' | 'mineBoom' | 'barrierHit' | 'barrierBreak' | 'propLand' | 'camLock' | 'camFire' | 'tether' | 'snap' | 'frameCatch' | 'discCatch' | 'erase'): void {
+    if (!this.throttle('cfx-' + kind, 50)) return;
+    switch (kind) {
+      case 'tagHit':
+        [0, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(84 + n), dur: 0.2, gain: 0.07, delay: i * 0.05 }));
+        this.cheer(0.5);
+        break;
+      case 'push':
+        this.noise({ dur: 0.12, gain: 0.14, type: 'lowpass', f0: 900 });
+        break;
+      case 'netLand':
+        this.tone({ type: 'sine', f0: 220, f1: 330, dur: 0.3, gain: 0.08 });
+        this.noise({ dur: 0.2, gain: 0.08, type: 'bandpass', f0: 2400, q: 3 });
+        break;
+      case 'mineArm':
+        this.tone({ type: 'square', f0: NOTE(88), dur: 0.05, gain: 0.04, filter: { type: 'lowpass', f0: 3500 } });
+        this.tone({ type: 'square', f0: NOTE(88), dur: 0.05, gain: 0.04, delay: 0.1, filter: { type: 'lowpass', f0: 3500 } });
+        break;
+      case 'mineBoom':
+        this.noise({ dur: 0.45, gain: 0.4, type: 'lowpass', f0: 2600, f1: 140 });
+        this.tone({ type: 'sine', f0: 130, f1: 38, dur: 0.45, gain: 0.5 });
+        this.electric(0.25, 0.18);
+        break;
+      case 'barrierHit':
+        this.tone({ type: 'triangle', f0: 1700, f1: 1200, dur: 0.1, gain: 0.05 });
+        break;
+      case 'barrierBreak':
+        this.shieldBreak();
+        break;
+      case 'propLand':
+        this.noise({ dur: 0.35, gain: 0.4, type: 'lowpass', f0: 1800, f1: 120 });
+        this.tone({ type: 'sine', f0: 110, f1: 40, dur: 0.4, gain: 0.45 });
+        this.tone({ type: 'triangle', f0: 520, f1: 260, dur: 0.12, gain: 0.06, delay: 0.04 });
+        break;
+      case 'camLock':
+        this.tone({ type: 'square', f0: NOTE(93), dur: 0.08, gain: 0.05, filter: { type: 'lowpass', f0: 5000 } });
+        this.tone({ type: 'square', f0: NOTE(93), dur: 0.08, gain: 0.05, delay: 0.14, filter: { type: 'lowpass', f0: 5000 } });
+        break;
+      case 'camFire':
+        this.tone({ type: 'sawtooth', f0: 1400, f1: 200, dur: 0.25, gain: 0.12, filter: { type: 'lowpass', f0: 5000, f1: 500 } });
+        this.noise({ dur: 0.12, gain: 0.14, type: 'highpass', f0: 2000 });
+        break;
+      case 'tether':
+        this.tone({ type: 'triangle', f0: 600, f1: 300, dur: 0.18, gain: 0.08 });
+        this.noise({ dur: 0.1, gain: 0.1, type: 'bandpass', f0: 2600, q: 3 });
+        break;
+      case 'snap':
+        this.noise({ dur: 0.08, gain: 0.18, type: 'highpass', f0: 3000 });
+        this.tone({ type: 'triangle', f0: 2000, f1: 900, dur: 0.12, gain: 0.05 });
+        break;
+      case 'frameCatch':
+        this.tone({ type: 'triangle', f0: 1760, f1: 2640, dur: 0.18, gain: 0.1 });
+        this.noise({ dur: 0.06, gain: 0.14, type: 'highpass', f0: 3000 });
+        break;
+      case 'discCatch':
+        this.tone({ type: 'triangle', f0: 1200, f1: 1600, dur: 0.1, gain: 0.05 });
+        break;
+      case 'erase':
+        this.tone({ type: 'sine', f0: 2400, f1: 600, dur: 0.12, gain: 0.04 });
         break;
     }
   }
@@ -804,7 +947,11 @@ export class AudioSystem {
     }
     if (s === 0 || s === 8) this.mtone({ type: 'sine', f0: 120, f1: 45, dur: 0.25, gain: 0.55, delay });
     if (s === 4 || s === 12) this.mnoise({ dur: 0.1, gain: 0.12, type: 'bandpass', f0: 2000, delay });
-    if (s % 2 === 1) this.mnoise({ dur: 0.03, gain: 0.04, type: 'highpass', f0: 8000, delay });
+    // Alpha 1.6: the menu hi-hat was the «ццц» heard idling in the menu on phones — a 4 ms attack of
+    // pure 8 kHz noise three times a second, the sharpest transient in the mix and, with a phone
+    // speaker dropping the bass and pads, the loudest thing left. Same groove, a softer voice:
+    // offline render −36% peak, −64% steepest sample step, −74% transient energy above 7 kHz.
+    if (s % 2 === 1) this.mnoise({ dur: 0.05, gain: 0.03, attack: 0.012, type: 'bandpass', f0: 7000, q: 0.9, delay });
     if (s === 6 || s === 14) {
       const n = prog[bar][(s >> 3) + 1] + 24;
       this.mtone({ type: 'triangle', f0: NOTE(n), dur: 0.3, gain: 0.05, delay });

@@ -6,7 +6,7 @@ import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
 import type { StageView } from '../../meta/careerStages';
 import { REWARD_ART } from '../eventArt';
-import { el, esc, portraitHTML } from '../dom';
+import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
@@ -29,7 +29,7 @@ export class CareerScreen implements Screen {
     const s = this.g.save.data;
     const f = FIGHTERS[s.selected];
     this.g.showcase.show(f.look, f.theme.accent);
-    this.render();
+    this.render(false);
   }
 
   private commitName(): void {
@@ -83,7 +83,7 @@ export class CareerScreen implements Screen {
     }
   }
 
-  private render(): void {
+  private render(keep = true): void {
     const g = this.g;
     const s = g.save.data;
     const lvl = g.career.level();
@@ -124,7 +124,9 @@ export class CareerScreen implements Screen {
       </div>`;
     }).join('');
 
-    this.el.innerHTML = `
+    setScreenHTML(
+      this.el,
+      `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="h1">Карьера продюсера</div>
@@ -164,7 +166,9 @@ export class CareerScreen implements Screen {
           <div class="section-title"><span class="h2">Цели сезона</span><span class="label">${GOALS.filter((x) => s.goals[x.id].done).length}/${GOALS.length}</span></div>
           ${goals}
         </div>
-      </div>`;
+      </div>`,
+      keep,
+    );
   }
 
   // ------------------------------------------------- career stages (1.5)

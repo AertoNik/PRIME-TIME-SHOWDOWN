@@ -1,10 +1,10 @@
-import { BROADCAST, CARD_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
+import { ARENA, BROADCAST, CARD_TUNING, COMBO_TUNING, MATCH, PASSIVE_TUNING, PILOT } from '../config/balance';
 import { arenaById, type ArenaId } from '../config/arenas.config';
 import { bossById } from '../config/boss.config';
 import { CARDS } from '../config/cards';
 import { BEHAVIORS, DIFFICULTIES, FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
 import type { Behavior, CardId, ComboDef, ComboId, Difficulty, DifficultyDef, FighterId, RivalDef, RivalId, Side } from '../config/types';
-import { Rng } from '../core/math';
+import { Rng, clampRoundedRect, type ClampResult } from '../core/math';
 import { Abilities } from './Abilities';
 import { BossDirector } from './BossDirector';
 import { BroadcastSystem, type BroadcastHost } from './BroadcastSystem';
@@ -13,7 +13,12 @@ import { CombatSystem } from './CombatSystem';
 import { ComboSystem } from './ComboSystem';
 import { FighterAI, type AIProfile } from './FighterAI';
 import { FighterSim } from './FighterSim';
+import { StageObjects } from './StageObjects';
 import type { CardFailReason, Decoy, MatchEvent, MatchPhase, MatchResultData, Projectile, PropState, SmokeZone } from './types';
+
+/** Cards that need the fighter's body free (no charge, rush or recovery running); a DASH-like move defers them. */
+const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack']);
+const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 
 export interface MatchConfig {
   fighter: FighterId;
@@ -96,6 +101,8 @@ export class Match implements BroadcastHost {
   projectiles: Projectile[] = [];
   smokes: SmokeZone[] = [];
   decoys: Decoy[] = [];
+  /** Alpha 1.6: nets, mines, barriers, props, cameras and freeze zones of the new cards. */
+  readonly objects: StageObjects;
   readonly props: PropState[];
   events: MatchEvent[] = [];
   result: MatchResultData | null = null;
@@ -138,6 +145,8 @@ export class Match implements BroadcastHost {
     this.broadcast = new BroadcastSystem(this);
     this.combat = new CombatSystem(this);
     this.abilities = new Abilities(this);
+    this.objects = new StageObjects(this);
+    this.combos.ready = (side, c, prev) => this.comboReady(side, c, prev);
 
     const auto = cfg.autoPlayer;
     const playerProfile: AIProfile = auto
@@ -235,6 +244,11 @@ export class Match implements BroadcastHost {
     return this.idSeq++;
   }
 
+  /** Alpha 1.6: ids for stage objects (shared sequence with smokes and decoys). */
+  newId(): number {
+    return this.idSeq++;
+  }
+
   // ------------------------------------------------------------------- step
   step(dt: number): void {
     this.clock += dt;
@@ -280,6 +294,10 @@ export class Match implements BroadcastHost {
     this.combat.separate();
     this.combat.updateProjectiles(dt);
     this.updateZones(dt);
+    if (this.phase === 'fight') {
+      this.objects.update(dt);
+      this.recordHistory(dt);
+    }
 
     if (this.phase === 'fight') {
       this.broadcast.update(dt);
@@ -315,6 +333,14 @@ export class Match implements BroadcastHost {
     for (const d of this.decoys) {
       if (!d.alive) continue;
       d.t += dt;
+      // Alpha 1.6 HOLO DECOY: it soaked a volley and now glitches out
+      if (d.soak >= 0) {
+        d.soak -= dt;
+        if (d.soak <= 0) {
+          this.popDecoy(d);
+          continue;
+        }
+      }
       if (d.t >= d.duration) {
         d.alive = false;
         this.emit({ type: 'decoyPop', side: d.owner, id: d.id, x: d.x, z: d.z, hit: false });
@@ -335,6 +361,94 @@ export class Match implements BroadcastHost {
   }
 
   // ------------------------------------------------------------------ cards
+  /**
+   * The rules for playing `card` now, without side effects (energy is checked by the caller).
+   * Shared by playCard, the HUD combo hints and the AI, so a hint never promises a card the
+   * rules would refuse. `defer`: valid, but it waits for the running DASH-like move to end.
+   */
+  cardRules(side: Side, card: CardId, combo: ComboDef | null, ignoreLockout = false): { fail: CardFailReason | null; defer: boolean } {
+    const hand = this.hands[side];
+    const f = this.fighters[side];
+    const no = (fail: CardFailReason) => ({ fail, defer: false });
+    if (this.phase !== 'fight' || f.ko) return no('phase');
+    if (!ignoreLockout && hand.lockout > 0) return no('cooldown');
+    if (f.glitch > 0) return no('glitched');
+    if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return no('stunned');
+    if (card === 'directors_cut' && f.cutCd > 0) return no('cooldown');
+    if (card === 'high_stakes') {
+      // Alpha 1.6: rare, and never into the danger zone
+      const t = CARD_TUNING.high_stakes;
+      if (f.stakesCd > 0 || f.stakesUses >= t.uses) return no('recharge');
+      const cost = f.maxHp * t.hpCost * (combo?.id === 'safe_bet' ? COMBO_TUNING.safeBetCost : 1);
+      if (f.hp - cost < f.maxHp * t.minHp) return no('risk');
+    }
+    const a = f.action.kind;
+    let defer = false;
+    if (NEEDS_BODY.has(card)) {
+      if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut') return no('busy');
+      if (a === 'dash' || a === 'feint' || a === 'rewind') {
+        if (card === 'dash' || card === 'false_start' || this.deferred[side]) return no('busy');
+        defer = true;
+      }
+    }
+    // one read window at a time
+    if (card === 'false_start' && f.feint > 0) return no('busy');
+    if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut')) return no('busy');
+    return { fail: null, defer };
+  }
+
+  /**
+   * Alpha 1.6: a combo whose setup is gone does not trigger (and is not hinted): the net
+   * expired, the mine went off, nothing was caught, the target slipped the tag or cable.
+   */
+  comboReady(side: Side, c: ComboDef, prev: CardId): boolean {
+    const f = this.fighters[side];
+    const foe = this.fighters[1 - side];
+    switch (c.id) {
+      case 'spotlight':
+        return foe.tag > 0 && foe.tagBy === side;
+      case 'tight_spread':
+      case 'boomerang':
+      case 'set_piece':
+      case 'gravity_trap':
+        if (prev === 'gravity_net') return !!this.objects.own(side, 'net');
+        if (prev === 'cable_snare') return foe.tether > 0;
+        return true;
+      case 'mine_drive':
+      case 'rewind_trap':
+        return !!this.objects.own(side, 'mine');
+      case 'wall_push':
+      case 'backstage':
+      case 'cross_angle':
+        return !!this.objects.own(side, 'barrier');
+      case 'blindside':
+        return this.decoys.some((d) => d.alive && d.owner === side && d.kind === 'holo');
+      case 'catch_release':
+      case 'safe_bet':
+        return f.caught > 0;
+      case 'replay':
+      case 'time_slip':
+        return !!this.objects.own(side, 'freeze');
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * HUD hint: the combo `card` would form now — only when it is really playable: the rules
+   * allow it and the energy is there or arrives before the combo window closes.
+   */
+  comboHint(side: Side, card: CardId): ComboDef | null {
+    const c = this.combos.wouldCombo(side, card, this.time);
+    if (!c) return null;
+    if (this.cardRules(side, card, c, true).fail) return null;
+    const hand = this.hands[side];
+    const f = this.fighters[side];
+    const regen = MATCH.energyPerSecond * hand.regenMult * (f.overclock > 0 ? PASSIVE_TUNING.overclock.regenMult : 1);
+    if (hand.energy + regen * this.combos.windowLeft(side, this.time) < CARDS[card].cost) return null;
+    return c;
+  }
+
   /** Returns null on success or the reason the card could not be played. */
   playCard(side: Side, index: number): CardFailReason | null {
     const hand = this.hands[side];
@@ -347,27 +461,13 @@ export class Match implements BroadcastHost {
     };
     if (hand.lockout > 0) return fail('cooldown');
     if (hand.energy < CARDS[card].cost) return fail('energy');
-    if (f.glitch > 0) return fail('glitched');
-    if ((f.stun > 0 || f.knockback > 0) && card !== 'shield') return fail('stunned');
-    const needsBody =
-      card === 'dash' || card === 'power_shot' || card === 'knockout' || card === 'charged_shot' || card === 'directors_cut' || card === 'bank_shot' || card === 'false_start';
-    if (card === 'directors_cut' && f.cutCd > 0) return fail('cooldown');
-    const a = f.action.kind;
-    let defer = false;
-    if (needsBody) {
-      if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut') return fail('busy');
-      if (a === 'dash' || a === 'feint') {
-        if (card === 'dash' || card === 'false_start' || this.deferred[side]) return fail('busy');
-        defer = true;
-      }
-    }
-    // one read window at a time
-    if (card === 'false_start' && f.feint > 0) return fail('busy');
-    if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut')) return fail('busy');
+    const combo = this.combos.detect(side, card, this.time);
+    const rules = this.cardRules(side, card, combo);
+    if (rules.fail) return fail(rules.fail);
+    const defer = rules.defer;
 
     hand.consume(index);
-    const combo = this.combos.detect(side, card, this.time);
-    this.combos.record(side, card, this.time);
+    this.combos.record(side, card, this.time, combo?.id ?? null);
     f.m.cardsUsed++;
     this.emit({ type: 'card', side, card, combo: combo?.id ?? null });
     if (combo) {
@@ -383,6 +483,20 @@ export class Match implements BroadcastHost {
     if (defer) this.deferred[side] = { card, combo, t: 0 };
     else this.abilities.execute(f, card, combo);
     return null;
+  }
+
+  /** Alpha 1.6 BACKTRACK: where each fighter stood over the last seconds (a small ring of samples). */
+  private recordHistory(dt: number): void {
+    const t = CARD_TUNING.backtrack;
+    const keep = Math.round(t.keep / t.sample) * 2;
+    for (const f of this.fighters) {
+      if (f.ko) continue;
+      f.histT += dt;
+      if (f.histT < t.sample) continue;
+      f.histT -= t.sample;
+      f.hist.push(f.x, f.z);
+      if (f.hist.length > keep) f.hist.splice(0, f.hist.length - keep);
+    }
   }
 
   // ---------------------------------------------------------------- effects
@@ -402,9 +516,38 @@ export class Match implements BroadcastHost {
   }
 
   spawnDecoy(f: FighterSim, duration: number): void {
-    const d: Decoy = { id: this.nextId(), owner: f.side, x: f.x, z: f.z, facing: f.facing, t: 0, duration, alive: true };
+    const d: Decoy = { id: this.nextId(), owner: f.side, x: f.x, z: f.z, facing: f.facing, t: 0, duration, alive: true, kind: 'phantom', soak: -1 };
     this.decoys.push(d);
     this.emit({ type: 'decoy', side: f.side, id: d.id, x: d.x, z: d.z, duration });
+  }
+
+  /**
+   * Alpha 1.6 — HOLO DECOY: a hologram `offset` m to the fighter's side (the side with more
+   * floor), one per fighter. It draws the opponent's regular fire only (see CombatSystem).
+   */
+  spawnHolo(f: FighterSim, foe: FighterSim): void {
+    const t = CARD_TUNING.holo_decoy;
+    for (const d of this.decoys) if (d.alive && d.owner === f.side && d.kind === 'holo') this.popDecoy(d);
+    const dx = foe.x - f.x;
+    const dz = foe.z - f.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    const px = -dz / dl;
+    const pz = dx / dl;
+    let best = { x: f.x, z: f.z };
+    let bestRoom = -1;
+    for (const sgn of [1, -1]) {
+      const wx = f.x + px * sgn * t.offset;
+      const wz = f.z + pz * sgn * t.offset;
+      clampRoundedRect(wx, wz, ARENA.halfX - 0.2, ARENA.halfZ - 0.2, ARENA.cornerRadius, tmpClamp);
+      const room = Math.hypot(tmpClamp.x - f.x, tmpClamp.z - f.z);
+      if (room > bestRoom + 0.05) {
+        bestRoom = room;
+        best = { x: tmpClamp.x, z: tmpClamp.z };
+      }
+    }
+    const d: Decoy = { id: this.nextId(), owner: f.side, x: best.x, z: best.z, facing: f.facing, t: 0, duration: t.duration, alive: true, kind: 'holo', soak: -1 };
+    this.decoys.push(d);
+    this.emit({ type: 'decoy', side: f.side, id: d.id, x: d.x, z: d.z, duration: t.duration });
   }
 
   popDecoy(d: Decoy): void {
@@ -494,7 +637,16 @@ export class Match implements BroadcastHost {
       f.overdrive = 0;
       this.abilities.cancelCut(f);
       if (f.action.kind !== 'none') f.action = { kind: 'none' };
+      // Alpha 1.6: marks, cables, frames and pushes end with the fight
+      if (f.tag > 0) this.emit({ type: 'tagEnd', side: f.side });
+      if (f.tether > 0) this.emit({ type: 'tetherEnd', side: f.side, broke: false });
+      f.tag = 0;
+      f.tether = 0;
+      f.frame = 0;
+      f.shoveX = f.shoveZ = 0;
     }
+    // Alpha 1.6: every temporary set piece leaves the stage
+    this.objects.clear();
     this.emit({ type: 'phase', phase: 'outro' });
     this.result = this.buildResult(method);
   }

@@ -3,9 +3,45 @@ import type { CardId, ComboId, DashStyle, PassiveId, Side, WeaponType } from '..
 
 export type MatchPhase = 'intro' | 'fight' | 'outro' | 'over';
 
-export type HitKind = 'auto' | 'power' | 'shock' | 'knockout' | 'overload' | 'dot' | 'slam' | 'adrenaline' | 'burst' | 'cut' | 'bank' | 'counter';
+export type HitKind =
+  | 'auto'
+  | 'power'
+  | 'shock'
+  | 'knockout'
+  | 'overload'
+  | 'dot'
+  | 'slam'
+  | 'adrenaline'
+  | 'burst'
+  | 'cut'
+  | 'bank'
+  | 'counter'
+  // Alpha 1.6
+  | 'split'
+  | 'disc'
+  | 'prop'
+  | 'mine'
+  | 'cable'
+  | 'cam'
+  | 'release';
 
-export type ProjectileKind = 'auto' | 'pellet' | 'bolt' | 'rail' | 'slug' | 'power' | 'adrenaline' | 'bank' | 'counter' | 'zap';
+export type ProjectileKind =
+  | 'auto'
+  | 'pellet'
+  | 'bolt'
+  | 'rail'
+  | 'slug'
+  | 'power'
+  | 'adrenaline'
+  | 'bank'
+  | 'counter'
+  | 'zap'
+  // Alpha 1.6: SPLIT SHOT bolts, REBOUND DISC, CABLE SNARE, SIDE CAM bolt, CATCH & RELEASE shot
+  | 'split'
+  | 'disc'
+  | 'cable'
+  | 'cam'
+  | 'release';
 
 export interface Projectile {
   id: number;
@@ -48,6 +84,16 @@ export interface Projectile {
   bounces: number;
   /** Has already bounced once (a hit now is a TRICK SHOT). */
   bounced: boolean;
+  /** Alpha 1.6: combo damage multiplier already in `damage` (SPOTLIGHT TAG never stacks on it). */
+  boost: number;
+  /** Alpha 1.6 (BLINDSIDE): the target's fighter does not see it coming (no automatic sidestep). */
+  blind: boolean;
+  /** Alpha 1.6 (CROSS ANGLE): flies through its owner's own STAGE BARRIER. */
+  ownPass: boolean;
+  /** Alpha 1.6 — REBOUND DISC: on its way back; hits landed (bit 0 out, bit 1 back); seconds in flight. */
+  ret: boolean;
+  mask: number;
+  life: number;
 }
 
 export interface SmokeZone {
@@ -70,6 +116,48 @@ export interface Decoy {
   t: number;
   duration: number;
   alive: boolean;
+  /**
+   * 'phantom' (SMOKE → DASH, DASH → BACKTRACK): draws every attack aimed by sight.
+   * 'holo' (Alpha 1.6 HOLO DECOY): draws regular fire only and pops after soaking one volley.
+   */
+  kind: 'phantom' | 'holo';
+  /** HOLO DECOY: seconds left before it pops after its first hit (-1 = not hit yet). */
+  soak: number;
+}
+
+/** Alpha 1.6: temporary set pieces the new cards put on the stage (all removed by the end of the fight). */
+export type StageKind = 'net' | 'mine' | 'barrier' | 'prop' | 'cam' | 'freeze';
+
+export interface StageObject {
+  id: number;
+  kind: StageKind;
+  owner: Side;
+  /** Where it is (net / mine: landing point; cam: on the barrier; barrier: centre). */
+  x: number;
+  z: number;
+  /** Throw origin (net and mine fly in an arc from here). */
+  fromX: number;
+  fromZ: number;
+  /** Barrier: along the screen. Cam: line of fire. */
+  dirX: number;
+  dirZ: number;
+  /** Zone / trigger radius, the barrier's half length. */
+  radius: number;
+  /** Seconds in the current stage and its length. */
+  t: number;
+  total: number;
+  /**
+   * Per kind: net 'fly' → 'on'; mine 'fly' → 'arming' → 'armed'; barrier 'on';
+   * prop 'warn' → 'landed'; cam 'aim' → 'lock' → 'retract'; freeze 'on'. 'gone' = being removed.
+   */
+  stage: 'fly' | 'on' | 'arming' | 'armed' | 'warn' | 'landed' | 'aim' | 'lock' | 'retract' | 'gone';
+  /** Barrier hit points (others: unused). */
+  hp: number;
+  maxHp: number;
+  /** Combo flags (cam: CROSS ANGLE / BLINDSIDE; barrier: -). */
+  combo: ComboId | null;
+  /** Visual variant (prop drop: which set piece). */
+  variant: number;
 }
 
 /** A set piece on the barrier (Alpha 1.4: per stage, see src/config/arenas.config.ts). Visual only. */
@@ -197,9 +285,36 @@ export type MatchEvent =
   /** Alpha 1.5: the feint read an attack — it missed and the counter shot is on its way. */
   | { type: 'feintCounter'; side: Side; x: number; z: number; tx: number; tz: number; kind: HitKind }
   /** Alpha 1.5: the feint window ran out with nothing to read. */
-  | { type: 'feintEnd'; side: Side };
+  | { type: 'feintEnd'; side: Side }
+  // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+  /** A new card took effect: the activation gesture (FighterAnimator.cast) and its sound. */
+  | { type: 'cast'; side: Side; card: CardId }
+  /** SPOTLIGHT TAG on `side`'s opponent (hit = false: dodged); tagHit: the marked hit landed; tagEnd: it faded or was hidden. */
+  | { type: 'tag'; side: Side; target: Side; hit: boolean; duration: number }
+  | { type: 'tagHit'; side: Side; x: number; z: number }
+  | { type: 'tagEnd'; side: Side }
+  /** PULSE PUSH from (x, z) along (dx, dz); `hit`: the opponent was in reach. */
+  | { type: 'push'; side: Side; x: number; z: number; dx: number; dz: number; range: number; hit: boolean }
+  /** A stage object changed: spawned, landed, armed, fired, hit, broke, ended. */
+  | { type: 'object'; id: number; kind: StageKind; owner: Side; what: 'spawn' | 'land' | 'arm' | 'lock' | 'fire' | 'trigger' | 'hit' | 'break' | 'end'; x: number; z: number }
+  /** CABLE SNARE holds `side` near (ax, az); tetherEnd: released (broke = snapped by a move). */
+  | { type: 'tether'; side: Side; ax: number; az: number; radius: number; duration: number }
+  | { type: 'tetherEnd'; side: Side; broke: boolean }
+  /** FRAME CATCH raised by `side`; frameCatch: it destroyed a projectile at (x, z). */
+  | { type: 'frame'; side: Side; duration: number }
+  | { type: 'frameCatch'; side: Side; x: number; z: number }
+  /** BACKTRACK: `side` rewinds from → to in `duration` s. */
+  | { type: 'rewind'; side: Side; fromX: number; fromZ: number; toX: number; toZ: number; duration: number }
+  /** HIGH STAKES: `side` paid `hp` health for `energy` energy. */
+  | { type: 'stakes'; side: Side; hp: number; energy: number }
+  /** REBOUND DISC turned back (what = 'turn') or came home (what = 'catch'). */
+  | { type: 'disc'; side: Side; x: number; z: number; what: 'turn' | 'catch' }
+  /** REPLAY: a projectile of the opponent was erased inside `side`'s freeze zone. */
+  | { type: 'erase'; side: Side; x: number; z: number }
+  /** `side` was held by nets / cables too long and broke free (short immunity). */
+  | { type: 'breakFree'; side: Side; x: number; z: number };
 
-export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase';
+export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase' | 'risk' | 'recharge';
 
 export interface HitInfo {
   damage: number;
@@ -219,6 +334,8 @@ export interface HitInfo {
   projectile: Projectile | null;
   /** Share of damage that goes through a shield (the shield then breaks). */
   pierce?: number;
+  /** Alpha 1.6: combo multiplier already in `damage` (SPOTLIGHT TAG uses the larger, never both). */
+  boost?: number;
 }
 
 export interface MatchResultData {

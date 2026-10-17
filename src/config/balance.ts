@@ -198,6 +198,108 @@ export const CARD_TUNING = {
     moveMult: 0.75,
     energyDrain: 3,
   },
+
+  // ------------------------------------------------- Alpha 1.6 — CARD REVOLUTION
+  // Numbers are sized against the real economy of a fight: ~0.8 energy/s, auto fire
+  // 120–165 DPS, 13 600–16 800 HP, POWER SHOT = 600 for 4 energy (150 per energy point).
+  // Every card has a visible tell and an answer; nothing stuns, nothing stacks forever.
+  // Checked with `npm run cards` and `npm run decks` (Alpha 1.6 report).
+
+  /**
+   * SPOTLIGHT TAG: a small studio spotlight marks the opponent for `duration` s. The next
+   * card hit from the tagger (POWER / CHARGED / BANK SHOT, KNOCKOUT, REBOUND DISC, PROP
+   * DROP, SIDE CAM) deals `mult` — never on top of a combo multiplier (the larger one
+   * counts). One hit, no stacking; the opponent's own SMOKE hides them and clears it.
+   */
+  spotlight_tag: { duration: 6, mult: 1.25 },
+  /**
+   * SPLIT SHOT: fires one volley of three energy bolts in a fan instead of the regular
+   * one (the weapon's own burst / pellets are not multiplied). Strong point blank,
+   * weak from afar (`falloff` = damage share at full range).
+   */
+  split_shot: { bolts: 3, fan: 0.5, damage: 165, speed: 21, radius: 0.22, range: 8.5, falloff: 0.55 },
+  /**
+   * REBOUND DISC: a spinning disc flies straight out to `reach` m (or a wall), then
+   * returns to the thrower. It can hit once on the way out and once on the way back;
+   * it never steers towards the target. Gone after `maxTime` s or when caught.
+   */
+  rebound_disc: { damage: 230, speed: 13, radius: 0.4, reach: 6.5, minReach: 3, maxTime: 2.6, catchRadius: 0.85, turnRate: 9 },
+  /**
+   * PROP DROP: the crew drops a foam set piece. A warning circle `radius` m where the
+   * opponent is heading (`lead` s), the prop lands `delay` s later. No stun.
+   */
+  prop_drop: { delay: 1.0, radius: 1.4, lead: 0.45, damage: 540, knockback: 1.8, linger: 0.8 },
+  /**
+   * PULSE PUSH: a short wave in front of the fighter shoves an opponent within `range` m
+   * (`force` m/s, decaying at `decay`/s: ~2.4 m) and throws their aim off: the next regular
+   * shot comes `aimDelay` s later. No damage, no stun, no wall slam, cards are not touched.
+   * Heavy fighters slide less, the champion much less and never during DIRECTOR'S CUT.
+   */
+  pulse_push: { range: 3.4, force: 12, decay: 5, heavyMult: 0.65, bossMult: 0.45, aimDelay: 0.4 },
+  /**
+   * GRAVITY NET: a thrown generator opens a slowing field (`slow` = speed factor) for
+   * `duration` s where the opponent stands. One per side; never stacks with other slows.
+   */
+  gravity_net: { flight: 0.35, lead: 0.35, radius: 1.8, duration: 3.6, slow: 0.55, bossSlow: 0.8 },
+  /**
+   * PRESSURE MINE: thrown in an arc (`flight` s) to where the opponent is heading but never
+   * closer than `minGap` m to them; arms after `arm` s, then waits `life` s. Fires once
+   * when the opponent steps within `trigger` m. At most `max` per side.
+   */
+  pressure_mine: { flight: 0.5, lead: 0.8, minGap: 1.6, arm: 0.7, life: 9, trigger: 1.05, damage: 420, shove: 6, max: 2 },
+  /**
+   * STAGE BARRIER: a 2×`halfLen` m screen `ahead` m in front of the fighter, across the
+   * line to the opponent. Stops projectiles of BOTH sides until `hp` damage or `duration`
+   * s. CHARGED SHOT goes through, DIRECTOR'S CUT ignores it. Projectiles only: nobody
+   * bumps into it, so nobody can get stuck on it.
+   */
+  stage_barrier: { ahead: 1.4, halfLen: 1.35, duration: 5, hp: 1100, thickness: 0.15 },
+  /**
+   * CABLE SNARE: a fast cable shot. On a hit the opponent stays within `tether` m of the
+   * spot for `duration` s (still moves inside, shoots and plays cards). DASH, FALSE START,
+   * BACKTRACK or a knockback snap it. Then `immunity` s before it can catch again.
+   */
+  cable_snare: { speed: 24, radius: 0.3, range: 9, damage: 60, duration: 2.4, tether: 1.7, bossDuration: 1.2, bossTether: 2.4, immunity: 1.5 },
+  /**
+   * HOLO DECOY: a glitching hologram `offset` m to the side. The opponent's regular fire
+   * goes at it; it soaks one volley (`soak` s after the first hit) and pops. Charged
+   * attacks, shocks and traps are aimed at the real fighter.
+   */
+  holo_decoy: { offset: 1.8, duration: 3, soak: 0.3 },
+  /**
+   * FRAME CATCH: an energy frame `ahead` m in front for `duration` s destroys the first
+   * enemy projectile that crosses it (one pellet of a spread). CHARGED SHOT, DIRECTOR'S CUT,
+   * KNOCKOUT, traps and shocks are not projectiles it can catch. Remembers the catch `memory` s.
+   */
+  frame_catch: { duration: 1.5, ahead: 0.9, halfWidth: 0.85, memory: 3 },
+  /**
+   * Holds are never endless: GRAVITY NET slows and CABLE SNARE tethers add up; after `holdMax` s
+   * of them in a row the fighter breaks free and ignores both for `immune` s. Free time cools the
+   * count down (`cool` per second). A pure control deck cannot keep a rival slowed for good.
+   */
+  hold: { holdMax: 3.2, immune: 4, cool: 0.6 },
+  /** BACKTRACK: back to where the fighter stood `lookback` s ago, in `duration` s (no invulnerability). */
+  backtrack: { lookback: 1.4, duration: 0.3, sample: 0.1, keep: 2 },
+  /**
+   * HIGH STAKES: `hpCost` of max HP for `energy` energy. Not below `minHp` HP after the
+   * cost; `cooldown` s between uses and `uses` per fight (each Survival wave is a fight,
+   * but the HP it costs stays spent).
+   */
+  high_stakes: { hpCost: 0.02, energy: 4, minHp: 0.3, cooldown: 15, uses: 3 },
+  /**
+   * SIDE CAM: a camera rises on the barrier at the opponent's flank, tracks for `aim` s,
+   * freezes its line (`lock` s of warning) and fires ONE bolt along it, half-leading the
+   * target. Then it retracts. One camera per side.
+   */
+  side_cam: { aim: 0.5, lock: 0.45, retract: 0.5, damage: 420, speed: 24, radius: 0.32, lead: 0.75, range: 16 },
+  /**
+   * FREEZE FRAME: a slow-motion zone `radius` m around the fighter for `duration` s.
+   * Regular projectiles of both sides heading into it (towards its centre) crawl at `speed` of
+   * their speed; shots heading out leave at full speed. Heavy card shots (POWER / CHARGED / BANK
+   * SHOT) and the champion's shots keep their speed. A slowed shot is easier to read: it is
+   * sidestepped `dodgeMult`× as often.
+   */
+  freeze_frame: { radius: 2.6, duration: 4.5, speed: 0.3, dodgeMult: 2 },
 };
 
 export const COMBO_TUNING = {
@@ -210,6 +312,43 @@ export const COMBO_TUNING = {
   ironRushDurationMult: 1.5,
   phantomDecoyTime: 2.8,
   superstarMult: 1.4,
+  // Alpha 1.6 — tactical combos (only JACKPOT multiplies damage, and never on top of another bonus)
+  /** SPOTLIGHT: the follow-up leads the marked target fully (no aim error); it can still be dodged. */
+  spotlightLead: 1,
+  /** TIGHT SPREAD: the fan narrows (radians), so two or three bolts can land. */
+  tightFan: 0.26,
+  /** BOOMERANG: the disc turns `boomerangPast` m behind the held target instead of at full reach. */
+  boomerangPast: 1.0,
+  /** SET PIECE: the prop drops right on the held target with a wider circle. */
+  setPieceRadius: 1.5,
+  /** GRAVITY TRAP: the mine lands inside the net, closer to the target, and arms faster. */
+  trapGap: 1.1,
+  trapArm: 0.4,
+  /** MINE DRIVE: the push bends up to this angle towards your mine and is a little stronger. */
+  mineDriveAngle: 0.6,
+  mineDriveForce: 1.15,
+  /** WALL PUSH: the wave leaves from the barrier (reaches further) and is stronger. */
+  wallPushForce: 1.25,
+  /** CROSS ANGLE: the camera bolt leads better and passes your own barrier. */
+  crossAngleLead: 0.8,
+  /** CAMERA LOCK: the net lands right on the target, wider. */
+  cameraLockRadius: 0.35,
+  /** CATCH & RELEASE: the caught shot is fired back after the DASH (share of its damage, capped). */
+  releaseShare: 0.5,
+  releaseCap: 220,
+  releaseSpeed: 26,
+  /** SAFE BET: HIGH STAKES costs this share of its HP price. */
+  safeBetCost: 0.5,
+  /** ALL IN: OVERDRIVE lasts this much longer. */
+  allInTime: 1.5,
+  /** INSURANCE: the shield absorbs this much more. */
+  insuranceAbsorb: 300,
+  /** JACKPOT (HIGH STAKES → SHIELD → POWER SHOT): damage multiplier. */
+  jackpotMult: 1.3,
+  /** DOUBLE TAKE: the afterimage left at the end of the DASH lasts this long. */
+  doubleTakeTime: 1.6,
+  /** TIME SLIP: DASH distance multiplier (the freeze zone follows). */
+  timeSlipDist: 1.3,
 };
 
 export const PASSIVE_TUNING = {
@@ -252,6 +391,14 @@ export const BROADCAST = {
   /** Alpha 1.5: a BANK SHOT landing after its ricochet / a FALSE START reading an attack. */
   trickShot: 5,
   feintRead: 6,
+  /** Alpha 1.6: the same tactical combo again within this many seconds is worth half the show rating. */
+  comboRepeat: 15,
+  /** Alpha 1.6: SPOTLIGHT TAG paid off / FRAME CATCH stopped a shot / a cable held / a push landed / HIGH STAKES. */
+  spotlight: 4,
+  frameCatch: 4,
+  tether: 2,
+  push: 1.5,
+  stakes: 2.5,
   koWin: 10,
   finisherHeavy: 10,
   buzzerBeater: 8,

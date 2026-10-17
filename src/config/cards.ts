@@ -1,7 +1,9 @@
 import { CARD_TUNING as T, COMBO_TUNING as CT, PASSIVE_TUNING as PT } from './balance';
-import type { CardDef, CardId, ComboDef, PassiveDef, PassiveId } from './types';
+import type { CardDef, CardFamily, CardId, ComboDef, ComboId, PassiveDef, PassiveId } from './types';
 
 const pct = (m: number) => `${Math.round((m - 1) * 100)}%`;
+/** Russian decimal comma for card texts (1.5 → «1,5»). */
+const ru = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',');
 
 export const CARDS: Record<CardId, CardDef> = {
   dash: {
@@ -148,9 +150,254 @@ export const CARDS: Record<CardId, CardDef> = {
     color2: '#7a1020',
     heavy: true,
   },
+
+  // ------------------------------------------------- Alpha 1.6 — CARD REVOLUTION
+  // Fifteen universal cards. Each is bought once in the career (shop: price + producer
+  // level or career stage) and then works for every fighter. Mechanics: src/combat/Abilities.ts
+  // and src/combat/StageObjects.ts; numbers: CARD_TUNING in balance.ts.
+  spotlight_tag: {
+    id: 'spotlight_tag',
+    name: 'SPOTLIGHT TAG',
+    cost: 2,
+    role: 'Атака · метка',
+    short: 'Метка прожектора',
+    desc: `Боец указывает на соперника — над ним загорается студийный прожектор на ${T.spotlight_tag.duration} с. Следующее попадание картой (POWER / CHARGED / BANK SHOT, KNOCKOUT, REBOUND DISC, PROP DROP, SIDE CAM) наносит +${pct(T.spotlight_tag.mult)} урона — один раз. С бонусом комбо не складывается: действует больший.`,
+    counter: 'Метку видно над головой: держите SHIELD или DASH для следующего мощного удара. Собственный SMOKE гасит прожектор.',
+    color: '#ffcf3f',
+    color2: '#a3460f',
+    family: 'attack',
+    cast: 'signal',
+    shop: { price: 250, level: 2 },
+  },
+  split_shot: {
+    id: 'split_shot',
+    name: 'SPLIT SHOT',
+    cost: 3,
+    role: 'Атака · веер',
+    short: 'Тройной веер',
+    desc: `Вместо обычного залпа боец даёт широкий выстрел: ${T.split_shot.bolts} энергоснаряда веером, по ${T.split_shot.damage} урона. Вблизи в цель попадают два-три, издалека — обычно один, и урон падает с дистанцией. Очереди и дробь оружия не умножаются.`,
+    counter: 'Держите дистанцию: веер расходится, урон падает. SHIELD гасит все снаряды, FRAME CATCH — один.',
+    color: '#7cff6b',
+    color2: '#0f7a4a',
+    family: 'attack',
+    cast: 'shot',
+    shop: { price: 300, level: 2 },
+  },
+  rebound_disc: {
+    id: 'rebound_disc',
+    name: 'REBOUND DISC',
+    cost: 3,
+    role: 'Атака · бумеранг',
+    short: 'Возвратный диск',
+    desc: `Боец бросает вращающийся энергодиск по прямой. Через ${ru(T.rebound_disc.reach)} м (или у борта) диск разворачивается и летит обратно к хозяину. Может попасть дважды — туда и обратно, по ${T.rebound_disc.damage} урона. Цель не преследует.`,
+    counter: 'Траектория прямая: шаг в сторону от линии броска и от обратного пути. SHIELD останавливает диск.',
+    color: '#38e1ff',
+    color2: '#5a2bd6',
+    family: 'attack',
+    cast: 'throw',
+    shop: { price: 450, level: 3 },
+  },
+  prop_drop: {
+    id: 'prop_drop',
+    name: 'PROP DROP',
+    cost: 3,
+    role: 'Атака · по площади',
+    short: 'Падающий реквизит',
+    desc: `Сигнал команде шоу: на полу загорается круг предупреждения там, куда движется соперник, и через ${ru(T.prop_drop.delay)} с сверху падает бутафорский реквизит — ${T.prop_drop.damage} урона и лёгкий отброс. Без оглушения.`,
+    counter: 'Круг виден заранее — выйдите из него. SHIELD гасит удар.',
+    color: '#ff9f43',
+    color2: '#6b2d0f',
+    family: 'attack',
+    cast: 'signal',
+    shop: { price: 650, level: 5, stage: 'rising' },
+  },
+  pulse_push: {
+    id: 'pulse_push',
+    name: 'PULSE PUSH',
+    cost: 2,
+    role: 'Контроль · дистанция',
+    short: 'Импульсный толчок',
+    desc: `Короткая энергетическая волна перед бойцом отталкивает соперника, если он ближе ${ru(T.pulse_push.range)} м (примерно на 2,4 м), и сбивает ему прицел: следующий обычный выстрел на ${ru(T.pulse_push.aimDelay)} с позже. Без урона и оглушения, о борт не бросает. Тяжёлых бойцов сдвигает слабее, чемпиона — едва-едва.`,
+    counter: 'Работает только вблизи и не прерывает заряд. Держите дистанцию.',
+    color: '#b18cff',
+    color2: '#3a1f8f',
+    family: 'control',
+    cast: 'guard',
+    shop: { price: 250, level: 2 },
+  },
+  gravity_net: {
+    id: 'gravity_net',
+    name: 'GRAVITY NET',
+    cost: 2,
+    role: 'Контроль · замедление',
+    short: 'Гравитационная сеть',
+    desc: `Боец бросает генератор под ноги сопернику: светящаяся сеть радиусом ${ru(T.gravity_net.radius)} м на ${ru(T.gravity_net.duration)} с замедляет его на ${Math.round((1 - T.gravity_net.slow) * 100)}%. Стрелять и играть карты не мешает. Чемпиона замедляет слабее.`,
+    counter: `Выйдите из сети или проскочите её рывком DASH. С другими замедлениями не складывается. Сеть и трос вместе держат не дольше ${ru(T.hold.holdMax)} с подряд — потом боец вырывается и ${ru(T.hold.immune)} с к ним невосприимчив.`,
+    color: '#4dffd2',
+    color2: '#0b5560',
+    family: 'control',
+    cast: 'throw',
+    shop: { price: 400, level: 3 },
+  },
+  pressure_mine: {
+    id: 'pressure_mine',
+    name: 'PRESSURE MINE',
+    cost: 2,
+    role: 'Контроль · ловушка',
+    short: 'Сценическая мина',
+    desc: `Боец бросает импульсную мину туда, куда идёт соперник, но не ближе ${ru(T.pressure_mine.minGap)} м к нему. Через ${ru(T.pressure_mine.arm)} с мина мигает — взведена: шаг в радиус ${ru(T.pressure_mine.trigger)} м даёт ${T.pressure_mine.damage} урона и толчок. Не больше ${T.pressure_mine.max} мин сразу, каждая ждёт ${T.pressure_mine.life} с.`,
+    counter: 'Мина мигает — обойдите её или перескочите рывком DASH. SHIELD гасит взрыв.',
+    color: '#ff5e7e',
+    color2: '#5b0f2e',
+    family: 'control',
+    cast: 'throw',
+    shop: { price: 300, level: 2 },
+  },
+  stage_barrier: {
+    id: 'stage_barrier',
+    name: 'STAGE BARRIER',
+    cost: 2,
+    role: 'Контроль · укрытие',
+    short: 'Сценический барьер',
+    desc: `Наручный проектор разворачивает перед бойцом полупрозрачную перегородку длиной ${ru(T.stage_barrier.halfLen * 2)} м на ${ru(T.stage_barrier.duration)} с. Она останавливает снаряды ОБЕИХ сторон, пока не примет ${T.stage_barrier.hp} урона. CHARGED SHOT пробивает её, DIRECTOR'S CUT не замечает. Ходить сквозь неё можно.`,
+    counter: 'Обойдите перегородку сбоку или пробейте её. Владелец тоже не стреляет сквозь неё.',
+    color: '#6ec8ff',
+    color2: '#173a7a',
+    family: 'control',
+    cast: 'device',
+    shop: { price: 500, level: 3 },
+  },
+  cable_snare: {
+    id: 'cable_snare',
+    name: 'CABLE SNARE',
+    cost: 2,
+    role: 'Контроль · трос',
+    short: 'Трос-ловушка',
+    desc: `Тросомёт выстреливает светящимся кабелем (${T.cable_snare.damage} урона). Попадание привязывает соперника: ${ru(T.cable_snare.duration)} с он не может отойти дальше ${ru(T.cable_snare.tether)} м от точки захвата, но двигается внутри, стреляет и играет карты. Чемпиона держит вдвое короче.`,
+    counter: `Рывок DASH, FALSE START, BACKTRACK или отброс рвут трос. Кабель можно обойти, перехватить или погасить SHIELD. Трос и сеть вместе держат не дольше ${ru(T.hold.holdMax)} с подряд.`,
+    color: '#e9ff70',
+    color2: '#4d6b00',
+    family: 'control',
+    cast: 'shot',
+    shop: { price: 600, level: 5, stage: 'rising' },
+  },
+  holo_decoy: {
+    id: 'holo_decoy',
+    name: 'HOLO DECOY',
+    cost: 2,
+    role: 'Защита · обман',
+    short: 'Голографический двойник',
+    desc: `Проектор создаёт рядом с бойцом мерцающего двойника на ${T.holo_decoy.duration} с. Обычные выстрелы соперника уходят в голограмму: она принимает один залп и рассыпается. Заряженные удары, SHOCK и ловушки целятся в настоящего бойца.`,
+    counter: 'Голограмма гаснет после одного залпа, а мощные карты и ловушки она не обманывает.',
+    color: '#9cf7ff',
+    color2: '#7b2fd0',
+    family: 'defense',
+    cast: 'device',
+    shop: { price: 450, level: 3 },
+  },
+  frame_catch: {
+    id: 'frame_catch',
+    name: 'FRAME CATCH',
+    cost: 2,
+    role: 'Защита · перехват',
+    short: 'Перехват кадра',
+    desc: `Боец выставляет руку: перед ним на ${ru(T.frame_catch.duration)} с вспыхивает энергетическая рамка и уничтожает ПЕРВЫЙ вражеский снаряд, который в неё влетит (из дроби — одну дробину). Не ловит CHARGED SHOT, DIRECTOR'S CUT, таран, мины и разряды SHOCK.`,
+    counter: 'Рамка ловит один снаряд и только спереди: бейте с фланга или после того, как она погаснет.',
+    color: '#c6ff4d',
+    color2: '#1f6b3a',
+    family: 'defense',
+    cast: 'guard',
+    shop: { price: 250, level: 2 },
+  },
+  backtrack: {
+    id: 'backtrack',
+    name: 'BACKTRACK',
+    cost: 2,
+    role: 'Трюк · позиция',
+    short: 'Обратный дубль',
+    desc: `Перемотка: за ${ru(T.backtrack.duration)} с боец возвращается туда, где стоял ${ru(T.backtrack.lookback)} с назад. Здоровье не возвращает и неуязвимости не даёт — только смена позиции. Рвёт трос CABLE SNARE.`,
+    counter: 'Точку возврата выдаёт след перемотки. Вражеская мина на старом месте сработает.',
+    color: '#ff7ad9',
+    color2: '#1a2a6c',
+    family: 'defense',
+    cast: 'device',
+    shop: { price: 400, level: 3 },
+  },
+  high_stakes: {
+    id: 'high_stakes',
+    name: 'HIGH STAKES',
+    cost: 1,
+    role: 'Шоу · риск',
+    short: 'Высокие ставки',
+    desc: `Ставка здоровьем: −${ru(T.high_stakes.hpCost * 100)}% максимума HP за +${T.high_stakes.energy} энергии (с учётом цены карты — +${T.high_stakes.energy - 1}). Нельзя, если после ставки останется меньше ${Math.round(T.high_stakes.minHp * 100)}% HP. Не чаще раза в ${T.high_stakes.cooldown} с и не больше ${T.high_stakes.uses} раз за бой.`,
+    counter: 'Потерянное здоровье не вернуть, а в Survival оно переходит в следующую волну.',
+    color: '#ffd23a',
+    color2: '#9c1030',
+    family: 'show',
+    cast: 'signal',
+    shop: { price: 750, level: 5, stage: 'rising' },
+  },
+  side_cam: {
+    id: 'side_cam',
+    name: 'SIDE CAM',
+    cost: 3,
+    role: 'Шоу · фланг',
+    short: 'Боковая камера',
+    desc: `Сигнал режиссёру: на борту сбоку от соперника поднимается камера с излучателем, ${ru(T.side_cam.aim)} с следит за целью, застывает (красная линия, ${ru(T.side_cam.lock)} с) и делает ОДИН выстрел — ${T.side_cam.damage} урона. Цель не преследует, после выстрела камера уходит.`,
+    counter: 'Застывшая линия — сигнал: шаг в сторону или DASH. SHIELD гасит выстрел.',
+    color: '#ff4f6d',
+    color2: '#2a0f3d',
+    family: 'show',
+    cast: 'signal',
+    shop: { price: 650, level: 5, stage: 'rising' },
+  },
+  freeze_frame: {
+    id: 'freeze_frame',
+    name: 'FREEZE FRAME',
+    cost: 2,
+    role: 'Шоу · темп',
+    short: 'Замедленный кадр',
+    desc: `Цифровой стоп-кадр: вокруг бойца на ${ru(T.freeze_frame.duration)} с появляется зона радиусом ${ru(T.freeze_frame.radius)} м, где обычные снаряды ОБЕИХ сторон, летящие внутрь — к её центру, — ползут в ${ru(Math.round(10 / T.freeze_frame.speed) / 10)} раза медленнее, и от них легче уйти. Выстрелы из зоны наружу летят как обычно. Мощные выстрелы картами и выстрелы чемпиона не замедляются.`,
+    counter: 'Выманите бойца из зоны или бейте картами: POWER SHOT и ловушки замедление не замечают.',
+    color: '#a6f0ff',
+    color2: '#1e4f8f',
+    family: 'show',
+    cast: 'device',
+    shop: { price: 650, level: 5, stage: 'rising' },
+  },
 };
 
 export const UNIVERSAL_CARDS: CardId[] = ['dash', 'power_shot', 'shield', 'smoke', 'shock', 'overdrive'];
+
+/** Alpha 1.6: the fifteen new universal cards in shop order (four families). */
+export const NEW_CARDS: CardId[] = [
+  'spotlight_tag',
+  'split_shot',
+  'rebound_disc',
+  'prop_drop',
+  'pulse_push',
+  'gravity_net',
+  'pressure_mine',
+  'stage_barrier',
+  'cable_snare',
+  'holo_decoy',
+  'frame_catch',
+  'backtrack',
+  'high_stakes',
+  'side_cam',
+  'freeze_frame',
+];
+
+export const CARD_FAMILIES: { id: CardFamily; label: string }[] = [
+  { id: 'attack', label: 'Атака' },
+  { id: 'control', label: 'Позиция и контроль' },
+  { id: 'defense', label: 'Защита и трюки' },
+  { id: 'show', label: 'Шоу и темп' },
+];
+
+export function isShopCard(id: CardId): boolean {
+  return !!CARDS[id].shop;
+}
 
 export const COMBOS: ComboDef[] = [
   {
@@ -198,7 +445,215 @@ export const COMBOS: ComboDef[] = [
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
   },
+  // ---------------------------------------------- Alpha 1.6 — tactical combos
+  // Same window and the same hints as the classics. Most of them change position, set a
+  // trap or help another card land; only JACKPOT multiplies damage. A combo whose setup is
+  // gone (the net expired, the mine went off, nothing was caught) does not trigger and is
+  // not hinted (Match.comboReady).
+  {
+    id: 'spotlight',
+    name: 'SPOTLIGHT FINISH',
+    tag: 'ТОЧНЫЙ ВЫСТРЕЛ',
+    first: ['spotlight_tag'],
+    second: ['power_shot', 'bank_shot', 'rebound_disc'],
+    rating: 10,
+    desc: 'SPOTLIGHT TAG → POWER SHOT / BANK SHOT / REBOUND DISC: удар по подсвеченной цели идёт с полным упреждением. Резкая смена направления всё равно уводит от него. Метка добавляет свои +25%.',
+    bonus: 'точное упреждение',
+  },
+  {
+    id: 'tight_spread',
+    name: 'TIGHT SPREAD',
+    tag: 'КУЧНЫЙ ВЕЕР',
+    first: ['dash', 'gravity_net'],
+    second: ['split_shot'],
+    rating: 9,
+    desc: 'DASH / GRAVITY NET → SPLIT SHOT: веер сужается — с нового угла после рывка или по замедленной цели могут попасть два-три снаряда.',
+    bonus: 'узкий веер',
+  },
+  {
+    id: 'boomerang',
+    name: 'BOOMERANG',
+    tag: 'КОРОТКИЙ ВОЗВРАТ',
+    first: ['gravity_net', 'cable_snare'],
+    second: ['rebound_disc'],
+    rating: 10,
+    desc: 'GRAVITY NET / CABLE SNARE → REBOUND DISC: диск разворачивается сразу за удерживаемой целью, и обратный путь проходит рядом с ней.',
+    bonus: 'разворот за целью',
+  },
+  {
+    id: 'set_piece',
+    name: 'SET PIECE',
+    tag: 'ТОЧНО В КАДР',
+    first: ['gravity_net', 'cable_snare'],
+    second: ['prop_drop'],
+    rating: 11,
+    desc: `GRAVITY NET / CABLE SNARE → PROP DROP: реквизит падает прямо на удерживаемую цель, круг шире (${ru(CT.setPieceRadius)} м). Выйти из него всё ещё можно.`,
+    bonus: 'круг на цели',
+  },
+  {
+    id: 'gravity_trap',
+    name: 'GRAVITY TRAP',
+    tag: 'ЛОВУШКА',
+    first: ['gravity_net'],
+    second: ['pressure_mine'],
+    rating: 10,
+    desc: 'GRAVITY NET → PRESSURE MINE: замедлите соперника и попробуйте заманить его на мину — она ложится ближе и взводится быстрее. Обойти её можно.',
+    bonus: 'мина в сети',
+  },
+  {
+    id: 'mine_drive',
+    name: 'MINE DRIVE',
+    tag: 'НА МИНУ',
+    first: ['pressure_mine'],
+    second: ['pulse_push'],
+    rating: 10,
+    desc: `PRESSURE MINE → PULSE PUSH: волна сильнее и забирает в сторону вашей мины (до ${Math.round((CT.mineDriveAngle * 180) / Math.PI)}°). Попадание на мину не гарантировано.`,
+    bonus: 'толчок к мине',
+  },
+  {
+    id: 'wall_push',
+    name: 'STAGE PUSH',
+    tag: 'ВОЛНА ОТ БАРЬЕРА',
+    first: ['stage_barrier'],
+    second: ['pulse_push'],
+    rating: 9,
+    desc: 'STAGE BARRIER → PULSE PUSH: волну выпускает перегородка — толчок дотягивается дальше и сильнее.',
+    bonus: 'волна от барьера',
+  },
+  {
+    id: 'backstage',
+    name: 'BACKSTAGE',
+    tag: 'ЗА КУЛИСЫ',
+    first: ['stage_barrier'],
+    second: ['dash'],
+    rating: 9,
+    desc: 'STAGE BARRIER → DASH: рывок уводит бойца за свою перегородку — она оказывается между ним и соперником.',
+    bonus: 'рывок в укрытие',
+  },
+  {
+    id: 'cross_angle',
+    name: 'CROSS ANGLE',
+    tag: 'ДРУГОЙ РАКУРС',
+    first: ['stage_barrier'],
+    second: ['side_cam'],
+    rating: 10,
+    desc: 'STAGE BARRIER → SIDE CAM: прямая линия закрыта, а камера бьёт с фланга сквозь вашу перегородку и точнее упреждает. Увернуться всё ещё можно.',
+    bonus: 'выстрел с фланга',
+  },
+  {
+    id: 'blindside',
+    name: 'BLINDSIDE',
+    tag: 'ИЗ-ЗА СПИНЫ',
+    first: ['holo_decoy'],
+    second: ['side_cam', 'power_shot'],
+    rating: 11,
+    desc: 'HOLO DECOY → SIDE CAM / POWER SHOT: боец соперника смотрит на голограмму и сам не уклонится от этого выстрела. Ответить картой (DASH, SHIELD) всё ещё можно.',
+    bonus: 'выстрел вслепую',
+  },
+  {
+    id: 'camera_lock',
+    name: 'CAMERA LOCK',
+    tag: 'В ОБЪЕКТИВЕ',
+    first: ['side_cam'],
+    second: ['gravity_net'],
+    rating: 9,
+    desc: 'SIDE CAM → GRAVITY NET: камера держит цель в кадре — сеть ложится точно под соперника и шире.',
+    bonus: 'сеть по цели',
+  },
+  {
+    id: 'catch_release',
+    name: 'CATCH & RELEASE',
+    tag: 'ОТВЕТНЫЙ КАДР',
+    first: ['frame_catch'],
+    second: ['dash'],
+    rating: 11,
+    desc: `FRAME CATCH → DASH: если рамка что-то поймала, после рывка боец выпускает пойманный заряд обратно — ${Math.round(CT.releaseShare * 100)}% его урона, не больше ${CT.releaseCap}.`,
+    bonus: 'ответный выстрел',
+  },
+  {
+    id: 'safe_bet',
+    name: 'SAFE BET',
+    tag: 'СТРАХОВКА СТАВКИ',
+    first: ['frame_catch'],
+    second: ['high_stakes'],
+    rating: 8,
+    desc: 'FRAME CATCH → HIGH STAKES: после удачного перехвата ставка стоит вдвое меньше здоровья.',
+    bonus: 'ставка −50% HP',
+  },
+  {
+    id: 'all_in',
+    name: 'ALL IN',
+    tag: 'ВА-БАНК',
+    first: ['high_stakes'],
+    second: ['overdrive'],
+    rating: 10,
+    desc: `HIGH STAKES → OVERDRIVE: разгон длится на ${ru(CT.allInTime)} с дольше.`,
+    bonus: `+${ru(CT.allInTime)} с разгона`,
+  },
+  {
+    id: 'insurance',
+    name: 'INSURANCE',
+    tag: 'ПОДСТРАХОВКА',
+    first: ['high_stakes'],
+    second: ['shield'],
+    rating: 9,
+    desc: `HIGH STAKES → SHIELD: щит поглощает на ${CT.insuranceAbsorb} урона больше. Следом POWER SHOT — это JACKPOT.`,
+    bonus: `щит +${CT.insuranceAbsorb}`,
+  },
+  {
+    id: 'jackpot',
+    name: 'JACKPOT',
+    tag: 'ДЖЕКПОТ',
+    first: ['shield'],
+    second: ['power_shot'],
+    after: 'insurance',
+    rating: 14,
+    desc: `HIGH STAKES → SHIELD → POWER SHOT: щит, поднятый как INSURANCE, открывает финал — POWER SHOT ×${ru(CT.jackpotMult)} урона. С другими бонусами не складывается.`,
+    bonus: `урон ×${ru(CT.jackpotMult)}`,
+  },
+  {
+    id: 'rewind_trap',
+    name: 'REWIND TRAP',
+    tag: 'НАЗАД НА МИНУ',
+    first: ['pressure_mine'],
+    second: ['backtrack'],
+    rating: 9,
+    desc: 'PRESSURE MINE → BACKTRACK: ваши мины мгновенно взводятся, а вы отходите назад — преследователь может нарваться на мину.',
+    bonus: 'мины взведены',
+  },
+  {
+    id: 'double_take',
+    name: 'DOUBLE TAKE',
+    tag: 'ДУБЛЬ ДВА',
+    first: ['dash'],
+    second: ['backtrack'],
+    rating: 10,
+    desc: 'DASH → BACKTRACK: на месте рывка остаётся силуэт-приманка, а боец перематывается назад. Соперник стреляет в двойника.',
+    bonus: 'силуэт-приманка',
+  },
+  {
+    id: 'replay',
+    name: 'REPLAY',
+    tag: 'ОТМОТКА',
+    first: ['freeze_frame'],
+    second: ['backtrack'],
+    rating: 10,
+    desc: 'FREEZE FRAME → BACKTRACK: вражеские обычные снаряды, застрявшие в вашей зоне замедления, стираются перемоткой.',
+    bonus: 'стирает снаряды',
+  },
+  {
+    id: 'time_slip',
+    name: 'TIME SLIP',
+    tag: 'ПРЫЖОК ВО ВРЕМЕНИ',
+    first: ['freeze_frame'],
+    second: ['dash'],
+    rating: 9,
+    desc: `FREEZE FRAME → DASH: рывок на ${pct(CT.timeSlipDist)} длиннее, а зона замедления переезжает вместе с бойцом.`,
+    bonus: 'длинный рывок',
+  },
 ];
+
+export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c])) as Record<ComboId, ComboDef>;
 
 export const PASSIVES: Record<PassiveId, PassiveDef> = {
   momentum: {
@@ -233,10 +688,30 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
   },
 };
 
-export function comboFor(prev: CardId | null, next: CardId): ComboDef | null {
+/**
+ * The combo `prev → next` forms, if any. `prevCombo` is the combo the previous card itself
+ * formed (chains like HIGH STAKES → SHIELD → POWER SHOT); `ready` lets the match reject a
+ * combo whose setup is gone (Alpha 1.6). Without them this is the plain pair lookup.
+ */
+export function comboFor(prev: CardId | null, next: CardId, prevCombo: ComboId | null = null, ready?: (c: ComboDef, prev: CardId) => boolean): ComboDef | null {
   if (!prev) return null;
   for (const c of COMBOS) {
-    if (c.first.includes(prev) && c.second.includes(next)) return c;
+    if (!c.first.includes(prev) || !c.second.includes(next)) continue;
+    if (c.after && c.after !== prevCombo) continue;
+    if (ready && !ready(c, prev)) continue;
+    return c;
   }
   return null;
+}
+
+/** Combos a deck can form (prep screen «КОМБО В ЭТОЙ КОЛОДЕ»; chains need every card of the chain). */
+export function deckCombos(deck: CardId[]): ComboDef[] {
+  return COMBOS.filter((c) => {
+    if (!c.first.some((x) => deck.includes(x)) || !c.second.some((x) => deck.includes(x))) return false;
+    if (c.after) {
+      const pre = COMBO_BY_ID[c.after];
+      return pre.first.some((x) => deck.includes(x));
+    }
+    return true;
+  });
 }

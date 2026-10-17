@@ -2533,6 +2533,108 @@ input {
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
+/* Alpha 1.6 — CARD REVOLUTION: combo tags, card details, the card shop */
+.combo-item i {
+  font-style: normal;
+  font-weight: 700;
+  color: #ffe9a8;
+}
+.card-detail .cd-counter,
+.card-detail .cd-pairs {
+  font-size: 11.5px;
+  color: #aeb8e8;
+}
+.card-detail .cd-counter b,
+.card-detail .cd-pairs b {
+  color: #e0e6ff;
+  font-weight: 700;
+}
+.card-detail.shop {
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 58, 0.35);
+  background: linear-gradient(180deg, rgba(255, 210, 58, 0.07), rgba(255, 255, 255, 0.02));
+}
+.cd-buy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 9px;
+}
+.cd-buy .btn.small {
+  padding: 9px 14px;
+  font-size: 12px;
+  border-radius: 12px;
+}
+.cd-req {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+  flex: 1 1 140px;
+}
+.cd-req.open {
+  color: var(--green);
+}
+.cd-why {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: #ff9a9a;
+}
+.card-shop .shop-note {
+  margin: 4px 4px 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.card-shop .shop-fam {
+  margin: 10px 4px 0;
+}
+.collection.shop .shop-item {
+  position: relative;
+  cursor: pointer;
+}
+.collection.shop .card.sealed {
+  filter: grayscale(0.85) brightness(0.55);
+}
+.collection.shop .card.buyable {
+  filter: saturate(0.75) brightness(0.85);
+}
+.collection.shop .card.focus {
+  filter: none;
+}
+.shop-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: #1a1203;
+  background: #c9b26a;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+.shop-tag.ok {
+  background: var(--gold);
+}
+.shop-tag.lock {
+  color: #dfe4ff;
+  background: #3a426e;
+}
+.shop-tag svg {
+  fill: currentColor;
+}
+.collection.shop {
+  row-gap: 16px;
+}
 .section {
   margin: 10px 12px 0;
   padding: 12px;

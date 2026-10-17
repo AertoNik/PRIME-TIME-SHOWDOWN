@@ -924,7 +924,7 @@ export class Game {
     switch (e.type) {
       case 'shot':
         if (e.kind === 'zap') a.electric(0.35, 0.3);
-        else a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank', e.side === 1);
+        else a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank' || e.kind === 'split', e.side === 1);
         break;
       case 'zapCharge':
         a.zapCharge(e.duration);
@@ -1012,6 +1012,38 @@ export class Game {
       case 'cutShot':
         a.cutShot(e.final, e.empowered);
         if (e.final && e.outcome === 'hit') this.timeFx.hitstop = Math.max(this.timeFx.hitstop, 0.08);
+        break;
+      // Alpha 1.6 — CARD REVOLUTION
+      case 'tagHit':
+        a.cardFx('tagHit');
+        break;
+      case 'push':
+        if (e.hit) a.cardFx('push');
+        break;
+      case 'object':
+        if (e.kind === 'net' && e.what === 'land') a.cardFx('netLand');
+        else if (e.kind === 'mine' && e.what === 'arm') a.cardFx('mineArm');
+        else if (e.kind === 'mine' && e.what === 'trigger') a.cardFx('mineBoom');
+        else if (e.kind === 'barrier' && e.what === 'hit') a.cardFx('barrierHit');
+        else if (e.kind === 'barrier' && e.what === 'break') a.cardFx('barrierBreak');
+        else if (e.kind === 'prop' && e.what === 'land') a.cardFx('propLand');
+        else if (e.kind === 'cam' && e.what === 'lock') a.cardFx('camLock');
+        else if (e.kind === 'cam' && e.what === 'fire') a.cardFx('camFire');
+        break;
+      case 'tether':
+        a.cardFx('tether');
+        break;
+      case 'tetherEnd':
+        if (e.broke) a.cardFx('snap');
+        break;
+      case 'frameCatch':
+        a.cardFx('frameCatch');
+        break;
+      case 'disc':
+        if (e.what === 'catch') a.cardFx('discCatch');
+        break;
+      case 'erase':
+        a.cardFx('erase');
         break;
       case 'bossPhase': {
         const ph = this.match?.boss?.def.phases[e.phase - 1];

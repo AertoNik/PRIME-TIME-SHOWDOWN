@@ -27,6 +27,27 @@ export function cardHTML(id: CardId, extra = '', withTag = true): string {
   </div>`;
 }
 
+/** Scroll areas of a screen whose position survives an in-place re-render. */
+const SCROLLERS = '.scroll';
+
+/**
+ * Alpha 1.6 — the "jump to the top" fix. Screens rebuild their markup with innerHTML after
+ * a tap (select a card, claim a reward, equip an item…), which replaced their scroll area
+ * with a fresh one at scrollTop 0. This sets the new markup and puts every scroll area
+ * back where it was (matched in document order, clamped to the new content height).
+ * `keep = false` (opening the screen anew) starts at the top as before.
+ */
+export function setScreenHTML(root: HTMLElement, html: string, keep = true): void {
+  const saved = keep ? Array.from(root.querySelectorAll<HTMLElement>(SCROLLERS), (e) => e.scrollTop) : [];
+  root.innerHTML = html;
+  if (!saved.length) return;
+  root.querySelectorAll<HTMLElement>(SCROLLERS).forEach((e, i) => {
+    const top = saved[i];
+    if (!top) return;
+    e.scrollTop = Math.min(top, Math.max(0, e.scrollHeight - e.clientHeight));
+  });
+}
+
 export function portraitHTML(url: string | undefined, main: string, dark: string, cls = ''): string {
   return `<div class="portrait ${cls}" style="--pc:${main};--pd:${dark}">${url ? `<img src="${url}" alt="" draggable="false"/>` : ''}</div>`;
 }

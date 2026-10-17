@@ -1,5 +1,5 @@
 // Verifies that Alpha 1.0 (schema v1) and Alpha 1.1 (schema v2) saves load into the
-// current schema (v9, Alpha 1.5.5) without losing progress.
+// current schema (v10, Alpha 1.6) without losing progress.
 import { sanitize } from '../src/meta/SaveSystem';
 
 const alpha10 = {
@@ -73,7 +73,7 @@ const checks: [string, boolean][] = [
   ['1.5.5: the PRIME LEGEND title goes to the fighters who beat the champion (and stays worn by them)', (() => {
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 8, cosmetics: { owned: ['title_prime_legend'], equipped: { title: 'title_prime_legend' } }, modes: { boss: { vale: { attempts: 5, wins: 3, firstWinAt: 17, winsByFighter: { ray: 2, bruno: 1 } } } } })));
     const p = v.cosmetics.personal.title_prime_legend ?? [];
-    return p.length === 2 && p.includes('ray') && p.includes('bruno') && v.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && v.cosmetics.personalEquipped.bruno?.title === 'title_prime_legend' && !v.cosmetics.personalEquipped.nika && v.cosmetics.equipped.title === undefined && v.cosmetics.unassigned.length === 0 && v.version === 9;
+    return p.length === 2 && p.includes('ray') && p.includes('bruno') && v.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && v.cosmetics.personalEquipped.bruno?.title === 'title_prime_legend' && !v.cosmetics.personalEquipped.nika && v.cosmetics.equipped.title === undefined && v.cosmetics.unassigned.length === 0 && v.version === 10;
   })()],
   ['1.5.5: a v9 save keeps personal owners and what each fighter wears (only earners can wear it)', (() => {
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 9, cosmetics: { owned: ['title_prime_legend'], equipped: {}, personal: { title_prime_legend: ['ray', 'ray', 'nobody'] }, personalEquipped: { ray: { title: 'title_prime_legend' }, bruno: { title: 'title_prime_legend' } }, unassigned: [] } })));
@@ -93,7 +93,7 @@ const checks: [string, boolean][] = [
   })()],
   ['1.3.3: corrupt counter falls back to the estimate', sanitize({ ...alpha11, fighters: { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, classicWins: 'x' } } }).fighters.ray.classicWins === 5],
   ['1.3.3: new fighters start with 0 Classic wins', s.fighters.vega.classicWins === 0],
-  ['1.4: older saves start in the original studio (now schema v9)', s.arena === 'original' && s11.arena === 'original' && s.version === 9],
+  ['1.4: older saves start in the original studio (now schema v10)', s.arena === 'original' && s11.arena === 'original' && s.version === 10],
   ['1.4: progress untouched by the arena migration', s11.money === 9870 && s11.fighters.nika.unlocked && s11.settings.camera === 'reduced'],
   ['1.4: arena preference round-trips by id (and RANDOM)', sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 7, arena: 'backlot' }))).arena === 'backlot' && sanitize({ ...alpha11, arena: 'random' }).arena === 'random'],
   ['1.4: unknown arena id falls back to the original studio', sanitize({ ...alpha11, arena: 'space_station' }).arena === 'original'],

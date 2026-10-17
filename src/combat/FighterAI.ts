@@ -1,7 +1,7 @@
 import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
 import { CARDS, COMBOS } from '../config/cards';
 import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
-import { clamp } from '../core/math';
+import { clamp, segSegDist } from '../core/math';
 import type { BankSolution } from './CombatSystem';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
@@ -78,6 +78,8 @@ export class FighterAI {
   /** Alpha 1.5.5: match time from which a control card may be played again (rivals with a control profile). */
   private ctrlReadyAt = 0;
   private ovlReadyAt = 0;
+  /** Alpha 1.6: stage hazards this fighter noticed (object id → steers clear), decided once per object. */
+  private hazards = new Map<number, boolean>();
 
   constructor(m: Match, side: Side, profile: AIProfile) {
     this.m = m;
@@ -100,16 +102,26 @@ export class FighterAI {
       return;
     }
     const target = this.perceive(f, foe, dt);
+    // Alpha 1.6 HOLO DECOY: regular fire goes at the hologram, cards and charged attacks do not
+    const holo = this.holoTarget(foe);
     this.move(f, foe, target, dt);
-    this.aim(f, foe, target, dt);
+    this.aim(f, foe, target, holo, dt);
     if (this.profile.usesCards) this.thinkCards(f, foe, dt);
+  }
+
+  /** The opponent's live HOLO DECOY, if any (it fools this fighter's regular aim only). */
+  private holoTarget(foe: FighterSim): Perceived | null {
+    for (const d of this.m.decoys) {
+      if (d.alive && d.kind === 'holo' && d.owner === foe.side) return { x: d.x, z: d.z, vx: 0, vz: 0 };
+    }
+    return null;
   }
 
   // --------------------------------------------------------------- perceive
   private perceive(f: FighterSim, foe: FighterSim, dt: number): Perceived {
     const m = this.m;
     for (const d of m.decoys) {
-      if (d.alive && d.owner === foe.side) return { x: d.x, z: d.z, vx: 0, vz: 0 };
+      if (d.alive && d.kind === 'phantom' && d.owner === foe.side) return { x: d.x, z: d.z, vx: 0, vz: 0 };
     }
     if (m.inOwnSmoke(foe) && !m.inOwnSmoke(f)) {
       this.memT -= dt;
@@ -237,6 +249,19 @@ export class FighterAI {
     let mx = ux * radial + tanX * strafe;
     let mz = uz * radial + tanZ * strafe;
 
+    // Alpha 1.6: step out of warning circles, slowing nets and around armed mines (when noticed)
+    const avoid = this.hazardSteer(f);
+    if (avoid) {
+      mx = mx * 0.35 + avoid.x;
+      mz = mz * 0.35 + avoid.z;
+    }
+    // Alpha 1.6: own set pieces — peek round the edge of one's STAGE BARRIER to shoot, keep to one's FREEZE FRAME
+    const own = this.ownPieces(f, foe);
+    if (own) {
+      mx = mx * 0.5 + own.x;
+      mz = mz * 0.5 + own.z;
+    }
+
     this.updateDodge(f);
     if (this.dodgeT > 0) {
       this.dodgeT -= dt;
@@ -291,6 +316,99 @@ export class FighterAI {
     }
   }
 
+  /**
+   * Alpha 1.6 — counterplay to the new set pieces, with human limits: each hazard is noticed
+   * (or not) once, with the fighter's dodge skill, and only after a reaction delay; then the
+   * fighter walks out of a PROP DROP circle or a GRAVITY NET and around an armed mine.
+   */
+  private hazardSteer(f: FighterSim): { x: number; z: number } | null {
+    const m = this.m;
+    if (this.hazards.size > 64) this.hazards.clear();
+    let sx = 0;
+    let sz = 0;
+    let any = false;
+    for (const o of m.objects.list) {
+      if (o.owner === f.side) continue;
+      const hazard = (o.kind === 'prop' && o.stage === 'warn') || (o.kind === 'mine' && o.stage !== 'fly') || (o.kind === 'net' && o.stage === 'on') || (o.kind === 'cam' && o.stage === 'lock');
+      if (!hazard) continue;
+      let seen = this.hazards.get(o.id);
+      if (seen === undefined) {
+        const b = this.profile.behavior;
+        seen = m.rng.chance(clamp(this.profile.dodgeSkill * b.dodgeMult * f.stats.evasion * 1.15 + 0.15, 0.15, 0.95));
+        this.hazards.set(o.id, seen);
+      }
+      if (!seen) continue;
+      if (o.kind === 'cam') {
+        // the frozen camera line: sidestep off it
+        const rx = f.x - o.x;
+        const rz = f.z - o.z;
+        const along = rx * o.dirX + rz * o.dirZ;
+        const perp = rx * o.dirZ - rz * o.dirX;
+        if (along > 0 && Math.abs(perp) < f.radius + 0.6) {
+          const sg = perp >= 0 ? 1 : -1;
+          sx += o.dirZ * sg * 1.4;
+          sz += -o.dirX * sg * 1.4;
+          any = true;
+        }
+        continue;
+      }
+      // react after a short delay (reading the hazard), then move out
+      const age = o.kind === 'prop' ? o.t : o.kind === 'mine' ? o.t + (o.stage === 'armed' ? 1 : 0) : o.t;
+      if (age < this.profile.reactMin) continue;
+      const dx = f.x - o.x;
+      const dz = f.z - o.z;
+      const d = Math.hypot(dx, dz) || 0.01;
+      const reach = o.kind === 'mine' ? o.radius + 0.8 : o.radius + 0.5;
+      if (d >= reach) continue;
+      const w = o.kind === 'mine' ? 1.4 : o.kind === 'prop' ? 1.8 : 1.1;
+      sx += (dx / d) * w * (1 - d / reach + 0.35);
+      sz += (dz / d) * w * (1 - d / reach + 0.35);
+      any = true;
+    }
+    return any ? { x: sx, z: sz } : null;
+  }
+
+  /**
+   * Alpha 1.6 — how a fighter uses its own set pieces: behind its STAGE BARRIER it edges to
+   * the nearer end so the line of fire clears the screen (cover shooting, not a turtle that
+   * cannot shoot).
+   */
+  private ownPieces(f: FighterSim, foe: FighterSim): { x: number; z: number } | null {
+    const m = this.m;
+    let sx = 0;
+    let sz = 0;
+    let any = false;
+    const b = m.objects.own(f.side, 'barrier');
+    if (b && this.ownCoverBlocks(f)) {
+      // the end of the screen nearer to the fighter, plus a step past it
+      const s1 = (f.x - b.x) * b.dirX + (f.z - b.z) * b.dirZ >= 0 ? 1 : -1;
+      const ex = b.x + b.dirX * s1 * (b.radius + 0.7);
+      const ez = b.z + b.dirZ * s1 * (b.radius + 0.7);
+      const dx = ex - f.x;
+      const dz = ez - f.z;
+      const d = Math.hypot(dx, dz) || 1;
+      sx += (dx / d) * 1.1;
+      sz += (dz / d) * 1.1;
+      any = true;
+    }
+    // FREEZE FRAME: a soft edge — inside its own zone the fighter keeps strafing but does not
+    // wander out (measured: a hard pull to the centre made it a still target that took more hits)
+    const z = m.objects.own(f.side, 'freeze');
+    if (z) {
+      const dx = z.x - f.x;
+      const dz = z.z - f.z;
+      const d = Math.hypot(dx, dz);
+      if (d < z.radius && d > z.radius * 0.6) {
+        const k = ((d - z.radius * 0.6) / (z.radius * 0.4)) * 0.9;
+        sx += (dx / d) * k;
+        sz += (dz / d) * k;
+        any = true;
+      }
+    }
+    void foe;
+    return any ? { x: sx, z: sz } : null;
+  }
+
   private updateDodge(f: FighterSim): void {
     const m = this.m;
     if (this.considered.size > 300) this.considered.clear();
@@ -298,21 +416,33 @@ export class FighterAI {
       // a BANK SHOT after its ricochet is a new approach (its own key)
       const key = p.bounced ? -p.id : p.id;
       if (p.owner === f.side || !p.alive || this.considered.has(key)) continue;
+      // Alpha 1.6 BLINDSIDE: distracted by the hologram, the fighter does not see this one coming
+      if (p.blind) {
+        this.considered.add(key);
+        continue;
+      }
       const rx = f.x - p.x;
       const rz = f.z - p.z;
-      const vv = p.vx * p.vx + p.vz * p.vz;
-      const tca = (rx * p.vx + rz * p.vz) / vv;
+      // Alpha 1.6 FREEZE FRAME: time the sidestep by the speed the shot really has in a slow-motion
+      // zone (with the full speed the fighter stepped aside far too early and walked back into it)
+      const k = m.objects.freezeScale(p);
+      const pvx = p.vx * k;
+      const pvz = p.vz * k;
+      const vv = pvx * pvx + pvz * pvz;
+      const tca = (rx * pvx + rz * pvz) / vv;
       if (tca < 0) {
         this.considered.add(key);
         continue;
       }
       if (tca > 0.5) continue;
       this.considered.add(key);
-      const cx = p.x + p.vx * tca - f.x;
-      const cz = p.z + p.vz * tca - f.z;
+      const cx = p.x + pvx * tca - f.x;
+      const cz = p.z + pvz * tca - f.z;
       const miss = Math.hypot(cx, cz);
       if (miss > f.radius + p.radius + 0.25) continue;
-      const chance = this.profile.dodgeSkill * f.stats.evasion * this.profile.behavior.dodgeMult * (p.heavy ? 1.25 : 1);
+      // Alpha 1.6 FREEZE FRAME: a shot crawling through a slow-motion zone is easier to read
+      let chance = this.profile.dodgeSkill * f.stats.evasion * this.profile.behavior.dodgeMult * (p.heavy ? 1.25 : 1);
+      if (k < 1) chance = Math.min(0.95, chance * CARD_TUNING.freeze_frame.dodgeMult);
       if (!m.rng.chance(chance)) continue;
       const pl = Math.sqrt(vv);
       const nx = -p.vz / pl;
@@ -327,13 +457,23 @@ export class FighterAI {
   }
 
   // -------------------------------------------------------------------- aim
-  private aim(f: FighterSim, foe: FighterSim, t: Perceived, dt: number): void {
+  private aim(f: FighterSim, foe: FighterSim, t: Perceived, holo: Perceived | null, dt: number): void {
     const m = this.m;
     const atk = f.stats.attack;
     const dist = Math.hypot(t.x - f.x, t.z - f.z);
     const lead = (dist / atk.speed) * this.profile.aimLead;
-    f.aimX = t.x + t.vx * lead;
-    f.aimZ = t.z + t.vz * lead;
+    // charged attacks and card shots (Alpha 1.6: a HOLO DECOY does not fool these)
+    f.cardAimX = t.x + t.vx * lead;
+    f.cardAimZ = t.z + t.vz * lead;
+    f.leadK = this.profile.aimLead;
+    if (holo) {
+      // the hologram stands still: no lead
+      f.aimX = holo.x;
+      f.aimZ = holo.z;
+    } else {
+      f.aimX = f.cardAimX;
+      f.aimZ = f.cardAimZ;
+    }
     f.seenX = t.x;
     f.seenZ = t.z;
     f.seenVX = t.vx;
@@ -346,7 +486,15 @@ export class FighterAI {
       f.aimErr = m.rng.range(-err, err);
     }
     const reach = atk.weapon === 'boom_cannon' ? 0.92 : 1.02;
-    f.wantFire = dist <= atk.range * reach;
+    const fireDist = holo ? Math.hypot(holo.x - f.x, holo.z - f.z) : dist;
+    f.wantFire = fireDist <= atk.range * reach && !this.ownCoverBlocks(f);
+  }
+
+  /** Alpha 1.6: no point shooting into one's own STAGE BARRIER — hold fire until the line is clear. */
+  private ownCoverBlocks(f: FighterSim): boolean {
+    const b = this.m.objects.own(f.side, 'barrier');
+    if (!b) return false;
+    return segSegDist(f.x, f.z, f.aimX, f.aimZ, b.x - b.dirX * b.radius, b.z - b.dirZ * b.radius, b.x + b.dirX * b.radius, b.z + b.dirZ * b.radius) < 0.25;
   }
 
   // ------------------------------------------------------------------ cards
@@ -391,7 +539,8 @@ export class FighterAI {
   private detectThreat(f: FighterSim, foe: FighterSim): { key: string; kind: 'windup' | 'incoming' } | null {
     const m = this.m;
     const fa = foe.action;
-    if (fa.kind === 'windup') {
+    // Alpha 1.6 BLINDSIDE: a charge behind the hologram goes unseen
+    if (fa.kind === 'windup' && fa.combo !== 'blindside') {
       return { key: 'w' + Math.round((m.time - fa.t) * 20), kind: 'windup' };
     }
     if (fa.kind === 'cut') {
@@ -410,8 +559,15 @@ export class FighterAI {
       const perp = Math.abs(toX * fa.dirZ - toZ * fa.dirX);
       if (along > 0 && along < 6 && perp < 1.6) return { key: 'r' + Math.round((m.time - fa.t) * 20), kind: 'incoming' };
     }
+    // Alpha 1.6 SIDE CAM: a frozen camera line through the fighter is a cue for DASH / SHIELD
+    for (const o of m.objects.list) {
+      if (o.kind !== 'cam' || o.stage !== 'lock' || o.owner === f.side || o.combo === 'blindside') continue;
+      const rx = f.x - o.x;
+      const rz = f.z - o.z;
+      if (rx * o.dirX + rz * o.dirZ > 0 && Math.abs(rx * o.dirZ - rz * o.dirX) < f.radius + 0.5) return { key: 'c' + o.id, kind: 'incoming' };
+    }
     for (const p of m.projectiles) {
-      if (p.owner === f.side || !p.heavy || !p.alive) continue;
+      if (p.owner === f.side || !p.heavy || !p.alive || p.blind) continue;
       const rx = f.x - p.x;
       const rz = f.z - p.z;
       const vv = p.vx * p.vx + p.vz * p.vz;
@@ -451,8 +607,17 @@ export class FighterAI {
           // a control rival only sometimes answers with SHOCK / OVERLOAD (its roll comes after the usual one)
           const c = prof.control;
           const zapOk = !c || (this.controlAllowed() && m.rng.chance(c.interruptMult));
-          if (charging && ((zapOk && (this.tryPlay('shock') || this.tryPlay('system_overload'))) || (locked && this.tryPlay('false_start')) || this.tryPlay('shield'))) return;
-        } else if (this.tryPlay('dash') || this.tryPlay('false_start') || this.tryPlay('shield')) {
+          // Alpha 1.6: a screen or a frame also answers a shot that is coming (not CHARGED SHOT, not a charge)
+          const shot = foe.action.kind === 'windup' && (foe.action.card === 'power_shot' || foe.action.card === 'bank_shot');
+          if (
+            charging &&
+            ((zapOk && (this.tryPlay('shock') || this.tryPlay('system_overload'))) ||
+              (locked && this.tryPlay('false_start')) ||
+              this.tryPlay('shield') ||
+              (shot && locked && (this.tryPlay('frame_catch') || this.tryPlay('stage_barrier'))))
+          )
+            return;
+        } else if (this.tryPlay('dash') || this.tryPlay('false_start') || this.tryPlay('shield') || (this.projectileThreat(f) && this.tryPlay('frame_catch'))) {
           return;
         }
       }
@@ -521,9 +686,51 @@ export class FighterAI {
     if (m.playCard(this.side, pick.i) === null) this.remember(card);
   }
 
+  /** A heavy enemy projectile is on its way to this fighter (FRAME CATCH can take it). */
+  private projectileThreat(f: FighterSim): boolean {
+    for (const p of this.m.projectiles) {
+      if (p.owner === f.side || !p.alive || !p.heavy || (p.kind === 'power' && p.pierce > 0) || p.kind === 'zap') continue;
+      const rx = f.x - p.x;
+      const rz = f.z - p.z;
+      if (rx * p.vx + rz * p.vz > 0 && Math.hypot(rx, rz) < 7) return true;
+    }
+    return false;
+  }
+
   private comboMakesSense(id: string, f: FighterSim, foe: FighterSim): boolean {
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
     switch (id) {
+      // Alpha 1.6
+      case 'spotlight':
+      case 'blindside':
+        return foe.shield <= 0 && dist < 10;
+      case 'tight_spread':
+        return dist < 6;
+      case 'boomerang':
+        return dist < 8;
+      case 'gravity_trap':
+        return dist < 9;
+      case 'mine_drive':
+        return dist < 3.2;
+      case 'wall_push':
+        return dist < 4.5;
+      // DASH is the answer to telegraphed attacks: positional DASH combos only under threat
+      case 'backstage':
+      case 'double_take':
+        return threatened;
+      case 'all_in':
+        return dist < f.stats.preferredRange * 1.6;
+      case 'insurance':
+        return f.hpFrac < 0.85 || threatened;
+      case 'jackpot':
+        return false; // a chain: it follows INSURANCE on its own
+      case 'rewind_trap':
+        return dist < 4;
+      case 'replay':
+        return threatened || dist < 3;
+      case 'time_slip':
+        return threatened;
       case 'counter_strike':
       case 'electro_blast':
         return foe.shield <= 0 && dist < 10;
@@ -663,6 +870,120 @@ export class FighterAI {
         if (combo) s += 4;
         if (foe.glitch > 0 || foe.invuln > 0) s = -10;
         break;
+
+      // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
+      case 'spotlight_tag': {
+        const payoff = ['power_shot', 'bank_shot', 'charged_shot', 'knockout', 'rebound_disc', 'prop_drop', 'side_cam'].some((c) => this.has(c as CardId) >= 0);
+        s = payoff ? 5 : 1;
+        if (hand.energy >= 6) s += 1;
+        if (foe.tag > 0 || foe.invuln > 0 || m.inOwnSmoke(foe)) s = -10;
+        break;
+      }
+      case 'split_shot':
+        s = dist < 3.5 ? 6.5 : dist < 6 ? 4.5 : 1.5;
+        if (foeBlocking) s -= 5;
+        if (foeDisabled) s += 1.5;
+        if (combo) s += 3;
+        break;
+      case 'rebound_disc':
+        s = dist > 2.5 && dist < 7.5 ? 5 : 2.5;
+        if (foeDisabled || foe.netSlow < 1 || foe.tether > 0) s += 2;
+        if (foe.shield > 0) s -= 4;
+        if (combo) s += 4;
+        break;
+      case 'prop_drop':
+        s = 4;
+        if (foeDisabled || foe.netSlow < 1 || foe.tether > 0) s += 3.5;
+        if (foe.shield > 0) s -= 3;
+        if (combo) s += 3;
+        break;
+      case 'pulse_push':
+        s = dist < 2.6 ? 6 : dist < CARD_TUNING.pulse_push.range ? 3.5 : -10;
+        if (b.pressure > 0) s -= 3;
+        if (f.stats.preferredRange > dist + 1.5) s += 1.5;
+        if (combo) s += 3;
+        break;
+      case 'gravity_net':
+        s = 4;
+        if (dist > f.stats.preferredRange + 1) s += 1;
+        if (['prop_drop', 'pressure_mine', 'split_shot', 'rebound_disc'].some((c) => this.has(c as CardId) >= 0)) s += 1.5;
+        if (foe.netSlow < 1 || m.objects.own(this.side, 'net')) s = -8;
+        if (combo) s += 3;
+        break;
+      case 'pressure_mine': {
+        const own = m.objects.list.filter((o) => o.kind === 'mine' && o.owner === this.side).length;
+        s = 4.2;
+        if (foe.netSlow < 1) s += 1.5;
+        if (b.pressure <= 0 && dist < f.stats.preferredRange) s += 1;
+        if (own >= CARD_TUNING.pressure_mine.max) s -= 6;
+        if (combo) s += 3;
+        break;
+      }
+      case 'stage_barrier':
+        s = 1.5;
+        if (threatened) s += 4;
+        if (foe.stats.attack.range > f.stats.attack.range && dist > 4) s += 2;
+        if (f.hpFrac < 0.5) s += 1.5;
+        if (dist < 2.2) s -= 3;
+        if (m.objects.own(this.side, 'barrier')) s = -10;
+        break;
+      case 'cable_snare':
+        s = 4;
+        if (dist > f.stats.preferredRange + 1.5) s += 2;
+        if (foe.shield > 0) s -= 4;
+        if (dist > CARD_TUNING.cable_snare.range - 0.5) s -= 6;
+        if (foe.tether > 0 || foe.tetherCd > 0) s = -10;
+        break;
+      case 'holo_decoy':
+        s = 1.5;
+        if (threatened) s += 3.5;
+        if (f.hpFrac < 0.6) s += 1.5;
+        if (dist < foe.stats.attack.range) s += 1;
+        if (m.decoys.some((d) => d.alive && d.owner === this.side && d.kind === 'holo')) s = -10;
+        break;
+      case 'frame_catch':
+        // mostly a reaction (see the reaction step)
+        s = 1;
+        if (foe.fireTimer < 0.3 && dist < foe.stats.attack.range) s += 2.5;
+        if (this.projectileThreat(f)) s += 4;
+        if (f.frame > 0) s = -10;
+        break;
+      case 'backtrack': {
+        s = 0.5;
+        if (dist < 1.8 && b.pressure <= 0) s += 3;
+        if (f.tether > 0) s += 3;
+        const under = m.objects.list.some((o) => o.owner !== this.side && ((o.kind === 'prop' && o.stage === 'warn') || o.kind === 'net') && Math.hypot(o.x - f.x, o.z - f.z) < o.radius);
+        if (under) s += 4.5;
+        if (combo) s += 3;
+        break;
+      }
+      case 'high_stakes': {
+        const t = CARD_TUNING.high_stakes;
+        const big = hand.hand.some((c) => c && c !== 'high_stakes' && CARDS[c].cost >= 4);
+        s = hand.energy <= 5 && big ? 5 : 1;
+        if (hand.energy > 7) s = -6;
+        if (f.stakesCd > 0 || f.stakesUses >= t.uses || f.hp - f.maxHp * t.hpCost < f.maxHp * t.minHp) s = -10;
+        if (f.hpFrac < 0.5) s -= 2;
+        break;
+      }
+      case 'side_cam':
+        s = 4.5;
+        if (m.objects.own(this.side, 'barrier')) s += 2;
+        if (foeDisabled || foe.netSlow < 1 || foe.tether > 0) s += 1.5;
+        if (foe.shield > 0) s -= 3;
+        if (m.objects.own(this.side, 'cam')) s = -10;
+        if (combo) s += 3;
+        break;
+      case 'freeze_frame': {
+        s = 1.5;
+        if (threatened) s += 3;
+        let incoming = 0;
+        for (const p of m.projectiles) if (p.alive && p.owner !== this.side && Math.hypot(p.x - f.x, p.z - f.z) < 6) incoming++;
+        if (incoming >= 3) s += 2.5;
+        if (f.hpFrac < 0.5) s += 1;
+        if (m.objects.own(this.side, 'freeze')) s = -10;
+        break;
+      }
     }
     return s;
   }

@@ -1,5 +1,5 @@
 import { ARENA_ORDER, arenaById, type ArenaPref } from '../../config/arenas.config';
-import { CARDS, COMBOS } from '../../config/cards';
+import { CARDS, CARD_FAMILIES, COMBOS, NEW_CARDS, deckCombos } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
 import { bossById } from '../../config/boss.config';
@@ -9,7 +9,7 @@ import type { Game } from '../../game/Game';
 import { arenaAvailable, availableArenas } from '../../meta/ArenaSelection';
 import { formatChallengeValue } from '../../meta/GameModes';
 import { ARENA_ART } from '../arenaArt';
-import { cardHTML, el, esc, portraitHTML } from '../dom';
+import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
@@ -48,7 +48,7 @@ export class PrepScreen implements Screen {
     this.diff = this.g.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
     const f = FIGHTERS[s.selected];
     this.g.showcase.show(f.look, f.theme.accent);
-    this.render();
+    this.render(false);
   }
 
   private onClick(e: Event): void {
@@ -82,6 +82,29 @@ export class PrepScreen implements Screen {
       g.audio.ui('click');
       this.diff = d;
       this.render();
+      return;
+    }
+    if (act === 'shop') {
+      // Alpha 1.6: a card from the shop — show what it does, how it opens and its price
+      g.audio.ui('click');
+      this.focus = t.dataset.card as CardId;
+      this.render();
+      return;
+    }
+    if (act === 'buy') {
+      const c = t.dataset.card as CardId;
+      const can = g.career.canBuyCard(c);
+      if (!can.ok) {
+        g.audio.ui('deny');
+        g.ui.toast(can.reason);
+        return;
+      }
+      if (g.career.buyCard(c)) {
+        g.audio.ui('coin');
+        g.ui.toast(`${CARDS[c].name} — ваша карта навсегда. Добавьте её в колоду, когда захотите.`, true);
+        this.focus = c;
+        this.render();
+      }
       return;
     }
     if (act === 'coll') {
@@ -344,7 +367,62 @@ export class PrepScreen implements Screen {
     return null;
   }
 
-  private render(): void {
+  /** Alpha 1.6: what the focused card does and how to answer it; shop cards add how they open and the price. */
+  private cardDetail(c: CardId): string {
+    const g = this.g;
+    const fc = CARDS[c];
+    const shop = fc.shop;
+    const owned = !shop || g.career.owns(c);
+    const pairs = COMBOS.filter((x) => (x.first.includes(c) || x.second.includes(c)) && !x.after)
+      .slice(0, 4)
+      .map((x) => esc(x.name))
+      .join(' · ');
+    let buy = '';
+    if (!owned && shop) {
+      const can = g.career.canBuyCard(c);
+      const open = g.career.cardOpen(c);
+      buy = `<div class="cd-buy">
+          <span class="cd-req ${open ? 'open' : ''}">${open ? UI_ICONS.check.replace('<svg', '<svg width="11" height="11"') + ' Открыта для покупки' : UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"') + ' ' + esc(g.career.cardRequirement(c))}</span>
+          <button class="btn small ${can.ok ? '' : 'disabled'}" data-act="buy" data-card="${c}">Купить · $${shop.price}</button>
+          ${can.ok || !open ? '' : `<span class="cd-why">${esc(can.reason)}</span>`}
+        </div>`;
+    }
+    return `<div class="card-detail ${owned ? '' : 'shop'}"><div class="cd-head"><span class="cd-name">${esc(fc.name)}</span><span class="chip">${esc(fc.role)}</span><span class="chip teal">${fc.cost} ЭНЕРГИИ</span>${fc.exclusive ? '<span class="chip gold">ФИРМЕННАЯ</span>' : ''}${shop && owned ? '<span class="chip gold">КУПЛЕНА</span>' : ''}</div><p>${esc(fc.desc)}</p>${
+      fc.counter ? `<p class="cd-counter"><b>Ответ соперника:</b> ${esc(fc.counter)}</p>` : ''
+    }${shop && pairs ? `<p class="cd-pairs"><b>Комбо:</b> ${pairs}</p>` : ''}${buy}</div>`;
+  }
+
+  /** Alpha 1.6: the new cards the producer has not bought yet, by family, with their price or lock. */
+  private shopSection(): string {
+    const g = this.g;
+    const left = g.career.shopCards();
+    const owned = NEW_CARDS.length - left.length;
+    const focusInShop = this.focus !== null && left.includes(this.focus);
+    const groups = CARD_FAMILIES.map((fam) => {
+      const cards = left.filter((c) => CARDS[c].family === fam.id);
+      if (!cards.length) return '';
+      const items = cards
+        .map((c) => {
+          const open = g.career.cardOpen(c);
+          const price = CARDS[c].shop!.price;
+          const tag = open ? `<span class="shop-tag ${g.save.data.money >= price ? 'ok' : ''}">$${price}</span>` : `<span class="shop-tag lock">${UI_ICONS.lock.replace('<svg', '<svg width="10" height="10"')} УР. ${CARDS[c].shop!.level}</span>`;
+          return `<div data-act="shop" data-card="${c}" class="shop-item ${open ? 'open' : 'locked'}">${cardHTML(c, `${this.focus === c ? 'focus' : ''} ${open ? 'buyable' : 'sealed'}`, false)}${tag}</div>`;
+        })
+        .join('');
+      return `<div class="label shop-fam">${esc(fam.label)}</div><div class="collection shop">${items}</div>`;
+    }).join('');
+    if (!left.length) {
+      return `<div class="section panel card-shop"><div class="section-title"><span class="h2">Новые карты</span><span class="label">все ${NEW_CARDS.length} куплены</span></div><p class="shop-note">Вся коллекция CARD REVOLUTION ваша — комбинируйте!</p></div>`;
+    }
+    return `<div class="section panel card-shop">
+        <div class="section-title"><span class="h2">Новые карты</span><span class="label">куплено ${owned}/${NEW_CARDS.length} · $${Math.floor(g.save.data.money).toLocaleString('ru-RU')}</span></div>
+        <p class="shop-note">Пока закрыты: открываются уровнем продюсера или этапом карьеры, покупаются один раз за гонорары — навсегда и для всех бойцов. В колоду сами не попадают.</p>
+        ${groups}
+        ${focusInShop ? this.cardDetail(this.focus!) : ''}
+      </div>`;
+  }
+
+  private render(keep = true): void {
     const g = this.g;
     const s = g.save.data;
     const f = FIGHTERS[s.selected];
@@ -360,8 +438,9 @@ export class PrepScreen implements Screen {
     const coll = available
       .map((c) => `<div data-act="coll" data-card="${c}">${cardHTML(c, `${this.deck.includes(c) ? 'in-deck' : ''} ${this.focus === c ? 'focus' : ''}`, false)}</div>`)
       .join('');
-    const fc = this.focus ? CARDS[this.focus] : null;
-    const combos = COMBOS.filter((c) => c.first.some((x) => this.deck.includes(x)) && c.second.some((x) => this.deck.includes(x)));
+    const focusAvail = this.focus !== null && available.includes(this.focus) ? this.focus : null;
+    // Alpha 1.6: the same registry the fight uses (chains like HIGH STAKES → SHIELD → POWER SHOT need all their cards)
+    const combos = deckCombos(this.deck);
     const diffs = DIFFICULTY_ORDER.map((d) => {
       const def = DIFFICULTIES[d];
       const unlocked = g.career.difficultyUnlocked(d);
@@ -378,7 +457,9 @@ export class PrepScreen implements Screen {
         </div>`;
     this.el.classList.toggle('mode-prep', !!mp);
     this.el.classList.toggle('boss-prep', this.mode.kind === 'boss');
-    this.el.innerHTML = `
+    setScreenHTML(
+      this.el,
+      `
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="h1">${mp ? esc(mp.title) : 'Подготовка к эфиру'}</div>
@@ -408,23 +489,22 @@ export class PrepScreen implements Screen {
         <div class="section panel">
           <div class="section-title"><span class="h2">Колода · ${this.deck.length}/4</span><span class="label">3 в руке + 1 в очереди</span></div>
           <div class="deck-slots">${slots}</div>
-          <div class="label" style="margin:10px 4px 0">Доступные карты — нажмите, чтобы добавить</div>
+          <div class="label" style="margin:10px 4px 0">Доступные карты (${available.length}) — нажмите, чтобы добавить</div>
           <div class="collection">${coll}</div>
-          ${
-            fc
-              ? `<div class="card-detail"><div class="cd-head"><span class="cd-name">${esc(fc.name)}</span><span class="chip">${esc(fc.role)}</span><span class="chip teal">${fc.cost} ЭНЕРГИИ</span>${fc.exclusive ? '<span class="chip gold">ФИРМЕННАЯ</span>' : ''}</div><p>${esc(fc.desc)}</p></div>`
-              : ''
-          }
+          ${focusAvail ? this.cardDetail(focusAvail) : ''}
           <div class="label" style="margin:12px 4px 0">Комбо в этой колоде</div>
           <div class="combo-list">${
             combos.length
-              ? combos.map((c) => `<div class="combo-item"><b>${esc(c.name)}</b><span>${esc(c.desc)}</span></div>`).join('')
+              ? combos.map((c) => `<div class="combo-item"><b>${esc(c.name)}</b><span>${c.tag ? `<i>${esc(c.tag)}</i> ` : ''}${esc(c.desc)}</span></div>`).join('')
               : '<div class="combo-item"><span>Нет пар для комбо. Попробуйте DASH + POWER SHOT или SHOCK + POWER SHOT.</span></div>'
           }</div>
         </div>
+        ${this.shopSection()}
       </div>
       <div style="padding:8px 12px 0">
         <button class="btn big wide ${this.deck.length === 4 && !mp?.locked ? '' : 'disabled'}" data-act="start"><span class="shine"></span>${mp ? mp.start : 'Начать эфир'}</button>
-      </div>`;
+      </div>`,
+      keep,
+    );
   }
 }

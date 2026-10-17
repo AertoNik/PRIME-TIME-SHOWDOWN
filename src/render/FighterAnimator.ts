@@ -1,6 +1,6 @@
 import type { MeshBasicMaterial } from 'three';
 import { FIRE_STYLE, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type FireStyle, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
-import type { CardId, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
+import type { CardId, CastKind, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
 import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
 import type { FighterRig } from './FighterModel';
 import { toonUniforms } from './materials';
@@ -13,7 +13,7 @@ export interface AnimInput {
   facing: number;
   maxSpeed: number;
   combat: boolean;
-  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut' | 'feint';
+  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut' | 'feint' | 'rewind';
   /** DIRECTOR'S CUT stage while action === 'cut'. */
   cutStage: 'prep' | 'aim' | 'lock' | 'gap' | null;
   actionCard: CardId | null;
@@ -119,6 +119,15 @@ function kickTo(s: Spring, peak: number): void {
 /** Alpha 1.5.6 — short readable reactions to key moments of the show. */
 export type AnimCue = 'combo' | 'trick' | 'counter' | 'brace';
 const CUE_TIME: Record<AnimCue, number> = { combo: 0.42, trick: 0.6, counter: 0.36, brace: 0.32 };
+/**
+ * Alpha 1.6 — five reusable card activation gestures (CastKind), each with small variants:
+ * throw (net / mine / disc), shot (split shot / cable), device (wrist projector: barrier,
+ * hologram, rewind, freeze), guard (palms out: push, frame) and signal (a call to the crew
+ * or a pointed finger: tag, prop, camera, high stakes). Visual only; the card's effect
+ * timing is the simulation's.
+ */
+const CAST_TIME: Record<CastKind, number> = { throw: 0.46, shot: 0.34, device: 0.5, guard: 0.4, signal: 0.56 };
+const mix = (a: number, b: number, k: number) => a + (b - a) * k;
 
 /** Callbacks the battle view uses to spawn world effects in sync with animation beats. */
 export interface AnimEvents {
@@ -196,6 +205,9 @@ export class FighterAnimator {
   private evadeSide = 1;
   private cueT = -1;
   private cueKind: AnimCue = 'combo';
+  private castT = -1;
+  private castKind: CastKind = 'throw';
+  private castVar = 0;
   // Alpha 1.5.5 — how a shot moves the body (weapon fire styles)
   private shotTwist = new Spring(240, 15);
   private shotChest = new Spring(190, 13);
@@ -321,7 +333,7 @@ export class FighterAnimator {
     this.accX = this.accZ = 0;
     this.stopArmed = false;
     for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide, this.shotTwist, this.shotChest, this.shotDip, this.shotNod, this.climbR, this.climbL, this.push]) s.reset();
-    this.stepT = this.pressT = this.evadeT = this.cueT = -1;
+    this.stepT = this.pressT = this.evadeT = this.cueT = this.castT = -1;
     this.stillArmed = true;
     this.svx = this.svz = 0;
     this.cur = zeroPose();
@@ -459,6 +471,126 @@ export class FighterAnimator {
     this.cueT = 0;
     if (kind === 'combo') kickTo(this.settle, -0.06);
     else if (kind === 'counter' || kind === 'brace') kickTo(this.settle, 0.09);
+  }
+
+  /**
+   * Alpha 1.6 — a card activation gesture (`variant`: throw 1 = underarm lob; device 1 = both
+   * hands; signal 0 = point at the opponent, 1 = call to the crew, 2 = both arms up).
+   */
+  cast(kind: CastKind, variant = 0): void {
+    if (this.koT >= 0 || this.victoryT >= 0) return;
+    this.castKind = kind;
+    this.castVar = variant;
+    this.castT = 0;
+    if (kind === 'guard') kickTo(this.settle, 0.08);
+    else if (kind === 'throw') kickTo(this.settle, variant === 1 ? 0.05 : 0.1);
+    else if (kind === 'signal' && variant === 2) kickTo(this.settle, -0.07);
+  }
+
+  /** The pose layer of a card gesture at progress `p` (0..1), mixed over the current pose. */
+  private castPose(P: Pose, p: number, t: number): void {
+    const k = Math.sin(p * Math.PI);
+    switch (this.castKind) {
+      case 'throw': {
+        if (this.castVar === 1) {
+          // an underarm lob: the arm swings low and forward, the knees dip
+          const sw = smoothstep(0, 0.55, p);
+          P.shRX = mix(P.shRX, mix(0.5, -0.9, sw), k);
+          P.elR = mix(P.elR, -0.25, k);
+          P.kneeL += 0.3 * k;
+          P.kneeR += 0.3 * k;
+          P.spineRX += 0.18 * k;
+          P.bodyY -= 0.05 * k;
+          break;
+        }
+        // overarm: wind back, then whip through with the shoulders and a step
+        const wind = p < 0.4 ? Math.sin((p / 0.4) * Math.PI * 0.5) : 1 - smoothstep(0.4, 0.62, p);
+        const rel = smoothstep(0.38, 0.62, p) * (1 - smoothstep(0.75, 1, p));
+        P.shRX = mix(P.shRX, 0.7 * wind - 1.7 * rel, Math.max(wind, rel));
+        P.shRZ = mix(P.shRZ, -0.35, Math.max(wind, rel));
+        P.elR = mix(P.elR, -1.5 * wind - 0.2 * rel, Math.max(wind, rel));
+        P.spineRY += 0.38 * wind - 0.32 * rel;
+        P.spineRX += 0.16 * rel - 0.08 * wind;
+        P.legLX -= 0.3 * rel;
+        P.kneeR += 0.25 * rel;
+        break;
+      }
+      case 'shot': {
+        // a wide planted stance for a wide shot, the free arm out for balance
+        P.legLZ += 0.2 * k;
+        P.legRZ -= 0.2 * k;
+        P.kneeL += 0.32 * k;
+        P.kneeR += 0.32 * k;
+        P.bodyY -= 0.06 * k;
+        P.spineRX -= 0.08 * k;
+        P.shLZ += 0.35 * k;
+        break;
+      }
+      case 'device': {
+        // the wrist projector comes up in front of the face, then the hand flicks it out
+        const up = p < 0.55 ? Math.sin((p / 0.55) * Math.PI * 0.5) : 1 - smoothstep(0.55, 1, p);
+        const flick = smoothstep(0.45, 0.65, p) * (1 - smoothstep(0.8, 1, p));
+        P.shLX = mix(P.shLX, -1.25 - 0.3 * flick, Math.max(up, flick));
+        P.shLZ = mix(P.shLZ, -0.35 + 0.5 * flick, Math.max(up, flick));
+        P.elL = mix(P.elL, -1.9 + 1.5 * flick, Math.max(up, flick));
+        P.headRX += 0.16 * up;
+        P.headRY += 0.18 * up;
+        if (this.castVar === 1) {
+          P.shRX = mix(P.shRX, -1.3, up);
+          P.elR = mix(P.elR, -1.6, up);
+        }
+        this.glowPulse = Math.max(this.glowPulse, 0.9 * Math.max(up, flick));
+        break;
+      }
+      case 'guard': {
+        // palms out: both arms thrust forward with a short step into it
+        const g = p < 0.25 ? p / 0.25 : 1 - smoothstep(0.25, 1, p);
+        P.shLX = mix(P.shLX, -1.5, g);
+        P.shRX = mix(P.shRX, -1.5, g);
+        P.shLZ = mix(P.shLZ, -0.15, g);
+        P.shRZ = mix(P.shRZ, 0.15, g);
+        P.elL = mix(P.elL, -0.15, g);
+        P.elR = mix(P.elR, -0.15, g);
+        P.spineRX += 0.14 * g;
+        P.legLX -= 0.28 * g;
+        P.kneeR += 0.22 * g;
+        P.bodyY -= 0.03 * g;
+        break;
+      }
+      case 'signal': {
+        if (this.castVar === 2) {
+          // HIGH STAKES: both arms up to the crowd, chest out
+          P.shLX = mix(P.shLX, -2.7, k);
+          P.shRX = mix(P.shRX, -2.7, k);
+          P.shLZ = mix(P.shLZ, 0.35, k);
+          P.shRZ = mix(P.shRZ, -0.35, k);
+          P.elL = mix(P.elL, -0.3, k);
+          P.elR = mix(P.elR, -0.3, k);
+          P.spineRX -= 0.2 * k;
+          P.headRX -= 0.22 * k;
+          P.bodyY += 0.04 * k;
+          break;
+        }
+        if (this.castVar === 1) {
+          // a call to the crew: the free hand up high, two quick waves
+          const wave = Math.sin(t * 22) * 0.15 * k;
+          P.shLX = mix(P.shLX, -2.6, k);
+          P.shLZ = mix(P.shLZ, 0.3 + wave, k);
+          P.elL = mix(P.elL, -0.5, k);
+          P.headRX -= 0.24 * k;
+          P.headRY += 0.25 * k;
+          P.spineRZ -= 0.06 * k;
+          break;
+        }
+        // SPOTLIGHT TAG: a pointed finger at the opponent, the body squared up
+        P.shLX = mix(P.shLX, -1.6, k);
+        P.shLZ = mix(P.shLZ, -0.05, k);
+        P.elL = mix(P.elL, -0.08, k);
+        P.spineRY -= 0.22 * k;
+        P.headRX += 0.06 * k;
+        break;
+      }
+    }
   }
 
   ko(): void {
@@ -1176,6 +1308,25 @@ export class FighterAnimator {
       P.shRX = -0.5 - Math.sin(t * 20) * 0.5;
       P.shLZ = 0.8;
       P.shRZ = -0.8;
+    } else if (inp.action === 'rewind') {
+      // Alpha 1.6 BACKTRACK: pulled backwards through the tape — body leaning back, arms trailing
+      // forward, a VHS jitter in the shoulders
+      const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
+      const k = Math.sin(p * Math.PI);
+      const jit = Math.sin(t * 90) * 0.07 * k;
+      P.rollRX -= 0.22 * k;
+      P.spineRX -= 0.16 * k;
+      P.spineRY += jit;
+      P.shLX = mix(P.shLX, -1.0, k);
+      P.shRX = mix(P.shRX, -1.0, k);
+      P.elL = mix(P.elL, -0.3, k);
+      P.elR = mix(P.elR, -0.3, k);
+      P.kneeL += 0.3 * k;
+      P.kneeR += 0.3 * k;
+      P.legLX -= 0.25 * k;
+      P.legRX -= 0.25 * k;
+      P.headRX -= 0.1 * k;
+      this.glowPulse = Math.max(this.glowPulse, 1.2 * k);
     } else if (inp.action === 'feint') {
       // FALSE START: a sharp shimmy to one side — low, twisted, the blaster kept up
       // two beats: the shoulders sell the wrong side first, then she drops low into the real step
@@ -1295,6 +1446,13 @@ export class FighterAnimator {
             break;
         }
       }
+    }
+
+    if (this.castT >= 0) {
+      this.castT += dt;
+      const p = this.castT / CAST_TIME[this.castKind];
+      if (p >= 1 || terminal || inp.stunned) this.castT = -1;
+      else this.castPose(P, p, t);
     }
 
     // ------------------------------------------------------------ dash

@@ -4,6 +4,9 @@ import type { CardId, ComboId } from '../config/types';
 import { clamp } from '../core/math';
 import type { MatchEvent } from './types';
 
+/** The original five combos (their show value is unchanged by Alpha 1.6). */
+const CLASSIC_COMBOS = new Set<ComboId>(['counter_strike', 'electro_blast', 'iron_rush', 'phantom_step', 'superstar']);
+
 /** Minimal surface of Match the broadcast needs (avoids a circular import). */
 export interface BroadcastHost {
   time: number;
@@ -25,6 +28,8 @@ export class BroadcastSystem {
   private sampled = 0;
   private lastPlayerAction = 0;
   private reached = new Set<number>();
+  /** Alpha 1.6: when each tactical combo last landed (repeat fatigue). */
+  private lastComboAt = new Map<ComboId, number>();
   private usedCards = new Set<CardId>();
   private reactionCd = 0;
   private host: BroadcastHost;
@@ -83,6 +88,13 @@ export class BroadcastSystem {
         const def = COMBOS.find((c) => c.id === e.combo)!;
         if (e.side === 0) {
           let amt = def.rating;
+          // Alpha 1.6: the cheap tactical combos lose half their show value when repeated within
+          // `comboRepeat` s (no rating farming with a two-card loop); the classic five are untouched
+          if (!CLASSIC_COMBOS.has(def.id)) {
+            const last = this.lastComboAt.get(def.id) ?? -99;
+            if (this.host.time - last < BROADCAST.comboRepeat) amt *= 0.5;
+            this.lastComboAt.set(def.id, this.host.time);
+          }
           const comeback = this.host.playerHpFrac() < 0.35;
           if (comeback) amt += BROADCAST.comeback;
           this.add(amt, def.name);
@@ -117,6 +129,10 @@ export class BroadcastSystem {
           } else if (e.kind === 'adrenaline') {
             this.add(BROADCAST.flurryHit, '');
           }
+          // Alpha 1.6: the new set pieces landing are show moments
+          if (e.kind === 'mine') this.callout('TRAP SPRUNG!', 2);
+          else if (e.kind === 'prop') this.callout('PROP DROP!', 2);
+          else if (e.kind === 'cam') this.callout('SIDE CAM!', 2);
         } else if (e.heavy) {
           this.add(BROADCAST.takenHeavy, '');
         }
@@ -175,6 +191,32 @@ export class BroadcastSystem {
           this.add(BROADCAST.feintRead, 'ОБМАННЫЙ МАНЁВР');
           this.host.emit({ type: 'reaction', text: 'FALSE START!', tier: 3, sub: 'COUNTER!' });
           this.reactionCd = 1.4;
+        }
+        break;
+      // Alpha 1.6 — CARD REVOLUTION
+      case 'tagHit':
+        if (e.side === 0) {
+          this.add(BROADCAST.spotlight, 'В ЦЕНТРЕ ВНИМАНИЯ');
+          this.callout('SPOTLIGHT!', 2);
+        }
+        break;
+      case 'frameCatch':
+        if (e.side === 0) {
+          this.add(BROADCAST.frameCatch, 'ПЕРЕХВАТ');
+          this.callout('FRAME CATCH!', 2);
+        }
+        break;
+      case 'tether':
+        if (e.side === 1) this.add(BROADCAST.tether, 'НА ТРОСЕ');
+        break;
+      case 'push':
+        if (e.side === 0 && e.hit) this.add(BROADCAST.push, '');
+        break;
+      case 'stakes':
+        if (e.side === 0) {
+          this.add(BROADCAST.stakes, 'HIGH STAKES');
+          this.host.emit({ type: 'reaction', text: 'HIGH STAKES!', tier: 2, sub: `−${e.hp} HP · +${e.energy} ⚡` });
+          this.reactionCd = 1.2;
         }
         break;
       case 'ko':

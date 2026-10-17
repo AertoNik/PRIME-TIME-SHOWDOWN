@@ -18,8 +18,54 @@ export type CardId =
   /** Alpha 1.5: Rina's feint (a short read window that evades one attack and fires back). */
   | 'false_start'
   /** Boss only (Alpha 1.3.3): the champion's three-shot DIRECTOR'S CUT. Never in a player deck. */
-  | 'directors_cut';
-export type ComboId = 'counter_strike' | 'electro_blast' | 'iron_rush' | 'phantom_step' | 'superstar';
+  | 'directors_cut'
+  // Alpha 1.6 — CARD REVOLUTION: fifteen universal cards, bought in the career (src/config/cards.ts)
+  | 'spotlight_tag'
+  | 'split_shot'
+  | 'rebound_disc'
+  | 'prop_drop'
+  | 'pulse_push'
+  | 'gravity_net'
+  | 'pressure_mine'
+  | 'stage_barrier'
+  | 'cable_snare'
+  | 'holo_decoy'
+  | 'frame_catch'
+  | 'backtrack'
+  | 'high_stakes'
+  | 'side_cam'
+  | 'freeze_frame';
+export type ComboId =
+  | 'counter_strike'
+  | 'electro_blast'
+  | 'iron_rush'
+  | 'phantom_step'
+  | 'superstar'
+  // Alpha 1.6: tactical combos of the new cards (mostly position, traps and tempo, not damage)
+  | 'spotlight'
+  | 'tight_spread'
+  | 'boomerang'
+  | 'set_piece'
+  | 'gravity_trap'
+  | 'mine_drive'
+  | 'wall_push'
+  | 'backstage'
+  | 'cross_angle'
+  | 'blindside'
+  | 'camera_lock'
+  | 'catch_release'
+  | 'safe_bet'
+  | 'all_in'
+  | 'insurance'
+  | 'jackpot'
+  | 'rewind_trap'
+  | 'double_take'
+  | 'replay'
+  | 'time_slip';
+/** Alpha 1.6: card families on the prep screen (the four groups of the new cards plus the classics). */
+export type CardFamily = 'attack' | 'control' | 'defense' | 'show';
+/** Alpha 1.6: how the fighter's body sells a card (FighterAnimator.cast). */
+export type CastKind = 'throw' | 'shot' | 'device' | 'guard' | 'signal';
 export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
@@ -164,6 +210,23 @@ export interface CardDef {
   exclusive?: FighterId;
   /** "Heavy" cards are finishers that combo off setups. */
   heavy?: boolean;
+  /** Alpha 1.6: family on the prep screen. */
+  family?: CardFamily;
+  /** Alpha 1.6: the activation gesture (default: none — the classic cards keep their own moves). */
+  cast?: CastKind;
+  /** Alpha 1.6: how the opponent answers it (card detail on the prep screen). */
+  counter?: string;
+  /** Alpha 1.6: bought once in the career (new universal cards only). */
+  shop?: CardShop;
+}
+
+/** Alpha 1.6: when a new card can be bought and for how much (existing money, no other currency). */
+export interface CardShop {
+  price: number;
+  /** Producer level that opens the purchase... */
+  level: number;
+  /** ...or this career stage, whichever comes first. */
+  stage?: 'rising' | 'star' | 'legendary';
 }
 
 export interface ComboDef {
@@ -175,6 +238,10 @@ export interface ComboDef {
   desc: string;
   /** Short payoff shown when the combo lands ("×1.5 урона"). */
   bonus: string;
+  /** Alpha 1.6: Russian label on the prep screen («ЛОВУШКА»). */
+  tag?: string;
+  /** Alpha 1.6: a chain — the first card must itself have been played as this combo (HIGH STAKES → SHIELD → POWER SHOT). */
+  after?: ComboId;
 }
 
 export interface PassiveDef {

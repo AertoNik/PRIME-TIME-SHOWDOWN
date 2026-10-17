@@ -32,13 +32,15 @@ export class ModelCache {
     return c;
   }
 
-  getHolo(look: string): CachedFighter {
-    let c = this.holo.get(look);
+  /** Hologram twin `n` of a look (0: decoys of PHANTOM STEP / DOUBLE TAKE, 1: Alpha 1.6 HOLO DECOY). */
+  getHolo(look: string, n = 0): CachedFighter {
+    const key = n ? `${look}#${n}` : look;
+    let c = this.holo.get(key);
     if (!c) {
       const def = defForLook(look);
       const rig = createFighterRig(look, true);
       c = { rig, anim: new FighterAnimator(rig, def.idleStyle, def.dashStyle, def.victoryStyle) };
-      this.holo.set(look, c);
+      this.holo.set(key, c);
     }
     return c;
   }
