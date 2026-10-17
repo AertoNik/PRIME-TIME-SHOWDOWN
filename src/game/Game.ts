@@ -3,6 +3,7 @@ import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import { challengeById, SURVIVAL } from '../config/modes.config';
+import { ARENA_MUSIC, type MusicId } from '../config/music.config';
 import { bossById } from '../config/boss.config';
 import { bossPhaseFlash, bossPhaseSpots, championThemeFor } from '../config/themes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
@@ -148,6 +149,8 @@ export class Game {
     this.ui.setSoundIcon(this.save.data.settings.sound);
     this.audio.soundOn = this.save.data.settings.sound;
     this.audio.musicOn = this.save.data.settings.music;
+    // Alpha 1.6.3: the menu music downloads while the title screen waits for the first tap
+    if (this.save.data.settings.music && this.save.data.settings.sound) this.audio.prefetchMusic(this.menuMusic());
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
     this.ui.show('title');
@@ -305,7 +308,7 @@ export class Game {
     this.cam.showcaseShift = name === 'roster' ? 0.205 : name === 'menu' ? 0.06 : 0.26;
     this.cam.showcaseDist = name === 'roster' ? 16 : name === 'menu' ? 9.6 : 10;
     this.arena.setScreen({ mode: 'menu', headline: this.save.data.orgName });
-    this.audio.playTrack('menu');
+    this.audio.playTrack(this.menuMusic());
     this.audio.setCrowd(0.12);
     this.ui.showSoundFab(true);
     this.ui.show(name, param);
@@ -357,6 +360,8 @@ export class Game {
     if (!this.events.refresh()) return false;
     this.themes?.apply(this.events.themeId);
     if (this.arena) this.syncArenaPref();
+    // the event started or ended while the menus are open: the menu music follows it
+    if (this.started && this.screen !== 'title' && this.screen !== 'battle' && this.screen !== 'results') this.audio.playTrack(this.menuMusic());
     const e = this.events.active;
     if (this.bootDone) {
       this.ui.toast(e ? `${e.title}: событие началось!` : 'Сезонное событие завершилось. Награды остаются в коллекции.', !!e);
@@ -407,6 +412,14 @@ export class Game {
   }
 
   /** Which set broadcasts this fight: Survival keeps its run's set, the rest follow the preference. */
+  /**
+   * Alpha 1.6.3: the menu music — the Halloween Premiere theme only while that event is
+   * really active (EventManager's calendar), never because of a screen's decoration.
+   */
+  private menuMusic(): MusicId {
+    return this.events.active?.themeId === 'halloween' ? 'prime_menu_halloween' : 'prime_menu';
+  }
+
   private stageFor(mode: ModeSession, seed: number): ArenaId {
     const season = this.events.themeId;
     if (mode.kind === 'survival') {
@@ -553,7 +566,8 @@ export class Game {
     this.ui.showSoundFab(false);
     this.ui.show('battle');
     this.updateLayoutFraming();
-    this.audio.playTrack('battle');
+    // Alpha 1.6.3: the champion's theme always wins; otherwise the music of the studio set
+    this.audio.playTrack(spec.boss ? 'victor_boss' : ARENA_MUSIC[stage]);
     this.audio.cheer(1);
     // Started while the phone is sideways (overlay visible): wait paused.
     if (isBlockedLandscape()) this.pause();
@@ -684,12 +698,14 @@ export class Game {
     this.cam.finishShift = 0.35;
     this.cam.finishDist = 18.5;
     this.ui.showSoundFab(true);
-    this.audio.playTrack('none');
+    // the fight music fades out under the sting; the menu music decodes meanwhile and comes in after it
+    this.audio.playTrack(null);
+    this.audio.prepareMusic(this.menuMusic());
     if (outcome === 'win') this.audio.victory();
     else if (outcome === 'loss') this.audio.defeat();
     else this.audio.reaction(2);
     setTimeout(() => {
-      if (this.screen === 'results') this.audio.playTrack('menu');
+      if (this.screen === 'results') this.audio.playTrack(this.menuMusic());
     }, 3000);
   }
 

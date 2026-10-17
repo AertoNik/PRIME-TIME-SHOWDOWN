@@ -1,5 +1,7 @@
 import type { PropKind } from '../config/arenas.config';
+import { MUSIC_MIX, type MusicId } from '../config/music.config';
 import type { CardId, WeaponType } from '../config/types';
+import { MusicFiles, MusicPlayer } from './MusicPlayer';
 
 type Wave = OscillatorType;
 
@@ -39,9 +41,10 @@ const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 const MIN_LEAD = 0.01;
 
 /**
- * Fully procedural audio (no files): SFX synthesised on demand, crowd
- * ambience and a small step-sequenced soundtrack. Starts only after the
- * first user gesture (browser autoplay policy).
+ * Procedural SFX synthesised on demand and the crowd ambience; the soundtrack
+ * (Alpha 1.6.3) is the MP3 music of public/audio/music, played by MusicPlayer
+ * on the music bus. Starts only after the first user gesture (browser
+ * autoplay policy).
  */
 export class AudioSystem {
   private ctx: AudioContext | null = null;
@@ -54,10 +57,12 @@ export class AudioSystem {
   private last = new Map<string, number>();
   soundOn = true;
   musicOn = true;
-  private seqTimer: number | null = null;
-  private track: 'menu' | 'battle' | 'none' = 'none';
-  private step = 0;
-  private nextNoteTime = 0;
+  /** Alpha 1.6.3: the MP3 soundtrack (created with the context) and its files (relative URL: works with Vite base './'). */
+  private player: MusicPlayer | null = null;
+  private readonly musicFiles = new MusicFiles(import.meta.env.BASE_URL, MUSIC_MIX.keepFiles);
+  /** The track asked for before the context existed. */
+  private musicWant: MusicId | null = null;
+  /** Show rating 0..1: a hotter show gets a louder crowd (cheer). */
   intensity = 0.3;
 
   get ready(): boolean {
@@ -73,6 +78,7 @@ export class AudioSystem {
       this.build();
     }
     // iOS reports 'interrupted' after calls/app switches; any non-running state needs a resume.
+    // The music starts once the context really runs (MusicPlayer listens to statechange).
     if (this.ctx.state !== 'running' && this.ctx.state !== 'closed') void this.ctx.resume().catch(() => {});
   }
 
@@ -132,26 +138,36 @@ export class AudioSystem {
     this.crowdGain.gain.value = 0;
     src.connect(this.crowdFilter).connect(this.crowdGain).connect(this.sfx);
     src.start();
+
+    // Alpha 1.6.3: the soundtrack, on the music bus
+    this.player = new MusicPlayer(ctx, this.music, this.musicFiles);
+    this.player.setEnabled(this.musicOn && this.soundOn);
+    this.player.play(this.musicWant);
   }
 
   /** Pause all audio while the page is in the background. */
   setHidden(hidden: boolean): void {
     if (!this.ctx) return;
     if (hidden) void this.ctx.suspend().catch(() => {});
-    else {
-      void this.ctx.resume().catch(() => {});
-      this.nextNoteTime = this.ctx.currentTime + 0.05;
-    }
+    else void this.ctx.resume().catch(() => {});
   }
 
   setSound(on: boolean): void {
     this.soundOn = on;
     if (this.ctx) this.master.gain.setTargetAtTime(on ? 0.9 : 0, this.ctx.currentTime, 0.05);
+    // no sound at all: the soundtrack stops and frees its audio (it restarts when sound is back)
+    this.player?.setEnabled(this.musicOn && on);
   }
 
   setMusic(on: boolean): void {
     this.musicOn = on;
     if (this.ctx) this.music.gain.setTargetAtTime(on ? 0.32 : 0, this.ctx.currentTime, 0.1);
+    this.player?.setEnabled(on && this.soundOn);
+  }
+
+  /** For checks and debugging: what the soundtrack is doing. */
+  get musicState(): MusicPlayer['state'] | null {
+    return this.player?.state ?? null;
   }
 
   /** 0..1 crowd loudness. */
@@ -859,113 +875,22 @@ export class AudioSystem {
   }
 
   // ----------------------------------------------------------------- music
-  playTrack(track: 'menu' | 'battle' | 'none'): void {
-    if (this.track === track) return;
-    this.track = track;
-    if (!this.ctx) return;
-    if (this.seqTimer !== null) {
-      clearInterval(this.seqTimer);
-      this.seqTimer = null;
-    }
-    if (track === 'none') return;
-    this.step = 0;
-    this.nextNoteTime = this.ctx.currentTime + 0.1;
-    this.seqTimer = window.setInterval(() => this.schedule(), 25);
+  /**
+   * Alpha 1.6.3: the soundtrack track for the current screen (null: none). The same track
+   * again does nothing — it keeps playing. Before the first tap it is remembered.
+   */
+  playTrack(track: MusicId | null): void {
+    this.musicWant = track;
+    this.player?.play(track);
   }
 
-  /** Re-start the current track after unlock (playTrack before unlock is remembered). */
-  resumeTrack(): void {
-    const t = this.track;
-    this.track = 'none';
-    if (t !== 'none') this.playTrack(t);
+  /** Decode a track that is about to be needed, so it starts without waiting (see MusicPlayer.prepare). */
+  prepareMusic(track: MusicId): void {
+    this.player?.prepare(track);
   }
 
-  private schedule(): void {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    const bpm = this.track === 'battle' ? 124 : 96;
-    const stepDur = 60 / bpm / 4;
-    // After a background stall, skip the missed notes instead of firing them all at once.
-    if (this.nextNoteTime < ctx.currentTime - 0.2) this.nextNoteTime = ctx.currentTime + 0.05;
-    while (this.nextNoteTime < ctx.currentTime + 0.12) {
-      const delay = Math.max(0, this.nextNoteTime - ctx.currentTime);
-      if (this.musicOn && this.soundOn) {
-        if (this.track === 'battle') this.battleStep(this.step, delay);
-        else this.menuStep(this.step, delay);
-      }
-      this.nextNoteTime += stepDur;
-      this.step = (this.step + 1) % 64;
-    }
-  }
-
-  private mtone(o: ToneOpts): void {
-    this.tone({ ...o, bus: 'music' });
-  }
-  private mnoise(o: NoiseOpts): void {
-    this.noise({ ...o, bus: 'music' });
-  }
-
-  private battleStep(step: number, delay: number): void {
-    const s = step % 16;
-    const bar = Math.floor(step / 16);
-    const I = this.intensity;
-    // kick
-    if (s % 4 === 0 || (s === 14 && bar % 2 === 1)) {
-      this.mtone({ type: 'sine', f0: 150, f1: 42, dur: 0.22, gain: 0.9, delay });
-    }
-    // clap/snare
-    if (s === 4 || s === 12) {
-      this.mnoise({ dur: 0.16, gain: 0.35, type: 'bandpass', f0: 1800, q: 0.8, delay });
-      this.mtone({ type: 'triangle', f0: 220, f1: 140, dur: 0.08, gain: 0.15, delay });
-    }
-    // hats
-    if (s % 2 === 0 || I > 0.55) {
-      this.mnoise({ dur: s % 4 === 2 ? 0.09 : 0.035, gain: s % 4 === 2 ? 0.12 : 0.07, type: 'highpass', f0: 7000, delay });
-    }
-    // bass (A minor riff)
-    const riff = [45, 45, 57, 45, 48, 45, 55, 45, 43, 43, 55, 43, 40, 40, 52, 47];
-    const roots = [0, 0, -2, -4];
-    if (s % 2 === 0) {
-      const n = riff[s] + roots[bar % 4];
-      this.mtone({ type: 'sawtooth', f0: NOTE(n), dur: 0.16, gain: 0.22, delay, filter: { type: 'lowpass', f0: 380 + I * 900, q: 4 } });
-    }
-    // stabs when the show is hot
-    if (I > 0.45 && (s === 3 || s === 11)) {
-      const chord = [69, 72, 76].map((n) => n + roots[bar % 4]);
-      chord.forEach((n) => this.mtone({ type: 'square', f0: NOTE(n), dur: 0.14, gain: 0.05, delay, filter: { type: 'lowpass', f0: 2600 } }));
-    }
-    // lead arp when legendary
-    if (I > 0.75 && s % 2 === 1) {
-      const arp = [81, 84, 88, 84, 81, 79, 76, 79];
-      this.mtone({ type: 'triangle', f0: NOTE(arp[(s >> 1) % 8] + roots[bar % 4]), dur: 0.1, gain: 0.05, delay });
-    }
-  }
-
-  private menuStep(step: number, delay: number): void {
-    const s = step % 16;
-    const bar = Math.floor(step / 16) % 4;
-    const prog = [
-      [57, 60, 64],
-      [53, 57, 60],
-      [48, 52, 55],
-      [55, 59, 62],
-    ];
-    if (s === 0) {
-      prog[bar].forEach((n) =>
-        this.mtone({ type: 'sawtooth', f0: NOTE(n + 12), dur: 2.4, gain: 0.04, delay, attack: 0.4, filter: { type: 'lowpass', f0: 900, q: 1 } }),
-      );
-      this.mtone({ type: 'sine', f0: NOTE(prog[bar][0] - 12), dur: 2.2, gain: 0.2, delay, attack: 0.05 });
-    }
-    if (s === 0 || s === 8) this.mtone({ type: 'sine', f0: 120, f1: 45, dur: 0.25, gain: 0.55, delay });
-    if (s === 4 || s === 12) this.mnoise({ dur: 0.1, gain: 0.12, type: 'bandpass', f0: 2000, delay });
-    // Alpha 1.6: the menu hi-hat was the «ццц» heard idling in the menu on phones — a 4 ms attack of
-    // pure 8 kHz noise three times a second, the sharpest transient in the mix and, with a phone
-    // speaker dropping the bass and pads, the loudest thing left. Same groove, a softer voice:
-    // offline render −36% peak, −64% steepest sample step, −74% transient energy above 7 kHz.
-    if (s % 2 === 1) this.mnoise({ dur: 0.05, gain: 0.03, attack: 0.012, type: 'bandpass', f0: 7000, q: 0.9, delay });
-    if (s === 6 || s === 14) {
-      const n = prog[bar][(s >> 3) + 1] + 24;
-      this.mtone({ type: 'triangle', f0: NOTE(n), dur: 0.3, gain: 0.05, delay });
-    }
+  /** Start downloading a track that is about to be needed (the menu music, during the title screen). */
+  prefetchMusic(track: MusicId): void {
+    this.musicFiles.get(track).catch(() => {});
   }
 }
