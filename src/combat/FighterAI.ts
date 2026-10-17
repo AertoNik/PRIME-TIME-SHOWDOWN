@@ -4,6 +4,7 @@ import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
 import { clamp, segSegDist } from '../core/math';
 import type { BankSolution } from './CombatSystem';
 import type { FighterSim } from './FighterSim';
+import type { StageObject } from './types';
 import type { Match } from './Match';
 
 export interface AIProfile {
@@ -329,7 +330,7 @@ export class FighterAI {
     let any = false;
     for (const o of m.objects.list) {
       if (o.owner === f.side) continue;
-      const hazard = (o.kind === 'prop' && o.stage === 'warn') || (o.kind === 'mine' && o.stage !== 'fly') || (o.kind === 'net' && o.stage === 'on') || (o.kind === 'cam' && o.stage === 'lock');
+      const hazard = (o.kind === 'prop' && o.stage === 'warn') || (o.kind === 'mine' && o.stage !== 'fly') || (o.kind === 'net' && o.stage === 'on') || (o.kind === 'echo' && o.stage === 'lock' && o.combo !== 'blindside');
       if (!hazard) continue;
       let seen = this.hazards.get(o.id);
       if (seen === undefined) {
@@ -338,8 +339,8 @@ export class FighterAI {
         this.hazards.set(o.id, seen);
       }
       if (!seen) continue;
-      if (o.kind === 'cam') {
-        // the frozen camera line: sidestep off it
+      if (o.kind === 'echo') {
+        // the frozen line of a SECOND TAKE echo: sidestep off it
         const rx = f.x - o.x;
         const rz = f.z - o.z;
         const along = rx * o.dirX + rz * o.dirZ;
@@ -369,44 +370,84 @@ export class FighterAI {
   }
 
   /**
-   * Alpha 1.6 — how a fighter uses its own set pieces: behind its STAGE BARRIER it edges to
-   * the nearer end so the line of fire clears the screen (cover shooting, not a turtle that
-   * cannot shoot).
+   * Alpha 1.6.1 — how a fighter treats STAGE BARRIERS (screens stop the shots of both sides):
+   * - its own screen: under fire it keeps (or steps back) behind it; otherwise, when the screen
+   *   blocks its line of fire, it edges to the nearer end to shoot round it (cover shooting);
+   * - the opponent's screen: when it blocks the line of fire, it walks round the nearer end
+   *   (and keeps shooting it down meanwhile).
+   * Nobody bumps into a screen, so nobody can get stuck on one.
    */
   private ownPieces(f: FighterSim, foe: FighterSim): { x: number; z: number } | null {
     const m = this.m;
     let sx = 0;
     let sz = 0;
     let any = false;
-    const b = m.objects.own(f.side, 'barrier');
-    if (b && this.ownCoverBlocks(f)) {
-      // the end of the screen nearer to the fighter, plus a step past it
-      const s1 = (f.x - b.x) * b.dirX + (f.z - b.z) * b.dirZ >= 0 ? 1 : -1;
-      const ex = b.x + b.dirX * s1 * (b.radius + 0.7);
-      const ez = b.z + b.dirZ * s1 * (b.radius + 0.7);
-      const dx = ex - f.x;
-      const dz = ez - f.z;
-      const d = Math.hypot(dx, dz) || 1;
-      sx += (dx / d) * 1.1;
-      sz += (dz / d) * 1.1;
-      any = true;
-    }
-    // FREEZE FRAME: a soft edge — inside its own zone the fighter keeps strafing but does not
-    // wander out (measured: a hard pull to the centre made it a still target that took more hits)
-    const z = m.objects.own(f.side, 'freeze');
-    if (z) {
-      const dx = z.x - f.x;
-      const dz = z.z - f.z;
-      const d = Math.hypot(dx, dz);
-      if (d < z.radius && d > z.radius * 0.6) {
-        const k = ((d - z.radius * 0.6) / (z.radius * 0.4)) * 0.9;
-        sx += (dx / d) * k;
-        sz += (dz / d) * k;
+    const own = m.objects.own(f.side, 'barrier');
+    if (own) {
+      // the screen's normal towards the opponent; which side each fighter is on
+      let nx = -own.dirZ;
+      let nz = own.dirX;
+      if ((foe.x - own.x) * nx + (foe.z - own.z) * nz < 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+      const mySide = (f.x - own.x) * nx + (f.z - own.z) * nz;
+      const lateral = (f.x - own.x) * own.dirX + (f.z - own.z) * own.dirZ;
+      const covered = mySide < 0 && Math.abs(lateral) < own.radius;
+      const pressed = this.underFire(f, foe) || (mySide > 0 && Math.hypot(foe.x - f.x, foe.z - f.z) < 2.2);
+      if (pressed && !covered) {
+        // take cover: behind the screen, in line with it
+        const l = Math.max(-own.radius + 0.45, Math.min(own.radius - 0.45, lateral));
+        const cx = own.x + own.dirX * l - nx * 0.9;
+        const cz = own.z + own.dirZ * l - nz * 0.9;
+        const dx = cx - f.x;
+        const dz = cz - f.z;
+        const d = Math.hypot(dx, dz) || 1;
+        sx += (dx / d) * 1.3;
+        sz += (dz / d) * 1.3;
+        any = true;
+      } else if (!pressed && this.coverBlocks(f, own)) {
+        // peek: the end of the screen nearer to the fighter, plus a step past it
+        const s1 = lateral >= 0 ? 1 : -1;
+        const ex = own.x + own.dirX * s1 * (own.radius + 0.7);
+        const ez = own.z + own.dirZ * s1 * (own.radius + 0.7);
+        const dx = ex - f.x;
+        const dz = ez - f.z;
+        const d = Math.hypot(dx, dz) || 1;
+        sx += (dx / d) * 1.1;
+        sz += (dz / d) * 1.1;
         any = true;
       }
     }
-    void foe;
+    const theirs = m.objects.own(foe.side, 'barrier');
+    if (theirs && this.coverBlocks(f, theirs)) {
+      // go round the opponent's screen: past its nearer end, on this fighter's side
+      const lateral = (f.x - theirs.x) * theirs.dirX + (f.z - theirs.z) * theirs.dirZ;
+      const s1 = lateral >= 0 ? 1 : -1;
+      const ex = theirs.x + theirs.dirX * s1 * (theirs.radius + 1.0);
+      const ez = theirs.z + theirs.dirZ * s1 * (theirs.radius + 1.0);
+      const dx = ex - f.x;
+      const dz = ez - f.z;
+      const d = Math.hypot(dx, dz) || 1;
+      sx += (dx / d) * 0.9;
+      sz += (dz / d) * 0.9;
+      any = true;
+    }
     return any ? { x: sx, z: sz } : null;
+  }
+
+  /** Under fire right now: the opponent's burst is on, a charge is coming, or shots are on the way. */
+  private underFire(f: FighterSim, foe: FighterSim): boolean {
+    if (foe.overdrive > 0 || foe.adrenaline > 0 || foe.action.kind === 'windup') return true;
+    for (const p of this.m.projectiles) {
+      if (!p.alive || p.owner === f.side) continue;
+      const rx = f.x - p.x;
+      const rz = f.z - p.z;
+      const v = Math.hypot(p.vx, p.vz) || 1;
+      const along = (rx * p.vx + rz * p.vz) / v;
+      if (along > 0 && along < 6 && Math.abs(rx * p.vz - rz * p.vx) / v < 1.2) return true;
+    }
+    return false;
   }
 
   private updateDodge(f: FighterSim): void {
@@ -487,13 +528,12 @@ export class FighterAI {
     }
     const reach = atk.weapon === 'boom_cannon' ? 0.92 : 1.02;
     const fireDist = holo ? Math.hypot(holo.x - f.x, holo.z - f.z) : dist;
-    f.wantFire = fireDist <= atk.range * reach && !this.ownCoverBlocks(f);
+    const own = m.objects.own(f.side, 'barrier');
+    f.wantFire = fireDist <= atk.range * reach && !(own && this.coverBlocks(f, own));
   }
 
-  /** Alpha 1.6: no point shooting into one's own STAGE BARRIER — hold fire until the line is clear. */
-  private ownCoverBlocks(f: FighterSim): boolean {
-    const b = this.m.objects.own(f.side, 'barrier');
-    if (!b) return false;
+  /** Alpha 1.6: a STAGE BARRIER stands in this fighter's line of fire (its own: hold fire until the line is clear). */
+  private coverBlocks(f: FighterSim, b: StageObject): boolean {
     return segSegDist(f.x, f.z, f.aimX, f.aimZ, b.x - b.dirX * b.radius, b.z - b.dirZ * b.radius, b.x + b.dirX * b.radius, b.z + b.dirZ * b.radius) < 0.25;
   }
 
@@ -559,9 +599,9 @@ export class FighterAI {
       const perp = Math.abs(toX * fa.dirZ - toZ * fa.dirX);
       if (along > 0 && along < 6 && perp < 1.6) return { key: 'r' + Math.round((m.time - fa.t) * 20), kind: 'incoming' };
     }
-    // Alpha 1.6 SIDE CAM: a frozen camera line through the fighter is a cue for DASH / SHIELD
+    // Alpha 1.6.1 SECOND TAKE: the echo's frozen line through the fighter is a cue for DASH / SHIELD
     for (const o of m.objects.list) {
-      if (o.kind !== 'cam' || o.stage !== 'lock' || o.owner === f.side || o.combo === 'blindside') continue;
+      if (o.kind !== 'echo' || o.stage !== 'lock' || o.owner === f.side || o.combo === 'blindside') continue;
       const rx = f.x - o.x;
       const rz = f.z - o.z;
       if (rx * o.dirX + rz * o.dirZ > 0 && Math.abs(rx * o.dirZ - rz * o.dirX) < f.radius + 0.5) return { key: 'c' + o.id, kind: 'incoming' };
@@ -873,7 +913,7 @@ export class FighterAI {
 
       // ------------------------------------------------ Alpha 1.6 — CARD REVOLUTION
       case 'spotlight_tag': {
-        const payoff = ['power_shot', 'bank_shot', 'charged_shot', 'knockout', 'rebound_disc', 'prop_drop', 'side_cam'].some((c) => this.has(c as CardId) >= 0);
+        const payoff = ['power_shot', 'bank_shot', 'charged_shot', 'knockout', 'rebound_disc', 'prop_drop'].some((c) => this.has(c as CardId) >= 0);
         s = payoff ? 5 : 1;
         if (hand.energy >= 6) s += 1;
         if (foe.tag > 0 || foe.invuln > 0 || m.inOwnSmoke(foe)) s = -10;
@@ -966,13 +1006,13 @@ export class FighterAI {
         if (f.hpFrac < 0.5) s -= 2;
         break;
       }
-      case 'side_cam':
-        s = 4.5;
-        if (m.objects.own(this.side, 'barrier')) s += 2;
+      case 'second_take':
+        // a replay of the last card attack: worth it while the target is open
+        s = 5;
         if (foeDisabled || foe.netSlow < 1 || foe.tether > 0) s += 1.5;
-        if (foe.shield > 0) s -= 3;
-        if (m.objects.own(this.side, 'cam')) s = -10;
+        if (foe.shield > 0 || foe.invuln > 0) s -= 4;
         if (combo) s += 3;
+        if (!m.takeReady(f) || m.objects.own(this.side, 'echo')) s = -10;
         break;
       case 'freeze_frame': {
         s = 1.5;

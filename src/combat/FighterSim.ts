@@ -96,6 +96,14 @@ export interface FighterMatchStats {
   bestComboValue: number;
 }
 
+/** Alpha 1.6.1 — the last replayable card attack: what it was, where and when it was played. */
+export interface TakeRecord {
+  card: CardId;
+  x: number;
+  z: number;
+  time: number;
+}
+
 /** Pure simulation state for one fighter. No rendering here. */
 export class FighterSim {
   readonly side: Side;
@@ -220,6 +228,12 @@ export class FighterSim {
   caughtDmg = 0;
   /** CATCH & RELEASE: fire the caught shot back when the DASH ends. */
   releaseDmg = 0;
+  /** Alpha 1.6.1 FRAME CATCH parry: shots caught by this frame, energy refunded / passive fired (once per card). */
+  parryHits = 0;
+  parryRefunded = false;
+  parryEvaded = false;
+  /** Alpha 1.6.1 SECOND TAKE: the last card attack that can be replayed (null after it was replayed). */
+  take: TakeRecord | null = null;
   /** HIGH STAKES: cooldown and uses this fight. */
   stakesCd = 0;
   stakesUses = 0;

@@ -117,8 +117,8 @@ function kickTo(s: Spring, peak: number): void {
 }
 
 /** Alpha 1.5.6 — short readable reactions to key moments of the show. */
-export type AnimCue = 'combo' | 'trick' | 'counter' | 'brace';
-const CUE_TIME: Record<AnimCue, number> = { combo: 0.42, trick: 0.6, counter: 0.36, brace: 0.32 };
+export type AnimCue = 'combo' | 'trick' | 'counter' | 'brace' | 'parry';
+const CUE_TIME: Record<AnimCue, number> = { combo: 0.42, trick: 0.6, counter: 0.36, brace: 0.32, parry: 0.32 };
 /**
  * Alpha 1.6 — five reusable card activation gestures (CastKind), each with small variants:
  * throw (net / mine / disc), shot (split shot / cable), device (wrist projector: barrier,
@@ -126,7 +126,13 @@ const CUE_TIME: Record<AnimCue, number> = { combo: 0.42, trick: 0.6, counter: 0.
  * or a pointed finger: tag, prop, camera, high stakes). Visual only; the card's effect
  * timing is the simulation's.
  */
-const CAST_TIME: Record<CastKind, number> = { throw: 0.46, shot: 0.34, device: 0.5, guard: 0.4, signal: 0.56 };
+const CAST_TIME: Record<CastKind, number> = { throw: 0.5, shot: 0.34, device: 0.5, guard: 0.4, signal: 0.56 };
+/**
+ * Alpha 1.6.1 — when a thrown card leaves the free (left) hand, seconds after the gesture
+ * starts: the view keeps the mine / generator in that hand until then and flies it from
+ * there, landing exactly when the simulation lands it (no change to any card's timing).
+ */
+export const THROW_RELEASE = { lob: 0.16, frisbee: 0.09 };
 const mix = (a: number, b: number, k: number) => a + (b - a) * k;
 
 /** Callbacks the battle view uses to spawn world effects in sync with animation beats. */
@@ -471,6 +477,7 @@ export class FighterAnimator {
     this.cueT = 0;
     if (kind === 'combo') kickTo(this.settle, -0.06);
     else if (kind === 'counter' || kind === 'brace') kickTo(this.settle, 0.09);
+    else if (kind === 'parry') kickTo(this.settle, -0.07);
   }
 
   /**
@@ -492,27 +499,36 @@ export class FighterAnimator {
     const k = Math.sin(p * Math.PI);
     switch (this.castKind) {
       case 'throw': {
-        if (this.castVar === 1) {
-          // an underarm lob: the arm swings low and forward, the knees dip
-          const sw = smoothstep(0, 0.55, p);
-          P.shRX = mix(P.shRX, mix(0.5, -0.9, sw), k);
-          P.elR = mix(P.elR, -0.25, k);
-          P.kneeL += 0.3 * k;
-          P.kneeR += 0.3 * k;
-          P.spineRX += 0.18 * k;
-          P.bodyY -= 0.05 * k;
+        // Alpha 1.6.1: thrown with the free (left) hand — the weapon stays in the other one
+        const T = CAST_TIME.throw;
+        if (this.castVar === 2) {
+          // REBOUND DISC: a frisbee flick — the hand coils across the chest, then sweeps out
+          const pr = THROW_RELEASE.frisbee / T;
+          const coil = p < pr ? smoothstep(0, pr, p) : 1 - smoothstep(pr, pr + 0.15, p);
+          const sweep = smoothstep(pr - 0.06, pr + 0.16, p) * (1 - smoothstep(0.65, 1, p));
+          const w = Math.max(coil, sweep);
+          P.shLX = mix(P.shLX, -1.1 * coil - 1.45 * sweep, w);
+          P.shLZ = mix(P.shLZ, -0.6 * coil + 0.6 * sweep, w);
+          P.elL = mix(P.elL, -1.5 * coil - 0.1 * sweep, w);
+          P.spineRY += -0.32 * coil + 0.3 * sweep;
+          P.kneeL += 0.18 * w;
+          P.kneeR += 0.18 * w;
           break;
         }
-        // overarm: wind back, then whip through with the shoulders and a step
-        const wind = p < 0.4 ? Math.sin((p / 0.4) * Math.PI * 0.5) : 1 - smoothstep(0.4, 0.62, p);
-        const rel = smoothstep(0.38, 0.62, p) * (1 - smoothstep(0.75, 1, p));
-        P.shRX = mix(P.shRX, 0.7 * wind - 1.7 * rel, Math.max(wind, rel));
-        P.shRZ = mix(P.shRZ, -0.35, Math.max(wind, rel));
-        P.elR = mix(P.elR, -1.5 * wind - 0.2 * rel, Math.max(wind, rel));
-        P.spineRY += 0.38 * wind - 0.32 * rel;
-        P.spineRX += 0.16 * rel - 0.08 * wind;
-        P.legLX -= 0.3 * rel;
-        P.kneeR += 0.25 * rel;
+        // PRESSURE MINE / GRAVITY NET: the hand drops back with the device, then lobs it forward and up
+        const pr = THROW_RELEASE.lob / T;
+        const wind = p < pr ? smoothstep(0, pr, p) : 1 - smoothstep(pr, pr + 0.2, p);
+        const swing = smoothstep(pr - 0.05, pr + 0.2, p) * (1 - smoothstep(0.7, 1, p));
+        const w = Math.max(wind, swing);
+        P.shLX = mix(P.shLX, 0.85 * wind - 1.6 * swing, w);
+        P.shLZ = mix(P.shLZ, 0.3 * wind + 0.05 * swing, w);
+        P.elL = mix(P.elL, -0.7 * wind - 0.15 * swing, w);
+        P.spineRY += 0.3 * wind - 0.28 * swing;
+        P.spineRX += 0.12 * swing - 0.08 * wind;
+        P.kneeL += 0.28 * wind;
+        P.kneeR += 0.28 * wind;
+        P.legRX -= 0.3 * swing;
+        P.bodyY -= 0.05 * wind;
         break;
       }
       case 'shot': {
@@ -1444,6 +1460,18 @@ export class FighterAnimator {
             P.spineRX += 0.12 * k;
             P.bodyY -= 0.04 * k;
             break;
+          case 'parry': {
+            // Alpha 1.6.1 FRAME CATCH: the free hand snaps out, palm first, and the body sets behind it
+            const snap = p < 0.25 ? p / 0.25 : 1 - smoothstep(0.25, 1, p);
+            P.shLX = mix(P.shLX, -1.55, snap);
+            P.shLZ = mix(P.shLZ, -0.12, snap);
+            P.elL = mix(P.elL, -0.05, snap);
+            P.spineRY -= 0.22 * snap;
+            P.spineRX += 0.1 * snap;
+            P.kneeL += 0.2 * snap;
+            P.kneeR += 0.2 * snap;
+            break;
+          }
         }
       }
     }

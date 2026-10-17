@@ -1,12 +1,15 @@
 // Headless checks for Alpha 1.6 — CARD REVOLUTION (npm run cards): the fifteen new cards,
 // their mechanics, the combos and hints, safety limits (energy, control, stacking), cleanup
 // between fights, the boss rules, the card shop and the save. In-memory save, no browser.
+// Alpha 1.6.1 — CARD REFINEMENT: SECOND TAKE (replaces SIDE CAM), the FREEZE FRAME ring that
+// follows its fighter, STAGE BARRIER placement at every distance, the FRAME CATCH parry.
 import { CARD_TUNING, COMBO_TUNING, MATCH } from '../src/config/balance';
-import { CARDS, COMBOS, NEW_CARDS, UNIVERSAL_CARDS, comboFor, deckCombos } from '../src/config/cards';
+import { CARDS, COMBOS, NEW_CARDS, TAKE_CARDS, UNIVERSAL_CARDS, comboFor, deckCombos } from '../src/config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../src/config/fighters';
 import type { CardId, ComboId, FighterId, RivalId } from '../src/config/types';
 import { Match } from '../src/combat/Match';
-import type { MatchEvent, Projectile } from '../src/combat/types';
+import type { MatchEvent, Projectile, StageObject } from '../src/combat/types';
+import { pointSegDist } from '../src/core/math';
 import { CareerSystem } from '../src/meta/CareerSystem';
 import { defaultSave, sanitize, validDeck, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
 import { CARD_ICONS } from '../src/ui/icons';
@@ -98,7 +101,7 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
     frame_catch: 2,
     backtrack: 2,
     high_stakes: 1,
-    side_cam: 3,
+    second_take: 3,
     freeze_frame: 2,
   };
   check('registry: every new card has its tuned energy cost (1–4)', NEW_CARDS.every((c) => CARDS[c].cost === expected[c]));
@@ -131,6 +134,7 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
     const m = arena();
     place(m, 0, 2.5, 0, -2.5);
     if (c === 'high_stakes') m.fighters[0].hp = m.fighters[0].maxHp;
+    if (c === 'second_take') m.combat.recordTake(m.fighters[0], 'power_shot');
     const r = play(m, c);
     const e = m.drainEvents();
     if (r !== null || !e.some((x) => x.type === 'cast' && x.card === c)) played = false;
@@ -348,6 +352,82 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
   });
   check('STAGE BARRIER: DIRECTOR\'S CUT is not blocked by it (the lines still hit)', cut.some((x) => x.type === 'cutShot' && x.outcome === 'hit') && c.fighters[0].hp < hpB);
 }
+// STAGE BARRIER placement (Alpha 1.6.1): between the fighters at every distance, never behind
+// the opponent, never inside anybody, the fighters are not moved
+{
+  const ends = (b: StageObject) => [b.x - b.dirX * b.radius, b.z - b.dirZ * b.radius, b.x + b.dirX * b.radius, b.z + b.dirZ * b.radius] as const;
+  const bad: string[] = [];
+  let between = 0;
+  let farBetween = 0;
+  let farCount = 0;
+  const cases: [number, number, number, number][] = [];
+  for (const d of [0.9, 1.2, 1.6, 2.2, 3, 4, 5.5, 7.5]) cases.push([0, d / 2, 0, -d / 2]);
+  // diagonal, near a wall and in a corner
+  cases.push([2, 2, -1, -1], [4.6, 1, 4.6, -2], [-4.5, 6.4, -2.5, 4.5], [4.6, -6.4, 3.5, -5.2]);
+  for (const [px, pz, ex, ez] of cases) {
+    const m = arena('vega');
+    place(m, px, pz, ex, ez);
+    const [p, e] = m.fighters;
+    const r = play(m, 'stage_barrier');
+    const b = m.objects.list.find((o) => o.kind === 'barrier');
+    const d = Math.hypot(ex - px, ez - pz);
+    if (r !== null || !b) {
+      bad.push(`d=${d.toFixed(1)}: not placed`);
+      continue;
+    }
+    const [ax, az, bx, bz] = ends(b);
+    const cp = pointSegDist(p.x, p.z, ax, az, bx, bz);
+    const ce = pointSegDist(e.x, e.z, ax, az, bx, bz);
+    const clear = CARD_TUNING.stage_barrier.clear - 0.06;
+    // projection of the screen on the owner → opponent line (0 = owner, d = opponent)
+    const t = ((b.x - px) * (ex - px) + (b.z - pz) * (ez - pz)) / d;
+    const moved = Math.hypot(p.x - px, p.z - pz) + Math.hypot(e.x - ex, e.z - ez);
+    if (cp < clear || ce < clear) bad.push(`d=${d.toFixed(1)}: inside a fighter (${cp.toFixed(2)}/${ce.toFixed(2)})`);
+    if (t >= d - 0.05) bad.push(`d=${d.toFixed(1)}: behind the opponent`);
+    if (moved > 1e-6) bad.push(`d=${d.toFixed(1)}: fighters moved`);
+    if (t > 0 && t < d) between++;
+    if (d >= 2.2) {
+      farCount++;
+      if (t > 0 && t < d) farBetween++;
+    }
+  }
+  check(`STAGE BARRIER: placed at ${cases.length} distances / spots — never inside a fighter, never behind the opponent, nobody pushed${bad.length ? ' — ' + bad.join('; ') : ''}`, bad.length === 0);
+  check(`STAGE BARRIER: from 2.2 m up the screen stands between the fighters (${farBetween}/${farCount}; ${between}/${cases.length} overall)`, farBetween === farCount);
+  // it lasts its time
+  const m = arena('vega');
+  place(m, 0, 3, 0, -3);
+  play(m, 'stage_barrier');
+  run(m, CARD_TUNING.stage_barrier.duration + 0.2);
+  check('STAGE BARRIER: limited time — gone after its duration', !m.objects.list.some((o) => o.kind === 'barrier'));
+  // the opponent's brain walks round a screen that blocks its line of fire
+  const a = new Match({ fighter: 'vega', deck: FIGHTERS.vega.defaultDeck, rival: 'dex', difficulty: 'pro', seed: 21, fans: 0 });
+  while (a.phase !== 'fight') a.step(DT);
+  a.ais[0].update = () => {};
+  a.fighters[0].intentSpeed = 0;
+  a.fighters[0].wantFire = false;
+  place(a, 0, 3, 0, -3);
+  a.hands[1].energy = 0;
+  play(a, 'stage_barrier');
+  const scr = a.objects.list.find((o) => o.kind === 'barrier')!;
+  const [sax, saz, sbx, sbz] = ends(scr);
+  const crosses = (x1: number, z1: number, x2: number, z2: number) => {
+    const d1 = (sbx - sax) * (z1 - saz) - (sbz - saz) * (x1 - sax);
+    const d2 = (sbx - sax) * (z2 - saz) - (sbz - saz) * (x2 - sax);
+    const d3 = (x2 - x1) * (saz - z1) - (z2 - z1) * (sax - x1);
+    const d4 = (x2 - x1) * (sbz - z1) - (z2 - z1) * (sbx - x1);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+  };
+  let clearAt = -1;
+  for (let i = 0; i < 60 * 3 && clearAt < 0; i++) {
+    a.hands[1].energy = 0;
+    a.step(DT);
+    a.drainEvents();
+    const [p, e] = a.fighters;
+    p.place(0, 3, p.facing);
+    if (!crosses(e.x, e.z, p.x, p.z)) clearAt = i * DT;
+  }
+  check(`AI: the opponent walks round a screen that blocks its line of fire (clear line after ${clearAt.toFixed(2)} s)`, clearAt >= 0 && clearAt < 2.5);
+}
 // CABLE SNARE
 {
   const m = arena();
@@ -394,7 +474,20 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
     m.step(DT);
     m.drainEvents();
   }
-  check('HOLO DECOY: it soaks the volley and then glitches out (no damage to the fighter)', m.fighters[0].hp === hp0 && !m.decoys.some((x) => x.kind === 'holo' && x.alive));
+  check('HOLO DECOY: it soaks the volley and keeps standing a moment (no damage to the fighter)', m.fighters[0].hp === hp0 && m.decoys.some((x) => x.kind === 'holo' && x.alive));
+  for (let i = 0; i < 40; i++) {
+    m.step(DT);
+    m.drainEvents();
+  }
+  check(`HOLO DECOY: ~${CARD_TUNING.holo_decoy.soak} s after the first hit it glitches out`, !m.decoys.some((x) => x.kind === 'holo' && x.alive));
+  // no invulnerability: a shot at the real fighter still lands
+  const n = arena();
+  place(n, 0, 3, 0, -3);
+  play(n, 'holo_decoy');
+  const hp1 = n.fighters[0].hp;
+  n.combat.spawn(1, 'auto', 'twin_blasters', 0, -3, 0, 20, 80, 0.15, 12, {});
+  run(n, 0.5);
+  check('HOLO DECOY: no invulnerability — a shot at the real fighter lands', n.fighters[0].hp < hp1);
 }
 // FRAME CATCH
 {
@@ -403,12 +496,58 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
   play(m, 'frame_catch');
   const [p, e] = m.fighters;
   const hp0 = p.hp;
+  const e0 = m.hands[0].energy;
   m.combat.spawn(1, 'power', e.stats.attack.weapon, e.x, e.z, Math.atan2(p.x - e.x, p.z - e.z), 20, 600, 0.5, 15, { heavy: true });
   const ev = run(m, 0.5);
-  check('FRAME CATCH: the first enemy projectile (here a POWER SHOT) is destroyed', ev.some((x) => x.type === 'frameCatch') && p.hp === hp0 && p.caught > 0);
+  const fc = ev.find((x) => x.type === 'frameCatch');
+  check('FRAME CATCH: the first enemy projectile (here a POWER SHOT) is parried — «ПАРИРОВАНО!»', !!fc && fc.type === 'frameCatch' && fc.first && p.hp === hp0 && p.caught > 0);
+  check(`FRAME CATCH: parrying a heavy POWER SHOT pays +${CARD_TUNING.frame_catch.refund} energy (${(m.hands[0].energy - e0).toFixed(2)} incl. regen)`, !!fc && fc.type === 'frameCatch' && fc.refund === CARD_TUNING.frame_catch.refund && m.hands[0].energy - e0 >= 1);
   m.combat.spawn(1, 'auto', e.stats.attack.weapon, e.x, e.z, Math.atan2(p.x - e.x, p.z - e.z), 20, 60, 0.15, 15, {});
   run(m, 0.5);
-  check('FRAME CATCH: only one — the next shot lands', p.hp < hp0);
+  check(`FRAME CATCH: the frame closes ${CARD_TUNING.frame_catch.window} s after the parry — a later shot lands`, p.hp < hp0 && p.frame === 0);
+  // a small volley in the parry window is caught whole; the energy comes once; MOMENTUM fires once
+  const v = arena('ray');
+  place(v, 0, 3, 0, -3);
+  play(v, 'frame_catch');
+  const [vp, ve] = v.fighters;
+  const vhp = vp.hp;
+  let parries = 0;
+  let refunds = 0;
+  let catches = 0;
+  let passives = 0;
+  const vev: MatchEvent[] = [];
+  for (let i = 0; i < 4; i++) {
+    v.combat.spawn(1, i < 2 ? 'power' : 'auto', ve.stats.attack.weapon, ve.x, ve.z, Math.atan2(vp.x - ve.x, vp.z - ve.z), 20, i < 2 ? 600 : 60, 0.3, 15, { heavy: i < 2 });
+    vev.push(...run(v, 0.06));
+  }
+  vev.push(...run(v, 0.5));
+  for (const x of vev) {
+    if (x.type === 'frameCatch') {
+      catches++;
+      if (x.first) parries++;
+      refunds += x.refund;
+    }
+    if (x.type === 'passive' && x.side === 0) passives++;
+  }
+  check(`FRAME CATCH: a tight volley is caught whole (${catches}/4), one parry callout, +1 energy only once (${refunds}), MOMENTUM once (${passives})`, catches === 4 && parries === 1 && refunds === 1 && passives === 1 && vp.hp === vhp);
+  // RIPOSTE (Rina) loads once from a parry
+  const r = arena('rina');
+  place(r, 0, 3, 0, -3);
+  play(r, 'frame_catch');
+  const rev: MatchEvent[] = [];
+  for (let i = 0; i < 3; i++) {
+    r.combat.spawn(1, 'auto', 'twin_blasters', 0, -3, 0, 20, 60, 0.2, 15, {});
+    rev.push(...run(r, 0.05));
+  }
+  rev.push(...run(r, 0.4));
+  check('FRAME CATCH: RIPOSTE (Rina) loads once from a parry, no energy for light shots', rev.filter((x) => x.type === 'passive' && x.side === 0).length === 1 && r.fighters[0].riposte && !rev.some((x) => x.type === 'frameCatch' && x.refund > 0));
+  // limits: at most maxCatch shots per card
+  const lim = arena();
+  place(lim, 0, 3, 0, -3);
+  play(lim, 'frame_catch');
+  for (let i = 0; i < 10; i++) lim.combat.spawn(1, 'auto', 'twin_blasters', -0.3 + i * 0.06, -3, 0, 20, 60, 0.2, 15, {});
+  const lev = run(lim, 0.5);
+  check(`FRAME CATCH: at most ${CARD_TUNING.frame_catch.maxCatch} shots per card — the rest lands`, lev.filter((x) => x.type === 'frameCatch').length === CARD_TUNING.frame_catch.maxCatch && lim.fighters[0].hp < lim.fighters[0].maxHp);
   const c = arena();
   place(c, 0, 3, 0, -3);
   play(c, 'frame_catch');
@@ -464,18 +603,114 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
   play(cap, 'high_stakes', 0, 9.5);
   check('HIGH STAKES: energy never above the 10 cap', cap.hands[0].energy <= MATCH.maxEnergy + 1e-9);
 }
-// SIDE CAM
+// SECOND TAKE (Alpha 1.6.1, replaces SIDE CAM)
+/** Play (`first` →) `card`, let it resolve, (play `then`,) then SECOND TAKE; returns what the echo did. */
+function secondTake(card: CardId, fighter: FighterId, first?: CardId, then?: CardId) {
+  const m = arena(fighter);
+  place(m, 0, 3, 0, -3);
+  const [p, e] = m.fighters;
+  if (first) {
+    play(m, first);
+    run(m, 0.3);
+  }
+  play(m, card);
+  run(m, 2.6, () => p.place(0, 3, p.facing));
+  const took = p.take?.card === card;
+  const spot = p.take ? { x: p.take.x, z: p.take.z } : null;
+  if (then) {
+    play(m, then);
+    run(m, 0.3, () => p.place(0, 3, p.facing));
+  }
+  e.hp = e.maxHp;
+  e.place(0, -3, 0);
+  p.place(1.5, 3.5, p.facing); // the fighter moved on: the echo still plays from the first take's spot
+  aimAt(m);
+  const hpE = e.hp;
+  const res = play(m, 'second_take');
+  const obj = m.objects.list.find((o) => o.kind === 'echo');
+  const energy: number[] = [];
+  let echoes = 0;
+  let maxBolts = 0;
+  let from: { x: number; z: number } | null = null;
+  let blind = false;
+  const ev = run(m, 2.4, () => {
+    p.place(1.5, 3.5, p.facing);
+    e.place(0, -3, 0);
+    energy.push(m.hands[0].energy);
+    const mine = m.projectiles.filter((x) => x.owner === 0 && x.echo);
+    maxBolts = Math.max(maxBolts, mine.length);
+    if (mine.length && !from) from = { x: mine[0].x, z: mine[0].z };
+    if (mine.some((x) => x.blind)) blind = true;
+  });
+  for (const x of ev) if (x.type === 'hit' && x.echo) echoes++;
+  let jump = 0;
+  for (let i = 1; i < energy.length; i++) jump = Math.max(jump, energy[i] - energy[i - 1]);
+  const dmg = ev.reduce((a, x) => a + (x.type === 'hit' && x.echo && x.source === 0 ? x.damage : 0), 0);
+  return { m, res, took, spot, obj, dmg, hpLost: hpE - e.hp, echoes, maxBolts, from, jump, blind, combo: ev.find((x) => x.type === 'combo') };
+}
 {
+  const base: Record<string, number> = {
+    power_shot: CARD_TUNING.power_shot.damage,
+    bank_shot: CARD_TUNING.bank_shot.damage,
+    rebound_disc: CARD_TUNING.rebound_disc.damage,
+    split_shot: CARD_TUNING.split_shot.damage * CARD_TUNING.split_shot.bolts,
+  };
+  const t = CARD_TUNING.second_take;
+  const bad: string[] = [];
+  const info: string[] = [];
+  for (const c of TAKE_CARDS) {
+    const r = secondTake(c, c === 'bank_shot' ? 'kai' : 'ray');
+    const near = r.spot && r.obj ? Math.hypot(r.obj.x - r.spot.x, r.obj.z - r.spot.z) : 99;
+    const cap = c === 'rebound_disc' ? t.cap / 2 : t.cap;
+    const limit = Math.min(cap, base[c] * t.mult);
+    info.push(`${c} ${Math.round(r.dmg)}/${Math.round(base[c])}`);
+    if (!r.took) bad.push(`${c}: not recorded`);
+    else if (r.res !== null) bad.push(`${c}: refused ${r.res}`);
+    else if (near > 0.01) bad.push(`${c}: echo not at the first take's spot`);
+    else if (r.dmg <= 0) bad.push(`${c}: the echo did not land`);
+    else if (r.dmg > limit + 1) bad.push(`${c}: ${r.dmg.toFixed(0)} > ${limit.toFixed(0)}`);
+    if (r.jump > 0.05) bad.push(`${c}: energy jumped +${r.jump.toFixed(2)}`);
+    if (r.blind) bad.push(`${c}: blind without BLINDSIDE`);
+    if (r.m.fighters[0].take !== null) bad.push(`${c}: the echo became a new take`);
+  }
+  check(`SECOND TAKE: replays all four attack cards from the first take's spot at ≤${t.mult * 100}% damage (cap ${t.cap}), no energy, dodgeable${bad.length ? ' — ' + bad.join('; ') : ''} [${info.join(', ')}]`, bad.length === 0);
+  // nothing to replay
   const m = arena();
   place(m, 0, 3, 0, -3);
-  play(m, 'side_cam');
-  const cam = m.objects.list.find((o) => o.kind === 'cam')!;
-  check('SIDE CAM: the camera rises on the barrier at the opponent\'s flank', Math.abs(Math.abs(cam.x) - 5.3) < 0.01 || Math.abs(Math.abs(cam.z) - 7.3) < 0.01);
-  let shots = 0;
-  run(m, 2, () => {
-    shots = Math.max(shots, m.projectiles.filter((x) => x.kind === 'cam').length);
-  });
-  check('SIDE CAM: one shot only, then the camera is gone (no turret)', shots === 1 && !m.objects.list.some((o) => o.kind === 'cam'));
+  check('SECOND TAKE: refused with no attack card to replay (stays in hand) — «Нечего повторять»', play(m, 'second_take') === 'notake' && m.hands[0].hand[0] === 'second_take');
+  play(m, 'shock');
+  run(m, 0.5);
+  check('SECOND TAKE: basic cards other than POWER SHOT are not replayable (SHOCK)', play(m, 'second_take') === 'notake');
+  m.combat.recordTake(m.fighters[0], 'directors_cut');
+  check('SECOND TAKE: boss specials are never recorded', m.fighters[0].take === null);
+  // replay of a replay
+  const rr = secondTake('power_shot', 'ray');
+  check('SECOND TAKE: no replay of a replay (the take is used up)', play(rr.m, 'second_take') === 'notake');
+  // the take goes stale
+  const old = arena();
+  place(old, 0, 3, 0, -3);
+  old.combat.recordTake(old.fighters[0], 'power_shot');
+  old.fighters[0].take!.time -= t.window + 0.1;
+  check(`SECOND TAKE: a take older than ${t.window} s is gone`, play(old, 'second_take') === 'notake');
+  // one echo at a time, it ends after firing
+  check('SECOND TAKE: the echo object is gone after its replay', !rr.m.objects.list.some((o) => o.kind === 'echo'));
+  check('SECOND TAKE: one projectile per replay (SPLIT SHOT: its three bolts)', rr.maxBolts === 1 && secondTake('split_shot', 'ray').maxBolts === CARD_TUNING.split_shot.bolts);
+  // COUNTER STRIKE is not multiplied again
+  const cs = secondTake('power_shot', 'ray', 'dash');
+  check(`SECOND TAKE: an echo of a COUNTER STRIKE power shot is a plain ${t.mult * 100}% replay (${Math.round(cs.dmg)} ≤ ${Math.min(t.cap, CARD_TUNING.power_shot.damage * t.mult)})`, cs.dmg > 0 && cs.dmg <= Math.min(t.cap, CARD_TUNING.power_shot.damage * t.mult) + 1);
+  check('SECOND TAKE: never opens a combo chain (no combo starts with it)', !COMBOS.some((x) => x.first.includes('second_take')));
+  // the show: an echo's damage counts for the rating, the heavy-hit bonus is not paid a second time
+  {
+    const b = arena();
+    const hit = (echo: boolean): number => {
+      b.broadcast.rating = 50;
+      b.broadcast.onEvent({ type: 'hit', side: 1, source: 0, damage: 300, x: 0, z: 0, dx: 0, dz: 1, kind: 'power', heavy: true, crit: false, combo: null, electric: false, echo });
+      return b.broadcast.rating - 50;
+    };
+    const plain = hit(false);
+    const echoed = hit(true);
+    check(`SECOND TAKE: the echo earns rating only for its damage, no repeated heavy-hit bonus (${echoed.toFixed(1)} < ${plain.toFixed(1)})`, echoed > 0 && echoed < plain);
+  }
 }
 // FREEZE FRAME
 {
@@ -503,6 +738,32 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
   const sx = s.x;
   run(b, 0.1);
   check('FREEZE FRAME: the champion\'s shots are not slowed', Math.abs((s.x - sx) / 1.9 - 1) < 0.05);
+  // Alpha 1.6.1: the ring moves with its fighter, slows only the opponent's shots, lasts its time
+  const f = arena();
+  place(f, 0, 3, 0, -3);
+  play(f, 'freeze_frame');
+  const fp = f.fighters[0];
+  run(f, 1, () => fp.place(fp.x + 0.03, 3, fp.facing));
+  const ring = f.objects.list.find((o) => o.kind === 'freeze')!;
+  check(`FREEZE FRAME: the ring follows its fighter (${Math.hypot(ring.x - fp.x, ring.z - fp.z).toFixed(3)} m off)`, Math.hypot(ring.x - fp.x, ring.z - fp.z) < 0.05);
+  const own = f.combat.spawn(0, 'auto', 'twin_blasters', fp.x - 3.5, 1.4, Math.PI / 2, 20, 50, 0.15, 12, {});
+  run(f, 0.12);
+  const ox = own.x;
+  run(f, 0.05);
+  check('FREEZE FRAME: the owner\'s own shots are never slowed', Math.abs((own.x - ox) / (20 * 0.05) - 1) < 0.05);
+  const hpF = fp.hp;
+  f.combat.spawn(1, 'auto', 'twin_blasters', fp.x, -3, 0, 20, 50, 0.15, 12, {});
+  run(f, 1.5, () => fp.place(fp.x, 3, fp.facing));
+  check('FREEZE FRAME: a slowed shot still hurts if it is not dodged', fp.hp < hpF);
+  run(f, CARD_TUNING.freeze_frame.duration);
+  check(`FREEZE FRAME: ends after ${CARD_TUNING.freeze_frame.duration} s`, !f.objects.list.some((o) => o.kind === 'freeze'));
+  const k = arena();
+  place(k, 0, 3, 0, -3);
+  play(k, 'freeze_frame');
+  run(k, 0.5);
+  k.knockOut(k.fighters[0], true);
+  run(k, 0.05);
+  check('FREEZE FRAME: the ring ends with its fighter\'s knockout', !k.objects.list.some((o) => o.kind === 'freeze'));
 }
 
 // --------------------------------------------------------------- combos
@@ -538,10 +799,11 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
     ['pressure_mine', 'pulse_push', 'mine_drive'],
     ['stage_barrier', 'pulse_push', 'wall_push'],
     ['stage_barrier', 'dash', 'backstage'],
-    ['stage_barrier', 'side_cam', 'cross_angle'],
-    ['holo_decoy', 'side_cam', 'blindside'],
+    ['stage_barrier', 'second_take', 'cross_angle', (m) => m.combat.recordTake(m.fighters[0], 'power_shot')],
+    ['holo_decoy', 'second_take', 'blindside', (m) => m.combat.recordTake(m.fighters[0], 'power_shot')],
     ['holo_decoy', 'power_shot', 'blindside'],
-    ['side_cam', 'gravity_net', 'camera_lock'],
+    ['gravity_net', 'second_take', 'camera_lock', (m) => m.combat.recordTake(m.fighters[0], 'power_shot')],
+    ['cable_snare', 'second_take', 'camera_lock', (m) => m.combat.recordTake(m.fighters[0], 'power_shot')],
     ['frame_catch', 'dash', 'catch_release', (m) => (m.fighters[0].caught = 2) && (m.fighters[0].caughtDmg = 300)],
     ['frame_catch', 'high_stakes', 'safe_bet', (m) => (m.fighters[0].caught = 2)],
     ['high_stakes', 'overdrive', 'all_in'],
@@ -566,6 +828,25 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
   // a combo whose setup is gone does not trigger and is not hinted
   const gone = combo('gravity_net', 'pressure_mine', (m) => run(m, CARD_TUNING.gravity_net.duration + 1));
   check('combos: GRAVITY NET → MINE after the net expired: no combo, no hint', gone.got === null && !gone.hinted);
+  const noTake = combo('stage_barrier', 'second_take');
+  check('combos: STAGE BARRIER → SECOND TAKE with nothing to replay: no combo, no hint', noTake.got === null && !noTake.hinted);
+  // TIME SLIP keeps the ring 1.5 s longer
+  {
+    const m = arena();
+    place(m, 0, 2.2, 0, -2.2);
+    play(m, 'freeze_frame');
+    run(m, 0.3);
+    const ring = m.objects.list.find((o) => o.kind === 'freeze')!;
+    const left0 = ring.total - ring.t;
+    play(m, 'dash');
+    const got = m.drainEvents().some((x) => x.type === 'combo' && x.combo === 'time_slip');
+    check(`combos: TIME SLIP keeps the FREEZE ring ${COMBO_TUNING.timeSlipExtend} s longer`, got && Math.abs(ring.total - ring.t - left0 - COMBO_TUNING.timeSlipExtend) < 0.05);
+  }
+  // CROSS ANGLE: the echo goes through its own screen, still capped
+  {
+    const r = secondTake('power_shot', 'vega', undefined, 'stage_barrier');
+    check(`combos: CROSS ANGLE — the echo passes the owner's own screen, still capped (${Math.round(r.dmg)})`, !!r.combo && r.combo.type === 'combo' && r.combo.combo === 'cross_angle' && r.dmg > 0 && r.dmg <= CARD_TUNING.second_take.cap + 1);
+  }
   const nothing = combo('frame_catch', 'dash');
   check('combos: FRAME CATCH → DASH with nothing caught: no combo, no hint (no false promise)', nothing.got === null && !nothing.hinted);
   // JACKPOT is a chain: HIGH STAKES → SHIELD → POWER SHOT
@@ -662,11 +943,13 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
   place(k, 0, 3, 0, -3);
   play(k, 'gravity_net');
   play(k, 'pressure_mine');
-  play(k, 'side_cam');
+  k.combat.recordTake(k.fighters[0], 'power_shot');
+  play(k, 'second_take');
   play(k, 'stage_barrier');
-  run(k, 0.4);
+  play(k, 'freeze_frame');
+  run(k, 0.2);
   k.knockOut(k.fighters[1], true);
-  check('safety: a knockout mid-effect clears nets, mines, cameras and barriers', k.objects.list.length === 0);
+  check('safety: a knockout mid-effect clears nets, mines, echoes, rings and barriers', k.objects.list.length === 0 && k.fighters[0].take === null);
   // energy: HIGH STAKES in ENERGY RUSH cannot loop
   const rush = new Match({ fighter: 'ray', deck: ['high_stakes', 'shield', 'power_shot', 'overdrive'], rival: 'zoe', difficulty: 'pro', seed: 3, fans: 0, mods: { energyMult: 1.5, rivalEnergyMult: 1.25 }, autoPlayer: { behavior: 'tactical', smarts: 1, dodge: 0.6, reaction: 0.35, eagerness: 2 } });
   let maxE = 0;
@@ -709,7 +992,24 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
   check('save: only shop cards can be owned (no signatures, no junk)', hacked.cards.owned.join() === 'spotlight_tag');
   check('save: a deck with a card that was never bought resets to the default', hacked.fighters.ray.deck.join() === FIGHTERS.ray.defaultDeck.join());
   const v9 = sanitize({ version: 9, money: 777, fighters: { ray: { unlocked: true, deck: ['dash', 'shield', 'smoke', 'adrenaline'] } } });
-  check('save: a 1.5.6 (v9) save loads as v10 with its deck and money, owning no new card', v9.version === 10 && v9.money === 777 && v9.fighters.ray.deck.join() === 'dash,shield,smoke,adrenaline' && v9.cards.owned.length === 0);
+  check('save: a 1.5.6 (v9) save loads as v11 with its deck and money, owning no new card', v9.version === 11 && v9.money === 777 && v9.fighters.ray.deck.join() === 'dash,shield,smoke,adrenaline' && v9.cards.owned.length === 0);
+  // Alpha 1.6.1: SIDE CAM becomes SECOND TAKE — owned and in decks, nothing lost, nothing bought twice
+  const v10 = sanitize({
+    version: 10,
+    money: 1234,
+    reputation: 480,
+    cards: { owned: ['spotlight_tag', 'side_cam', 'high_stakes'] },
+    fighters: { ray: { unlocked: true, deck: ['side_cam', 'dash', 'spotlight_tag', 'adrenaline'] }, kai: { unlocked: true, deck: ['dash', 'side_cam', 'shield', 'bank_shot'] } },
+  });
+  check('save: a 1.6 (v10) save — SIDE CAM owned → SECOND TAKE owned, the other cards and money kept', v10.version === 11 && v10.money === 1234 && v10.cards.owned.includes('second_take') && !v10.cards.owned.includes('side_cam' as CardId) && v10.cards.owned.includes('spotlight_tag') && v10.cards.owned.includes('high_stakes') && v10.cards.owned.length === 3);
+  check('save: SIDE CAM in saved decks is swapped for SECOND TAKE in the same slot', v10.fighters.ray.deck.join() === 'second_take,dash,spotlight_tag,adrenaline' && v10.fighters.kai.deck.join() === 'dash,second_take,shield,bank_shot');
+  const both = sanitize({ version: 10, cards: { owned: ['side_cam', 'second_take'] } });
+  check('save: owning both ids keeps one SECOND TAKE', both.cards.owned.filter((c) => c === 'second_take').length === 1 && both.cards.owned.length === 1);
+  const store2 = new MemSave();
+  store2.data = v10;
+  const career2 = new CareerSystem(store2 as unknown as SaveSystem);
+  const money2 = store2.data.money;
+  check('shop: a migrated SECOND TAKE is not sold again', !career2.buyCard('second_take') && store2.data.money === money2);
   check('save: validDeck keeps exclusives exclusive', validDeck('ray', ['dash', 'shield', 'smoke', 'bank_shot']).join() === FIGHTERS.ray.defaultDeck.join());
 }
 

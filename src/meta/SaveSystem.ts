@@ -220,7 +220,12 @@ const KEY = 'primetime-showdown-save-v1';
 // v8 (1.5): new fighters (filled from defaults), MY COLLECTION "seen" marks, claimed career stages.
 // v9 (1.5.5): personal rewards per fighter (cosmetics.personal / personalEquipped / unassigned).
 // v10 (1.6): bought cards (cards.owned); decks may hold them. Older saves own none.
-const VERSION = 10;
+// v11 (1.6.1): SIDE CAM was replaced by SECOND TAKE — a bought SIDE CAM becomes SECOND TAKE and decks swap it in place.
+const VERSION = 11;
+
+/** Cards renamed or replaced between versions (old id → new id). */
+const RENAMED: Record<string, CardId> = { side_cam: 'second_take' };
+const renamed = (c: unknown): unknown => (typeof c === 'string' && RENAMED[c] ? RENAMED[c] : c);
 
 export function defaultSave(): SaveData {
   const fighters = {} as Record<FighterId, FighterProgress>;
@@ -541,7 +546,11 @@ export function validDeck(id: FighterId, deck: unknown, owned: readonly CardId[]
   const allowed = new Set<CardId>([...UNIVERSAL_CARDS, FIGHTERS[id].signature, ...owned]);
   if (!Array.isArray(deck)) return FIGHTERS[id].defaultDeck.slice();
   const out: CardId[] = [];
-  for (const c of deck) if (allowed.has(c as CardId) && !out.includes(c as CardId)) out.push(c as CardId);
+  // v11: a replaced card keeps its slot under its new id
+  for (const raw of deck) {
+    const c = renamed(raw) as CardId;
+    if (allowed.has(c) && !out.includes(c)) out.push(c);
+  }
   if (out.length !== 4) return FIGHTERS[id].defaultDeck.slice();
   return out;
 }
@@ -552,7 +561,8 @@ function sanitizeCards(raw: unknown): CardsState {
   if (!raw || typeof raw !== 'object') return out;
   const owned = (raw as Partial<CardsState>).owned;
   if (!Array.isArray(owned)) return out;
-  const set = new Set(owned.filter((c): c is CardId => typeof c === 'string'));
+  // v11: SIDE CAM bought in 1.6 counts as SECOND TAKE (no second purchase, no money lost)
+  const set = new Set(owned.map(renamed).filter((c): c is CardId => typeof c === 'string'));
   out.owned = NEW_CARDS.filter((c) => set.has(c));
   return out;
 }

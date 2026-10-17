@@ -185,14 +185,14 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M21 41 C14 36 11 32 11 28 C11 24 14 22 17 22 C19 22 20.5 23 21 25 C21.5 23 23 22 25 22 C28 22 31 24 31 28 C31 32 28 36 21 41 Z" fill="#ff3a5c"/>
      <path d="M45 18 L35 33 H42 L39 46 L51 30 H44 L48 18 Z" fill="#ffd23a" stroke="#9c1030" stroke-width="1.5" stroke-linejoin="round"/>`,
   ),
-  // a studio camera on the barrier taking one shot
-  side_cam: S(
-    `<rect x="3" y="5" width="6" height="54" rx="2" fill="#fff" opacity=".85"/>
-     <path d="M9 27 H15" stroke="#fff" stroke-width="4"/>
-     <rect x="14" y="17" width="25" height="17" rx="3" fill="#fff" ${STROKE}/>
-     <path d="M39 20 L50 14 V37 L39 31 Z" fill="#fff" ${STROKE}/>
-     <circle cx="20" cy="23" r="3" fill="#ff3a3a"/>
-     <path d="M48 30 L61 56" stroke="#ff4f6d" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4"/>`,
+  // Alpha 1.6.1: a clapperboard with a replay arrow — take two
+  second_take: S(
+    `<rect x="7" y="27" width="44" height="29" rx="3" fill="#fff" ${STROKE}/>
+     <path d="M6 18 L49 9 L51 18 L8 27 Z" fill="#fff" ${STROKE}/>
+     <path d="M15 16 L20 24 M26 14 L31 22 M37 11 L42 20" stroke="#2a1f6b" stroke-width="3"/>
+     <text x="29" y="50" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="17" fill="#2a1f6b">2</text>
+     <path d="M47 37 A11 11 0 1 1 46 52" fill="none" stroke="#c08cff" stroke-width="4.5" stroke-linecap="round"/>
+     <path d="M52 30 L48 38 L56 40 Z" fill="#c08cff"/>`,
   ),
   // a stopwatch frozen on pause
   freeze_frame: S(

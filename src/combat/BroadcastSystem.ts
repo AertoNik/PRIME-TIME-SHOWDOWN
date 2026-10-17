@@ -114,7 +114,8 @@ export class BroadcastSystem {
       case 'hit':
         if (e.source === 0) {
           this.add(e.damage * BROADCAST.dmgToRating, '');
-          if (e.heavy) {
+          // Alpha 1.6.1: a SECOND TAKE echo is a replay — its damage counts, the heavy-hit bonus was already paid
+          if (e.heavy && !e.echo) {
             // Combo payoffs are already rewarded by the combo itself; repeated
             // plain heavies in quick succession bore the audience.
             if (!e.combo) {
@@ -132,7 +133,7 @@ export class BroadcastSystem {
           // Alpha 1.6: the new set pieces landing are show moments
           if (e.kind === 'mine') this.callout('TRAP SPRUNG!', 2);
           else if (e.kind === 'prop') this.callout('PROP DROP!', 2);
-          else if (e.kind === 'cam') this.callout('SIDE CAM!', 2);
+          if (e.echo) this.callout('SECOND TAKE!', 2);
         } else if (e.heavy) {
           this.add(BROADCAST.takenHeavy, '');
         }

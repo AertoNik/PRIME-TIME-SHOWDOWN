@@ -1027,8 +1027,8 @@ export class Game {
         else if (e.kind === 'barrier' && e.what === 'hit') a.cardFx('barrierHit');
         else if (e.kind === 'barrier' && e.what === 'break') a.cardFx('barrierBreak');
         else if (e.kind === 'prop' && e.what === 'land') a.cardFx('propLand');
-        else if (e.kind === 'cam' && e.what === 'lock') a.cardFx('camLock');
-        else if (e.kind === 'cam' && e.what === 'fire') a.cardFx('camFire');
+        else if (e.kind === 'echo' && e.what === 'lock') a.cardFx('echoLock');
+        else if (e.kind === 'echo' && e.what === 'fire') a.cardFx('echoFire');
         break;
       case 'tether':
         a.cardFx('tether');
@@ -1037,7 +1037,7 @@ export class Game {
         if (e.broke) a.cardFx('snap');
         break;
       case 'frameCatch':
-        a.cardFx('frameCatch');
+        a.cardFx(e.first ? 'parry' : 'frameCatch');
         break;
       case 'disc':
         if (e.what === 'catch') a.cardFx('discCatch');

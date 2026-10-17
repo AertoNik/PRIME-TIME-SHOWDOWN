@@ -15,16 +15,17 @@ import {
   Shape,
   Sprite,
   SpriteMaterial,
-  TorusGeometry,
   Vector3,
   type Texture,
 } from 'three';
 import { CARD_TUNING } from '../config/balance';
+import { TAKE_CARDS } from '../config/cards';
 import { lineReach } from '../combat/CombatSystem';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
 import type { StageKind, StageObject } from '../combat/types';
 import { clamp01, lerp } from '../core/math';
+import { THROW_RELEASE } from './FighterAnimator';
 import { toonRamp } from './materials';
 import { canvasTexture, glowTexture, makeCanvas, ringTexture } from './textures';
 
@@ -34,6 +35,8 @@ import { canvasTexture, glowTexture, makeCanvas, ringTexture } from './textures'
 // fight (an object that leaves the simulation fades out in ~0.3 s, `reset()` hides the rest).
 
 const COL = {
+  echo: 0xc08cff,
+  rewind: 0xff7ad9,
   net: 0x4dffd2,
   mine: 0xff4a6e,
   mineArm: 0xffb02a,
@@ -165,28 +168,67 @@ const barrierTexture = () =>
     96,
   );
 
-/** FREEZE FRAME floor dial: tick marks and viewfinder corners. */
-const freezeTexture = () =>
-  tex('card-freeze', 256, (g, s) => {
+/**
+ * Alpha 1.6.1 FREEZE FRAME — the outer time-distortion ring: twelve clock segments in PRIME TIME
+ * teal and violet, minute ticks and a ring of timecode digits. Coloured in the texture itself
+ * (drawn on the floor only — never a dome).
+ */
+const timecodeTexture = () =>
+  tex('card-timecode', 512, (g, s) => {
     const c = s / 2;
     g.translate(c, c);
-    g.strokeStyle = 'rgba(255,255,255,1)';
-    g.lineWidth = 5;
-    g.beginPath();
-    g.arc(0, 0, c - 6, 0, Math.PI * 2);
-    g.stroke();
-    for (let i = 0; i < 24; i++) {
-      const a = (Math.PI / 12) * i;
-      const r0 = i % 2 ? c - 22 : c - 32;
-      g.lineWidth = i % 2 ? 2 : 4;
+    const R = c - 6;
+    for (let i = 0; i < 12; i++) {
+      const a0 = (Math.PI / 6) * i + 0.05;
+      const a1 = (Math.PI / 6) * (i + 1) - 0.05;
+      g.strokeStyle = i % 2 ? 'rgba(186,120,255,0.95)' : 'rgba(60,240,230,0.95)';
+      g.lineWidth = 14;
       g.beginPath();
-      g.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
-      g.lineTo(Math.cos(a) * (c - 8), Math.sin(a) * (c - 8));
+      g.arc(0, 0, R - 8, a0, a1);
       g.stroke();
     }
-    const q = c * 0.42;
-    const l = c * 0.16;
+    g.strokeStyle = 'rgba(200,250,255,0.7)';
+    for (let i = 0; i < 60; i++) {
+      const a = (Math.PI / 30) * i;
+      const r0 = i % 5 === 0 ? R - 46 : R - 34;
+      g.lineWidth = i % 5 === 0 ? 4 : 2;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      g.lineTo(Math.cos(a) * (R - 22), Math.sin(a) * (R - 22));
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(230,220,255,0.95)';
+    g.font = 'bold 22px monospace';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI / 4) * i + Math.PI / 8;
+      g.save();
+      g.rotate(a + Math.PI / 2);
+      g.fillText(`00:0${i}:${String((i * 7) % 60).padStart(2, '0')}`, 0, -(R - 70));
+      g.restore();
+    }
+    // faint broadcast scanlines across the field
+    g.fillStyle = 'rgba(120,200,255,0.06)';
+    for (let y = -c; y < c; y += 6) g.fillRect(-c, y, s, 2);
+  });
+
+/** FREEZE FRAME — the inner counter-rotating ring: timecode dashes and frame brackets. */
+const timecodeInnerTexture = () =>
+  tex('card-timecode-in', 256, (g, s) => {
+    const c = s / 2;
+    g.translate(c, c);
+    g.strokeStyle = 'rgba(186,120,255,0.9)';
+    g.lineWidth = 6;
+    g.setLineDash([18, 12]);
+    g.beginPath();
+    g.arc(0, 0, c - 10, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+    g.strokeStyle = 'rgba(60,240,230,0.85)';
     g.lineWidth = 5;
+    const q = c * 0.55;
+    const l = c * 0.18;
     for (const [sx, sy] of [
       [-1, -1],
       [1, -1],
@@ -199,10 +241,67 @@ const freezeTexture = () =>
       g.lineTo(sx * (q - l), sy * q);
       g.stroke();
     }
-    g.fillStyle = 'rgba(255,255,255,0.18)';
+  });
+
+/** SECOND TAKE — the replay frame on the floor under the echo: REC brackets and a rewind glyph. */
+const replayTexture = () =>
+  tex('card-replay', 256, (g, s) => {
+    const c = s / 2;
+    g.strokeStyle = 'rgba(255,255,255,1)';
+    g.lineWidth = 10;
+    const a = 14;
+    const b = s - 14;
+    const l = 52;
     g.beginPath();
-    g.arc(0, 0, c - 8, 0, Math.PI * 2);
+    g.moveTo(a, a + l);
+    g.lineTo(a, a);
+    g.lineTo(a + l, a);
+    g.moveTo(b - l, a);
+    g.lineTo(b, a);
+    g.lineTo(b, a + l);
+    g.moveTo(b, b - l);
+    g.lineTo(b, b);
+    g.lineTo(b - l, b);
+    g.moveTo(a + l, b);
+    g.lineTo(a, b);
+    g.lineTo(a, b - l);
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.95)';
+    for (const ox of [-26, 14]) {
+      g.beginPath();
+      g.moveTo(c + ox + 22, c - 26);
+      g.lineTo(c + ox - 14, c);
+      g.lineTo(c + ox + 22, c + 26);
+      g.closePath();
+      g.fill();
+    }
+    g.fillStyle = 'rgba(255,80,110,1)';
+    g.beginPath();
+    g.arc(a + 40, a + 40, 10, 0, Math.PI * 2);
     g.fill();
+  });
+
+/** BACKTRACK — where the fighter would rewind to: a dashed ring with a rewind glyph. */
+const rewindMarkTexture = () =>
+  tex('card-rewind-mark', 128, (g, s) => {
+    const c = s / 2;
+    g.translate(c, c);
+    g.strokeStyle = 'rgba(255,255,255,0.95)';
+    g.lineWidth = 5;
+    g.setLineDash([10, 7]);
+    g.beginPath();
+    g.arc(0, 0, c - 6, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    for (const ox of [-14, 6]) {
+      g.beginPath();
+      g.moveTo(ox + 12, -14);
+      g.lineTo(ox - 8, 0);
+      g.lineTo(ox + 12, 14);
+      g.closePath();
+      g.fill();
+    }
   });
 
 /** FRAME CATCH: camera viewfinder corners around a faint field. */
@@ -288,6 +387,8 @@ interface ObjVis {
   d: Mesh | null;
   light: Sprite | null;
   props: Mesh[];
+  /** PRESSURE MINE: the three fins that open after landing. */
+  fins: Mesh[];
   age: number;
   flash: number;
   /** Fade-out after the simulation removed the object (-1 = live). */
@@ -295,6 +396,10 @@ interface ObjVis {
   last: StageObject | null;
   seen: boolean;
   active: boolean;
+  /** Thrown pieces (mine, net): where the hand let go, and how long ago it landed (-1 = in the air). */
+  rel: Vector3;
+  released: boolean;
+  landed: number;
 }
 
 interface FighterVis {
@@ -302,17 +407,25 @@ interface FighterVis {
   tagCone: Mesh;
   tagPool: Mesh;
   tagGem: Mesh;
+  tagRing: Mesh;
   tether: Group;
   tetherRing: Mesh;
   tetherPost: Mesh;
   cable: Mesh;
   frame: Mesh;
   frameT: number;
+  frameFlash: number;
+  /** HOLO DECOY projector ring under the hologram. */
+  holoRing: Mesh;
+  /** BACKTRACK: where the fighter would rewind to (player side, while the card is in hand). */
+  rewindMark: Mesh;
 }
 
 const _v = new Vector3();
 const _v2 = new Vector3();
+const _hand = new Vector3();
 const _up = new Vector3(0, 1, 0);
+const _pt = { x: 0, z: 0 };
 
 /** Renders the Alpha 1.6 set pieces and per-fighter card states. */
 export class CardVisuals {
@@ -323,14 +436,10 @@ export class CardVisuals {
   // shared geometry (built once)
   private floorGeo: PlaneGeometry;
   private puckGeo: CylinderGeometry;
+  private finGeo: BoxGeometry;
   private panelGeo: PlaneGeometry;
   private baseGeo: BoxGeometry;
   private lineGeo: PlaneGeometry;
-  private wallGeo: CylinderGeometry;
-  private torusGeo: TorusGeometry;
-  private camBodyGeo: BoxGeometry;
-  private camLensGeo: CylinderGeometry;
-  private mastGeo: BoxGeometry;
   private coneGeo: ConeGeometry;
   private cableGeo: CylinderGeometry;
   private frameGeo: PlaneGeometry;
@@ -342,6 +451,8 @@ export class CardVisuals {
     this.floorGeo = new PlaneGeometry(1, 1);
     this.floorGeo.rotateX(-Math.PI / 2);
     this.puckGeo = new CylinderGeometry(0.2, 0.25, 0.1, 18);
+    this.finGeo = new BoxGeometry(0.07, 0.025, 0.2);
+    this.finGeo.translate(0, 0, 0.1);
     this.panelGeo = new PlaneGeometry(1, 1);
     this.panelGeo.translate(0, 0.5, 0);
     this.baseGeo = new BoxGeometry(1, 0.09, 0.24);
@@ -349,20 +460,10 @@ export class CardVisuals {
     this.lineGeo = new PlaneGeometry(1, 1);
     this.lineGeo.rotateX(-Math.PI / 2);
     this.lineGeo.translate(0, 0, 0.5);
-    this.wallGeo = new CylinderGeometry(1, 1, 1, 36, 1, true);
-    this.wallGeo.translate(0, 0.5, 0);
-    this.torusGeo = new TorusGeometry(1, 0.025, 6, 48);
-    this.torusGeo.rotateX(Math.PI / 2);
-    this.camBodyGeo = new BoxGeometry(0.44, 0.34, 0.62);
-    this.camLensGeo = new CylinderGeometry(0.13, 0.17, 0.24, 14);
-    this.camLensGeo.rotateX(Math.PI / 2);
-    this.camLensGeo.translate(0, 0, 0.42);
-    this.mastGeo = new BoxGeometry(0.1, 1, 0.1);
-    this.mastGeo.translate(0, 0.5, 0);
-    this.coneGeo = new ConeGeometry(0.62, 1.5, 22, 1, true);
+    this.coneGeo = new ConeGeometry(0.75, 1.5, 22, 1, true);
     this.cableGeo = new CylinderGeometry(0.035, 0.035, 1, 6, 1, true);
     this.cableGeo.translate(0, 0.5, 0);
-    this.frameGeo = new PlaneGeometry(1.75, 1.75);
+    this.frameGeo = new PlaneGeometry(2, 2);
     // PROP DROP set pieces: a foam star, a show crate, a stage lamp
     const star = new Shape();
     for (let i = 0; i < 10; i++) {
@@ -385,21 +486,24 @@ export class CardVisuals {
   // ---------------------------------------------------------------- build
   private buildFighterVis(): FighterVis {
     const tag = new Group();
-    const tagCone = new Mesh(this.coneGeo, addMat(COL.tag, 0.22, glowTexture()));
-    tagCone.position.y = 3.05;
+    const tagCone = new Mesh(this.coneGeo, addMat(COL.tag, 0.24, glowTexture()));
+    tagCone.position.y = 3.15;
     tagCone.renderOrder = 7;
     const lamp = new Mesh(this.puckGeo, toon(0x2a2d40));
-    lamp.position.y = 3.85;
-    lamp.scale.set(0.9, 2.2, 0.9);
+    lamp.position.y = 3.95;
+    lamp.scale.set(1, 2.2, 1);
     const tagPool = new Mesh(this.floorGeo, addMat(COL.tag, 0.5, glowTexture()));
     tagPool.position.y = 0.05;
-    tagPool.scale.setScalar(1.6);
+    tagPool.scale.setScalar(1.8);
     tagPool.renderOrder = 2;
-    // a small gold marker spinning over the head: readable even when the fighters overlap
-    const tagGem = new Mesh(new OctahedronGeometry(0.17), addMat(0xffd23a, 1));
-    tagGem.position.y = 2.75;
+    // Alpha 1.6.1: a bigger gold marker over the head and a gold ring at the feet — readable even when the fighters overlap
+    const tagGem = new Mesh(new OctahedronGeometry(0.3), addMat(0xffd23a, 1));
+    tagGem.position.y = 2.95;
     tagGem.renderOrder = 8;
-    tag.add(tagCone, lamp, tagPool, tagGem);
+    const tagRing = new Mesh(this.floorGeo, addMat(0xffd23a, 0.75, ringTexture()));
+    tagRing.position.y = 0.07;
+    tagRing.renderOrder = 3;
+    tag.add(tagCone, lamp, tagPool, tagGem, tagRing);
     tag.visible = false;
     const tether = new Group();
     const tetherRing = new Mesh(this.floorGeo, addMat(COL.cable, 0.55, ringTexture()));
@@ -415,8 +519,14 @@ export class CardVisuals {
     const frame = new Mesh(this.frameGeo, addMat(COL.frame, 0.9, frameTexture()));
     frame.visible = false;
     frame.renderOrder = 7;
-    this.root.add(tag, tether, frame);
-    return { tag, tagCone, tagPool, tagGem, tether, tetherRing, tetherPost, cable, frame, frameT: 0 };
+    const holoRing = new Mesh(this.floorGeo, addMat(0xff7ad9, 0.6, ringTexture()));
+    holoRing.visible = false;
+    holoRing.renderOrder = 2;
+    const rewindMark = new Mesh(this.floorGeo, addMat(COL.rewind, 0.45, rewindMarkTexture()));
+    rewindMark.visible = false;
+    rewindMark.renderOrder = 2;
+    this.root.add(tag, tether, frame, holoRing, rewindMark);
+    return { tag, tagCone, tagPool, tagGem, tagRing, tether, tetherRing, tetherPost, cable, frame, frameT: 0, frameFlash: 0, holoRing, rewindMark };
   }
 
   private build(kind: StageKind): ObjVis {
@@ -427,6 +537,7 @@ export class CardVisuals {
     let d: Mesh | null = null;
     let light: Sprite | null = null;
     const props: Mesh[] = [];
+    const fins: Mesh[] = [];
     switch (kind) {
       case 'net': {
         a = new Mesh(this.floorGeo, addMat(COL.net, 0.8, netTexture()));
@@ -447,6 +558,16 @@ export class CardVisuals {
         c.scale.set(0.55, 0.6, 0.55);
         c.position.y = 0.07;
         b.add(c);
+        // three fins fold out once it lands
+        for (let i = 0; i < 3; i++) {
+          const pivot = new Group();
+          pivot.rotation.y = (Math.PI * 2 * i) / 3;
+          const fin = new Mesh(this.finGeo, toon(0xff4a6e));
+          fin.position.set(0, 0, 0.17);
+          pivot.add(fin);
+          b.add(pivot);
+          fins.push(fin);
+        }
         light = new Sprite(new SpriteMaterial({ map: glowTexture(), color: COL.mine, blending: AdditiveBlending, depthWrite: false, transparent: true }));
         light.position.y = 0.16;
         b.add(light);
@@ -482,34 +603,33 @@ export class CardVisuals {
         group.add(a, b);
         break;
       }
-      case 'cam': {
-        a = new Mesh(this.lineGeo, addMat(COL.cam, 0.3));
+      case 'echo': {
+        // SECOND TAKE: the aim line, the replay frame on the floor, a soft glow (the ghost itself is drawn by BattleView)
+        a = new Mesh(this.lineGeo, addMat(COL.echo, 0.3));
         a.renderOrder = 6;
-        const rig = new Group();
-        b = new Mesh(this.camBodyGeo, toon(0x24263a));
-        c = new Mesh(this.camLensGeo, toon(0x111220));
-        d = new Mesh(this.mastGeo, toon(0x3a3d55));
-        light = new Sprite(new SpriteMaterial({ map: glowTexture(), color: COL.cam, blending: AdditiveBlending, depthWrite: false, transparent: true }));
-        light.scale.setScalar(0.5);
-        light.position.set(0, 0.26, -0.1);
-        b.add(c, light);
-        rig.add(b);
-        group.add(a, d, rig);
+        b = new Mesh(this.floorGeo, addMat(COL.echo, 0.8, replayTexture()));
+        b.renderOrder = 3;
+        c = new Mesh(this.floorGeo, addMat(COL.echo, 0.45, glowTexture()));
+        c.renderOrder = 2;
+        group.add(a, b, c);
         break;
       }
       case 'freeze': {
-        a = new Mesh(this.floorGeo, addMat(COL.freeze, 0.7, freezeTexture()));
+        // FREEZE FRAME: floor only — an outer timecode ring, an inner counter-rotating ring and a
+        // sweeping second hand (no dome, no wall, nothing that reads as SHIELD)
+        a = new Mesh(this.floorGeo, addMat(0xffffff, 0.8, timecodeTexture()));
         a.renderOrder = 2;
-        b = new Mesh(this.wallGeo, addMat(COL.freeze, 0.1));
-        b.renderOrder = 5;
-        c = new Mesh(this.torusGeo, addMat(COL.freeze, 0.6));
+        b = new Mesh(this.floorGeo, addMat(0xffffff, 0.75, timecodeInnerTexture()));
+        b.renderOrder = 2;
+        c = new Mesh(this.lineGeo, addMat(0x7ff6ff, 0.55, glowTexture()));
+        c.renderOrder = 3;
         group.add(a, b, c);
         break;
       }
     }
     group.visible = false;
     this.root.add(group);
-    return { kind, id: -1, group, a, b, c, d, light, props, age: 0, flash: 0, fade: -1, last: null, seen: false, active: false };
+    return { kind, id: -1, group, a, b, c, d, light, props, fins, age: 0, flash: 0, fade: -1, last: null, seen: false, active: false, rel: new Vector3(), released: false, landed: -1 };
   }
 
   private acquire(kind: StageKind, id: number): ObjVis {
@@ -523,6 +643,8 @@ export class CardVisuals {
     v.age = 0;
     v.flash = 0;
     v.fade = -1;
+    v.released = false;
+    v.landed = -1;
     v.group.visible = true;
     for (const p of v.props) p.visible = false;
     this.byId.set(id, v);
@@ -544,6 +666,9 @@ export class CardVisuals {
       f.tag.visible = false;
       f.tether.visible = false;
       f.frame.visible = false;
+      f.holoRing.visible = false;
+      f.rewindMark.visible = false;
+      f.frameFlash = 0;
     }
   }
 
@@ -553,8 +678,18 @@ export class CardVisuals {
     if (v) v.flash = 1;
   }
 
+  /** FRAME CATCH parried a shot: the frame flares. */
+  parry(side: number): void {
+    const fv = this.fighters[side];
+    if (fv) fv.frameFlash = 1;
+  }
+
   // --------------------------------------------------------------- update
-  update(dt: number, t: number, m: Match, pos: (side: number) => Vector3): void {
+  /**
+   * `pos`: where each fighter is drawn; `hand`: the world position of a fighter's free (left)
+   * hand — thrown pieces wait there until the throw lets go of them.
+   */
+  update(dt: number, t: number, m: Match, pos: (side: number) => Vector3, hand: (side: number, out: Vector3) => Vector3): void {
     for (const v of this.pool) v.seen = false;
     for (const o of m.objects.list) {
       const v = this.byId.get(o.id) ?? this.acquire(o.kind, o.id);
@@ -562,7 +697,8 @@ export class CardVisuals {
       v.seen = true;
       v.age += dt;
       v.flash = Math.max(0, v.flash - dt * 5);
-      this.sync(v, o, t, 1);
+      if (v.landed >= 0) v.landed += dt;
+      this.sync(v, o, t, 1, hand);
     }
     // removed by the simulation: fade out from the last state
     for (const v of this.pool) {
@@ -574,24 +710,42 @@ export class CardVisuals {
         this.release(v);
         continue;
       }
-      this.sync(v, v.last, t, k);
+      this.sync(v, v.last, t, k, hand);
     }
     for (const f of m.fighters) this.syncFighter(this.fighters[f.side], f, m, t, dt, pos(f.side));
   }
 
-  private sync(v: ObjVis, o: StageObject, t: number, k: number): void {
+  /**
+   * A thrown piece in the air (Alpha 1.6.1): in the free hand until the throw lets go
+   * (`release` s after the card), then an arc from the hand to the landing point that ends
+   * exactly when the simulation lands it. Visual only — the card's timing is untouched.
+   */
+  private thrown(v: ObjVis, o: StageObject, side: number, release: number, arc: number, hand: (side: number, out: Vector3) => Vector3, out: Vector3): void {
+    if (o.t < release && !v.released) {
+      hand(side, out);
+      v.rel.copy(out);
+      return;
+    }
+    v.released = true;
+    const p = clamp01((o.t - release) / Math.max(0.05, o.total - release));
+    out.set(lerp(v.rel.x, o.x, p), lerp(v.rel.y, 0.06, p) + arc * p * (1 - p), lerp(v.rel.z, o.z, p));
+  }
+
+  private sync(v: ObjVis, o: StageObject, t: number, k: number, hand: (side: number, out: Vector3) => Vector3): void {
     const g = v.group;
     switch (o.kind) {
       case 'net': {
         const disc = v.a;
         const puck = v.b!;
         if (o.stage === 'fly') {
-          const p = clamp01(o.t / o.total);
           g.position.set(0, 0, 0);
-          puck.position.set(lerp(o.fromX, o.x, p), lerp(1.2, 0.06, p) + 1.7 * p * (1 - p), lerp(o.fromZ, o.z, p));
-          puck.rotation.y = t * 14;
+          this.thrown(v, o, o.owner, THROW_RELEASE.lob, 1.4, hand, _v);
+          puck.position.copy(_v);
+          puck.rotation.y = v.released ? t * 14 : 0;
+          puck.scale.setScalar(v.released ? 1 : 0.8);
           disc.visible = false;
         } else {
+          puck.scale.setScalar(1);
           puck.position.set(o.x, 0.06, o.z);
           puck.rotation.y = t * 2;
           const open = clamp01(o.t / 0.22);
@@ -608,17 +762,28 @@ export class CardVisuals {
       case 'mine': {
         const ring = v.a;
         const puck = v.b!;
+        let fold = 1;
         if (o.stage === 'fly') {
-          const p = clamp01(o.t / o.total);
-          puck.position.set(lerp(o.fromX, o.x, p), lerp(1.2, 0.06, p) + 2.2 * p * (1 - p), lerp(o.fromZ, o.z, p));
-          puck.rotation.set(t * 9, t * 6, 0);
+          this.thrown(v, o, o.owner, THROW_RELEASE.lob, 1.8, hand, _v);
+          puck.position.copy(_v);
+          puck.rotation.set(v.released ? t * 9 : 0, v.released ? t * 6 : 0, 0);
+          puck.scale.setScalar(v.released ? 1 : 0.8);
           ring.visible = false;
         } else {
-          puck.position.set(o.x, 0.06, o.z);
+          if (v.landed < 0) v.landed = 0;
+          // lands, hops once, then the fins fold out
+          const hop = v.landed < 0.24 ? Math.abs(Math.sin((v.landed / 0.24) * Math.PI)) * 0.16 * (1 - v.landed / 0.24) : 0;
+          puck.position.set(o.x, 0.06 + hop, o.z);
           puck.rotation.set(0, 0, 0);
+          puck.scale.setScalar(1);
+          fold = 1 - clamp01((v.landed - 0.18) / 0.25);
           ring.visible = true;
           ring.position.set(o.x, 0.055, o.z);
-          ring.scale.setScalar(o.radius * 2.4);
+          ring.scale.setScalar(o.radius * 2.4 * (1 - fold * 0.6));
+        }
+        for (const fin of v.fins) {
+          const pivot = fin.parent!;
+          pivot.rotation.x = -1.25 * fold;
         }
         const armed = o.stage === 'armed';
         const rate = armed ? 7 : 3;
@@ -684,30 +849,29 @@ export class CardVisuals {
         }
         break;
       }
-      case 'cam': {
+      case 'echo': {
         g.position.set(o.x, 0, o.z);
-        const rig = v.group.children[2] as Group;
-        const mast = v.d!;
         const line = v.a;
-        let h = 1.35;
-        if (o.stage === 'retract') h = 1.35 * (1 - clamp01((o.t - 0.15) / Math.max(0.1, o.total - 0.15)));
-        else h = 1.35 * Math.min(1, v.age / 0.25);
-        rig.position.set(0, h, 0);
-        rig.rotation.y = Math.atan2(o.dirX, o.dirZ);
-        mast.scale.set(1, Math.max(0.01, h), 1);
-        const lm = v.light!.material as SpriteMaterial;
-        if (o.stage === 'retract') {
-          line.visible = false;
-          lm.opacity = 0.2 * k;
-        } else {
+        const frame = v.b!;
+        const glow = v.c!;
+        const open = clamp01(v.age / 0.15);
+        const noise = 0.85 + 0.15 * Math.sin(t * 61 + o.id);
+        frame.position.y = 0.07;
+        frame.scale.setScalar(1.9 * (0.6 + 0.4 * open));
+        frame.rotation.y = Math.atan2(o.dirX, o.dirZ);
+        (frame.material as MeshBasicMaterial).opacity = (o.stage === 'retract' ? 0.4 : 0.85) * noise * k;
+        glow.position.y = 0.05;
+        glow.scale.setScalar(2.4);
+        (glow.material as MeshBasicMaterial).opacity = 0.35 * noise * k;
+        if (o.stage === 'retract') line.visible = false;
+        else {
           const lock = o.stage === 'lock';
-          const len = lineReach(o.x + o.dirX * 0.4, o.z + o.dirZ * 0.4, o.dirX, o.dirZ, 15) + 0.4;
+          const len = TAKE_CARDS[o.variant] === 'rebound_disc' ? CARD_TUNING.rebound_disc.reach : lineReach(o.x + o.dirX * 0.4, o.z + o.dirZ * 0.4, o.dirX, o.dirZ, 15) + 0.4;
           line.visible = true;
-          line.position.set(0, 1.1, 0);
+          line.position.set(0, 1.05, 0);
           line.rotation.y = Math.atan2(o.dirX, o.dirZ);
-          line.scale.set(lock ? 0.5 : 0.18, 1, len);
-          (line.material as MeshBasicMaterial).opacity = (lock ? 0.45 + 0.35 * Math.abs(Math.sin(t * 18)) : 0.12) * k;
-          lm.opacity = (lock ? 1 : Math.sin(t * 16) > 0 ? 0.9 : 0.2) * k;
+          line.scale.set(lock ? 0.42 : 0.16, 1, len);
+          (line.material as MeshBasicMaterial).opacity = (lock ? 0.45 + 0.35 * Math.abs(Math.sin(t * 18)) : 0.14) * k;
         }
         break;
       }
@@ -716,32 +880,42 @@ export class CardVisuals {
         const open = clamp01(v.age / 0.25);
         const end = clamp01((o.total - o.t) / 0.45);
         const r = o.radius * (0.4 + 0.6 * open);
+        // light TV interference: a jittery shimmer and an occasional dropout
+        const noise = 0.82 + 0.18 * Math.sin(t * 47) * Math.sin(t * 13 + 1.7);
+        const drop = Math.sin(t * 7.3) > 0.97 ? 0.45 : 1;
         v.a.position.y = 0.05;
         v.a.scale.setScalar(r * 2);
-        v.a.rotation.y = -t * 0.35;
-        (v.a.material as MeshBasicMaterial).opacity = 0.6 * end * k;
-        v.b!.scale.set(r, 2.1, r);
-        (v.b!.material as MeshBasicMaterial).opacity = (0.08 + 0.03 * Math.sin(t * 5)) * end * k;
-        v.c!.scale.setScalar(r);
-        v.c!.position.y = 0.9 + Math.sin(t * 1.3) * 0.5;
-        (v.c!.material as MeshBasicMaterial).opacity = 0.5 * end * k;
+        v.a.rotation.y = -t * 0.45;
+        (v.a.material as MeshBasicMaterial).opacity = 0.75 * end * k * noise * drop;
+        v.b!.position.y = 0.055;
+        v.b!.scale.setScalar(r * 1.25);
+        v.b!.rotation.y = t * 0.9;
+        (v.b!.material as MeshBasicMaterial).opacity = 0.7 * end * k * noise;
+        // the sweeping second hand
+        v.c!.position.y = 0.06;
+        v.c!.rotation.y = -t * 2.6;
+        v.c!.scale.set(0.22, 1, r * 0.95);
+        (v.c!.material as MeshBasicMaterial).opacity = 0.55 * end * k;
         break;
       }
     }
   }
 
   private syncFighter(fv: FighterVis, f: FighterSim, m: Match, t: number, dt: number, p: Vector3): void {
-    // SPOTLIGHT TAG: a small studio lamp over the head and a pool of light at the feet
+    // SPOTLIGHT TAG: a studio lamp over the head, a gold marker and a gold ring at the feet
     const tagged = f.tag > 0 && !f.ko && m.phase === 'fight';
     fv.tag.visible = tagged;
     if (tagged) {
       fv.tag.position.set(p.x, 0, p.z);
       const blink = f.tag < 1.2 ? (Math.sin(t * 24) > 0 ? 1 : 0.35) : 1;
-      (fv.tagCone.material as MeshBasicMaterial).opacity = (0.18 + 0.06 * Math.sin(t * 6)) * blink;
-      (fv.tagPool.material as MeshBasicMaterial).opacity = 0.42 * blink;
+      (fv.tagCone.material as MeshBasicMaterial).opacity = (0.2 + 0.07 * Math.sin(t * 6)) * blink;
+      (fv.tagPool.material as MeshBasicMaterial).opacity = 0.45 * blink;
       fv.tagGem.rotation.y = t * 4;
-      fv.tagGem.position.y = 2.75 + Math.sin(t * 5) * 0.06;
+      fv.tagGem.position.y = 2.95 + Math.sin(t * 5) * 0.08;
       (fv.tagGem.material as MeshBasicMaterial).opacity = blink;
+      fv.tagRing.scale.setScalar(1.9 + Math.sin(t * 6) * 0.12);
+      fv.tagRing.rotation.y = -t;
+      (fv.tagRing.material as MeshBasicMaterial).opacity = 0.75 * blink;
     }
     // CABLE SNARE: the cable from its floor anchor to the waist, the reach ring on the floor
     const held = f.tether > 0 && !f.ko;
@@ -761,8 +935,9 @@ export class CardVisuals {
       const taut = Math.hypot(p.x - f.tetherX, p.z - f.tetherZ) / Math.max(0.1, f.tetherR);
       (fv.cable.material as MeshBasicMaterial).opacity = 0.6 + 0.4 * clamp01(taut);
     }
-    // FRAME CATCH: the viewfinder frame in front of the fighter
-    const framed = f.frame > 0 && !f.ko;
+    // FRAME CATCH: the viewfinder frame in front of the fighter; it flares on a parry
+    fv.frameFlash = Math.max(0, fv.frameFlash - dt * 4);
+    const framed = (f.frame > 0 || fv.frameFlash > 0.05) && !f.ko;
     fv.frame.visible = framed;
     if (framed) {
       fv.frameT += dt;
@@ -772,10 +947,33 @@ export class CardVisuals {
       fv.frame.position.set(p.x + fx * tt.ahead, 1.15, p.z + fz * tt.ahead);
       fv.frame.rotation.set(0, f.facing, 0);
       const open = clamp01(fv.frameT / 0.12);
-      fv.frame.scale.setScalar(0.6 + 0.4 * open);
-      const end = f.frame < 0.3 ? (Math.sin(t * 40) > 0 ? 1 : 0.3) : 1;
-      (fv.frame.material as MeshBasicMaterial).opacity = 0.9 * end;
+      fv.frame.scale.setScalar((0.6 + 0.4 * open) * (1 + fv.frameFlash * 0.25));
+      const end = f.frame > 0 && f.frame < 0.3 ? (Math.sin(t * 40) > 0 ? 1 : 0.4) : 1;
+      const mat = fv.frame.material as MeshBasicMaterial;
+      mat.opacity = Math.min(1, 0.9 * end + fv.frameFlash);
+      mat.color.setHex(fv.frameFlash > 0.1 ? 0xffffff : COL.frame);
     } else fv.frameT = 0;
+    // HOLO DECOY: a projector ring under this fighter's hologram
+    const holo = m.decoys.find((d) => d.alive && d.owner === f.side && d.kind === 'holo');
+    fv.holoRing.visible = !!holo;
+    if (holo) {
+      const glitch = holo.soak >= 0 ? (Math.sin(t * 53) > 0.2 ? 0.25 : 1) : 1;
+      fv.holoRing.position.set(holo.x, 0.06, holo.z);
+      fv.holoRing.scale.setScalar(1.6 + Math.sin(t * 9) * 0.1);
+      (fv.holoRing.material as MeshBasicMaterial).opacity = 0.6 * glitch;
+    }
+    // BACKTRACK: where the player's fighter would rewind to, while the card is in hand
+    const showRewind = f.side === 0 && !f.ko && m.phase === 'fight' && m.hands[0].hand.includes('backtrack') && f.action.kind !== 'rewind';
+    fv.rewindMark.visible = showRewind;
+    if (showRewind) {
+      m.abilities.backtrackPoint(f, _pt);
+      const far = Math.hypot(_pt.x - p.x, _pt.z - p.z);
+      fv.rewindMark.position.set(_pt.x, 0.065, _pt.z);
+      fv.rewindMark.scale.setScalar(1.15);
+      fv.rewindMark.rotation.y = t * 0.6;
+      // fades away when the point is right under the fighter (nothing to show)
+      (fv.rewindMark.material as MeshBasicMaterial).opacity = (0.3 + 0.12 * Math.sin(t * 4)) * clamp01((far - 0.4) / 0.8);
+    }
+    void _hand;
   }
-
 }

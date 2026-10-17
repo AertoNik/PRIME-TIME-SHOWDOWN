@@ -24,7 +24,7 @@ const CAST_CARDS = new Set<CardId>([
   'frame_catch',
   'backtrack',
   'high_stakes',
-  'side_cam',
+  'second_take',
   'freeze_frame',
 ]);
 
@@ -81,7 +81,8 @@ export class Abilities {
           m.projectiles.some((p) => p.owner !== f.side && p.heavy && p.alive);
         f.stun = 0;
         clampRoundedRect(fromX + dir.x * dist, fromZ + dir.z * dist, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
-        if (comboId === 'time_slip') m.objects.moveFreeze(f.side, tmp.x, tmp.z);
+        // (the slow-motion ring travels with the fighter on its own; TIME SLIP stretches it)
+        if (comboId === 'time_slip') m.objects.extendFreeze(f.side, COMBO_TUNING.timeSlipExtend);
         m.emit({ type: 'dash', side: f.side, fromX, fromZ, toX: tmp.x, toZ: tmp.z, style: f.def.dashStyle });
         break;
       }
@@ -339,6 +340,9 @@ export class Abilities {
       case 'frame_catch': {
         const t = CARD_TUNING.frame_catch;
         f.frame = t.duration;
+        f.parryHits = 0;
+        f.parryRefunded = false;
+        f.parryEvaded = false;
         m.emit({ type: 'frame', side: f.side, duration: t.duration });
         break;
       }
@@ -348,8 +352,8 @@ export class Abilities {
       case 'high_stakes':
         this.highStakes(f, comboId);
         break;
-      case 'side_cam':
-        m.objects.spawnCam(f, comboId);
+      case 'second_take':
+        m.objects.spawnEcho(f, comboId);
         break;
       case 'freeze_frame':
         m.objects.spawnFreeze(f);
@@ -363,8 +367,8 @@ export class Abilities {
    * a phantom where the DASH ended; REWIND TRAP arms the fighter's mines; REPLAY erases the
    * opponent's projectiles stuck in the fighter's freeze zone.
    */
-  private backtrack(f: FighterSim, combo: string | null): void {
-    const m = this.m;
+  /** Where BACKTRACK would take the fighter right now (also drawn on the floor while the card is in hand). */
+  backtrackPoint(f: FighterSim, out: { x: number; z: number }): { x: number; z: number } {
     const t = CARD_TUNING.backtrack;
     const n = f.hist.length / 2;
     let tx = f.x;
@@ -375,8 +379,17 @@ export class Abilities {
       tz = f.hist[i * 2 + 1];
     }
     clampRoundedRect(tx, tz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
-    tx = tmp.x;
-    tz = tmp.z;
+    out.x = tmp.x;
+    out.z = tmp.z;
+    return out;
+  }
+
+  private backtrack(f: FighterSim, combo: string | null): void {
+    const m = this.m;
+    const t = CARD_TUNING.backtrack;
+    this.backtrackPoint(f, aim);
+    const tx = aim.x;
+    const tz = aim.z;
     if (combo === 'double_take') m.spawnDecoy(f, COMBO_TUNING.doubleTakeTime);
     if (combo === 'rewind_trap') m.objects.armMines(f.side);
     if (combo === 'replay') m.objects.erase(f.side);
@@ -431,6 +444,7 @@ export class Abilities {
         dirX = a.dirX;
         dirZ = a.dirZ;
       }
+      m.combat.recordTake(f, 'bank_shot');
       m.combat.fireBank(f, dirX, dirZ, CARD_TUNING.bank_shot.damage * mult * f.outgoingDamageMult(), {
         crit: a.combo !== null,
         electric: a.combo === 'electro_blast',
@@ -441,6 +455,7 @@ export class Abilities {
       f.fireTimer = Math.max(f.fireTimer, 0.35);
     } else if (a.card === 'power_shot' || a.card === 'charged_shot') {
       const charged = a.card === 'charged_shot';
+      m.combat.recordTake(f, a.card);
       const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
       m.combat.firePower(
         f,

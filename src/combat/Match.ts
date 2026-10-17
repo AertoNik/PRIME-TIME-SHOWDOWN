@@ -382,6 +382,8 @@ export class Match implements BroadcastHost {
       const cost = f.maxHp * t.hpCost * (combo?.id === 'safe_bet' ? COMBO_TUNING.safeBetCost : 1);
       if (f.hp - cost < f.maxHp * t.minHp) return no('risk');
     }
+    // Alpha 1.6.1 SECOND TAKE: only with a recent card attack to replay
+    if (card === 'second_take' && !this.takeReady(f)) return no('notake');
     const a = f.action.kind;
     let defer = false;
     if (NEEDS_BODY.has(card)) {
@@ -411,6 +413,7 @@ export class Match implements BroadcastHost {
       case 'boomerang':
       case 'set_piece':
       case 'gravity_trap':
+      case 'camera_lock':
         if (prev === 'gravity_net') return !!this.objects.own(side, 'net');
         if (prev === 'cable_snare') return foe.tether > 0;
         return true;
@@ -432,6 +435,11 @@ export class Match implements BroadcastHost {
       default:
         return true;
     }
+  }
+
+  /** Alpha 1.6.1 SECOND TAKE: there is a card attack of the last few seconds to replay. */
+  takeReady(f: FighterSim): boolean {
+    return !!f.take && this.time - f.take.time <= CARD_TUNING.second_take.window;
   }
 
   /**

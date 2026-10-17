@@ -33,7 +33,8 @@ export type CardId =
   | 'frame_catch'
   | 'backtrack'
   | 'high_stakes'
-  | 'side_cam'
+  /** Alpha 1.6.1: replaced SIDE CAM (saves convert it). */
+  | 'second_take'
   | 'freeze_frame';
 export type ComboId =
   | 'counter_strike'

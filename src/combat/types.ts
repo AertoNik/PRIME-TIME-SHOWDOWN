@@ -22,7 +22,6 @@ export type HitKind =
   | 'prop'
   | 'mine'
   | 'cable'
-  | 'cam'
   | 'release';
 
 export type ProjectileKind =
@@ -36,11 +35,10 @@ export type ProjectileKind =
   | 'bank'
   | 'counter'
   | 'zap'
-  // Alpha 1.6: SPLIT SHOT bolts, REBOUND DISC, CABLE SNARE, SIDE CAM bolt, CATCH & RELEASE shot
+  // Alpha 1.6: SPLIT SHOT bolts, REBOUND DISC, CABLE SNARE, CATCH & RELEASE shot
   | 'split'
   | 'disc'
   | 'cable'
-  | 'cam'
   | 'release';
 
 export interface Projectile {
@@ -90,6 +88,8 @@ export interface Projectile {
   blind: boolean;
   /** Alpha 1.6 (CROSS ANGLE): flies through its owner's own STAGE BARRIER. */
   ownPass: boolean;
+  /** Alpha 1.6.1 SECOND TAKE: an echo of an earlier card attack (no tag, no refunds, never recorded again). */
+  echo: boolean;
   /** Alpha 1.6 — REBOUND DISC: on its way back; hits landed (bit 0 out, bit 1 back); seconds in flight. */
   ret: boolean;
   mask: number;
@@ -126,7 +126,7 @@ export interface Decoy {
 }
 
 /** Alpha 1.6: temporary set pieces the new cards put on the stage (all removed by the end of the fight). */
-export type StageKind = 'net' | 'mine' | 'barrier' | 'prop' | 'cam' | 'freeze';
+export type StageKind = 'net' | 'mine' | 'barrier' | 'prop' | 'echo' | 'freeze';
 
 export interface StageObject {
   id: number;
@@ -148,15 +148,15 @@ export interface StageObject {
   total: number;
   /**
    * Per kind: net 'fly' → 'on'; mine 'fly' → 'arming' → 'armed'; barrier 'on';
-   * prop 'warn' → 'landed'; cam 'aim' → 'lock' → 'retract'; freeze 'on'. 'gone' = being removed.
+   * prop 'warn' → 'landed'; echo (SECOND TAKE) 'aim' → 'lock' → 'retract'; freeze 'on'. 'gone' = being removed.
    */
   stage: 'fly' | 'on' | 'arming' | 'armed' | 'warn' | 'landed' | 'aim' | 'lock' | 'retract' | 'gone';
   /** Barrier hit points (others: unused). */
   hp: number;
   maxHp: number;
-  /** Combo flags (cam: CROSS ANGLE / BLINDSIDE; barrier: -). */
+  /** Combo flags (echo: CROSS ANGLE / BLINDSIDE / CAMERA LOCK). */
   combo: ComboId | null;
-  /** Visual variant (prop drop: which set piece). */
+  /** Visual variant (prop drop: which set piece; echo: which attack it replays, see TAKE_CARDS). */
   variant: number;
 }
 
@@ -209,6 +209,8 @@ export type MatchEvent =
       crit: boolean;
       combo: ComboId | null;
       electric: boolean;
+      /** Alpha 1.6.1: the hit came from a SECOND TAKE echo. */
+      echo?: boolean;
     }
   | { type: 'impact'; side: Side; x: number; z: number; kind: 'wall' | 'expire' | 'shield' | 'decoy'; heavy: boolean; weapon: WeaponType }
   | { type: 'card'; side: Side; card: CardId; combo: ComboId | null }
@@ -300,9 +302,9 @@ export type MatchEvent =
   /** CABLE SNARE holds `side` near (ax, az); tetherEnd: released (broke = snapped by a move). */
   | { type: 'tether'; side: Side; ax: number; az: number; radius: number; duration: number }
   | { type: 'tetherEnd'; side: Side; broke: boolean }
-  /** FRAME CATCH raised by `side`; frameCatch: it destroyed a projectile at (x, z). */
+  /** FRAME CATCH raised by `side`; frameCatch: it destroyed a projectile at (x, z) (first = the parry itself, then the rest of the volley). */
   | { type: 'frame'; side: Side; duration: number }
-  | { type: 'frameCatch'; side: Side; x: number; z: number }
+  | { type: 'frameCatch'; side: Side; x: number; z: number; first: boolean; heavy: boolean; refund: number }
   /** BACKTRACK: `side` rewinds from → to in `duration` s. */
   | { type: 'rewind'; side: Side; fromX: number; fromZ: number; toX: number; toZ: number; duration: number }
   /** HIGH STAKES: `side` paid `hp` health for `energy` energy. */
@@ -314,7 +316,7 @@ export type MatchEvent =
   /** `side` was held by nets / cables too long and broke free (short immunity). */
   | { type: 'breakFree'; side: Side; x: number; z: number };
 
-export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase' | 'risk' | 'recharge';
+export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase' | 'risk' | 'recharge' | 'notake';
 
 export interface HitInfo {
   damage: number;

@@ -1,5 +1,6 @@
 import { ARENA, BROADCAST, CARD_TUNING, COMBO_TUNING, MATCH, PASSIVE_TUNING } from '../config/balance';
-import type { ComboId, Side, WeaponType } from '../config/types';
+import { TAKE_CARDS } from '../config/cards';
+import type { CardId, ComboId, Side, WeaponType } from '../config/types';
 import { clamp, clampRoundedRect, dampAngle, segSegDist, segmentCircleHit, wrapAngle, type ClampResult } from '../core/math';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
@@ -29,19 +30,21 @@ export interface SpawnOpts {
   blind?: boolean;
   /** Alpha 1.6 CROSS ANGLE: passes the owner's own STAGE BARRIER. */
   ownPass?: boolean;
+  /** Alpha 1.6.1 SECOND TAKE echo. */
+  echo?: boolean;
 }
 
 /**
  * Alpha 1.5 — attacks a FALSE START can read (instant SHOCK / OVERLOAD, poison ticks, slams and shockwaves cannot).
  * Alpha 1.6: the new card shots are shots too; PROP DROP and PRESSURE MINE are areas, not attacks to read.
  */
-const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter', 'split', 'disc', 'cable', 'cam', 'release']);
+const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter', 'split', 'disc', 'cable', 'release']);
 /** Alpha 1.6 — card hits a SPOTLIGHT TAG boosts. */
-const TAG_KINDS = new Set<HitKind>(['power', 'bank', 'knockout', 'disc', 'prop', 'cam']);
+const TAG_KINDS = new Set<HitKind>(['power', 'bank', 'knockout', 'disc', 'prop']);
 /** Alpha 1.6 — regular fire a HOLO DECOY soaks (card shots and charged attacks go through the hologram). */
 const HOLO_SOAK = new Set<ProjectileKind>(['auto', 'pellet', 'bolt', 'rail', 'slug', 'adrenaline', 'counter', 'split', 'release']);
 /** Alpha 1.6 — what a FRAME CATCH can stop (not CHARGED SHOT, not Zoe's SHOCK bolt). */
-const CATCHABLE = new Set<ProjectileKind>(['auto', 'pellet', 'bolt', 'rail', 'slug', 'power', 'adrenaline', 'bank', 'counter', 'split', 'disc', 'cable', 'cam', 'release']);
+const CATCHABLE = new Set<ProjectileKind>(['auto', 'pellet', 'bolt', 'rail', 'slug', 'power', 'adrenaline', 'bank', 'counter', 'split', 'disc', 'cable', 'release']);
 const HIT_KIND: Record<ProjectileKind, HitKind> = {
   auto: 'auto',
   pellet: 'auto',
@@ -56,7 +59,6 @@ const HIT_KIND: Record<ProjectileKind, HitKind> = {
   split: 'split',
   disc: 'disc',
   cable: 'cable',
-  cam: 'cam',
   release: 'release',
 };
 
@@ -796,6 +798,7 @@ export class CombatSystem {
     p.boost = o.boost ?? 1;
     p.blind = o.blind ?? false;
     p.ownPass = o.ownPass ?? false;
+    p.echo = o.echo ?? false;
     p.ret = false;
     p.mask = 0;
     p.life = 0;
@@ -842,7 +845,14 @@ export class CombatSystem {
     f.burstLeft = 0;
     f.fireTimer = Math.max(f.fireTimer, f.stats.attack.interval / f.fireRateMult());
     f.m.shots++;
+    this.recordTake(f, 'split_shot');
     this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'split' });
+  }
+
+  /** Alpha 1.6.1 — a card attack SECOND TAKE can replay: remember what and where (echoes never call this). */
+  recordTake(f: FighterSim, card: CardId): void {
+    if (!TAKE_CARDS.includes(card)) return;
+    f.take = { card, x: f.x, z: f.z, time: this.m.time };
   }
 
   /** REBOUND DISC: straight out to its turn point, then home to the thrower (BOOMERANG: turns right past the held target). */
@@ -856,6 +866,7 @@ export class CombatSystem {
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'disc', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, reach, { crit: combo !== null });
     f.fireTimer = Math.max(f.fireTimer, 0.3);
+    this.recordTake(f, 'rebound_disc');
   }
 
   /** CABLE SNARE: the cable shot (the tether comes with a hit, see updateProjectiles). */
@@ -869,16 +880,60 @@ export class CombatSystem {
     f.fireTimer = Math.max(f.fireTimer, 0.25);
   }
 
-  /** SIDE CAM: the one bolt along the camera's frozen line. */
-  fireCam(f: FighterSim, o: StageObject): void {
-    const t = CARD_TUNING.side_cam;
+  /** Alpha 1.6.1 SECOND TAKE: the frozen line of the echo (BANK SHOT: the first leg, towards the barrier). */
+  echoAim(o: StageObject): void {
+    if (TAKE_CARDS[o.variant] === 'bank_shot') {
+      solveBank(o.x, o.z, o.fromX, o.fromZ, bankTmp);
+      o.dirX = bankTmp.dirX;
+      o.dirZ = bankTmp.dirZ;
+      return;
+    }
+    const dx = o.fromX - o.x;
+    const dz = o.fromZ - o.z;
+    const d = Math.hypot(dx, dz) || 1;
+    o.dirX = dx / d;
+    o.dirZ = dz / d;
+  }
+
+  /**
+   * Alpha 1.6.1 SECOND TAKE: the echo fires the replayed card along its frozen line from the
+   * spot of the first take — `mult` of the card's base damage, at most `cap` for the whole
+   * replay, no combo bonus. Echo projectiles skip SPOTLIGHT TAG and TRICK SHOT refunds and are
+   * never recorded as a new take.
+   */
+  fireEcho(f: FighterSim, o: StageObject): void {
+    const t = CARD_TUNING.second_take;
+    const card = TAKE_CARDS[o.variant];
+    const od = f.outgoingDamageMult();
     const yaw = Math.atan2(o.dirX, o.dirZ);
-    this.spawn(f.side, 'cam', f.stats.attack.weapon, o.x + o.dirX * 0.5, o.z + o.dirZ * 0.5, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, t.range, {
-      heavy: true,
-      blind: o.combo === 'blindside',
-      ownPass: o.combo === 'cross_angle',
-      crit: o.combo !== null,
-    });
+    const x = o.x + o.dirX * 0.6;
+    const z = o.z + o.dirZ * 0.6;
+    const w = f.stats.attack.weapon;
+    const opts: SpawnOpts = { echo: true, blind: o.combo === 'blindside', ownPass: o.combo === 'cross_angle', crit: o.combo !== null };
+    switch (card) {
+      case 'power_shot': {
+        const pt = CARD_TUNING.power_shot;
+        this.spawn(f.side, 'power', w, x, z, yaw, pt.speed, Math.min(t.cap, pt.damage * t.mult * od), pt.radius, pt.range, { ...opts, heavy: true, knockback: pt.knockback * 0.5 });
+        break;
+      }
+      case 'bank_shot': {
+        const bt = CARD_TUNING.bank_shot;
+        this.spawn(f.side, 'bank', w, x, z, yaw, bt.speed, Math.min(t.cap, bt.damage * t.mult * od), bt.radius, bt.range, { ...opts, heavy: true, knockback: bt.knockback * 0.5, bounces: 1 });
+        break;
+      }
+      case 'rebound_disc': {
+        const rt = CARD_TUNING.rebound_disc;
+        this.spawn(f.side, 'disc', w, x, z, yaw, rt.speed, Math.min(t.cap / 2, rt.damage * t.mult * od), rt.radius, rt.reach, opts);
+        break;
+      }
+      default: {
+        const st = CARD_TUNING.split_shot;
+        for (let i = 0; i < st.bolts; i++) {
+          const y = yaw - st.fan / 2 + (st.fan * i) / (st.bolts - 1);
+          this.spawn(f.side, 'split', w, x, z, y, st.speed, Math.min(t.cap / st.bolts, st.damage * t.mult * od), st.radius, st.range, { ...opts, falloff: st.falloff });
+        }
+      }
+    }
   }
 
   /** CATCH & RELEASE: the caught shot goes back at the opponent after the DASH. */
@@ -1072,14 +1127,30 @@ export class CombatSystem {
         continue;
       }
 
-      // Alpha 1.6 FRAME CATCH: the first enemy projectile through the frame is destroyed
+      // FRAME CATCH (Alpha 1.6.1 parry): the first enemy projectile through the frame is destroyed
+      // and the frame stays open a moment for the rest of that volley, then closes
       if (foe.frame > 0 && CATCHABLE.has(p.kind) && !(p.kind === 'power' && p.pierce > 0) && this.frameHit(foe, p)) {
-        foe.frame = 0;
-        foe.caught = CARD_TUNING.frame_catch.memory;
-        foe.caughtDmg = p.damage;
-        // stopping a heavy shot is a timing read, like a PERFECT BLOCK
+        const ft = CARD_TUNING.frame_catch;
+        const first = foe.parryHits === 0;
+        foe.parryHits++;
+        if (first) foe.frame = Math.min(foe.frame, ft.window);
+        if (foe.parryHits >= ft.maxCatch) foe.frame = 0;
+        foe.caught = ft.memory;
+        foe.caughtDmg = first ? p.damage : Math.max(foe.caughtDmg, p.damage);
+        // stopping a heavy shot is a timing read, like a PERFECT BLOCK; a parried POWER / BANK SHOT pays 1 energy (once)
         if (p.heavy) foe.m.perfects++;
-        m.emit({ type: 'frameCatch', side: foe.side, x: p.x, z: p.z });
+        let refund = 0;
+        if (p.heavy && (p.kind === 'power' || p.kind === 'bank') && !foe.parryRefunded) {
+          foe.parryRefunded = true;
+          refund = ft.refund;
+          m.hands[foe.side].gain(refund);
+        }
+        // the parry is an evade for MOMENTUM / RIPOSTE — once per card, their own cooldowns still apply
+        if (!foe.parryEvaded) {
+          foe.parryEvaded = true;
+          this.onEvade(foe);
+        }
+        m.emit({ type: 'frameCatch', side: foe.side, x: p.x, z: p.z, first, heavy: p.heavy, refund });
         p.alive = false;
         continue;
       }
@@ -1147,7 +1218,8 @@ export class CombatSystem {
             if (outcome === 'blocked') {
               m.emit({ type: 'impact', side: p.owner, x: p.x, z: p.z, kind: 'shield', heavy: p.heavy, weapon: p.weapon });
             }
-            if (trick && outcome === 'hit' && !src.ko) {
+            // (a SECOND TAKE echo never pays the TRICK SHOT bonus again)
+            if (trick && outcome === 'hit' && !src.ko && !p.echo) {
               const refund = CARD_TUNING.bank_shot.energyRefund;
               m.hands[src.side].gain(refund);
               m.emit({ type: 'trickShot', side: src.side, x: p.x, z: p.z, refund });
@@ -1359,7 +1431,7 @@ export class CombatSystem {
     let dmg = h.damage;
     // Alpha 1.6 SPOTLIGHT TAG: the marked hit lands harder once — never on top of a combo bonus (the larger counts)
     let tagged = false;
-    if (target.tag > 0 && target.tagBy === source.side && TAG_KINDS.has(h.kind)) {
+    if (target.tag > 0 && target.tagBy === source.side && TAG_KINDS.has(h.kind) && !h.projectile?.echo) {
       const mult = CARD_TUNING.spotlight_tag.mult;
       const boost = h.boost ?? 1;
       if (mult > boost) dmg *= mult / boost;
@@ -1415,6 +1487,7 @@ export class CombatSystem {
       crit: h.crit || tagged,
       combo: h.combo,
       electric: h.electric,
+      echo: h.projectile?.echo || undefined,
     });
 
     if (h.slowAmount > 0) {

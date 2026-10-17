@@ -57,7 +57,6 @@ const HIT_CARD: Partial<Record<string, CardId>> = {
   prop: 'prop_drop',
   mine: 'pressure_mine',
   cable: 'cable_snare',
-  cam: 'side_cam',
   release: 'frame_catch',
   power: 'power_shot',
   bank: 'bank_shot',
@@ -92,7 +91,7 @@ function fight(fighter: FighterId, rival: RivalId, diff: Difficulty, mode: Mode,
       if (e.type === 'card' && e.side === 0) cs(e.card).plays++;
       if (e.type === 'combo' && e.side === 0) comboCount.set(e.combo, (comboCount.get(e.combo) ?? 0) + 1);
       if (e.type === 'hit' && e.source === 0) {
-        const c = HIT_CARD[e.kind];
+        const c = e.echo ? 'second_take' : HIT_CARD[e.kind];
         if (c) {
           cs(c).dmg += e.damage;
           cs(c).landed++;
@@ -177,7 +176,9 @@ const ARCH: Record<string, (f: FighterId) => CardId[]> = {
   'traps: NET+MINE+PUSH+SHIELD': () => ['gravity_net', 'pressure_mine', 'pulse_push', 'shield'],
   'control: SNARE+PROP+SHOCK+DASH': () => ['cable_snare', 'prop_drop', 'shock', 'dash'],
   'defence: FRAME+HOLO+SHIELD+sig': (f) => ['frame_catch', 'holo_decoy', 'shield', FIGHTERS[f].signature],
-  'cover: BARRIER+CAM+DASH+sig': (f) => ['stage_barrier', 'side_cam', 'dash', FIGHTERS[f].signature],
+  'cover: BARRIER+DASH+SHIELD+sig': (f) => ['stage_barrier', 'dash', 'shield', FIGHTERS[f].signature],
+  'replay: TAKE+POWER+BANK+sig': (f) => ['second_take', 'power_shot', 'bank_shot', FIGHTERS[f].signature],
+  'replay+: BARRIER+TAKE+POWER+sig': (f) => ['stage_barrier', 'second_take', 'power_shot', FIGHTERS[f].signature],
   'tempo: FREEZE+BACKTRACK+DASH+sig': (f) => ['freeze_frame', 'backtrack', 'dash', FIGHTERS[f].signature],
   'risk: STAKES+SHIELD+POWER+OVERDRIVE': () => ['high_stakes', 'shield', 'power_shot', 'overdrive'],
   'stress: NET+SNARE+SHOCK+PROP': () => ['gravity_net', 'cable_snare', 'shock', 'prop_drop'],

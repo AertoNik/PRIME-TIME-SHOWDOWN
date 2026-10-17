@@ -259,8 +259,8 @@ export const CARDS: Record<CardId, CardDef> = {
     cost: 2,
     role: 'Контроль · укрытие',
     short: 'Сценический барьер',
-    desc: `Наручный проектор разворачивает перед бойцом полупрозрачную перегородку длиной ${ru(T.stage_barrier.halfLen * 2)} м на ${ru(T.stage_barrier.duration)} с. Она останавливает снаряды ОБЕИХ сторон, пока не примет ${T.stage_barrier.hp} урона. CHARGED SHOT пробивает её, DIRECTOR'S CUT не замечает. Ходить сквозь неё можно.`,
-    counter: 'Обойдите перегородку сбоку или пробейте её. Владелец тоже не стреляет сквозь неё.',
+    desc: `Наручный проектор разворачивает полупрозрачную перегородку длиной ${ru(T.stage_barrier.halfLen * 2)} м на ${ru(T.stage_barrier.duration)} с — между бойцами, а если соперник уже вплотную, то за спиной бойца, чтобы было куда отступить. Она останавливает снаряды ОБЕИХ сторон, пока не примет ${T.stage_barrier.hp} урона. CHARGED SHOT пробивает её, DIRECTOR'S CUT не замечает. Ходить сквозь неё можно.`,
+    counter: 'Обойдите перегородку сбоку или пробейте её. Владелец тоже не стреляет сквозь неё — ему приходится выглядывать из-за края.',
     color: '#6ec8ff',
     color2: '#173a7a',
     family: 'control',
@@ -287,8 +287,8 @@ export const CARDS: Record<CardId, CardDef> = {
     cost: 2,
     role: 'Защита · обман',
     short: 'Голографический двойник',
-    desc: `Проектор создаёт рядом с бойцом мерцающего двойника на ${T.holo_decoy.duration} с. Обычные выстрелы соперника уходят в голограмму: она принимает один залп и рассыпается. Заряженные удары, SHOCK и ловушки целятся в настоящего бойца.`,
-    counter: 'Голограмма гаснет после одного залпа, а мощные карты и ловушки она не обманывает.',
+    desc: `Проектор создаёт рядом с бойцом мерцающего двойника на ${T.holo_decoy.duration} с. Обычные выстрелы соперника уходят в голограмму; после первого попадания она ещё около ${ru(T.holo_decoy.soak)} с перетягивает огонь на себя, сбоит и рассыпается. Заряженные удары, SHOCK и ловушки целятся в настоящего бойца.`,
+    counter: 'Голограмма живёт недолго после первого попадания, а мощные карты и ловушки она не обманывает.',
     color: '#9cf7ff',
     color2: '#7b2fd0',
     family: 'defense',
@@ -299,10 +299,10 @@ export const CARDS: Record<CardId, CardDef> = {
     id: 'frame_catch',
     name: 'FRAME CATCH',
     cost: 2,
-    role: 'Защита · перехват',
-    short: 'Перехват кадра',
-    desc: `Боец выставляет руку: перед ним на ${ru(T.frame_catch.duration)} с вспыхивает энергетическая рамка и уничтожает ПЕРВЫЙ вражеский снаряд, который в неё влетит (из дроби — одну дробину). Не ловит CHARGED SHOT, DIRECTOR'S CUT, таран, мины и разряды SHOCK.`,
-    counter: 'Рамка ловит один снаряд и только спереди: бейте с фланга или после того, как она погаснет.',
+    role: 'Защита · парирование',
+    short: 'Парирование',
+    desc: `Парирование: боец выставляет руку, перед ним на ${ru(T.frame_catch.duration)} с вспыхивает энергетическая рамка. Первый вражеский снаряд в ней уничтожен — ПАРИРОВАНО! — и рамка ещё ${ru(T.frame_catch.window)} с ловит остаток этого залпа (дробь, очередь), затем гаснет. Парированный POWER SHOT или BANK SHOT возвращает ${T.frame_catch.refund} энергии. Парирование считается уклонением для пассивок (MOMENTUM, RIPOSTE). Не ловит CHARGED SHOT, DIRECTOR'S CUT, таран, мины и разряды SHOCK.`,
+    counter: 'Рамка работает только спереди и только в момент залпа: бейте с фланга, после неё или выжидайте, пока она погаснет.',
     color: '#c6ff4d',
     color2: '#1f6b3a',
     family: 'defense',
@@ -337,18 +337,19 @@ export const CARDS: Record<CardId, CardDef> = {
     cast: 'signal',
     shop: { price: 750, level: 5, stage: 'rising' },
   },
-  side_cam: {
-    id: 'side_cam',
-    name: 'SIDE CAM',
+  // Alpha 1.6.1: replaces SIDE CAM (a bought SIDE CAM becomes SECOND TAKE, see SaveSystem)
+  second_take: {
+    id: 'second_take',
+    name: 'SECOND TAKE',
     cost: 3,
-    role: 'Шоу · фланг',
-    short: 'Боковая камера',
-    desc: `Сигнал режиссёру: на борту сбоку от соперника поднимается камера с излучателем, ${ru(T.side_cam.aim)} с следит за целью, застывает (красная линия, ${ru(T.side_cam.lock)} с) и делает ОДИН выстрел — ${T.side_cam.damage} урона. Цель не преследует, после выстрела камера уходит.`,
-    counter: 'Застывшая линия — сигнал: шаг в сторону или DASH. SHIELD гасит выстрел.',
-    color: '#ff4f6d',
-    color2: '#2a0f3d',
+    role: 'Шоу · повтор',
+    short: 'Второй дубль',
+    desc: `«Второй дубль!» Последняя атака картой за ${T.second_take.window} с — POWER SHOT, BANK SHOT, REBOUND DISC или SPLIT SHOT — повторяется энергетическим эхом: на месте первого дубля появляется полупрозрачный двойник бойца, вскидывает оружие, застывает и стреляет снова. Эхо наносит ${Math.round(T.second_take.mult * 100)}% базового урона карты (не больше ${T.second_take.cap}), без бонусов комбо, метки и возврата энергии. Каждую атаку можно повторить один раз; повтор не повторяется.`,
+    counter: 'Двойник виден заранее, а застывшая линия — сигнал: шаг в сторону или DASH. SHIELD и FRAME CATCH работают как против обычного выстрела.',
+    color: '#c08cff',
+    color2: '#2a1f6b',
     family: 'show',
-    cast: 'signal',
+    cast: 'device',
     shop: { price: 650, level: 5, stage: 'rising' },
   },
   freeze_frame: {
@@ -357,8 +358,8 @@ export const CARDS: Record<CardId, CardDef> = {
     cost: 2,
     role: 'Шоу · темп',
     short: 'Замедленный кадр',
-    desc: `Цифровой стоп-кадр: вокруг бойца на ${ru(T.freeze_frame.duration)} с появляется зона радиусом ${ru(T.freeze_frame.radius)} м, где обычные снаряды ОБЕИХ сторон, летящие внутрь — к её центру, — ползут в ${ru(Math.round(10 / T.freeze_frame.speed) / 10)} раза медленнее, и от них легче уйти. Выстрелы из зоны наружу летят как обычно. Мощные выстрелы картами и выстрелы чемпиона не замедляются.`,
-    counter: 'Выманите бойца из зоны или бейте картами: POWER SHOT и ловушки замедление не замечают.',
+    desc: `Искажение времени: на ${ru(T.freeze_frame.duration)} с вокруг бойца на полу вращается кольцо таймкода радиусом ${ru(T.freeze_frame.radius)} м и движется вместе с ним. Обычные вражеские снаряды, влетающие в кольцо, ползут в ${ru(Math.round(10 / T.freeze_frame.speed) / 10)} раза медленнее — от них легче уйти, но если не увернуться, урон проходит полностью. Свои выстрелы не замедляются. Мощные выстрелы картами и выстрелы чемпиона кольцо не замечает.`,
+    counter: 'Бейте картами: POWER SHOT, ловушки и разряды замедление не замечают. Кольцо ничего не поглощает.',
     color: '#a6f0ff',
     color2: '#1e4f8f',
     family: 'show',
@@ -369,7 +370,7 @@ export const CARDS: Record<CardId, CardDef> = {
 
 export const UNIVERSAL_CARDS: CardId[] = ['dash', 'power_shot', 'shield', 'smoke', 'shock', 'overdrive'];
 
-/** Alpha 1.6: the fifteen new universal cards in shop order (four families). */
+/** Alpha 1.6: the fifteen new universal cards in shop order (four families; 1.6.1: SECOND TAKE replaces SIDE CAM). */
 export const NEW_CARDS: CardId[] = [
   'spotlight_tag',
   'split_shot',
@@ -384,7 +385,7 @@ export const NEW_CARDS: CardId[] = [
   'frame_catch',
   'backtrack',
   'high_stakes',
-  'side_cam',
+  'second_take',
   'freeze_frame',
 ];
 
@@ -394,6 +395,9 @@ export const CARD_FAMILIES: { id: CardFamily; label: string }[] = [
   { id: 'defense', label: 'Защита и трюки' },
   { id: 'show', label: 'Шоу и темп' },
 ];
+
+/** Alpha 1.6.1 — the card attacks SECOND TAKE can replay (index = StageObject.variant of the echo). */
+export const TAKE_CARDS: CardId[] = ['power_shot', 'bank_shot', 'rebound_disc', 'split_shot'];
 
 export function isShopCard(id: CardId): boolean {
   return !!CARDS[id].shop;
@@ -535,30 +539,30 @@ export const COMBOS: ComboDef[] = [
     name: 'CROSS ANGLE',
     tag: 'ДРУГОЙ РАКУРС',
     first: ['stage_barrier'],
-    second: ['side_cam'],
+    second: ['second_take'],
     rating: 10,
-    desc: 'STAGE BARRIER → SIDE CAM: прямая линия закрыта, а камера бьёт с фланга сквозь вашу перегородку и точнее упреждает. Увернуться всё ещё можно.',
-    bonus: 'выстрел с фланга',
+    desc: 'STAGE BARRIER → SECOND TAKE: прямая линия закрыта, а эхо стреляет с места первого дубля — с другого ракурса и сквозь вашу перегородку. Увернуться всё ещё можно.',
+    bonus: 'повтор с другого ракурса',
   },
   {
     id: 'blindside',
     name: 'BLINDSIDE',
     tag: 'ИЗ-ЗА СПИНЫ',
     first: ['holo_decoy'],
-    second: ['side_cam', 'power_shot'],
+    second: ['second_take', 'power_shot'],
     rating: 11,
-    desc: 'HOLO DECOY → SIDE CAM / POWER SHOT: боец соперника смотрит на голограмму и сам не уклонится от этого выстрела. Ответить картой (DASH, SHIELD) всё ещё можно.',
+    desc: 'HOLO DECOY → SECOND TAKE / POWER SHOT: боец соперника смотрит на голограмму и сам не уклонится от этого выстрела. Ответить картой (DASH, SHIELD) всё ещё можно.',
     bonus: 'выстрел вслепую',
   },
   {
     id: 'camera_lock',
     name: 'CAMERA LOCK',
     tag: 'В ОБЪЕКТИВЕ',
-    first: ['side_cam'],
-    second: ['gravity_net'],
+    first: ['cable_snare', 'gravity_net'],
+    second: ['second_take'],
     rating: 9,
-    desc: 'SIDE CAM → GRAVITY NET: камера держит цель в кадре — сеть ложится точно под соперника и шире.',
-    bonus: 'сеть по цели',
+    desc: 'CABLE SNARE / GRAVITY NET → SECOND TAKE: удерживаемая цель в кадре — эхо бьёт с полным упреждением. Резкий шаг в сторону всё ещё уводит от него.',
+    bonus: 'повтор с упреждением',
   },
   {
     id: 'catch_release',
@@ -648,8 +652,8 @@ export const COMBOS: ComboDef[] = [
     first: ['freeze_frame'],
     second: ['dash'],
     rating: 9,
-    desc: `FREEZE FRAME → DASH: рывок на ${pct(CT.timeSlipDist)} длиннее, а зона замедления переезжает вместе с бойцом.`,
-    bonus: 'длинный рывок',
+    desc: `FREEZE FRAME → DASH: рывок сквозь замедленное время на ${pct(CT.timeSlipDist)} длиннее, а кольцо искажения держится на ${ru(CT.timeSlipExtend)} с дольше.`,
+    bonus: 'длинный рывок + время',
   },
 ];
 

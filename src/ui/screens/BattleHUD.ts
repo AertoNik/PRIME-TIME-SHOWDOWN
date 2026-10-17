@@ -546,6 +546,8 @@ export class BattleHUD implements Screen {
         // Alpha 1.6: HIGH STAKES limits
         risk: 'Мало здоровья для ставки',
         recharge: me.stakesUses >= CARD_TUNING.high_stakes.uses ? 'Ставки на этот бой кончились' : `Ставка через ${Math.ceil(me.stakesCd)} с`,
+        // Alpha 1.6.1: SECOND TAKE needs a recent attack card to replay
+        notake: 'Нечего повторять',
       };
       if (msg[res]) this.denyTip(i, msg[res]);
     }
@@ -733,10 +735,12 @@ export class BattleHUD implements Screen {
       // Alpha 1.6: HIGH STAKES shows when it cannot be bet (too little health / recharging)
       const stake = c === 'high_stakes' && m.phase === 'fight' ? m.cardRules(0, c, null, true).fail : null;
       const staked = stake === 'risk' || stake === 'recharge';
-      cardEl.classList.toggle('stunned', (stunned || staked) && !glitched);
+      // Alpha 1.6.1: SECOND TAKE is dimmed while there is no recent attack card to replay
+      const noTake = c === 'second_take' && m.phase === 'fight' && !m.takeReady(p);
+      cardEl.classList.toggle('stunned', (stunned || staked || noTake) && !glitched);
       cardEl.classList.toggle('glitched', glitched);
       const lock = cardEl.querySelector('.lock-overlay') as HTMLElement;
-      const lt = glitched ? 'ERROR' : stunned ? 'STUN' : stake === 'risk' ? 'HP' : stake === 'recharge' ? (p.stakesUses >= CARD_TUNING.high_stakes.uses ? '—' : `${Math.ceil(p.stakesCd)}s`) : '';
+      const lt = glitched ? 'ERROR' : stunned ? 'STUN' : stake === 'risk' ? 'HP' : stake === 'recharge' ? (p.stakesUses >= CARD_TUNING.high_stakes.uses ? '—' : `${Math.ceil(p.stakesCd)}s`) : noTake ? '—' : '';
       if (lock.textContent !== lt) lock.textContent = lt;
     }
     const win = m.combos.windowLeft(0, m.time);
@@ -1056,7 +1060,8 @@ export class BattleHUD implements Screen {
           }
           this.prevCard = e.card;
           // The combo banner already names the move; skip the duplicate card callout.
-          if (!e.combo) this.callout(0, c.name, c.color);
+          // SECOND TAKE calls its own «SECOND TAKE!» when the replay appears.
+          if (!e.combo && e.card !== 'second_take') this.callout(0, c.name, c.color);
         } else {
           // Rival combos name the combo instead of the card (one label, not two);
           // the champion's cards carry his signature names.
@@ -1111,6 +1116,17 @@ export class BattleHUD implements Screen {
         break;
       case 'tagHit':
         this.callout((1 - e.side) as Side, 'В ЦЕНТРЕ ВНИМАНИЯ', '#ffe27a');
+        break;
+      // Alpha 1.6.1: the replay double appears; the parry lands
+      case 'object':
+        if (e.kind === 'echo' && e.what === 'spawn') this.callout(e.owner, 'SECOND TAKE!', '#c08cff');
+        break;
+      case 'frameCatch':
+        if (e.first) this.callout(e.side, 'ПАРИРОВАНО!', '#c6ff4d');
+        if (e.refund > 0 && e.side === 0) {
+          const f = this.m?.fighters[e.side];
+          if (f) this.spawnFloater(`+${e.refund} ⚡`, 'callout', f.x, 2.5, f.z, 0.9, 0.7).el.style.color = '#ffe14d';
+        }
         break;
       default:
         break;

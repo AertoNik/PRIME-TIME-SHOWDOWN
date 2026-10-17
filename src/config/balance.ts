@@ -248,12 +248,15 @@ export const CARD_TUNING = {
    */
   pressure_mine: { flight: 0.5, lead: 0.8, minGap: 1.6, arm: 0.7, life: 9, trigger: 1.05, damage: 420, shove: 6, max: 2 },
   /**
-   * STAGE BARRIER: a 2×`halfLen` m screen `ahead` m in front of the fighter, across the
-   * line to the opponent. Stops projectiles of BOTH sides until `hp` damage or `duration`
-   * s. CHARGED SHOT goes through, DIRECTOR'S CUT ignores it. Projectiles only: nobody
-   * bumps into it, so nobody can get stuck on it.
+   * STAGE BARRIER: a 2×`halfLen` m screen across the line to the opponent. Stops projectiles
+   * of BOTH sides until `hp` damage or `duration` s. CHARGED SHOT goes through, DIRECTOR'S CUT
+   * ignores it. Projectiles only: nobody bumps into it, so nobody can get stuck on it.
+   * Alpha 1.6.1 placement: between the fighters at `share` of the distance (`minAhead`..`ahead`
+   * m from the owner), never closer than `clear` m to either body. Too close for a screen in
+   * between: it rises `behind` m behind the owner as cover to step back to (never inside or
+   * behind the opponent, nobody is moved).
    */
-  stage_barrier: { ahead: 1.4, halfLen: 1.35, duration: 5, hp: 1100, thickness: 0.15 },
+  stage_barrier: { ahead: 1.6, minAhead: 0.8, share: 0.45, clear: 0.8, behind: 1.1, halfLen: 1.35, duration: 5, hp: 1100, thickness: 0.15 },
   /**
    * CABLE SNARE: a fast cable shot. On a hit the opponent stays within `tether` m of the
    * spot for `duration` s (still moves inside, shoots and plays cards). DASH, FALSE START,
@@ -262,16 +265,20 @@ export const CARD_TUNING = {
   cable_snare: { speed: 24, radius: 0.3, range: 9, damage: 60, duration: 2.4, tether: 1.7, bossDuration: 1.2, bossTether: 2.4, immunity: 1.5 },
   /**
    * HOLO DECOY: a glitching hologram `offset` m to the side. The opponent's regular fire
-   * goes at it; it soaks one volley (`soak` s after the first hit) and pops. Charged
-   * attacks, shocks and traps are aimed at the real fighter.
+   * goes at it; after the first hit it keeps drawing fire for `soak` s (Alpha 1.6.1: about a
+   * second instead of one volley), then pops. Charged attacks, shocks and traps are aimed at
+   * the real fighter.
    */
-  holo_decoy: { offset: 1.8, duration: 3, soak: 0.3 },
+  holo_decoy: { offset: 1.8, duration: 3, soak: 1.0 },
   /**
-   * FRAME CATCH: an energy frame `ahead` m in front for `duration` s destroys the first
-   * enemy projectile that crosses it (one pellet of a spread). CHARGED SHOT, DIRECTOR'S CUT,
+   * FRAME CATCH — a parry: an energy frame `ahead` m in front for `duration` s. The first enemy
+   * projectile that crosses it is destroyed and the frame stays open `window` s more for the
+   * rest of that volley (pellets, bursts; at most `maxCatch` shots), then closes. A parried
+   * POWER / BANK SHOT gives `refund` energy back (once per card). The parry counts as an evade
+   * for the fighter's passive (MOMENTUM, RIPOSTE), once per card. CHARGED SHOT, DIRECTOR'S CUT,
    * KNOCKOUT, traps and shocks are not projectiles it can catch. Remembers the catch `memory` s.
    */
-  frame_catch: { duration: 1.5, ahead: 0.9, halfWidth: 0.85, memory: 3 },
+  frame_catch: { duration: 1.5, ahead: 0.9, halfWidth: 0.95, window: 0.35, maxCatch: 6, refund: 1, memory: 3 },
   /**
    * Holds are never endless: GRAVITY NET slows and CABLE SNARE tethers add up; after `holdMax` s
    * of them in a row the fighter breaks free and ignores both for `immune` s. Free time cools the
@@ -287,19 +294,22 @@ export const CARD_TUNING = {
    */
   high_stakes: { hpCost: 0.02, energy: 4, minHp: 0.3, cooldown: 15, uses: 3 },
   /**
-   * SIDE CAM: a camera rises on the barrier at the opponent's flank, tracks for `aim` s,
-   * freezes its line (`lock` s of warning) and fires ONE bolt along it, half-leading the
-   * target. Then it retracts. One camera per side.
+   * Alpha 1.6.1 — SECOND TAKE (replaces SIDE CAM): the fighter's last card attack of the
+   * last `window` s (POWER SHOT, BANK SHOT, REBOUND DISC, SPLIT SHOT) is played again as an
+   * energy echo from the spot where it was first played: a ghost raises the weapon (`aim` s,
+   * tracking), freezes its line (`lock` s of warning) and fires. The echo deals `mult` of the
+   * card's base damage, at most `cap` in total, with no combo bonus, no SPOTLIGHT TAG, no
+   * TRICK SHOT refund; an echo is never recorded, so it cannot be repeated. One per attack.
    */
-  side_cam: { aim: 0.5, lock: 0.45, retract: 0.5, damage: 420, speed: 24, radius: 0.32, lead: 0.75, range: 16 },
+  second_take: { window: 8, aim: 0.35, lock: 0.25, retract: 0.45, mult: 0.5, cap: 300, lead: 0.6 },
   /**
-   * FREEZE FRAME: a slow-motion zone `radius` m around the fighter for `duration` s.
-   * Regular projectiles of both sides heading into it (towards its centre) crawl at `speed` of
-   * their speed; shots heading out leave at full speed. Heavy card shots (POWER / CHARGED / BANK
-   * SHOT) and the champion's shots keep their speed. A slowed shot is easier to read: it is
-   * sidestepped `dodgeMult`× as often.
+   * FREEZE FRAME (Alpha 1.6.1): a time-distortion ring `radius` m around the fighter that MOVES
+   * with them for `duration` s. Only the opponent's regular projectiles heading in (towards
+   * the fighter) crawl at `speed` of their speed; the fighter's own shots are untouched. Heavy
+   * card shots (POWER / CHARGED / BANK SHOT) and the champion's shots keep their speed. A slowed
+   * shot is easier to read: it is sidestepped `dodgeMult`× as often. Nothing is absorbed.
    */
-  freeze_frame: { radius: 2.6, duration: 4.5, speed: 0.3, dodgeMult: 2 },
+  freeze_frame: { radius: 2.3, duration: 4, speed: 0.3, dodgeMult: 2 },
 };
 
 export const COMBO_TUNING = {
@@ -329,10 +339,8 @@ export const COMBO_TUNING = {
   mineDriveForce: 1.15,
   /** WALL PUSH: the wave leaves from the barrier (reaches further) and is stronger. */
   wallPushForce: 1.25,
-  /** CROSS ANGLE: the camera bolt leads better and passes your own barrier. */
-  crossAngleLead: 0.8,
-  /** CAMERA LOCK: the net lands right on the target, wider. */
-  cameraLockRadius: 0.35,
+  /** CAMERA LOCK (Alpha 1.6.1: NET / SNARE → SECOND TAKE): the echo leads the held target fully. */
+  cameraLockLead: 1,
   /** CATCH & RELEASE: the caught shot is fired back after the DASH (share of its damage, capped). */
   releaseShare: 0.5,
   releaseCap: 220,
@@ -347,8 +355,9 @@ export const COMBO_TUNING = {
   jackpotMult: 1.3,
   /** DOUBLE TAKE: the afterimage left at the end of the DASH lasts this long. */
   doubleTakeTime: 1.6,
-  /** TIME SLIP: DASH distance multiplier (the freeze zone follows). */
+  /** TIME SLIP: DASH distance multiplier; Alpha 1.6.1: the slow-motion ring also lasts longer. */
   timeSlipDist: 1.3,
+  timeSlipExtend: 1.5,
 };
 
 export const PASSIVE_TUNING = {

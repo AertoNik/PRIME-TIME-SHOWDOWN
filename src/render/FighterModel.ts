@@ -1448,6 +1448,8 @@ export interface FighterRig {
   muzzles: Object3D[];
   /** Centre of the right hand (fist charge effects). */
   handR: Object3D;
+  /** Alpha 1.6.1: centre of the left (free / support) hand — thrown cards leave from here. */
+  handL: Object3D;
   eyes: Mesh;
   koEyes: Mesh;
   brows: Mesh;
@@ -1569,6 +1571,9 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   const handR = new Object3D();
   handR.position.set(...G.weaponHand);
   elbowR.add(handR);
+  const handL = new Object3D();
+  handL.position.set(...G.weaponHand);
+  elbowL.add(handL);
 
   return {
     look,
@@ -1592,6 +1597,7 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     weaponL,
     muzzles,
     handR,
+    handL,
     eyes,
     koEyes,
     brows,

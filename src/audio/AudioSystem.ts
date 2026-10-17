@@ -418,10 +418,12 @@ export class AudioSystem {
         [0, 4, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(72 + n), dur: 0.22, gain: 0.07, delay: i * 0.06 }));
         this.tone({ type: 'sine', f0: 90, f1: 50, dur: 0.4, gain: 0.18, delay: 0.25 });
         break;
-      case 'side_cam':
-        // a servo whine as the camera rises
-        this.tone({ type: 'square', f0: 420, f1: 760, dur: 0.35, gain: 0.03, filter: { type: 'lowpass', f0: 1800 } });
-        this.noise({ dur: 0.03, gain: 0.1, type: 'highpass', f0: 3000, delay: 0.35 });
+      case 'second_take':
+        // Alpha 1.6.1: a clapperboard clack, then the tape spooling back
+        this.noise({ dur: 0.035, gain: 0.32, type: 'highpass', f0: 1800 });
+        this.tone({ type: 'triangle', f0: 900, f1: 600, dur: 0.05, gain: 0.08 });
+        this.tone({ type: 'sawtooth', f0: 300, f1: 1500, dur: 0.3, gain: 0.05, delay: 0.08, filter: { type: 'bandpass', f0: 1200, q: 2 } });
+        this.noise({ dur: 0.28, gain: 0.08, type: 'bandpass', f0: 800, f1: 3000, q: 2, delay: 0.08 });
         break;
       case 'freeze_frame':
         // tape slowing down
@@ -433,7 +435,7 @@ export class AudioSystem {
   }
 
   /** Alpha 1.6 — the key moments of the new cards (activation sounds are in card()). */
-  cardFx(kind: 'tagHit' | 'push' | 'netLand' | 'mineArm' | 'mineBoom' | 'barrierHit' | 'barrierBreak' | 'propLand' | 'camLock' | 'camFire' | 'tether' | 'snap' | 'frameCatch' | 'discCatch' | 'erase'): void {
+  cardFx(kind: 'tagHit' | 'push' | 'netLand' | 'mineArm' | 'mineBoom' | 'barrierHit' | 'barrierBreak' | 'propLand' | 'echoLock' | 'echoFire' | 'tether' | 'snap' | 'frameCatch' | 'parry' | 'discCatch' | 'erase'): void {
     if (!this.throttle('cfx-' + kind, 50)) return;
     switch (kind) {
       case 'tagHit':
@@ -467,13 +469,16 @@ export class AudioSystem {
         this.tone({ type: 'sine', f0: 110, f1: 40, dur: 0.4, gain: 0.45 });
         this.tone({ type: 'triangle', f0: 520, f1: 260, dur: 0.12, gain: 0.06, delay: 0.04 });
         break;
-      case 'camLock':
-        this.tone({ type: 'square', f0: NOTE(93), dur: 0.08, gain: 0.05, filter: { type: 'lowpass', f0: 5000 } });
-        this.tone({ type: 'square', f0: NOTE(93), dur: 0.08, gain: 0.05, delay: 0.14, filter: { type: 'lowpass', f0: 5000 } });
+      case 'echoLock':
+        // the replay freezes on its frame: two dry ticks
+        this.tone({ type: 'square', f0: NOTE(88), dur: 0.06, gain: 0.05, filter: { type: 'lowpass', f0: 4000 } });
+        this.tone({ type: 'square', f0: NOTE(88), dur: 0.06, gain: 0.05, delay: 0.12, filter: { type: 'lowpass', f0: 4000 } });
         break;
-      case 'camFire':
-        this.tone({ type: 'sawtooth', f0: 1400, f1: 200, dur: 0.25, gain: 0.12, filter: { type: 'lowpass', f0: 5000, f1: 500 } });
-        this.noise({ dur: 0.12, gain: 0.14, type: 'highpass', f0: 2000 });
+      case 'echoFire':
+        // the shot again, played through a tape: detuned and phasey
+        this.tone({ type: 'sawtooth', f0: 900, f1: 180, dur: 0.28, gain: 0.1, filter: { type: 'lowpass', f0: 3500, f1: 400 } });
+        this.tone({ type: 'sawtooth', f0: 930, f1: 190, dur: 0.28, gain: 0.06, filter: { type: 'lowpass', f0: 3500, f1: 400 } });
+        this.noise({ dur: 0.1, gain: 0.1, type: 'bandpass', f0: 2200, q: 2 });
         break;
       case 'tether':
         this.tone({ type: 'triangle', f0: 600, f1: 300, dur: 0.18, gain: 0.08 });
@@ -486,6 +491,12 @@ export class AudioSystem {
       case 'frameCatch':
         this.tone({ type: 'triangle', f0: 1760, f1: 2640, dur: 0.18, gain: 0.1 });
         this.noise({ dur: 0.06, gain: 0.14, type: 'highpass', f0: 3000 });
+        break;
+      case 'parry':
+        // Alpha 1.6.1: the parry itself — a bright metallic ring over the catch
+        this.tone({ type: 'triangle', f0: NOTE(96), dur: 0.35, gain: 0.08 });
+        this.tone({ type: 'sine', f0: NOTE(103), dur: 0.3, gain: 0.05, delay: 0.02 });
+        this.noise({ dur: 0.05, gain: 0.2, type: 'highpass', f0: 3500 });
         break;
       case 'discCatch':
         this.tone({ type: 'triangle', f0: 1200, f1: 1600, dur: 0.1, gain: 0.05 });

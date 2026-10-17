@@ -168,7 +168,7 @@ function fight(arena: ArenaId, fighter: FighterId, seed: number, boss?: string):
 {
   const v6 = { version: 6, money: 4321, reputation: 99, fighters: { ray: { unlocked: true, wins: 7, classicWins: 5, fans: 900 } }, modes: { boss: { vale: { wins: 1, attempts: 3 } } } };
   const m = sanitize(v6);
-  check('1.3.x save (v6) loads with the original studio and keeps progress', m.version === 10 && m.arena === 'original' && m.money === 4321 && m.fighters.ray.wins === 7 && m.fighters.ray.classicWins === 5 && m.modes.boss.vale.wins === 1);
+  check('1.3.x save (v6) loads with the original studio and keeps progress', m.version === 11 && m.arena === 'original' && m.money === 4321 && m.fighters.ray.wins === 7 && m.fighters.ray.classicWins === 5 && m.modes.boss.vale.wins === 1);
   check('arena preference round-trips by id', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'casino' }))).arena === 'casino');
   check('RANDOM preference round-trips', sanitize({ arena: 'random' }).arena === 'random');
   check('an unknown arena id becomes the original studio', sanitize({ arena: 'volcano' }).arena === 'original' && sanitize({ arena: 7 }).arena === 'original');

@@ -141,8 +141,9 @@ function newCardMove(m: Match): boolean {
       case 'prop_drop':
       case 'rebound_disc':
         return held && foe.shield <= 0;
-      case 'side_cam':
-        return foe.shield <= 0 && h.energy >= 6;
+      case 'second_take':
+        // Alpha 1.6.1: replay the last attack card while it is still fresh
+        return m.takeReady(me) && foe.shield <= 0;
       case 'holo_decoy':
       case 'freeze_frame':
       case 'stage_barrier':
@@ -187,7 +188,6 @@ const HIT_CARD: Partial<Record<string, CardId>> = {
   prop: 'prop_drop',
   mine: 'pressure_mine',
   cable: 'cable_snare',
-  cam: 'side_cam',
   release: 'frame_catch',
 };
 
@@ -225,7 +225,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
       }
       if (e.type === 'combo') events.set((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo, (events.get((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo) ?? 0) + 1);
       if (e.type === 'hit' && e.source === 0 && e.kind !== 'auto' && lastCard) {
-        const key: CardId = HIT_CARD[e.kind] ?? (e.kind === 'power' ? (lastCard === 'charged_shot' ? 'charged_shot' : 'power_shot') : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : lastCard);
+        const key: CardId = e.echo ? 'second_take' : HIT_CARD[e.kind] ?? (e.kind === 'power' ? (lastCard === 'charged_shot' ? 'charged_shot' : 'power_shot') : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : lastCard);
         cardDamage.set(key, (cardDamage.get(key) ?? 0) + e.damage);
       }
       if (e.type === 'card' && e.side === 1) events.set('rivalCard:' + e.card, (events.get('rivalCard:' + e.card) ?? 0) + 1);
