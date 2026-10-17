@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.6.1-alpha",
+  "version": "1.6.2-alpha",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.6: Card Revolution)",
   "type": "module",
   "scripts": {

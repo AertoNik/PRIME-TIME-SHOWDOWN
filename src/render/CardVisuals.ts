@@ -36,7 +36,6 @@ import { canvasTexture, glowTexture, makeCanvas, ringTexture } from './textures'
 
 const COL = {
   echo: 0xc08cff,
-  rewind: 0xff7ad9,
   net: 0x4dffd2,
   mine: 0xff4a6e,
   mineArm: 0xffb02a,
@@ -281,29 +280,6 @@ const replayTexture = () =>
     g.fill();
   });
 
-/** BACKTRACK — where the fighter would rewind to: a dashed ring with a rewind glyph. */
-const rewindMarkTexture = () =>
-  tex('card-rewind-mark', 128, (g, s) => {
-    const c = s / 2;
-    g.translate(c, c);
-    g.strokeStyle = 'rgba(255,255,255,0.95)';
-    g.lineWidth = 5;
-    g.setLineDash([10, 7]);
-    g.beginPath();
-    g.arc(0, 0, c - 6, 0, Math.PI * 2);
-    g.stroke();
-    g.setLineDash([]);
-    g.fillStyle = 'rgba(255,255,255,0.9)';
-    for (const ox of [-14, 6]) {
-      g.beginPath();
-      g.moveTo(ox + 12, -14);
-      g.lineTo(ox - 8, 0);
-      g.lineTo(ox + 12, 14);
-      g.closePath();
-      g.fill();
-    }
-  });
-
 /** FRAME CATCH: camera viewfinder corners around a faint field. */
 const frameTexture = () =>
   tex('card-frame', 128, (g, s) => {
@@ -417,15 +393,12 @@ interface FighterVis {
   frameFlash: number;
   /** HOLO DECOY projector ring under the hologram. */
   holoRing: Mesh;
-  /** BACKTRACK: where the fighter would rewind to (player side, while the card is in hand). */
-  rewindMark: Mesh;
 }
 
 const _v = new Vector3();
 const _v2 = new Vector3();
 const _hand = new Vector3();
 const _up = new Vector3(0, 1, 0);
-const _pt = { x: 0, z: 0 };
 
 /** Renders the Alpha 1.6 set pieces and per-fighter card states. */
 export class CardVisuals {
@@ -522,11 +495,8 @@ export class CardVisuals {
     const holoRing = new Mesh(this.floorGeo, addMat(0xff7ad9, 0.6, ringTexture()));
     holoRing.visible = false;
     holoRing.renderOrder = 2;
-    const rewindMark = new Mesh(this.floorGeo, addMat(COL.rewind, 0.45, rewindMarkTexture()));
-    rewindMark.visible = false;
-    rewindMark.renderOrder = 2;
-    this.root.add(tag, tether, frame, holoRing, rewindMark);
-    return { tag, tagCone, tagPool, tagGem, tagRing, tether, tetherRing, tetherPost, cable, frame, frameT: 0, frameFlash: 0, holoRing, rewindMark };
+    this.root.add(tag, tether, frame, holoRing);
+    return { tag, tagCone, tagPool, tagGem, tagRing, tether, tetherRing, tetherPost, cable, frame, frameT: 0, frameFlash: 0, holoRing };
   }
 
   private build(kind: StageKind): ObjVis {
@@ -667,7 +637,6 @@ export class CardVisuals {
       f.tether.visible = false;
       f.frame.visible = false;
       f.holoRing.visible = false;
-      f.rewindMark.visible = false;
       f.frameFlash = 0;
     }
   }
@@ -961,18 +930,6 @@ export class CardVisuals {
       fv.holoRing.position.set(holo.x, 0.06, holo.z);
       fv.holoRing.scale.setScalar(1.6 + Math.sin(t * 9) * 0.1);
       (fv.holoRing.material as MeshBasicMaterial).opacity = 0.6 * glitch;
-    }
-    // BACKTRACK: where the player's fighter would rewind to, while the card is in hand
-    const showRewind = f.side === 0 && !f.ko && m.phase === 'fight' && m.hands[0].hand.includes('backtrack') && f.action.kind !== 'rewind';
-    fv.rewindMark.visible = showRewind;
-    if (showRewind) {
-      m.abilities.backtrackPoint(f, _pt);
-      const far = Math.hypot(_pt.x - p.x, _pt.z - p.z);
-      fv.rewindMark.position.set(_pt.x, 0.065, _pt.z);
-      fv.rewindMark.scale.setScalar(1.15);
-      fv.rewindMark.rotation.y = t * 0.6;
-      // fades away when the point is right under the fighter (nothing to show)
-      (fv.rewindMark.material as MeshBasicMaterial).opacity = (0.3 + 0.12 * Math.sin(t * 4)) * clamp01((far - 0.4) / 0.8);
     }
     void _hand;
   }
