@@ -3,6 +3,7 @@ import { CARDS, COMBOS } from '../config/cards';
 import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
 import { clamp, segSegDist } from '../core/math';
 import type { BankSolution } from './CombatSystem';
+import type { CoverState } from './Covers';
 import type { FighterSim } from './FighterSim';
 import type { StageObject } from './types';
 import type { Match } from './Match';
@@ -27,6 +28,11 @@ export interface AIProfile {
 }
 
 const isControl = (card: CardId) => card === 'shock' || card === 'system_overload';
+
+/** Alpha 1.7.5: card attacks that cover on the line of fire would swallow (GRAVEYARD). */
+const STOPPED_BY_COVER = new Set<CardId>(['power_shot', 'split_shot', 'rebound_disc', 'cable_snare', 'knockout', 'bat_bite', 'adrenaline']);
+
+const contactTmp = { x: 0, z: 0 };
 
 const bankScore: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
 
@@ -86,6 +92,23 @@ export class FighterAI {
   private ovlReadyAt = 0;
   /** Alpha 1.6: stage hazards this fighter noticed (object id → steers clear), decided once per object. */
   private hazards = new Map<number, boolean>();
+  /**
+   * Alpha 1.7.5 — cover on the floor (GRAVEYARD): which way the fighter goes round the piece
+   * blocking its line of fire (and for how long, so it does not dither), how long the line has
+   * been blocked (a time limit against circling), a brief hide from a visible threat with its
+   * cooldown, and a stall watch (pressed against a piece: turn the other way).
+   */
+  private flankDir = 0;
+  private flankT = 0;
+  private flankC = -1;
+  private flipped = false;
+  private blockedT = 0;
+  private hideT = 0;
+  private hideCd = 0;
+  private hideC: CoverState | null = null;
+  private hideKey = '';
+  private stallT = 0;
+  private unstickT = 0;
 
   constructor(m: Match, side: Side, profile: AIProfile) {
     this.m = m;
@@ -269,6 +292,12 @@ export class FighterAI {
       mx = mx * 0.5 + own.x;
       mz = mz * 0.5 + own.z;
     }
+    // Alpha 1.7.5: cover on the floor — duck behind it for a moment, or go round the piece blocking the shot
+    const cover = m.covers.live > 0 ? this.coverIntent(f, foe, t, dt) : null;
+    if (cover) {
+      mx = mx * cover.keep + cover.x;
+      mz = mz * cover.keep + cover.z;
+    }
 
     this.updateDodge(f);
     if (this.dodgeT > 0) {
@@ -314,6 +343,13 @@ export class FighterAI {
       mz -= (rdz / rd) * (1.5 - rd) * 1.5;
     }
 
+    // Alpha 1.7.5: steer round cover ahead instead of walking into it (and never stall against it)
+    if (m.covers.live > 0) {
+      const v = this.coverAvoid(f, mx, mz, dt);
+      mx = v.x;
+      mz = v.z;
+    }
+
     const len = Math.hypot(mx, mz);
     if (len > 0.05) {
       f.intentX = mx / len;
@@ -322,6 +358,183 @@ export class FighterAI {
     } else {
       f.intentSpeed = 0;
     }
+  }
+
+  /**
+   * Alpha 1.7.5 — what cover means to this fighter's plan (GRAVEYARD BROADCAST):
+   * - a visible threat (a POWER SHOT charging, an OVERDRIVE / ADRENALINE burst) and a piece close
+   *   by: it ducks behind it for about a second, then not again for a while (a roll per threat,
+   *   with its dodge skill — cautious fighters more often, relentless ones rarely);
+   * - its line of fire blocked by a piece: it goes round, to the side that clears the line
+   *   sooner, keeping that side for a while; after 3.5 s it tries the other side once, after
+   *   6.5 s it stops (its shots wear the piece down meanwhile). A destroyed piece is simply gone.
+   */
+  private coverIntent(f: FighterSim, foe: FighterSim, t: Perceived, dt: number): { x: number; z: number; keep: number } | null {
+    const m = this.m;
+    const cov = m.covers;
+    this.hideCd -= dt;
+    // ----- brief hide from a visible threat
+    const fa = foe.action;
+    const threat = (fa.kind === 'windup' && fa.card === 'power_shot' && fa.combo !== 'blindside') || foe.overdrive > 0 || foe.adrenaline > 0;
+    if (this.hideT > 0) {
+      this.hideT -= dt;
+      const c = this.hideC;
+      if (!c || !c.alive || !threat) {
+        this.hideT = 0;
+      } else {
+        const spot = this.behindSpot(f, foe, c);
+        if (spot) {
+          const dx = spot.x - f.x;
+          const dz = spot.z - f.z;
+          const d = Math.hypot(dx, dz);
+          return d > 0.2 ? { x: (dx / d) * 1.5, z: (dz / d) * 1.5, keep: 0.15 } : { x: 0, z: 0, keep: 0.1 };
+        }
+        this.hideT = 0;
+      }
+    } else if (threat && this.hideCd <= 0) {
+      const key = fa.kind === 'windup' ? 'w' + Math.round((m.time - fa.t) * 4) : 'b' + Math.round(m.time / 3);
+      if (key !== this.hideKey && Math.hypot(foe.x - f.x, foe.z - f.z) > 2.6) {
+        this.hideKey = key;
+        let best: CoverState | null = null;
+        let bd = 2.8;
+        for (const c of cov.list) {
+          if (!c.alive) continue;
+          const spot = this.behindSpot(f, foe, c);
+          if (!spot) continue;
+          const d = Math.hypot(spot.x - f.x, spot.z - f.z);
+          if (d < bd) {
+            bd = d;
+            best = c;
+          }
+        }
+        if (best) {
+          const b = this.profile.behavior;
+          const mood = b.id === 'cautious' ? 1.25 : b.id === 'aggressive' ? 0.55 : 1;
+          const chance = clamp(this.profile.dodgeSkill * b.dodgeMult * mood * (b.pressure > 0 ? 0.4 : 1), 0.1, 0.85);
+          if (m.rng.chance(chance)) {
+            this.hideC = best;
+            this.hideT = m.rng.range(0.8, 1.4);
+            this.hideCd = m.rng.range(5, 8);
+          }
+        }
+      }
+    }
+    // ----- the line of fire is blocked: go round the piece
+    const dx = t.x - f.x;
+    const dz = t.z - f.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const ux = dx / dist;
+    const uz = dz / dist;
+    const blocker = cov.onLine(f.x, f.z, t.x, t.z, 0.12);
+    if (!blocker) {
+      this.blockedT = Math.max(0, this.blockedT - dt * 2);
+      if (this.blockedT === 0) this.flipped = false;
+      this.flankT = 0;
+      this.flankC = -1;
+      return null;
+    }
+    this.blockedT += dt;
+    if (this.blockedT > 6.5) return null;
+    if (this.flankT <= 0 || this.flankC !== blocker.index) {
+      // the side of the line the piece leans to: go the other way (it clears sooner)
+      const s = ux * (blocker.z - f.z) - uz * (blocker.x - f.x);
+      let dir = Math.abs(s) > 0.15 ? (s > 0 ? -1 : 1) : this.strafeDir;
+      // ...unless that side runs into the barrier
+      const px = f.x - uz * dir * 1.6;
+      const pz = f.z + ux * dir * 1.6;
+      if (Math.abs(px) > ARENA.halfX - 0.5 || Math.abs(pz) > ARENA.halfZ - 0.5) dir = -dir;
+      this.flankDir = dir;
+      this.flankT = 2.2;
+      this.flankC = blocker.index;
+    }
+    if (this.blockedT > 3.5 && !this.flipped) {
+      // still blocked: the other side, once
+      this.flipped = true;
+      this.flankDir = -this.flankDir;
+      this.flankT = 2.2;
+    }
+    this.flankT -= dt;
+    this.strafeDir = this.flankDir;
+    return { x: -uz * this.flankDir * 1.5, z: ux * this.flankDir * 1.5, keep: 0.4 };
+  }
+
+  /** Where to stand behind piece `c` with the opponent on its far side (null: no room there). */
+  private behindSpot(f: FighterSim, foe: FighterSim, c: CoverState): { x: number; z: number } | null {
+    const dx = c.x - foe.x;
+    const dz = c.z - foe.z;
+    const d = Math.hypot(dx, dz) || 1;
+    const k = c.radius + f.radius + 0.22;
+    const x = c.x + (dx / d) * k;
+    const z = c.z + (dz / d) * k;
+    if (Math.abs(x) > ARENA.halfX - 0.3 || Math.abs(z) > ARENA.halfZ - 0.3) return null;
+    if (!this.m.covers.clear(x, z, f.radius)) return null;
+    return { x, z };
+  }
+
+  /**
+   * Alpha 1.7.5 — steering round cover: a piece close ahead bends the move along its side (the
+   * part of the move into it is taken out), so a fighter walks round tombstones instead of
+   * pushing against them. No headway for half a second anyway: against a piece it turns the
+   * other way, wedged by the barrier it heads back towards open floor for a moment.
+   */
+  private coverAvoid(f: FighterSim, mx: number, mz: number, dt: number): { x: number; z: number } {
+    const cov = this.m.covers;
+    let len = Math.hypot(mx, mz);
+    const near = cov.nearest(f.x, f.z);
+    // stall watch: wants to move but barely moves (the velocity: this step has not moved yet)
+    if (f.intentSpeed > 0.5 && f.action.kind === 'none' && f.stun <= 0 && Math.hypot(f.vx, f.vz) < 0.6) {
+      this.stallT += dt;
+      if (this.stallT > 0.45) {
+        this.stallT = 0;
+        if (near && near.gap < f.radius + 0.12) {
+          this.strafeDir *= -1;
+          this.flankDir = this.flankDir ? -this.flankDir : this.strafeDir;
+          this.flankT = 1.2;
+        } else this.unstickT = 0.6;
+      }
+    } else this.stallT = Math.max(0, this.stallT - dt);
+    if (this.unstickT > 0) {
+      this.unstickT -= dt;
+      const cl = Math.hypot(f.x, f.z) || 1;
+      mx = mx * 0.3 - (f.x / cl) * 1.2;
+      mz = mz * 0.3 - (f.z / cl) * 1.2;
+      len = Math.hypot(mx, mz);
+    }
+    if (len < 0.05) return { x: mx, z: mz };
+    const dx = mx / len;
+    const dz = mz / len;
+    let ox = dx;
+    let oz = dz;
+    for (const c of cov.list) {
+      if (!c.alive) continue;
+      const gap = cov.gap(c, f.x, f.z) - f.radius;
+      if (gap > 0.9) continue;
+      const q = cov.contact(c, f.x, f.z, contactTmp);
+      let nx = f.x - q.x;
+      let nz = f.z - q.z;
+      const nl = Math.hypot(nx, nz) || 1;
+      nx /= nl;
+      nz /= nl;
+      const toward = -(dx * nx + dz * nz);
+      if (toward <= 0) continue;
+      let tx = -nz;
+      let tz = nx;
+      const along = tx * dx + tz * dz;
+      if (Math.abs(along) < 0.2) {
+        // head-on: the side it is already turning to
+        const sg = this.flankDir || this.strafeDir;
+        tx *= sg;
+        tz *= sg;
+      } else if (along < 0) {
+        tx = -tx;
+        tz = -tz;
+      }
+      const w = toward * (1 - Math.max(0, gap) / 0.9);
+      ox += (nx * toward + tx * 0.7) * w;
+      oz += (nz * toward + tz * 0.7) * w;
+    }
+    const ol = Math.hypot(ox, oz) || 1;
+    return { x: (ox / ol) * len, z: (oz / ol) * len };
   }
 
   /**
@@ -544,6 +757,8 @@ export class FighterAI {
     const fireDist = holo ? Math.hypot(holo.x - f.x, holo.z - f.z) : dist;
     const own = m.objects.own(f.side, 'barrier');
     f.wantFire = fireDist <= atk.range * reach && !(own && this.coverBlocks(f, own));
+    // Alpha 1.7.5: ducked behind cover, it holds fire (the shots would only chip its own shelter)
+    if (this.hideT > 0 && f.wantFire && m.covers.onLine(f.x, f.z, f.aimX, f.aimZ, 0.1)) f.wantFire = false;
   }
 
   /** Alpha 1.6: a STAGE BARRIER stands in this fighter's line of fire (its own: hold fire until the line is clear). */
@@ -683,7 +898,7 @@ export class FighterAI {
       if (m.time > p.until || m.combos.windowLeft(this.side, m.time) <= 0) {
         this.plan = null;
       } else if (!f.busy && hand.lockout <= 0 && hand.energy >= CARDS[p.second].cost && m.combos.wouldCombo(this.side, p.second, m.time)) {
-        const disrupted = foe.shield > 0 && (p.second === 'power_shot' || p.second === 'knockout');
+        const disrupted = (foe.shield > 0 && (p.second === 'power_shot' || p.second === 'knockout')) || this.coverStops(p.second, f, foe);
         // (CHARGED SHOT pierces shields, so a raised shield does not spoil it)
         if (!disrupted && this.tryPlay(p.second)) {
           this.plan = null;
@@ -751,7 +966,13 @@ export class FighterAI {
     return false;
   }
 
+  /** Alpha 1.7.5: cover stands between the fighter and the opponent and would swallow this card attack. */
+  private coverStops(card: CardId, f: FighterSim, foe: FighterSim): boolean {
+    return this.m.covers.live > 0 && STOPPED_BY_COVER.has(card) && !!this.m.covers.onLine(f.x, f.z, foe.x, foe.z, 0.1);
+  }
+
   private comboMakesSense(id: string, f: FighterSim, foe: FighterSim, second?: CardId): boolean {
+    if (second && this.coverStops(second, f, foe)) return false;
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
     // Alpha 1.7: BAT BITE is a lunge — the combo only makes sense within its reach
     if (second === 'bat_bite') return dist < CARD_TUNING.bat_bite.rushDistance * 0.85 && foe.shield <= 0;
@@ -1051,6 +1272,13 @@ export class FighterAI {
         if (m.objects.own(this.side, 'freeze')) s = -10;
         break;
       }
+    }
+    // Alpha 1.7.5: with cover in between, a shot or a charge would only hit the piece; a CHARGED
+    // SHOT goes through it and a PROP DROP comes down from above
+    if (m.covers.live > 0 && m.covers.onLine(f.x, f.z, foe.x, foe.z, 0.1)) {
+      if (STOPPED_BY_COVER.has(card)) s -= 5;
+      else if (card === 'charged_shot') s += 1;
+      else if (card === 'prop_drop') s += 1.5;
     }
     return s;
   }

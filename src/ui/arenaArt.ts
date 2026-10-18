@@ -66,6 +66,26 @@ const HAUNTED = S(`
   <path d="M74 66 A8 6 0 1 0 86 62 A6 4.5 0 1 1 74 66 Z" fill="#ff9a3a" opacity=".8"/>
   ${[[38, 58], [122, 58], [30, 76], [130, 76]].map(([x, y]) => `<g><ellipse cx="${x}" cy="${y}" rx="6" ry="5" fill="#ff7a1a"/><path d="M${x - 3} ${y - 1} l2 -2 l1 2 Z M${x + 1} ${y - 1} l2 -2 l1 2 Z" fill="#ffe08a"/><rect x="${x - 1}" y="${y - 7}" width="2" height="3" fill="#4a7a2a"/></g>`).join('')}`);
 
+// Alpha 1.7.5: the cemetery set — crypt, teal moon, and the tombstones, columns and pumpkins ON the floor
+const GRAVEYARD = S(`
+  <rect width="160" height="90" fill="#06100f"/>
+  <circle cx="128" cy="15" r="11" fill="#e8fff6"/><circle cx="128" cy="15" r="17" fill="#3affd0" opacity=".16"/>
+  <path d="M112 22 q6 -6 12 -2 q6 -5 12 0 q5 -2 8 2 Z" fill="#2a2f44"/>
+  <path d="M44 46 V22 L80 8 L116 22 V46 Z" fill="#262a36"/>
+  <g fill="#4a4858">${[52, 64, 96, 108].map((x) => `<rect x="${x - 2}" y="22" width="4" height="24"/>`).join('')}</g>
+  <path d="M72 46 V34 A8 8 0 0 1 88 34 V46 Z" fill="#3affd0" opacity=".85"/>
+  <path d="M8 46 V30 M8 34 L18 26 M8 38 L2 31 M152 46 V28 M152 33 L144 25 M152 37 L158 31" stroke="#241a20" stroke-width="2" fill="none"/>
+  <rect x="0" y="40" width="160" height="8" fill="#3affd0" opacity=".12"/>
+  <g stroke="#14161c" stroke-width="1.4">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((i) => `<line x1="${4 + i * 10}" y1="40" x2="${4 + i * 10}" y2="48"/><circle cx="${4 + i * 10}" cy="40" r="1" fill="#14161c"/>`).join('')}</g>
+  <path d="${FLOOR}" fill="#16201e"/>
+  <path d="${RIM}" fill="none" stroke="#3affd0" stroke-width="2"/>
+  <path d="M80 50 L80 88" stroke="#3a3c46" stroke-width="5" stroke-dasharray="4 2"/>
+  <g fill="#6a6474">
+    <path d="M58 60 h9 v-6 a4.5 3 0 0 0 -9 0 Z"/><path d="M95 78 h11 v-7 a5.5 3.5 0 0 0 -11 0 Z"/>
+  </g>
+  <g fill="#5e5a6c"><rect x="99" y="52" width="6" height="11"/><rect x="98" y="51" width="8" height="2"/><rect x="54" y="72" width="7" height="13"/><rect x="53" y="71" width="9" height="2"/></g>
+  ${[[80, 66, 7], [42, 70, 5], [120, 62, 5]].map(([x, y, r]) => `<g><rect x="${x - r}" y="${y + r * 0.4}" width="${r * 2}" height="${r * 0.6}" fill="#b8902e"/><ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * 0.8}" fill="#ff7a1a"/><path d="M${x - r * 0.5} ${y - 1} l${r * 0.25} -${r * 0.35} l${r * 0.2} ${r * 0.35} Z M${x + r * 0.1} ${y - 1} l${r * 0.25} -${r * 0.35} l${r * 0.2} ${r * 0.35} Z" fill="#ffe08a"/><rect x="${x - 0.8}" y="${y - r * 0.8 - 2}" width="1.6" height="2.4" fill="#4a7a2a"/></g>`).join('')}`);
+
 const RANDOM = S(`
   <rect width="160" height="90" fill="#0b0e2c"/>
   <rect x="0" y="0" width="80" height="45" fill="#141c52"/><rect x="80" y="0" width="80" height="45" fill="#5a0f1c"/>
@@ -78,5 +98,6 @@ export const ARENA_ART: Record<ArenaPref, string> = {
   casino: CASINO,
   backlot: BACKLOT,
   haunted: HAUNTED,
+  graveyard: GRAVEYARD,
   random: RANDOM,
 };

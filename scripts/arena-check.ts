@@ -38,10 +38,12 @@ class MemSave {
 }
 
 // ------------------------------------------------------------ availability
-check('four sets registered in order', ARENA_ORDER.join() === 'original,casino,backlot,haunted' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
+check('five sets registered in order (1.7.5: + graveyard)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
 check('standard season: the three permanent sets are open', availableArenas('default').join() === 'original,casino,backlot');
-check('Halloween: the haunted set opens too', availableArenas('halloween').join() === 'original,casino,backlot,haunted');
-check('another season (winter preview) does not open the haunted set', !availableArenas('winter').includes('haunted'));
+check('Halloween: the haunted set and the cemetery open too', availableArenas('halloween').join() === 'original,casino,backlot,haunted,graveyard');
+check('another season (winter preview) opens neither Halloween set', !availableArenas('winter').includes('haunted') && !availableArenas('winter').includes('graveyard'));
+check('cemetery is seasonal (Halloween Premiere)', ARENAS.graveyard.availability.kind === 'seasonal' && ARENAS.graveyard.availability.themeId === 'halloween');
+check('a saved cemetery choice falls back to the original studio after the season', validArenaPref('graveyard', 'default') === 'original' && validArenaPref('graveyard', 'halloween') === 'graveyard');
 check('haunted set is seasonal (Halloween Premiere)', ARENAS.haunted.availability.kind === 'seasonal' && ARENAS.haunted.availability.themeId === 'halloween');
 check('a saved haunted choice falls back to the original studio after the season', validArenaPref('haunted', 'default') === 'original');
 check('a saved haunted choice stays during Halloween', validArenaPref('haunted', 'halloween') === 'haunted');
@@ -53,11 +55,11 @@ check('RANDOM stays RANDOM; junk becomes the original studio', validArenaPref('r
     const id = resolveArena('random', 'default', () => rng.next());
     seen.set(id, (seen.get(id) ?? 0) + 1);
   }
-  check('RANDOM (standard season) never picks the closed seasonal set', !seen.has('haunted'));
+  check('RANDOM (standard season) never picks the closed seasonal sets', !seen.has('haunted') && !seen.has('graveyard'));
   check('RANDOM (standard season) picks every open set, roughly evenly', ['original', 'casino', 'backlot'].every((id) => (seen.get(id as ArenaId) ?? 0) > 1100));
   const seenH = new Set<ArenaId>();
   for (let i = 0; i < 400; i++) seenH.add(resolveArena('random', 'halloween', () => rng.next()));
-  check('RANDOM during Halloween can pick all four sets', seenH.size === 4);
+  check('RANDOM during Halloween can pick all five sets', seenH.size === 5);
   check('a fixed choice is not randomised', resolveArena('casino', 'default', () => 0.99) === 'casino');
   check('resolveArena falls back for an unavailable fixed choice', resolveArena('haunted', 'default', () => 0) === 'original');
 }
@@ -75,7 +77,9 @@ for (const id of ARENA_ORDER) {
   check(`${id}: lighting and captions present`, !!def.caption && def.lighting.intensity.key > 0 && def.themeTint >= 0 && def.themeTint <= 1);
 }
 check('original studio keeps its speakers exactly as before', ARENAS.original.props.length === ARENA.props.length && ARENAS.original.props.every((p, i) => p.kind === 'speaker' && p.x === ARENA.props[i].x && p.z === ARENA.props[i].z && p.respawn === ARENA.propRespawn));
-check('the new sets stay damaged until the next fight (no respawn farming)', (['casino', 'backlot', 'haunted'] as ArenaId[]).every((id) => ARENAS[id].props.every((p) => p.respawn === 0)));
+check('the new sets stay damaged until the next fight (no respawn farming)', (['casino', 'backlot', 'haunted', 'graveyard'] as ArenaId[]).every((id) => ARENAS[id].props.every((p) => p.respawn === 0)));
+// Alpha 1.7.5: cover on the fighting floor exists only on GRAVEYARD BROADCAST (npm run graveyard checks it)
+check('cover on the floor only on the cemetery set', ARENA_ORDER.every((id) => (id === 'graveyard') === !!ARENAS[id].covers?.length));
 
 /** Hammer every set piece many times: breaks are finite, reactive pieces never break. */
 for (const id of ARENA_ORDER) {
@@ -108,7 +112,7 @@ for (const id of ARENA_ORDER) {
   check(`${id}: smashing set pieces changes nothing in the fight (health, positions, rating)`, sameFight);
 }
 
-/** Same seed, same fight on every set: the arena is presentation only. */
+/** Same seed, same fight on every presentation-only set (1.7.5: every set without cover on the floor). */
 function fight(arena: ArenaId, fighter: FighterId, seed: number, boss?: string): string {
   const rival = boss ? BOSSES[boss].rival : RIVAL_ORDER[seed % RIVAL_ORDER.length];
   const m = new Match({ fighter, deck: FIGHTERS[fighter].defaultDeck, rival, difficulty: 'pro', seed, fans: 500, autoPlayer: AUTO.smart, boss, arena });
@@ -131,17 +135,17 @@ function fight(arena: ArenaId, fighter: FighterId, seed: number, boss?: string):
   for (let i = 0; i < 8; i++) {
     const f = fighters[i % fighters.length];
     const base = fight('original', f, 1000 + i * 17);
-    for (const id of ['casino', 'backlot', 'haunted'] as ArenaId[]) {
+    for (const id of ARENA_ORDER.filter((a) => a !== 'original' && !ARENAS[a].covers?.length)) {
       total++;
       if (fight(id, f, 1000 + i * 17) === base) same++;
       propEvents += (fight as unknown as { props: number }).props;
     }
   }
-  check(`identical fight results on every set for the same seed (${same}/${total})`, same === total);
+  check(`identical fight results on every presentation-only set for the same seed (${same}/${total})`, same === total);
   check(`set pieces are hit in real automatic fights (${propEvents} hit/break events)`, propEvents > 0);
   const boss = BOSS.id;
   const b0 = fight('original', 'ray', 77, boss);
-  check('BOSS FIGHT result identical on every set', (['casino', 'backlot', 'haunted'] as ArenaId[]).every((id) => fight(id, 'ray', 77, boss) === b0));
+  check('BOSS FIGHT result identical on every presentation-only set', (['casino', 'backlot', 'haunted'] as ArenaId[]).every((id) => fight(id, 'ray', 77, boss) === b0));
 }
 
 // ----------------------------------------------------------- Survival

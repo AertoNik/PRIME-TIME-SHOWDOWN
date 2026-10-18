@@ -2,6 +2,7 @@
 // a human sees on screen (cards, energy, charge telegraphs) and react with a
 // human-like delay, so results approximate real play rather than perfect play.
 import { Match, type MatchConfig, type MatchMods } from '../src/combat/Match';
+import type { ArenaId } from '../src/config/arenas.config';
 import { CARDS, COMBOS } from '../src/config/cards';
 import { FIGHTERS } from '../src/config/fighters';
 import type { CardId, Difficulty, FighterId, RivalId } from '../src/config/types';
@@ -211,7 +212,7 @@ export interface RunResult {
   cardDamage: Map<CardId, number>;
 }
 
-export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[], mods?: MatchMods, boss?: string): RunResult {
+export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficulty, mode: Mode, seed: number, deck?: CardId[], mods?: MatchMods, boss?: string, arena?: ArenaId): RunResult {
   const m = new Match({
     fighter,
     deck: deck ?? FIGHTERS[fighter].defaultDeck,
@@ -222,6 +223,8 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
     autoPlayer: mode === 'combo' ? undefined : AUTO[mode],
     mods,
     boss,
+    // (Alpha 1.7.5: the studio set — only GRAVEYARD BROADCAST's cover changes a fight)
+    arena,
   });
   const st: BotState = { think: 0, react: -1, reactKey: '' };
   const events = new Map<string, number>();

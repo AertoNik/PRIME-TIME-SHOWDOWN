@@ -3,10 +3,12 @@
 // on every stage — a stage only changes how the studio looks, its lighting and which
 // set pieces stand on the barrier and react to hits. Rendering: src/render/stages/,
 // selection rules: src/meta/ArenaSelection.ts. Guide: docs/ARENAS.md.
+// Alpha 1.7.5: the one exception is GRAVEYARD BROADCAST — its `covers` stand on the
+// fighting floor itself (destructible tombstones, columns and pumpkins; see COVER_TUNING).
 import { ARENA } from './balance';
 import type { ThemeId } from './themes.config';
 
-export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted';
+export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted' | 'graveyard';
 /** What the player picked: a stage or a random available one. */
 export type ArenaPref = ArenaId | 'random';
 
@@ -41,6 +43,18 @@ export interface ArenaPropDef {
   cooldown?: number;
 }
 
+/** Alpha 1.7.5: destructible cover on the fighting floor (GRAVEYARD BROADCAST only). */
+export type CoverKind = 'tombstone' | 'column' | 'pumpkin';
+
+export interface ArenaCoverDef {
+  kind: CoverKind;
+  /** Centre on the fighting floor. */
+  x: number;
+  z: number;
+  /** A tombstone's turn around Y (rad; 0 = the slab runs along X, its face toward ±Z). */
+  yaw?: number;
+}
+
 /** Studio lighting of a stage (no extra lights: the renderer's lights are recoloured and dimmed/boosted). */
 export interface ArenaLighting {
   hemiSky: number;
@@ -65,6 +79,11 @@ export interface ArenaDef {
   /** Short broadcast caption shown before the fight. */
   caption: string;
   props: ArenaPropDef[];
+  /**
+   * Alpha 1.7.5: cover standing on the fighting floor — it blocks fighters and shots and
+   * can be destroyed (absent = the set is presentation only, as every set before 1.7.5).
+   */
+  covers?: ArenaCoverDef[];
   lighting: ArenaLighting;
   /**
    * How strongly a seasonal or BOSS FIGHT theme recolours this stage's lights
@@ -209,9 +228,53 @@ export const ARENAS: Record<ArenaId, ArenaDef> = {
     nativeSeason: 'halloween',
     colors: { a: '#b45cff', b: '#ff8a1f', ink: '#0e0618' },
   },
+
+  // Alpha 1.7.5 — the second Halloween set, the first one with cover on the fighting floor
+  graveyard: {
+    id: 'graveyard',
+    name: 'CURSED CEMETERY SET',
+    show: 'GRAVEYARD BROADCAST',
+    description: 'Бутафорское кладбище Halloween Premiere: надгробия, колонны и тыквы прямо на арене — укрытия, которые можно разбить.',
+    availability: { kind: 'seasonal', themeId: 'halloween', event: 'Halloween Premiere' },
+    caption: 'NEXT BROADCAST — CURSED CEMETERY SET',
+    props: [
+      { kind: 'fogGate', x: 0, z: -N - 0.3, hp: 1, respawn: 0, radius: 1.6, reactive: true, cooldown: 2.2 },
+      { kind: 'pumpkin', x: -2.5, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'pumpkin', x: 2.5, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'lantern', x: -CX - 0.15, z: -CZ - 0.15, hp: 1, respawn: 0, radius: 1.05 },
+      { kind: 'lantern', x: CX + 0.15, z: -CZ - 0.15, hp: 1, respawn: 0, radius: 1.05 },
+      { kind: 'lantern', x: -W - 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'lantern', x: W + 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'pumpkin', x: -W - 0.15, z: 1.9, hp: 1, respawn: 0 },
+      { kind: 'pumpkin', x: W + 0.15, z: 1.9, hp: 1, respawn: 0 },
+    ],
+    // point-symmetric (each piece has its twin at (−x, −z)): both corners see the same floor
+    covers: [
+      { kind: 'pumpkin', x: 0, z: 0 },
+      { kind: 'column', x: -2.75, z: -2.3 },
+      { kind: 'column', x: 2.75, z: 2.3 },
+      { kind: 'tombstone', x: 2.1, z: -3.15, yaw: 0.25 },
+      { kind: 'tombstone', x: -2.1, z: 3.15, yaw: 0.25 },
+      { kind: 'pumpkin', x: -3.15, z: 0.5 },
+      { kind: 'pumpkin', x: 3.15, z: -0.5 },
+    ],
+    lighting: {
+      hemiSky: 0xa8b4ff,
+      hemiGround: 0x0a1a1c,
+      key: 0xdce8ff,
+      fillA: 0x2affd0,
+      fillB: 0xff7a1a,
+      rim: 0xb070ff,
+      fog: 0x050c10,
+      intensity: { hemi: 1.15, key: 2.15, fill: 0.95, rim: 1.6 },
+    },
+    themeTint: 0.3,
+    nativeSeason: 'halloween',
+    colors: { a: '#3affd0', b: '#ff8a1f', ink: '#06100f' },
+  },
 };
 
-export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted'];
+export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted', 'graveyard'];
 
 export function isArenaId(v: unknown): v is ArenaId {
   return typeof v === 'string' && v in ARENAS;

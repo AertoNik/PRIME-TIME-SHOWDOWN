@@ -11,6 +11,7 @@ import { BroadcastSystem, type BroadcastHost } from './BroadcastSystem';
 import { CardHand } from './CardSystem';
 import { CombatSystem } from './CombatSystem';
 import { ComboSystem } from './ComboSystem';
+import { Covers } from './Covers';
 import { FighterAI, type AIProfile } from './FighterAI';
 import { FighterSim } from './FighterSim';
 import { StageObjects } from './StageObjects';
@@ -106,6 +107,8 @@ export class Match implements BroadcastHost {
   /** Alpha 1.6: nets, mines, barriers, props, cameras and freeze zones of the new cards. */
   readonly objects: StageObjects;
   readonly props: PropState[];
+  /** Alpha 1.7.5: destructible cover on the fighting floor (GRAVEYARD BROADCAST; empty on every other set). */
+  readonly covers: Covers;
   events: MatchEvent[] = [];
   result: MatchResultData | null = null;
 
@@ -214,6 +217,7 @@ export class Match implements BroadcastHost {
       cool: 0,
       hits: 0,
     }));
+    this.covers = new Covers(this, arenaById(cfg.arena).covers ?? []);
     if (bossDef) this.boss = new BossDirector(this, bossDef);
   }
 
@@ -297,6 +301,11 @@ export class Match implements BroadcastHost {
     this.combat.updateFighter(this.fighters[0], dt);
     this.combat.updateFighter(this.fighters[1], dt);
     this.combat.separate();
+    // Alpha 1.7.5: nobody stands inside cover (the push between the two fighters included)
+    if (this.covers.live > 0) {
+      this.covers.collide(this.fighters[0]);
+      this.covers.collide(this.fighters[1]);
+    }
     this.combat.updateProjectiles(dt);
     this.updateZones(dt);
     if (this.phase === 'fight') {
@@ -558,6 +567,8 @@ export class Match implements BroadcastHost {
         best = { x: tmpClamp.x, z: tmpClamp.z };
       }
     }
+    // Alpha 1.7.5: a hologram never stands inside cover (GRAVEYARD)
+    if (this.covers.live > 0) this.covers.pushOut(best.x, best.z, MATCH.fighterRadius, best);
     const d: Decoy = { id: this.nextId(), owner: f.side, x: best.x, z: best.z, facing: f.facing, t: 0, duration: t.duration, alive: true, kind: 'holo', soak: -1 };
     this.decoys.push(d);
     this.emit({ type: 'decoy', side: f.side, id: d.id, x: d.x, z: d.z, duration: t.duration });

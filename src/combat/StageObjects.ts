@@ -1,4 +1,4 @@
-import { ARENA, CARD_TUNING, COMBO_TUNING } from '../config/balance';
+import { ARENA, CARD_TUNING, COMBO_TUNING, COVER_TUNING } from '../config/balance';
 import { TAKE_CARDS } from '../config/cards';
 import type { ComboId, Side } from '../config/types';
 import { clampRoundedRect, pointSegDist, segSegDist, type ClampResult } from '../core/math';
@@ -104,6 +104,8 @@ export class StageObjects {
         p = this.onFloor(sx + (dx / dl) * gap, sz + (dz / dl) * gap, 0.4);
       }
     }
+    // Alpha 1.7.5: never inside a tombstone — beside it, where it can be stepped on
+    if (this.m.covers.live > 0) this.m.covers.pushOut(p.x, p.z, 0.3, p);
     this.add({ ...this.base('mine', f, p.x, p.z), radius: t.trigger, stage: 'fly', total: t.flight, combo });
   }
 
@@ -146,6 +148,8 @@ export class StageObjects {
       // never behind the opponent: the opponent must not be between the fighter and the screen
       const along = (spot.x - f.x) * ux + (spot.z - f.z) * uz;
       if (clearF < t.clear - 0.05 || clearE < t.clear - 0.05 || (along > 0 && along > d - t.clear)) continue;
+      // Alpha 1.7.5: and never through a tombstone, column or pumpkin (GRAVEYARD)
+      if (this.m.covers.onLine(ax, az, bx, bz, t.thickness + 0.05)) continue;
       this.add({ ...this.base('barrier', f, spot.x, spot.z), dirX: -uz, dirZ: ux, radius: t.halfLen, total: t.duration, hp: t.hp, maxHp: t.hp });
       return;
     }
@@ -454,6 +458,15 @@ export class StageObjects {
     o.t = 0;
     o.total = t.linger;
     m.emit({ type: 'object', id: o.id, kind: 'prop', owner: o.owner, what: 'land', x: o.x, z: o.z });
+    // Alpha 1.7.5: cover under the falling prop takes a share of the blow (GRAVEYARD)
+    if (m.covers.live > 0) {
+      const src = m.fighters[o.owner];
+      for (const c of m.covers.list) {
+        if (!c.alive || m.covers.gap(c, o.x, o.z) >= o.radius) continue;
+        const at = m.covers.contact(c, o.x, o.z, { x: 0, z: 0 });
+        m.covers.damage(c, t.damage * COVER_TUNING.propMult * src.outgoingDamageMult(), at.x, at.z, 0, 0, true, o.owner);
+      }
+    }
     if (foe.ko) return;
     const dx = foe.x - o.x;
     const dz = foe.z - o.z;

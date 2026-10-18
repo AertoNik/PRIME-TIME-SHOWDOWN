@@ -48,6 +48,25 @@ export const ARENA = {
   propRespawn: 10,
 };
 
+/**
+ * Alpha 1.7.5 — destructible cover on the floor of GRAVEYARD BROADCAST (the only set with
+ * cover; see arenas.config `covers`). Each piece is a capsule on the floor: a round one
+ * (`half` 0) or a slab `2·half` long. It stops fighters and shots of both sides, soaks the
+ * damage of whatever hits it and goes through four looks: intact → cracked (≤ 2/3 hp) →
+ * battered (≤ 1/3) → shattered (0: its collision is gone). Nothing is rebuilt during a fight.
+ */
+export const COVER_TUNING = {
+  tombstone: { hp: 800, radius: 0.26, half: 0.34, height: 1.32 },
+  column: { hp: 1200, radius: 0.44, half: 0, height: 1.95 },
+  pumpkin: { hp: 450, radius: 0.5, half: 0, height: 1.16 },
+  /** A knockback into cover faster than this (m/s) slams it. */
+  slamSpeed: 5.5,
+  /** What the slam does to the cover (the fighter only stops: no extra damage, no stun). */
+  slamDamage: 160,
+  /** Share of PROP DROP damage a piece of cover under the falling prop takes. */
+  propMult: 0.5,
+};
+
 /** DIRECTOR'S CUT numbers. Arrays hold one value per shot (1st, 2nd, 3rd). */
 export interface CutTuning {
   /** Raised-rifle pose and the "DIRECTOR'S CUT!" alert before the first line. */

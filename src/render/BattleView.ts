@@ -1340,6 +1340,13 @@ export class BattleView {
         if (p) this.arena.propRespawn(e.index, p.x, p.z);
         break;
       }
+      // Alpha 1.7.5 — cover on the floor of GRAVEYARD BROADCAST: chips, cracks and the shatter
+      case 'cover': {
+        this.arena.coverEvent(e.index, e.what, e.stage, e.x, e.z, e.dx, e.dz, e.heavy);
+        if (e.what === 'break') this.cam.addTrauma(e.heavy ? 0.22 : 0.14);
+        else if (e.what === 'crack') this.cam.addTrauma(0.05);
+        break;
+      }
       // Alpha 1.5 — BANK SHOT / FALSE START
       case 'bank': {
         const s = this.slots[e.side];

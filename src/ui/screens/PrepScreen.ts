@@ -169,14 +169,21 @@ export class PrepScreen implements Screen {
     const def = pref === 'random' ? null : arenaById(pref);
     const n = availableArenas(g.events.themeId).length;
     const halloween = g.events.themeId === 'halloween';
+    // Alpha 1.7.5: the cemetery is the one set with cover on the floor
+    const covers = !!def?.covers?.length;
+    const randomCovers = pref === 'random' && availableArenas(g.events.themeId).some((id) => !!arenaById(id).covers?.length);
     const note =
       this.mode.kind === 'survival'
-        ? 'Павильон выбирается при старте марафона и остаётся на все 5 волн.'
+        ? `Павильон выбирается при старте марафона и остаётся на все 5 волн.${covers ? ' На кладбище стоят разрушаемые укрытия.' : ''}`
         : this.mode.kind === 'challenge'
-          ? 'Правила испытания одинаковы в любом павильоне.'
+          ? `Правила испытания одинаковы в любом павильоне.${covers ? ' На кладбище стоят разрушаемые укрытия.' : ''}`
           : this.mode.kind === 'boss'
-            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.`
-            : 'Павильон меняет только оформление: размеры арены, правила и баланс везде одинаковы.';
+            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.${covers || randomCovers ? ' Среди надгробий чемпион не выступает: вместо кладбища бой пройдёт в HAUNTED PRIME SET.' : ''}`
+            : covers
+              ? 'На кладбище стоят разрушаемые укрытия: надгробия, колонны и тыквы останавливают выстрелы, пока их не разобьют.'
+              : randomCovers
+                ? 'Павильоны отличаются оформлением; только на кладбище CURSED CEMETERY есть разрушаемые укрытия.'
+                : 'Павильон меняет только оформление: размеры арены, правила и баланс везде одинаковы.';
     return `<div class="section panel arena-pick" data-act="arena" role="button" aria-label="Выбрать павильон эфира">
         <div class="ap-thumb">${ARENA_ART[pref]}</div>
         <div class="ap-info">
@@ -209,13 +216,17 @@ export class PrepScreen implements Screen {
           ? `<span class="ac-on">${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} Выбрано</span>`
           : '<span class="ac-pick">Выбрать</span>';
       const desc = def ? def.description : `Каждый бой — один из доступных павильонов (сейчас: ${availableArenas(season).length}). Сезонные — только во время своего события.`;
+      // Alpha 1.7.5: cover on the floor, and the season's bonus for a win there while the event pays
+      const cover = def?.covers?.length ? '<span class="chip cover">Разрушаемые укрытия</span>' : '';
+      const bonus = def && open ? g.events.arenaBonus(def.id) : null;
+      const bonusChip = bonus ? `<span class="chip gold">+${bonus.tokens} ${esc(bonus.unit)} за победу</span>` : '';
       return `<button class="arena-card ${id === cur ? 'on' : ''} ${open ? '' : 'locked'} ac-${id}" data-arena="${id}" ${open ? '' : 'aria-disabled="true"'}>
           <span class="ac-thumb">${ARENA_ART[id]}</span>
           <span class="ac-body">
             <span class="ac-name">${def ? esc(def.name) : 'СЛУЧАЙНЫЙ ПАВИЛЬОН'}</span>
             <span class="ac-show">${def ? esc(def.show) : 'RANDOM ARENA'}</span>
             <span class="ac-desc">${esc(desc)}</span>
-            <span class="ac-foot">${type}${status}</span>
+            <span class="ac-foot">${type}${cover}${bonusChip}${status}</span>
           </span>
         </button>`;
     };

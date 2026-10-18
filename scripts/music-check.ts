@@ -43,7 +43,10 @@ for (const id of ids) {
 check(`files: every track is a real MP3 in public/audio/music/ under its own name, relative path (GitHub Pages, base './')${bad.length ? ' — ' + bad.join('; ') : ''}`, bad.length === 0);
 
 // -------------------------------------------------------------- mapping
-check('mapping: every studio set has its own fight track', ARENA_ORDER.every((a) => !!ARENA_MUSIC[a]) && new Set(ARENA_ORDER.map((a) => ARENA_MUSIC[a])).size === ARENA_ORDER.length);
+// (Alpha 1.7.5: the second Halloween set, GRAVEYARD BROADCAST, shares the Halloween fight track — no new music)
+const OWN_TRACK = ARENA_ORDER.filter((a) => a !== 'graveyard');
+check('mapping: every studio set has a fight track; the four classic sets each their own', ARENA_ORDER.every((a) => !!ARENA_MUSIC[a]) && new Set(OWN_TRACK.map((a) => ARENA_MUSIC[a])).size === OWN_TRACK.length);
+check('mapping: GRAVEYARD BROADCAST plays the Halloween fight track (haunted_arena)', ARENA_MUSIC.graveyard === 'haunted_arena');
 check('mapping: original → prime_arena, casino → casino_arena, backlot → movie_backlot, haunted → haunted_arena', ARENA_MUSIC.original === 'prime_arena' && ARENA_MUSIC.casino === 'casino_arena' && ARENA_MUSIC.backlot === 'movie_backlot' && ARENA_MUSIC.haunted === 'haunted_arena');
 check('mapping: the menu tracks are menu music, the rest fight music', ids.every((id) => (MUSIC_TRACKS[id].role === 'menu') === id.startsWith('prime_menu')));
 const game = readFileSync('src/game/Game.ts', 'utf8');

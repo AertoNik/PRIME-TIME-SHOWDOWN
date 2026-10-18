@@ -441,7 +441,11 @@ export class Game {
       return run && arenaAvailable(arenaById(run.arena), season) ? run.arena : 'original';
     }
     const rng = new Rng(seed ^ 0x51ed27);
-    return resolveArena(this.save.data.arena, season, () => rng.next());
+    const id = resolveArena(this.save.data.arena, season, () => rng.next());
+    // Alpha 1.7.5: the champion is not fought among tombstones — BOSS FIGHT keeps its tuned open floor
+    // (the cemetery's Halloween neighbour hosts it instead)
+    if (mode.kind === 'boss' && arenaById(id).covers?.length) return 'haunted';
+    return id;
   }
 
   /**
@@ -752,7 +756,10 @@ export class Game {
     }
     // a boss win or a challenge clear (recorded after the match) can complete a career stage too
     outcome.newStage = this.career.newStageSince(stageBefore);
-    const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty);
+    // (Alpha 1.7.5: the set counts too — a real win on GRAVEYARD BROADCAST pays its small season bonus;
+    // the event id is used up here, so a match never pays twice)
+    const eventOutcome: MatchEventOutcome | null = this.events.applyMatch(this.matchEventId, m.result, meta.difficulty, m.cfg.arena);
+    this.matchEventId = null;
     this.enterResultsView(m.result.outcome);
     this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
   }
@@ -1047,6 +1054,13 @@ export class Game {
         // studio-set pieces: each kind sounds like what it is (chips, plywood, stone…)
         const p = this.match?.props[e.index];
         if (p) a.prop(p.kind, e.type === 'propBreak', e.type === 'propHit' && e.heavy);
+        break;
+      }
+      case 'cover': {
+        // Alpha 1.7.5: cover on the floor sounds like the set's own stone and pumpkins (no new sounds):
+        // every crack, break and heavy blow is heard; a plain chip only shows (no rattle under fire)
+        const c = this.match?.covers.list[e.index];
+        if (c && (e.what !== 'hit' || e.heavy)) a.prop(c.kind === 'pumpkin' ? 'pumpkin' : 'gravestone', e.what === 'break', e.heavy || c.kind === 'column');
         break;
       }
       case 'dodge':

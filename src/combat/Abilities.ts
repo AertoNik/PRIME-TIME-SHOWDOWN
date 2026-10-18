@@ -82,6 +82,14 @@ export class Abilities {
           m.projectiles.some((p) => p.owner !== f.side && p.heavy && p.alive);
         f.stun = 0;
         clampRoundedRect(fromX + dir.x * dist, fromZ + dir.z * dist, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
+        // Alpha 1.7.5: a DASH meets cover on the way — it ends at the piece (the move itself slides round it)
+        if (m.covers.live > 0) {
+          const free = m.covers.sweep(fromX, fromZ, tmp.x, tmp.z, f.radius);
+          if (free < 1) {
+            tmp.x = fromX + (tmp.x - fromX) * free;
+            tmp.z = fromZ + (tmp.z - fromZ) * free;
+          }
+        }
         // (the slow-motion ring travels with the fighter on its own; TIME SLIP stretches it)
         if (comboId === 'time_slip') m.objects.extendFreeze(f.side, COMBO_TUNING.timeSlipExtend);
         m.emit({ type: 'dash', side: f.side, fromX, fromZ, toX: tmp.x, toZ: tmp.z, style: f.def.dashStyle });
@@ -385,9 +393,16 @@ export class Abilities {
     let tx = f.x;
     let tz = f.z;
     if (n > 0) {
-      const i = Math.max(0, n - 1 - Math.round(t.lookback / t.sample));
-      tx = f.hist[i * 2];
-      tz = f.hist[i * 2 + 1];
+      let i = Math.max(0, n - 1 - Math.round(t.lookback / t.sample));
+      // Alpha 1.7.5: the glide back is a straight line — with cover in the way, the latest point
+      // of the tape it can reach in a straight line (none: it stays where it is)
+      if (this.m.covers.live > 0) {
+        while (i < n && this.m.covers.sweep(f.x, f.z, f.hist[i * 2], f.hist[i * 2 + 1], f.radius) < 1) i++;
+      }
+      if (i < n) {
+        tx = f.hist[i * 2];
+        tz = f.hist[i * 2 + 1];
+      }
     }
     clampRoundedRect(tx, tz, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
     out.x = tmp.x;
@@ -699,13 +714,30 @@ export class Abilities {
     this.m.emit({ type: 'cutEnd', side: f.side, completed: false });
   }
 
-  updateRush(f: FighterSim, foe: FighterSim, a: RushAction): void {
+  updateRush(f: FighterSim, foe: FighterSim, a: RushAction, dt: number): void {
     const m = this.m;
     const t = CARD_TUNING.knockout;
     // Decoys absorb the charge (a HOLO DECOY does not: the charge is aimed at the real fighter).
     for (const d of m.decoys) {
       if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) {
         m.popDecoy(d);
+      }
+    }
+    // Alpha 1.7.5: a charge into cover smashes into the piece (the full blow) and stops there
+    if (m.covers.live > 0 && !a.feinted) {
+      const step = a.speed * dt + f.radius * 0.6;
+      const cover = m.covers.onLine(f.x, f.z, f.x + a.dirX * step, f.z + a.dirZ * step, 0.05);
+      if (cover) {
+        let mult = 1;
+        if (a.combo === 'counter_strike') mult = COMBO_TUNING.counterStrikeMult;
+        else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
+        else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
+        const at = m.covers.contact(cover, f.x, f.z, aim);
+        m.covers.damage(cover, t.damage * mult * f.outgoingDamageMult(), at.x, at.z, a.dirX, a.dirZ, true, f.side);
+        f.action = { kind: 'recover', t: 0, total: t.missRecover };
+        f.vx *= 0.1;
+        f.vz *= 0.1;
+        return;
       }
     }
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
@@ -811,12 +843,25 @@ export class Abilities {
       f.vz *= 0.1;
       return;
     }
+    // Alpha 1.7.5: cover in the way — the swarm splashes against the piece (it takes the bite) and the lunge stops
+    if (m.covers.live > 0) {
+      const cover = m.covers.onLine(f.x, f.z, f.x + a.dirX * step, f.z + a.dirZ * step, 0.05);
+      if (cover) {
+        const at = m.covers.contact(cover, f.x, f.z, aim);
+        m.covers.damage(cover, t.barrierDamage * f.outgoingDamageMult(), at.x, at.z, a.dirX, a.dirZ, true, f.side);
+        m.emit({ type: 'bite', side: f.side, what: 'barrier', x: at.x, z: at.z, dx: a.dirX, dz: a.dirZ });
+        f.action = { kind: 'recover', t: 0, total: t.missRecover };
+        f.vx *= 0.1;
+        f.vz *= 0.1;
+        return;
+      }
+    }
     // a phantom decoy in the way takes the lunge (a HOLO DECOY does not fool a charge)
     for (const d of m.decoys) {
       if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) m.popDecoy(d);
     }
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
-    if (!foe.ko && dist < t.hitRange && !a.feinted && !a.dodged && !m.objects.barrierOnLine(f.x, f.z, foe.x, foe.z, 0.05)) {
+    if (!foe.ko && dist < t.hitRange && !a.feinted && !a.dodged && !m.objects.barrierOnLine(f.x, f.z, foe.x, foe.z, 0.05) && !m.covers.onLine(f.x, f.z, foe.x, foe.z, 0.05)) {
       if (foe.invuln > 0) {
         // DASHed through the swarm: the lunge rushes on past
         a.dodged = true;
@@ -911,6 +956,8 @@ export class Abilities {
       let score = 0;
       // stay on the floor: penalise clamped distance
       score -= Math.hypot(tmp.x - ex, tmp.z - ez) * 3;
+      // Alpha 1.7.5: and the part of the dash that cover would swallow (GRAVEYARD)
+      if (m.covers.live > 0) score -= (1 - m.covers.sweep(f.x, f.z, tmp.x, tmp.z, f.radius)) * dist * 3;
       // keep a sensible range
       const nd = Math.hypot(foe.x - tmp.x, foe.z - tmp.z);
       score -= Math.abs(nd - pref) * 0.35;

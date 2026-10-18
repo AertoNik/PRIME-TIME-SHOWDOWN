@@ -98,6 +98,15 @@ export interface Projectile {
   ret: boolean;
   mask: number;
   life: number;
+  /**
+   * Alpha 1.7.5 (GRAVEYARD covers): where the shot really starts for the cover test of its
+   * first step — the shooter's body, so a muzzle poking past a tombstone still hits it.
+   */
+  ox: number;
+  oz: number;
+  first: boolean;
+  /** Covers a piercing CHARGED SHOT already went through (bit per cover). */
+  coverMask: number;
 }
 
 export interface SmokeZone {
@@ -282,6 +291,12 @@ export type MatchEvent =
   /** A set piece was hit but holds (hp left), or a reactive piece reacted (hp = -1). */
   | { type: 'propHit'; index: number; x: number; z: number; hp: number; heavy: boolean }
   | { type: 'propRespawn'; index: number }
+  /**
+   * Alpha 1.7.5 — a piece of cover on the floor (GRAVEYARD BROADCAST) took a hit: 'hit' (same
+   * look), 'crack' (its look changed: `stage` 1 cracked, 2 battered) or 'break' (stage 3:
+   * shattered, its collision is gone). `side` dealt it (-1: nobody in particular); d = direction.
+   */
+  | { type: 'cover'; index: number; what: 'hit' | 'crack' | 'break'; stage: number; hp: number; x: number; z: number; dx: number; dz: number; heavy: boolean; side: Side | -1 }
   /** Alpha 1.5: a BANK SHOT ricocheted off the barrier at (x, z) (n = wall normal, d = new direction). */
   | { type: 'bank'; side: Side; x: number; z: number; nx: number; nz: number; dx: number; dz: number }
   /** Alpha 1.5: a BANK SHOT landed after its ricochet. */

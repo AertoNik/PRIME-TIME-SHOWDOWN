@@ -790,6 +790,11 @@ export abstract class Stage {
   abstract propHit(index: number, hp: number, heavy: boolean, x: number, z: number): void;
   abstract propBreak(index: number, x: number, z: number): void;
   propRespawn(_index: number, _x: number, _z: number): void {}
+  /**
+   * Alpha 1.7.5: a piece of cover on the fighting floor took a hit ('hit'), changed its look
+   * ('crack', stage 1–2) or shattered ('break'). Only GRAVEYARD BROADCAST has cover.
+   */
+  coverEvent(_index: number, _what: 'hit' | 'crack' | 'break', _stage: number, _x: number, _z: number, _dx: number, _dz: number, _heavy: boolean): void {}
   /** Every set piece back to its intact state (new fight, back to the menu). */
   abstract resetProps(): void;
   setQuality(low: boolean): void {

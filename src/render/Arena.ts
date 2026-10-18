@@ -5,6 +5,7 @@ import type { Renderer } from './Renderer';
 import { SeasonalDecor } from './SeasonalDecor';
 import { BacklotStage } from './stages/BacklotStage';
 import { CasinoStage } from './stages/CasinoStage';
+import { GraveyardStage } from './stages/GraveyardStage';
 import { HauntedStage } from './stages/HauntedStage';
 import { OriginalStage } from './stages/OriginalStage';
 import type { Stage, StageShared } from './stages/StageKit';
@@ -76,6 +77,7 @@ const STAGE_TYPES: Record<ArenaId, new (sh: StageShared) => Stage> = {
   casino: CasinoStage,
   backlot: BacklotStage,
   haunted: HauntedStage,
+  graveyard: GraveyardStage,
 };
 
 const _a = new Color();
@@ -268,6 +270,11 @@ export class Arena {
 
   propRespawn(i: number, x: number, z: number): void {
     this.stage.propRespawn(i, x, z);
+  }
+
+  /** Alpha 1.7.5: cover on the fighting floor (GRAVEYARD BROADCAST) reacted to a hit. */
+  coverEvent(i: number, what: 'hit' | 'crack' | 'break', stage: number, x: number, z: number, dx: number, dz: number, heavy: boolean): void {
+    this.stage.coverEvent(i, what, stage, x, z, dx, dz, heavy);
   }
 
   /** All set pieces intact again (every new fight / wave and back in the menu). */

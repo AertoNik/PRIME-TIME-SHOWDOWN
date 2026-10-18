@@ -1,3 +1,4 @@
+import type { ArenaId } from '../config/arenas.config';
 import type { CosmeticId, CosmeticSlot } from '../config/cosmetics.config';
 import { EVENTS, eventSettings, plural, type EventDef, type EventSettings, type QuestDef, type QuestMetric } from '../config/events.config';
 import { DIFFICULTY_ORDER, FIGHTERS } from '../config/fighters';
@@ -187,7 +188,7 @@ export class EventManager {
    * Count a finished match toward the active event. Call once per match with
    * the event that was active when the match started.
    */
-  applyMatch(eventId: string | null, r: MatchResultData, difficulty: Difficulty): MatchEventOutcome | null {
+  applyMatch(eventId: string | null, r: MatchResultData, difficulty: Difficulty, arena?: ArenaId): MatchEventOutcome | null {
     const e = eventId ? this.find(eventId) : null;
     if (!e || !e.currency || !e.earnings || e.quests.length === 0) return null;
     const p = this.progress(e.id);
@@ -212,6 +213,9 @@ export class EventManager {
       if (rt > 0) lines.push({ label: `Рейтинг ${Math.round(r.rating)}`, value: rt });
       const cb = Math.min(er.comboCap, r.combos) * er.perCombo;
       if (cb > 0) lines.push({ label: `Комбо ×${Math.min(er.comboCap, r.combos)}`, value: cb });
+      // Alpha 1.7.5: a real win (knockout or on time — never a forfeit) on the season's own set
+      const aw = er.arenaWin;
+      if (aw && arena === aw.arena && r.outcome === 'win' && (r.method === 'ko' || r.method === 'time') && aw.tokens > 0) lines.push({ label: aw.label, value: aw.tokens });
       tokens = lines.reduce((a, l) => a + l.value, 0);
       const day = localDay(this.now());
       if (p.day !== day) {
@@ -230,6 +234,17 @@ export class EventManager {
     this.version++;
     this.store.save();
     return { eventId: e.id, tokens, lines, capped, completed };
+  }
+
+  /**
+   * Alpha 1.7.5: the season's bonus for a win on this set while the event really pays
+   * (null otherwise) — shown in the arena picker.
+   */
+  arenaBonus(arena: ArenaId): { tokens: number; unit: string } | null {
+    const e = this.active;
+    const aw = e?.earnings?.arenaWin;
+    if (!this.playable || !e?.currency || !aw || aw.arena !== arena || aw.tokens <= 0) return null;
+    return { tokens: aw.tokens, unit: plural(aw.tokens, e.currency.short) };
   }
 
   /** Pay out a finished quest once. Returns the tokens paid or null. */

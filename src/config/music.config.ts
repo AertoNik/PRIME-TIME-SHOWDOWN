@@ -49,6 +49,8 @@ export const ARENA_MUSIC: Record<ArenaId, MusicId> = {
   casino: 'casino_arena',
   backlot: 'movie_backlot',
   haunted: 'haunted_arena',
+  // Alpha 1.7.5: the second Halloween set shares the Halloween fight track (no new music)
+  graveyard: 'haunted_arena',
 };
 
 const dB = (v: number) => Math.pow(10, v / 20);

@@ -6272,6 +6272,11 @@ input {
   --st: #ff9a3a;
   box-shadow: inset 0 0 0 1px rgba(176, 112, 255, 0.55), 0 0 20px rgba(138, 61, 255, 0.5);
 }
+/* Alpha 1.7.5: GRAVEYARD BROADCAST — ghost teal with a pumpkin glow */
+.mi-stage.st-graveyard {
+  --st: #3affd0;
+  box-shadow: inset 0 0 0 1px rgba(58, 255, 208, 0.5), 0 0 20px rgba(255, 122, 26, 0.35), 0 0 26px rgba(58, 255, 208, 0.3);
+}
 .bi-edition {
   display: inline-flex;
   align-items: center;
@@ -6442,6 +6447,12 @@ input {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+/* Alpha 1.7.5: the cemetery's destructible cover */
+.chip.cover {
+  color: #aaffea;
+  background: rgba(58, 255, 208, 0.14);
+  box-shadow: 0 0 0 1px rgba(58, 255, 208, 0.4);
 }
 .ac-foot .chip {
   max-width: 100%;

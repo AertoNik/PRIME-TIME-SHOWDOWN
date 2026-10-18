@@ -1,6 +1,7 @@
 // Seasonal events: calendar, quests, seasonal currency and rewards.
 // Everything here is data; EventManager (src/meta/EventManager.ts) runs it.
 // Step-by-step guide in Russian: docs/SEASONAL_EVENTS.md
+import type { ArenaId } from './arenas.config';
 import type { CosmeticId } from './cosmetics.config';
 import type { ThemeId } from './themes.config';
 import type { Difficulty, FighterId } from './types';
@@ -82,6 +83,11 @@ export interface MatchEarnings {
   comboCap: number;
   /** Max tokens per local calendar day from matches (quests are not capped). */
   dailyCap: number;
+  /**
+   * Alpha 1.7.5: a little extra for a real win on the season's own set (Halloween Premiere:
+   * GRAVEYARD BROADCAST). It counts toward `dailyCap` like the rest of the match tokens.
+   */
+  arenaWin?: { arena: ArenaId; tokens: number; label: string };
 }
 
 export interface ShopItem {
@@ -132,7 +138,7 @@ export const EVENTS: EventDef[] = [
     announceDays: 14,
     tagline: 'Тыквы на трибунах, неон в тумане и самые зрелищные бои сезона.',
     currency: { id: 'pumpkin', name: 'PUMPKIN TOKENS', short: ['жетон', 'жетона', 'жетонов'], icon: 'pumpkin' },
-    earnings: { win: 4, rating: [[60, 2], [85, 2]], perCombo: 1, comboCap: 3, dailyCap: 60 },
+    earnings: { win: 4, rating: [[60, 2], [85, 2]], perCombo: 1, comboCap: 3, dailyCap: 60, arenaWin: { arena: 'graveyard', tokens: 2, label: 'Победа на кладбище' } },
     quests: [
       { id: 'first_night', title: 'FIRST NIGHT ON AIR', desc: 'Победите в 3 матчах', metric: { kind: 'wins' }, target: 3, reward: 30, icon: 'moon' },
       { id: 'combo_carnival', title: 'COMBO CARNIVAL', desc: 'Проведите 10 комбо', metric: { kind: 'combos' }, target: 10, reward: 40, icon: 'combo' },

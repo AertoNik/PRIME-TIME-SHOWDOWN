@@ -198,6 +198,8 @@ export function lineReach(x: number, z: number, dirX: number, dirZ: number, leng
   return length;
 }
 
+const coverHit = { x: 0, z: 0 };
+
 /** Movement, auto-fire, projectiles and damage resolution. */
 export class CombatSystem {
   private m: Match;
@@ -452,6 +454,8 @@ export class CombatSystem {
         }
       }
     }
+    // Alpha 1.7.5: cover on the floor (GRAVEYARD) — slide round it, never through it
+    if (this.m.covers.live > 0) this.m.covers.collide(f);
   }
 
   private wallSlam(f: FighterSim, speed: number, nx: number, nz: number): void {
@@ -543,7 +547,7 @@ export class CombatSystem {
         break;
       case 'rush':
         a.t += dt;
-        m.abilities.updateRush(f, foe, a);
+        m.abilities.updateRush(f, foe, a, dt);
         break;
       case 'recover':
         a.t += dt;
@@ -713,6 +717,8 @@ export class CombatSystem {
       cx = tx - ux * 0.35;
       cz = tz - uz * 0.35;
       const screen = m.objects.barrierOnLine(f.x, f.z, tx, tz, 0.05);
+      // Alpha 1.7.5: a tombstone, column or pumpkin between the cane and its target takes the blow
+      const cover = screen ? null : m.covers.onLine(f.x, f.z, tx, tz, 0.05);
       if (screen) {
         // the cane rings off the screen: the barrier soaks the blow
         outcome = 'blocked';
@@ -720,6 +726,12 @@ export class CombatSystem {
         cz = screen.z;
         m.objects.damageBarrier(screen, dmg, cx, cz);
         m.emit({ type: 'impact', side: f.side, x: cx, z: cz, kind: 'shield', heavy: false, weapon: f.stats.attack.weapon });
+      } else if (cover) {
+        outcome = 'blocked';
+        m.covers.contact(cover, f.x, f.z, coverHit);
+        cx = coverHit.x;
+        cz = coverHit.z;
+        m.covers.damage(cover, dmg, cx, cz, ux, uz, false, f.side);
       } else if (decoy) {
         outcome = 'decoy';
         if (decoy.kind === 'holo') {
@@ -1005,6 +1017,12 @@ export class CombatSystem {
     p.ret = false;
     p.mask = 0;
     p.life = 0;
+    // Alpha 1.7.5: the first step's cover test starts at the shooter's body (an echo: at the ghost)
+    const shooter = this.m.fighters[owner];
+    p.ox = p.echo ? x : shooter.x;
+    p.oz = p.echo ? z : shooter.z;
+    p.first = true;
+    p.coverMask = 0;
     this.m.projectiles.push(p);
     return p;
   }
@@ -1322,6 +1340,37 @@ export class CombatSystem {
         }
       }
       if (consumed) continue;
+
+      // Alpha 1.7.5 GRAVEYARD cover: it stops the shots of both sides — unless the target is
+      // reached first on this step; a piercing CHARGED SHOT goes through, damaging each piece once
+      if (m.covers.live > 0) {
+        const fx = p.first ? p.ox : p.px;
+        const fz = p.first ? p.oz : p.pz;
+        p.first = false;
+        const cov = m.covers.projectileHit(p, fx, fz);
+        if (cov) {
+          const discDone = p.kind === 'disc' && (p.mask & (p.ret ? 2 : 1)) !== 0;
+          const tf = foe.ko || p.passThrough || discDone ? -1 : segmentCircleHit(fx, fz, p.x, p.z, foe.x, foe.z, foe.radius + p.radius);
+          if (tf < 0 || tf > cov.t) {
+            const len = Math.hypot(p.vx, p.vz) || 1;
+            const prog = clamp(p.traveled / p.range, 0, 1);
+            const dmg = p.kind === 'disc' ? p.damage : p.damage * (1 + (p.falloff - 1) * prog);
+            const hx = fx + (p.x - fx) * cov.t;
+            const hz = fz + (p.z - fz) * cov.t;
+            m.covers.contact(cov.c, hx, hz, coverHit);
+            const pierce = p.kind === 'power' && p.pierce > 0;
+            m.covers.damage(cov.c, dmg, coverHit.x, coverHit.z, p.vx / len, p.vz / len, p.heavy, p.owner);
+            if (pierce) {
+              p.coverMask |= 1 << cov.c.index;
+            } else {
+              p.x = hx;
+              p.z = hz;
+              p.alive = false;
+              continue;
+            }
+          }
+        }
+      }
 
       // Alpha 1.6 STAGE BARRIER: a screen stops projectiles of both sides
       const screen = m.objects.barrierHit(p);
