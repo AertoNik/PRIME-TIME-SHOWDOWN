@@ -255,7 +255,8 @@ export const LOOKS: Record<string, LookDef> = {
   lucien: {
     id: 'lucien',
     body: 'svelte',
-    skin: 0xe6c8bc,
+    // (1.7.1: a touch less pink and a little cooler — pale and noble, never grey)
+    skin: 0xe3cbc3,
     hair: { style: 'swept', color: 0x15111b, color2: 0x5a1426 },
     top: { style: 'tailcoat', main: 0x17121c, accent: 0x7c1029, trim: 0x5d6170, inner: 0xbdb2bf },
     pants: { style: 'tailored', main: 0x19141e, accent: 0x5c0e20 },

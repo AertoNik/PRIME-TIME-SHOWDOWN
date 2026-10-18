@@ -266,6 +266,7 @@ export const DIMS: Record<BodyType, Dims> = {
     shoeW: 0.28,
   },
   // Alpha 1.7 (Lucien): tall and lean — longer legs, a narrow waist under a V of shoulders, a slightly smaller head
+  // (1.7.1: the head 4% smaller again, 0.44 → 0.423)
   svelte: {
     hipY: 0.71,
     hipW: 0.135,
@@ -296,11 +297,29 @@ export const DIMS: Record<BodyType, Dims> = {
     handR: 0.14,
     neckY: 0.62,
     neckR: 0.092,
-    headR: 0.44,
+    headR: 0.423,
     shoeL: 0.46,
     shoeW: 0.25,
   },
 };
+
+/**
+ * Alpha 1.7.1 (Lucien): a head that is not a perfect ball — a touch wider across the cheekbones and
+ * gently tapering toward the chin (an inverted egg), sculpted on the sphere's vertices so the outline
+ * stays smooth. Still the roster's big stylised head, never narrow or long.
+ */
+function sculptedHead(R: number): BufferGeometry {
+  const g = sph(R, 30, 22);
+  const pos = g.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / R;
+    const taper = Math.min(1, Math.max(0, (-y - 0.05) / 0.95));
+    const cheek = Math.exp(-(((y + 0.12) / 0.15) ** 2));
+    pos.setX(i, pos.getX(i) * (1 - 0.13 * taper ** 1.5) * (1 + 0.032 * cheek));
+  }
+  // (the sphere's own normals are kept: the change is gentle, and recomputing them would show the UV seam)
+  return g;
+}
 
 /** Alpha 1.7: turn an open shell inside out (reversed winding, normals flipped) — the lining of a collar. */
 function insideOut(g: BufferGeometry): BufferGeometry {
@@ -842,13 +861,14 @@ export function getRigGeometry(lookId: string): RigGeometry {
     // Alpha 1.7 (Lucien): the high vampire collar — a flared stand rising behind the head, black
     // outside, bordeaux inside, a crimson glow on its rim; structured shoulders with a dark-metal edge
     if (top.style === 'tailcoat') {
-      // (an elliptic flare: broad wings to the sides, so the bordeaux lining shows beside the head from the front)
-      const open = 1.75;
-      const H = 0.48;
-      const at: PartOpts = { p: [0, h * 0.9 + H / 2, -0.03], r: [-0.1, 0, 0], s: [1.3, 1, 0.85] };
-      T.add(new CylinderGeometry(0.58, 0.2, H, 28, 1, true, open / 2, Math.PI * 2 - open), top.main, at);
-      T.add(insideOut(new CylinderGeometry(0.565, 0.19, H * 0.98, 28, 1, true, open / 2, Math.PI * 2 - open)), top.accent, at);
-      const rim = tor(0.58, 0.012, Math.PI * 2 - open, 30);
+      // (an elliptic flare: wings to the sides, so the bordeaux lining shows beside the head from the front;
+      // 1.7.1: 19% lower, slimmer, the wings swept further back and out — it frames the head, never covers it)
+      const open = 2.0;
+      const H = 0.39;
+      const at: PartOpts = { p: [0, h * 0.9 + H / 2, -0.04], r: [-0.24, 0, 0], s: [1.38, 1, 0.8] };
+      T.add(new CylinderGeometry(0.5, 0.2, H, 28, 1, true, open / 2, Math.PI * 2 - open), top.main, at);
+      T.add(insideOut(new CylinderGeometry(0.487, 0.19, H * 0.98, 28, 1, true, open / 2, Math.PI * 2 - open)), top.accent, at);
+      const rim = tor(0.5, 0.009, Math.PI * 2 - open, 30);
       rim.rotateX(Math.PI / 2);
       rim.rotateY(Math.PI * 1.5 - open / 2);
       rim.translate(0, H / 2, 0);
@@ -1029,7 +1049,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
   if (!look.robot) {
     const H = B.t('head');
     const HG = B.g('head');
-    H.add(sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
+    H.add(look.face?.sharp ? sculptedHead(R) : sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
     if (look.body === 'heavy') {
       // square jaw
       H.add(sph(R * 0.82, 20, 14), skin, { p: [0, cy - R * 0.3, -0.02], s: [1.14, 0.72, 0.9] });
@@ -1049,7 +1069,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
         const x = s * 0.24;
         if (face.sharp) {
           H.add(sph(0.09, 14, 10), shade(skin, 1.08), { p: [x, cy - 0.06, faceZ(x, -0.06) - 0.043], s: [1.55, 0.42 * c, 0.5], r: [0, s * 0.62, -s * 0.38] });
-          H.add(sph(0.085, 12, 8), shade(skin, 0.8), { p: [x * 0.93, cy - 0.135, faceZ(x * 0.93, -0.135) - 0.041], s: [1.45, 0.24 * c, 0.42], r: [0, s * 0.62, -s * 0.46] });
+          H.add(sph(0.085, 12, 8), shade(skin, 0.77), { p: [x * 0.92, cy - 0.132, faceZ(x * 0.92, -0.132) - 0.042], s: [1.6, 0.24 * c, 0.42], r: [0, s * 0.62, -s * 0.46] });
           continue;
         }
         H.add(sph(0.09, 14, 10), shade(skin, 1.1), { p: [x, cy - 0.07, faceZ(x, -0.07) - 0.045], s: [1.35, 0.6 * c, 0.55], r: [0, s * 0.6, -s * 0.22] });

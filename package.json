@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.7-alpha",
+  "version": "1.7.1-alpha",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.7: Blood Moon Premiere)",
   "type": "module",
   "scripts": {
