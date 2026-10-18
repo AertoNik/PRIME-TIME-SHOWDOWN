@@ -115,7 +115,7 @@ function result(p: Partial<MatchResultData>): MatchResultData {
     arena: 'casino',
   };
   const s = sanitize(JSON.parse(JSON.stringify(v7)));
-  check('migration: a v7 save becomes v11 with money, wins, records and the arena kept', s.version === 11 && s.money === 4321 && s.wins === 40 && s.modes.boss.vale.wins === 1 && s.arena === 'casino');
+  check('migration: a v7 save becomes v12 with money, wins, records and the arena kept', s.version === 12 && s.money === 4321 && s.wins === 40 && s.modes.boss.vale.wins === 1 && s.arena === 'casino');
   check('migration: duplicate owned items collapse to one', s.cosmetics.owned.length === 2 && s.cosmetics.owned.filter((id) => id === 'card_pumpkin').length === 1);
   check('migration: equipped items and history are kept (the Victor title now worn by Ray, who beat him)', s.cosmetics.equipped.cardStyle === 'card_pumpkin' && s.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && s.cosmetics.equipped.title === undefined && s.cosmetics.history.length === 1);
   check('migration: items owned before 1.5 are not flagged NEW', s.cosmetics.seen.length === 2 && new Collection({ data: s, save() {} }).freshCount() === 0);

@@ -1,5 +1,5 @@
 // Verifies that Alpha 1.0 (schema v1) and Alpha 1.1 (schema v2) saves load into the
-// current schema (v11, Alpha 1.6.1) without losing progress.
+// current schema (v12, Alpha 1.8) without losing progress.
 import { sanitize } from '../src/meta/SaveSystem';
 
 const alpha10 = {
@@ -73,7 +73,7 @@ const checks: [string, boolean][] = [
   ['1.5.5: the PRIME LEGEND title goes to the fighters who beat the champion (and stays worn by them)', (() => {
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 8, cosmetics: { owned: ['title_prime_legend'], equipped: { title: 'title_prime_legend' } }, modes: { boss: { vale: { attempts: 5, wins: 3, firstWinAt: 17, winsByFighter: { ray: 2, bruno: 1 } } } } })));
     const p = v.cosmetics.personal.title_prime_legend ?? [];
-    return p.length === 2 && p.includes('ray') && p.includes('bruno') && v.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && v.cosmetics.personalEquipped.bruno?.title === 'title_prime_legend' && !v.cosmetics.personalEquipped.nika && v.cosmetics.equipped.title === undefined && v.cosmetics.unassigned.length === 0 && v.version === 11;
+    return p.length === 2 && p.includes('ray') && p.includes('bruno') && v.cosmetics.personalEquipped.ray?.title === 'title_prime_legend' && v.cosmetics.personalEquipped.bruno?.title === 'title_prime_legend' && !v.cosmetics.personalEquipped.nika && v.cosmetics.equipped.title === undefined && v.cosmetics.unassigned.length === 0 && v.version === 12;
   })()],
   ['1.5.5: a v9 save keeps personal owners and what each fighter wears (only earners can wear it)', (() => {
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 9, cosmetics: { owned: ['title_prime_legend'], equipped: {}, personal: { title_prime_legend: ['ray', 'ray', 'nobody'] }, personalEquipped: { ray: { title: 'title_prime_legend' }, bruno: { title: 'title_prime_legend' } }, unassigned: [] } })));
@@ -93,7 +93,7 @@ const checks: [string, boolean][] = [
   })()],
   ['1.3.3: corrupt counter falls back to the estimate', sanitize({ ...alpha11, fighters: { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, classicWins: 'x' } } }).fighters.ray.classicWins === 5],
   ['1.3.3: new fighters start with 0 Classic wins', s.fighters.vega.classicWins === 0],
-  ['1.4: older saves start in the original studio (now schema v11)', s.arena === 'original' && s11.arena === 'original' && s.version === 11],
+  ['1.4: older saves start in the original studio (now schema v12)', s.arena === 'original' && s11.arena === 'original' && s.version === 12],
   ['1.4: progress untouched by the arena migration', s11.money === 9870 && s11.fighters.nika.unlocked && s11.settings.camera === 'reduced'],
   ['1.4: arena preference round-trips by id (and RANDOM)', sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 7, arena: 'backlot' }))).arena === 'backlot' && sanitize({ ...alpha11, arena: 'random' }).arena === 'random'],
   ['1.4: unknown arena id falls back to the original studio', sanitize({ ...alpha11, arena: 'space_station' }).arena === 'original'],
@@ -112,7 +112,7 @@ const checks: [string, boolean][] = [
   // Alpha 1.6.1: SIDE CAM was replaced by SECOND TAKE — owned copies and deck slots follow, money untouched
   ['1.6.1: a v10 save with SIDE CAM owns SECOND TAKE in the same deck slot, nothing lost', (() => {
     const v = sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 10, money: 5150, cards: { owned: ['side_cam', 'split_shot'] }, fighters: { ...alpha11.fighters, ray: { ...alpha11.fighters.ray, deck: ['dash', 'side_cam', 'split_shot', 'adrenaline'] } } })));
-    return v.version === 11 && v.money === 5150 && [...v.cards.owned].sort().join() === 'second_take,split_shot' && v.fighters.ray.deck.join() === 'dash,second_take,split_shot,adrenaline' && v.fighters.ray.wins === alpha11.fighters.ray.wins;
+    return v.version === 12 && v.money === 5150 && [...v.cards.owned].sort().join() === 'second_take,split_shot' && v.fighters.ray.deck.join() === 'dash,second_take,split_shot,adrenaline' && v.fighters.ray.wins === alpha11.fighters.ray.wins;
   })()],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];

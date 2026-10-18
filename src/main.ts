@@ -45,5 +45,7 @@ if (!stage || !ui) {
     console.error(err);
     showFatal('Не удалось запустить игру. Обновите страницу.<br/><small style="opacity:.6">' + String(err?.message ?? err) + '</small>');
   });
-  (window as unknown as { __game: Game }).__game = game;
+  // debugging handle for local development only (Alpha 1.8: not in the published build).
+  // This is not an anti-cheat: the progress lives in the browser and can still be edited there.
+  if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
 }

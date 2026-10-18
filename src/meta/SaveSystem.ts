@@ -1,10 +1,12 @@
 import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config';
-import { CAREER_STAGES, CAREER_START, GOALS, type GoalId, type StageId } from '../config/career';
+import { CAREER_STAGES, CAREER_START, GOALS, LEVEL_THRESHOLDS, type GoalId, type StageId } from '../config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETICS, COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
+import { APP_VERSION } from '../config/version';
+import { TabLock, randomId } from './TabLock';
 
 export type QualitySetting = 'auto' | 'high' | 'medium' | 'low';
 export type CameraMotion = 'full' | 'reduced' | 'off';
@@ -23,6 +25,21 @@ export interface FighterProgress {
   classicWins: number;
   bestRating: number;
   deck: CardId[];
+  /** v12 (1.8): this fighter's current run of wins in career matches, and the longest one. */
+  streak: number;
+  bestStreak: number;
+}
+
+/**
+ * v12 (1.8) — the producer's win streak over career matches (Classic Duel, Prime Challenge,
+ * Boss Fight — exactly the matches that count as wins and losses; see CareerSystem.applyMatch).
+ * Older saves keep every win and loss but start their streaks at 0: the order of past results
+ * was never stored, so it is not invented. `since`: when tracking began for this career (ms).
+ */
+export interface StreakState {
+  current: number;
+  best: number;
+  since: number;
 }
 
 export interface GoalState {
@@ -209,6 +226,8 @@ export interface SaveData {
   cards: CardsState;
   /** 1.6.5: FIRST BROADCAST, the first-run tutorial (see TutorialState). */
   tutorial: TutorialState;
+  /** v12 (1.8): the producer's win streak (fighters keep their own in FighterProgress). */
+  streak: StreakState;
 }
 
 /**
@@ -236,7 +255,10 @@ const KEY = 'primetime-showdown-save-v1';
 // judged by its progress (see hasProgress), so existing players are never sent through it.
 // 1.7: LUCIEN — no version bump either: `fighters.lucien` is filled from the defaults (locked, like the
 // v8 newcomers) and `events[id].fighters` (stars opened in an event's exchange) is simply absent before.
-const VERSION = 11;
+// v12 (1.8): win streaks (`streak`, `fighters[id].streak / bestStreak`).
+// From 1.8 on, EVERY change to the saved data raises the version: the save system refuses to
+// write over a save from a newer schema (it would drop the fields it does not know).
+export const VERSION = 12;
 
 /** Cards renamed or replaced between versions (old id → new id). */
 const RENAMED: Record<string, CardId> = { side_cam: 'second_take' };
@@ -257,6 +279,8 @@ export function defaultSave(): SaveData {
       classicWins: 0,
       bestRating: 0,
       deck: f.defaultDeck.slice(),
+      streak: 0,
+      bestStreak: 0,
     };
   }
   const goals = {} as Record<GoalId, GoalState>;
@@ -293,6 +317,7 @@ export function defaultSave(): SaveData {
     careerClaimed: [],
     cards: { owned: [] },
     tutorial: 'pending',
+    streak: { current: 0, best: 0, since: Date.now() },
   };
 }
 
@@ -614,6 +639,9 @@ export function sanitize(raw: unknown): SaveData {
       t.draws = Math.max(0, num(f.draws, 0));
       t.matches = Math.max(0, num(f.matches, 0));
       t.bestRating = Math.max(0, num(f.bestRating, 0));
+      // v12: streaks (absent before 1.8 -> 0: past streaks are not reconstructed from the totals)
+      t.streak = count(f.streak);
+      t.bestStreak = Math.max(t.streak, count(f.bestStreak));
       // (decks are checked below, once the bought cards are known)
     }
   }
@@ -682,6 +710,14 @@ export function sanitize(raw: unknown): SaveData {
   // (The missing flag alone proves nothing — every older save lacks it.)
   if (r.tutorial === 'pending' || r.tutorial === 'done' || r.tutorial === 'skipped' || r.tutorial === 'veteran') d.tutorial = r.tutorial;
   else d.tutorial = hasProgress(d) ? 'veteran' : 'pending';
+  // v12: the producer's win streak (absent before 1.8 -> starts now at 0)
+  if (r.streak && typeof r.streak === 'object') {
+    const st = r.streak as Partial<StreakState>;
+    d.streak.current = count(st.current);
+    d.streak.best = Math.max(d.streak.current, count(st.best));
+    const since = num(st.since, 0);
+    if (since > 0) d.streak.since = since;
+  }
   return d;
 }
 
@@ -696,32 +732,294 @@ export function hasProgress(d: SaveData): boolean {
   return JSON.stringify(d.modes) !== JSON.stringify(emptyModes());
 }
 
-/** localStorage persistence. All access is guarded (private mode, quota, disabled storage). */
+// ------------------------------------------------------------- local storage (Alpha 1.8)
+
+/** Who a local save belongs to: the guest (1.8) or, from 1.8.1, a signed-in account. */
+export type ProfileId = 'guest' | `user:${string}`;
+
+/** The localStorage keys of one local profile. The guest keeps the historic key, so every existing career loads as before. */
+export function profileKeys(profile: ProfileId): { save: string; backups: string; damaged: string; meta: string; lock: string } {
+  const base = profile === 'guest' ? KEY : `${KEY}:${profile}`;
+  return { save: base, backups: `${base}:backups`, damaged: `${base}:damaged`, meta: `${base}:meta`, lock: `${base}:lock` };
+}
+
+/** One id per browser (diagnostics in exports; the device of a save in 1.8.1). Not a fingerprint. */
+const DEVICE_KEY = 'primetime-showdown-device-v1';
+
+/** The storage the save needs: window.localStorage, or an in-memory double in the checks. */
+export interface SaveStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/**
+ * How the stored save was found at launch:
+ * - 'ok': loaded (or nothing stored yet — a new career);
+ * - 'unavailable': the browser gives no storage (private mode, blocked): play without saving;
+ * - 'damaged': the stored text is not a readable save — kept aside, NOTHING is written until the
+ *   player chooses (restore a backup / start anew);
+ * - 'newer': written by a newer version of the game — nothing is written (it would drop the
+ *   fields this version does not know); the player is asked to update.
+ */
+export type SaveStatus = 'ok' | 'unavailable' | 'damaged' | 'newer';
+
+/** A save in one line: backups, the import preview and (1.8.1) the choice between two versions. */
+export interface SaveSummary {
+  version: number;
+  orgName: string;
+  level: number;
+  reputation: number;
+  money: number;
+  matches: number;
+  wins: number;
+  fighters: number;
+}
+
+export type BackupReason = 'auto' | 'migration' | 'reset' | 'import' | 'restore';
+
+/** One local safety copy: the save text exactly as it was stored. */
+export interface SaveBackup {
+  at: number;
+  reason: BackupReason;
+  app: string;
+  summary: SaveSummary;
+  raw: string;
+}
+
+/**
+ * Bookkeeping beside the save (never inside it, so the save itself stays the player's data):
+ * a local write counter and time — the base the cloud sync of 1.8.1 builds on.
+ */
+export interface SaveMeta {
+  revision: number;
+  savedAt: number;
+  app: string;
+  device: string;
+}
+
+/** Safety copies kept per profile (the oldest goes first). */
+export const MAX_BACKUPS = 3;
+/** A session that starts this long after the newest copy makes a fresh one first. */
+const AUTO_BACKUP_MS = 20 * 3600 * 1000;
+/** Marker of an exported save file. */
+export const EXPORT_FORMAT = 'primetime-showdown-save';
+const IMPORT_MAX_BYTES = 512 * 1024;
+const KNOWN_FIELDS = new Set(Object.keys(defaultSave()));
+
+/** The schema a stored object was written with (Alpha 1.0 saves say 1; nothing at all counts as 1). */
+export function savedVersion(obj: Record<string, unknown>): number {
+  const v = obj.version;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 1 ? Math.floor(v) : 1;
+}
+
+/** Top-level fields this version does not know (kept and written back unchanged). */
+function unknownFields(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) if (k !== 'version' && !KNOWN_FIELDS.has(k)) out[k] = v;
+  return out;
+}
+
+function parseObject(raw: string): Record<string, unknown> | null {
+  try {
+    const v: unknown = JSON.parse(raw);
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function summarize(d: SaveData, version: number): SaveSummary {
+  let level = 1;
+  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) if (d.reputation >= LEVEL_THRESHOLDS[i]) level = i + 1;
+  return {
+    version,
+    orgName: d.orgName,
+    level,
+    reputation: Math.floor(d.reputation),
+    money: Math.floor(d.money),
+    matches: d.matches,
+    wins: d.wins,
+    fighters: FIGHTER_ORDER.filter((id) => d.fighters[id].unlocked).length,
+  };
+}
+
+/** What an import file would bring, checked before anything is replaced. */
+export type ImportCheck =
+  | { ok: true; data: SaveData; extra: Record<string, unknown>; version: number; summary: SaveSummary }
+  | { ok: false; reason: string };
+
+export interface SaveSystemOptions {
+  /** Default: window.localStorage when the browser gives it; null = no storage at all. */
+  storage?: SaveStorage | null;
+  profile?: ProfileId;
+  /** Default in a browser: a TabLock on this profile; null = no tab check (the headless checks). */
+  lock?: TabLock | null;
+  clock?: () => number;
+}
+
+function browserStorage(): SaveStorage | null {
+  try {
+    return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The local save (Alpha 1.8 SAVE FOUNDATION). Synchronous, as the whole game expects: the
+ * career, events, collection and modes keep reading and changing `data` and call `save()`.
+ * Around that:
+ * - a profile layer (`profileKeys`): the guest keeps the historic key; accounts get their own
+ *   slots in 1.8.1 without touching this class;
+ * - a damaged save is kept aside and never overwritten automatically;
+ * - a save from a newer schema is never written over; unknown top-level fields are kept;
+ * - up to MAX_BACKUPS safety copies, made before anything replaces the save (migration to a
+ *   new schema, reset, import, restore) and once a day at launch;
+ * - one tab per profile (TabLock): a passive tab writes nothing;
+ * - export / import as a JSON file, checked before it replaces anything.
+ */
 export class SaveSystem {
   data: SaveData;
+  readonly profile: ProfileId;
+  readonly keys: ReturnType<typeof profileKeys>;
+  status: SaveStatus = 'ok';
+  /** Schema the stored save was written with (0: nothing stored — a new career). */
+  loadedVersion = 0;
+  /** Another tab holds this profile: nothing is written here until this tab takes it over. */
+  passive = false;
+  /** Called when another tab takes the profile over while this one plays. */
+  onLockLost: (() => void) | null = null;
+  meta: SaveMeta;
+  readonly lock: TabLock | null;
   private available = true;
+  private extra: Record<string, unknown> = {};
+  private damagedRaw: string | null = null;
+  private storage: SaveStorage | null;
+  private clock: () => number;
 
-  constructor() {
-    this.data = this.load();
-  }
-
-  private load(): SaveData {
-    try {
-      const raw = window.localStorage.getItem(KEY);
-      if (!raw) return defaultSave();
-      return sanitize(JSON.parse(raw));
-    } catch {
-      this.available = false;
-      return defaultSave();
+  constructor(opts: SaveSystemOptions = {}) {
+    this.profile = opts.profile ?? 'guest';
+    this.keys = profileKeys(this.profile);
+    this.storage = opts.storage === undefined ? browserStorage() : opts.storage;
+    this.clock = opts.clock ?? (() => Date.now());
+    const loaded = this.load();
+    this.data = loaded.data;
+    this.meta = this.loadMeta();
+    // one tab per profile: a tab that finds another live tab on it stays passive
+    this.lock = opts.lock === undefined ? (this.storage && typeof window !== 'undefined' ? new TabLock(this.storage, this.keys.lock, this.clock) : null) : opts.lock;
+    if (this.lock && this.status !== 'unavailable') {
+      if (this.lock.acquire() === 'busy') {
+        this.passive = true;
+        this.lock.markLost();
+      }
+      this.lock.onLost = () => this.loseLock();
+      this.lock.start();
+    }
+    // the copy before the first write in the new schema / the daily copy — only by the tab in charge
+    if (loaded.raw !== null && !this.passive) {
+      if (this.loadedVersion < VERSION) this.addBackup('migration', loaded.raw, loaded.data);
+      else this.autoBackup(loaded.raw, loaded.data);
     }
   }
 
-  save(): void {
+  /** Read the stored save. `raw`: the text of a readable save of this or an older schema (for its safety copy). */
+  private load(): { data: SaveData; raw: string | null } {
+    const st = this.storage;
+    if (!st) {
+      this.available = false;
+      this.status = 'unavailable';
+      return { data: defaultSave(), raw: null };
+    }
+    let raw: string | null;
     try {
-      window.localStorage.setItem(KEY, JSON.stringify(this.data));
-      this.available = true;
+      raw = st.getItem(this.keys.save);
     } catch {
       this.available = false;
+      this.status = 'unavailable';
+      return { data: defaultSave(), raw: null };
+    }
+    if (raw === null) return { data: defaultSave(), raw: null };
+    const obj = parseObject(raw);
+    if (!obj) return { data: this.quarantine(raw), raw: null };
+    const v = savedVersion(obj);
+    this.loadedVersion = v;
+    this.extra = unknownFields(obj);
+    const data = sanitize(obj);
+    if (v > VERSION) {
+      // a newer game wrote this: show what we can, write nothing
+      this.status = 'newer';
+      return { data, raw: null };
+    }
+    return { data, raw };
+  }
+
+  /** The stored text is not a readable save: keep it aside (export / support) and write nothing. */
+  private quarantine(raw: string): SaveData {
+    this.status = 'damaged';
+    this.damagedRaw = raw;
+    try {
+      const prev = this.storage!.getItem(this.keys.damaged);
+      const prevRaw = prev ? (parseObject(prev)?.raw as string | undefined) : undefined;
+      if (prevRaw !== raw) this.storage!.setItem(this.keys.damaged, JSON.stringify({ at: this.clock(), app: APP_VERSION, raw }));
+    } catch {
+      /* the original stays in its own key anyway: nothing is written over it */
+    }
+    return defaultSave();
+  }
+
+  private loadMeta(): SaveMeta {
+    const meta: SaveMeta = { revision: 0, savedAt: 0, app: APP_VERSION, device: '' };
+    const st = this.storage;
+    if (!st) return { ...meta, device: randomId() };
+    try {
+      const m = parseObject(st.getItem(this.keys.meta) ?? '');
+      if (m) {
+        meta.revision = Math.max(0, Math.floor(num(m.revision, 0)));
+        meta.savedAt = Math.max(0, num(m.savedAt, 0));
+        if (typeof m.app === 'string') meta.app = m.app.slice(0, 32);
+      }
+      let device = st.getItem(DEVICE_KEY);
+      if (!device) {
+        device = randomId();
+        st.setItem(DEVICE_KEY, device);
+      }
+      meta.device = device.slice(0, 64);
+    } catch {
+      meta.device = meta.device || randomId();
+    }
+    return meta;
+  }
+
+  /** Nothing blocks writing: the save is readable and of this schema, and this tab holds the profile. */
+  get writable(): boolean {
+    return this.status !== 'damaged' && this.status !== 'newer' && !this.passive;
+  }
+
+  save(): void {
+    if (!this.writable) return;
+    // another tab may have taken the profile since the last write: never write over its progress
+    if (this.lock && this.status !== 'unavailable' && !this.lock.owns()) {
+      this.loseLock();
+      return;
+    }
+    const st = this.storage;
+    if (!st) return;
+    try {
+      st.setItem(this.keys.save, this.serialize());
+      this.available = true;
+      if (this.status === 'unavailable') this.status = 'ok';
+    } catch {
+      this.available = false;
+      return;
+    }
+    this.meta.revision++;
+    this.meta.savedAt = this.clock();
+    this.meta.app = APP_VERSION;
+    try {
+      st.setItem(this.keys.meta, JSON.stringify(this.meta));
+    } catch {
+      /* the save itself is written; the counter catches up next time */
     }
   }
 
@@ -729,10 +1027,184 @@ export class SaveSystem {
     return this.available;
   }
 
+  /** The save text as it would be written now (unknown fields of a newer minor kept). */
+  private serialize(): string {
+    return JSON.stringify({ ...this.extra, ...this.data, version: VERSION });
+  }
+
+  private loseLock(): void {
+    if (this.passive) return;
+    this.passive = true;
+    this.lock?.markLost();
+    this.onLockLost?.();
+  }
+
+  /** «Играть здесь»: take the profile back from the other tab (the page reloads to read its latest save). */
+  takeOver(): void {
+    this.lock?.takeOver();
+  }
+
+  private readStored(): string | null {
+    try {
+      return this.storage?.getItem(this.keys.save) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------- backups
+  /** Safety copies of this profile, newest first. */
+  backups(): SaveBackup[] {
+    const list = this.storage ? parseList(this.readKey(this.keys.backups)) : [];
+    return list.slice(0, MAX_BACKUPS);
+  }
+
+  private readKey(key: string): string | null {
+    try {
+      return this.storage?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Keep a copy of this save text (a career with progress only; never the same text twice in a row). */
+  private addBackup(reason: BackupReason, raw: string, data?: SaveData): void {
+    if (!this.storage) return;
+    const obj = parseObject(raw);
+    const d = data ?? (obj ? sanitize(obj) : null);
+    if (!obj || !d || !hasProgress(d)) return;
+    const version = savedVersion(obj);
+    const list = this.backups();
+    if (list[0]?.raw === raw) return;
+    list.unshift({ at: this.clock(), reason, app: APP_VERSION, summary: summarize(d, version), raw });
+    list.length = Math.min(list.length, MAX_BACKUPS);
+    try {
+      this.storage.setItem(this.keys.backups, JSON.stringify(list));
+    } catch {
+      /* no room: the save itself is untouched */
+    }
+  }
+
+  /** Once a day: the save as it was when this session began. */
+  private autoBackup(raw: string, data: SaveData): void {
+    const newest = this.backups()[0];
+    if (!newest || this.clock() - newest.at >= AUTO_BACKUP_MS) this.addBackup('auto', raw, data);
+  }
+
+  /** Copy whatever is stored now before it is replaced. */
+  private backupCurrent(reason: BackupReason): void {
+    const raw = this.readStored();
+    if (raw && this.status !== 'damaged') this.addBackup(reason, raw);
+  }
+
+  /**
+   * Replace the progress with a copy (or an import). The device's own settings stay as they are
+   * (after a damaged save the copy's settings come back, the current ones being defaults); what is
+   * stored now is copied first. The caller reloads the page so every system reads it anew.
+   */
+  private replace(data: SaveData, extra: Record<string, unknown>, reason: BackupReason): boolean {
+    if (this.passive || this.status === 'newer') return false;
+    this.backupCurrent(reason);
+    // the device keeps its own settings — unless the save was unreadable (then they are only defaults)
+    if (this.status !== 'damaged') data.settings = { ...this.data.settings };
+    this.data = data;
+    this.extra = extra;
+    this.status = this.available ? 'ok' : this.status;
+    this.damagedRaw = null;
+    this.save();
+    return true;
+  }
+
+  /** Put a safety copy back (by its time). */
+  restoreBackup(at: number): boolean {
+    const b = this.backups().find((x) => x.at === at);
+    const obj = b ? parseObject(b.raw) : null;
+    if (!b || !obj || savedVersion(obj) > VERSION) return false;
+    return this.replace(sanitize(obj), unknownFields(obj), 'restore');
+  }
+
+  /** A damaged save: begin a new career (the damaged text stays in its own record for support). */
+  startFresh(): boolean {
+    if (this.status !== 'damaged' || this.passive) return false;
+    this.status = 'ok';
+    this.data = defaultSave();
+    this.extra = {};
+    this.save();
+    return true;
+  }
+
+  /** The damaged text kept aside at launch (null when the save was fine). */
+  get damaged(): string | null {
+    return this.damagedRaw;
+  }
+
   reset(): void {
+    if (!this.writable) return;
+    this.backupCurrent('reset');
     const settings = this.data.settings;
     this.data = defaultSave();
     this.data.settings = settings;
+    this.extra = {};
     this.save();
+  }
+
+  // ---------------------------------------------------------- export / import
+  /** The save as a JSON file for diagnostics and support (exactly what is stored, plus who made it). */
+  exportJSON(): string {
+    const stored = this.readStored();
+    const obj = stored ? parseObject(stored) : null;
+    return JSON.stringify(
+      {
+        format: EXPORT_FORMAT,
+        exportedAt: new Date(this.clock()).toISOString(),
+        app: APP_VERSION,
+        schema: VERSION,
+        profile: this.profile,
+        status: this.status,
+        meta: this.meta,
+        save: obj ?? JSON.parse(this.serialize()),
+        ...(this.damagedRaw !== null ? { damaged: this.damagedRaw } : {}),
+      },
+      null,
+      2,
+    );
+  }
+
+  /** Read an import file without touching anything: format, schema and contents. */
+  checkImport(text: string): ImportCheck {
+    if (text.length > IMPORT_MAX_BYTES) return { ok: false, reason: 'Файл слишком большой для сохранения игры.' };
+    const top = parseObject(text);
+    if (!top) return { ok: false, reason: 'Это не файл сохранения: не удалось прочитать JSON.' };
+    const inner = top.format === EXPORT_FORMAT ? top.save : top;
+    const obj = inner && typeof inner === 'object' && !Array.isArray(inner) ? (inner as Record<string, unknown>) : null;
+    if (!obj || !('fighters' in obj) || !('money' in obj)) return { ok: false, reason: 'В файле нет сохранения PRIME TIME: SHOWDOWN.' };
+    const version = savedVersion(obj);
+    if (version > VERSION) return { ok: false, reason: `Сохранение из более новой версии игры (схема ${version}, эта версия понимает до ${VERSION}). Обновите игру и повторите.` };
+    const data = sanitize(obj);
+    return { ok: true, data, extra: unknownFields(obj), version, summary: summarize(data, version) };
+  }
+
+  /** Replace the progress with a checked import (the current progress becomes a safety copy). */
+  applyImport(check: ImportCheck): boolean {
+    if (!check.ok) return false;
+    return this.replace(check.data, check.extra, 'import');
+  }
+}
+
+function parseList(raw: string | null): SaveBackup[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (!Array.isArray(v)) return [];
+    const out: SaveBackup[] = [];
+    for (const e of v) {
+      const b = e as Partial<SaveBackup> | null;
+      if (!b || typeof b.raw !== 'string' || typeof b.at !== 'number' || !b.summary || typeof b.summary !== 'object') continue;
+      const reason: BackupReason = b.reason === 'migration' || b.reason === 'reset' || b.reason === 'import' || b.reason === 'restore' ? b.reason : 'auto';
+      out.push({ at: b.at, reason, app: typeof b.app === 'string' ? b.app : '', summary: b.summary as SaveSummary, raw: b.raw });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }

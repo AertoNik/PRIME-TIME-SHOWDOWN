@@ -992,7 +992,7 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
   check('save: only shop cards can be owned (no signatures, no junk)', hacked.cards.owned.join() === 'spotlight_tag');
   check('save: a deck with a card that was never bought resets to the default', hacked.fighters.ray.deck.join() === FIGHTERS.ray.defaultDeck.join());
   const v9 = sanitize({ version: 9, money: 777, fighters: { ray: { unlocked: true, deck: ['dash', 'shield', 'smoke', 'adrenaline'] } } });
-  check('save: a 1.5.6 (v9) save loads as v11 with its deck and money, owning no new card', v9.version === 11 && v9.money === 777 && v9.fighters.ray.deck.join() === 'dash,shield,smoke,adrenaline' && v9.cards.owned.length === 0);
+  check('save: a 1.5.6 (v9) save loads as v12 with its deck and money, owning no new card', v9.version === 12 && v9.money === 777 && v9.fighters.ray.deck.join() === 'dash,shield,smoke,adrenaline' && v9.cards.owned.length === 0);
   // Alpha 1.6.1: SIDE CAM becomes SECOND TAKE — owned and in decks, nothing lost, nothing bought twice
   const v10 = sanitize({
     version: 10,
@@ -1001,7 +1001,7 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
     cards: { owned: ['spotlight_tag', 'side_cam', 'high_stakes'] },
     fighters: { ray: { unlocked: true, deck: ['side_cam', 'dash', 'spotlight_tag', 'adrenaline'] }, kai: { unlocked: true, deck: ['dash', 'side_cam', 'shield', 'bank_shot'] } },
   });
-  check('save: a 1.6 (v10) save — SIDE CAM owned → SECOND TAKE owned, the other cards and money kept', v10.version === 11 && v10.money === 1234 && v10.cards.owned.includes('second_take') && !v10.cards.owned.includes('side_cam' as CardId) && v10.cards.owned.includes('spotlight_tag') && v10.cards.owned.includes('high_stakes') && v10.cards.owned.length === 3);
+  check('save: a 1.6 (v10) save — SIDE CAM owned → SECOND TAKE owned, the other cards and money kept', v10.version === 12 && v10.money === 1234 && v10.cards.owned.includes('second_take') && !v10.cards.owned.includes('side_cam' as CardId) && v10.cards.owned.includes('spotlight_tag') && v10.cards.owned.includes('high_stakes') && v10.cards.owned.length === 3);
   check('save: SIDE CAM in saved decks is swapped for SECOND TAKE in the same slot', v10.fighters.ray.deck.join() === 'second_take,dash,spotlight_tag,adrenaline' && v10.fighters.kai.deck.join() === 'dash,second_take,shield,bank_shot');
   const both = sanitize({ version: 10, cards: { owned: ['side_cam', 'second_take'] } });
   check('save: owning both ids keeps one SECOND TAKE', both.cards.owned.filter((c) => c === 'second_take').length === 1 && both.cards.owned.length === 1);

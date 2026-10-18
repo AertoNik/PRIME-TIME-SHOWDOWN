@@ -33,6 +33,7 @@ export class MenuScreen implements Screen {
       else if (act === 'settings') this.g.openSettings();
       else if (act === 'events') this.g.goto('events');
       else if (act === 'collection') this.g.goto('collection');
+      else if (act === 'profile') this.g.goto('profile');
     });
   }
 
@@ -79,13 +80,13 @@ export class MenuScreen implements Screen {
       </button>`;
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">
-        <div class="lvl-badge" title="Уровень продюсера">${lvl.level}</div>
+        <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge">${lvl.level}</span><span class="lvl-id">ID</span></button>
         <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
         <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
       </div>
       <div class="menu-head">
         <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span>${ev ? `<span class="season-tag">${esc(ev.title)}</span>` : ''}</div>
-        <div class="label menu-org" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
+        <div class="label menu-org" data-act="profile" role="button" tabindex="0" aria-label="Открыть PRIME ID" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
       </div>
       <div class="fill pass"></div>
       <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">

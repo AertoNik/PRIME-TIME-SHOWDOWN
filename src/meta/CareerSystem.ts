@@ -310,6 +310,19 @@ export class CareerSystem {
       s.draws++;
       fp.draws++;
     }
+    // Alpha 1.8 — win streaks, here with the wins and losses and nowhere else: the producer's and
+    // this fighter's. A win extends both, a loss (a forfeit too) or a draw ends both; the records
+    // never go down. Other fighters' streaks wait for their own next result.
+    const st = s.streak;
+    if (r.outcome === 'win') {
+      st.current++;
+      st.best = Math.max(st.best, st.current);
+      fp.streak++;
+      fp.bestStreak = Math.max(fp.bestStreak, fp.streak);
+    } else {
+      st.current = 0;
+      fp.streak = 0;
+    }
     s.bestRating = Math.max(s.bestRating, r.rating);
     fp.bestRating = Math.max(fp.bestRating, r.rating);
     s.bestCombosInMatch = Math.max(s.bestCombosInMatch, r.combos);

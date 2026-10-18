@@ -32,16 +32,18 @@ import { EventsScreen } from '../ui/screens/EventsScreen';
 import { MenuScreen } from '../ui/screens/MenuScreen';
 import { ModesScreen } from '../ui/screens/ModesScreen';
 import { PrepScreen } from '../ui/screens/PrepScreen';
+import { ProfileScreen } from '../ui/screens/ProfileScreen';
 import { ResultsScreen } from '../ui/screens/ResultsScreen';
 import { RosterScreen } from '../ui/screens/RosterScreen';
 import { SurvivalScreen } from '../ui/screens/SurvivalScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
+import { openSaveTools, saveNeedsAttention, showOtherTab, showSaveProblem } from '../ui/saveCare';
 import { ThemeManager } from './ThemeManager';
 import { FirstBroadcast, TUTORIAL } from './FirstBroadcast';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'battle' | 'results' | 'survival';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'battle' | 'results' | 'survival';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -147,8 +149,14 @@ export class Game {
     this.events = new EventManager(this.save, devEventOverrides());
     this.collection = this.events.collection;
     this.modes = new GameModes(this.save, this.career, this.events);
-    // A marathon interrupted by closing the game ends with the waves it really cleared.
-    this.abandoned = this.modes.closeAbandoned();
+    // A marathon interrupted by closing the game ends with the waves it really cleared — only by the
+    // tab in charge of a readable save (Alpha 1.8: a second tab must not close the first tab's run)
+    this.abandoned = this.save.writable ? this.modes.closeAbandoned() : null;
+    // Alpha 1.8: another tab took the profile over — stop here (a running fight pauses first)
+    this.save.onLockLost = () => {
+      if (this.screen === 'battle' && this.match?.phase === 'fight' && !this.paused) this.paused = true;
+      showOtherTab(this, true);
+    };
     this.ui = new UIManager(uiRoot);
     this.ui.onSoundToggle = () => this.toggleSound();
     this.ui.setSoundIcon(this.save.data.settings.sound);
@@ -243,6 +251,7 @@ export class Game {
     this.ui.register('events', new EventsScreen(this));
     this.ui.register('collection', new CollectionScreen(this));
     this.ui.register('modes', new ModesScreen(this));
+    this.ui.register('profile', new ProfileScreen(this));
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
     this.ui.register('survival', new SurvivalScreen(this));
@@ -291,6 +300,12 @@ export class Game {
     this.audio.setSound(this.save.data.settings.sound);
     this.audio.setMusic(this.save.data.settings.music);
     this.audio.ui('confirm');
+    // Alpha 1.8: a damaged save, one from a newer version or another open tab comes first
+    if (saveNeedsAttention(this)) {
+      this.goto('menu');
+      showSaveProblem(this);
+      return;
+    }
     // Alpha 1.6.5: a brand-new player starts with FIRST BROADCAST (older careers never do — SaveSystem)
     if (this.save.data.tutorial === 'pending') {
       this.startTutorial();
@@ -834,6 +849,7 @@ export class Game {
          <div class="modal-actions">
            <button class="btn ghost wide" data-a="help">Как играть</button>
            <button class="btn ghost wide" data-a="tutorial">Пройти обучение</button>
+           <button class="btn ghost wide" data-a="savetools">Сохранение и копии</button>
            <button class="btn ghost wide" data-a="reset">Сбросить прогресс</button>
            <button class="btn teal wide" data-a="close">Готово</button>
          </div>`,
@@ -867,13 +883,24 @@ export class Game {
               close();
             } else if (a === 'help') {
               this.openHelp(() => this.openSettings());
+            } else if (a === 'savetools') {
+              // Alpha 1.8: safety copies, export and import of the save
+              this.audio.ui('click');
+              openSaveTools(this, () => this.openSettings());
             } else if (a === 'tutorial') {
               // Alpha 1.6.5: FIRST BROADCAST once more — no rewards, the real deck stays as it is
               this.audio.ui('confirm');
               close();
               this.startTutorial();
             } else if (a === 'reset') {
-              this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Это действие нельзя отменить.', 'Сбросить', () => {
+              // Alpha 1.8: nothing to reset while this tab may not write (another tab / a newer save)
+              if (!this.save.writable) {
+                this.audio.ui('click');
+                close();
+                showSaveProblem(this);
+                return;
+              }
+              this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Перед сбросом прогресс сохранится в резервную копию (Настройки → Сохранение и копии).', 'Сбросить', () => {
                 // the tutorial already seen is not forced again after a reset
                 const seen = this.save.data.tutorial !== 'pending';
                 this.save.reset();

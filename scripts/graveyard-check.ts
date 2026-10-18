@@ -125,7 +125,8 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
   check('UTC: still open on 3 Nov 23:59:59', last.open && last.random && last.pays);
   check('UTC: closed from 4 Nov 00:00 — a saved choice falls back to the original studio, RANDOM skips it', !after.open && !after.random && after.pref === 'original' && !after.pays);
   check('RANDOM in the season picks the cemetery among the five; a fixed choice outside it is refused', resolveArena('graveyard', 'default', () => 0) === 'original' && resolveArena('random', 'halloween', () => 0.99) === 'graveyard');
-  check('saves: the choice round-trips by id and survives the season check (no new save fields)', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'graveyard' }))).arena === 'graveyard' && defaultSave().version === 11);
+  // the cemetery itself adds no save fields; the schema is 12 since Alpha 1.8 (win streaks)
+  check('saves: the choice round-trips by id and survives the season check (no new save fields)', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'graveyard' }))).arena === 'graveyard' && defaultSave().version === 12);
 }
 
 // ---------------------------------------------- the layout (fair, passable)
@@ -760,10 +761,10 @@ function autoFight(fighter: FighterId, rival: RivalId, seed: number, mode: 'smar
   const b = runMatch('kai', 'zoe', 'pro', 'smart', 4242, undefined, undefined, undefined, 'haunted');
   const fp = (m: Match) => `${m.result!.outcome}/${m.result!.method}/${Math.round(m.result!.damageDealt)}/${Math.round(m.result!.damageTaken)}/${m.result!.rating}/${m.time.toFixed(3)}`;
   check(`other sets: the same fight on the original and the haunted studio is identical (${fp(a.m)})`, fp(a.m) === fp(b.m) && a.m.covers.list.length === 0 && b.m.covers.list.length === 0);
-  check('saves: a 1.7.1 save loads unchanged (version 11, no new fields needed)', (() => {
-    const old = { ...defaultSave(), arena: 'haunted', money: 777 };
+  check('saves: a 1.7.1 save (version 11) keeps its set and money (schema 12 since Alpha 1.8)', (() => {
+    const old = { ...defaultSave(), version: 11, arena: 'haunted', money: 777 };
     const s = sanitize(JSON.parse(JSON.stringify(old)));
-    return s.version === 11 && s.arena === 'haunted' && s.money === 777;
+    return s.version === 12 && s.arena === 'haunted' && s.money === 777;
   })());
 }
 

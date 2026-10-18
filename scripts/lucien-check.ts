@@ -68,7 +68,7 @@ const AUTO = { mode: 'auto' as const, forcedEventId: 'none' };
 // ------------------------------------------------------------- the saves
 {
   const d = defaultSave();
-  check('save: a new career has Lucien locked, with his default deck', !d.fighters.lucien.unlocked && d.fighters.lucien.deck.join() === L.defaultDeck.join() && d.version === 11);
+  check('save: a new career has Lucien locked, with his default deck', !d.fighters.lucien.unlocked && d.fighters.lucien.deck.join() === L.defaultDeck.join() && d.version === 12);
   // a 1.6.6 save knows nothing about him
   const old = { version: 11, money: 2600, reputation: 300, matches: 30, wins: 20, selected: 'kai', fighters: { ray: { unlocked: true, wins: 12, matches: 18 }, kai: { unlocked: true, wins: 8, matches: 12, deck: ['dash', 'shield', 'overdrive', 'bank_shot'] } }, events: { 'halloween-2026': { tokens: 140, earned: 140, quests: { first_night: { p: 3, claimed: true } } } } };
   const s = sanitize(JSON.parse(JSON.stringify(old)));
