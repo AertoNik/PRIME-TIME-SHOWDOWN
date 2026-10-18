@@ -41,6 +41,8 @@ export interface EventProgress {
   quests: Record<string, { p: number; claimed: boolean }>;
   /** Cosmetics bought in the event shop. */
   bought: CosmeticId[];
+  /** 1.7: seasonal stars opened in this event's exchange, and when (they stay in the roster for good). */
+  fighters: { id: FighterId; at: number }[];
   grandClaimed: boolean;
   /** Daily cap bookkeeping for match tokens (local date key). */
   day: string;
@@ -232,6 +234,8 @@ const KEY = 'primetime-showdown-save-v1';
 // v11 (1.6.1): SIDE CAM was replaced by SECOND TAKE — a bought SIDE CAM becomes SECOND TAKE and decks swap it in place.
 // 1.6.5: `tutorial` (FIRST BROADCAST) — no version bump: a save without it predates the tutorial and is
 // judged by its progress (see hasProgress), so existing players are never sent through it.
+// 1.7: LUCIEN — no version bump either: `fighters.lucien` is filled from the defaults (locked, like the
+// v8 newcomers) and `events[id].fighters` (stars opened in an event's exchange) is simply absent before.
 const VERSION = 11;
 
 /** Cards renamed or replaced between versions (old id → new id). */
@@ -243,7 +247,8 @@ export function defaultSave(): SaveData {
   for (const id of FIGHTER_ORDER) {
     const f = FIGHTERS[id];
     fighters[id] = {
-      unlocked: f.contract === null,
+      // (1.7: a seasonal star has no contract either, but it is opened in its event's exchange)
+      unlocked: f.contract === null && !f.seasonal,
       fans: f.startFans,
       wins: 0,
       losses: 0,
@@ -312,7 +317,7 @@ export function emptyPerks(): Record<PerkId, number> {
 }
 
 export function emptyEventProgress(): EventProgress {
-  return { tokens: 0, earned: 0, spent: 0, quests: {}, bought: [], grandClaimed: false, day: '', dayTokens: 0 };
+  return { tokens: 0, earned: 0, spent: 0, quests: {}, bought: [], fighters: [], grandClaimed: false, day: '', dayTokens: 0 };
 }
 
 function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
@@ -332,6 +337,13 @@ function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
       }
     }
     if (Array.isArray(e.bought)) p.bought = [...new Set(e.bought.filter(isCosmeticId))];
+    // 1.7: seasonal stars opened here (absent before 1.7 -> none)
+    if (Array.isArray(e.fighters)) {
+      for (const f of e.fighters as unknown[]) {
+        const r = f as { id?: unknown; at?: unknown } | null;
+        if (r && isFighter(r.id) && FIGHTERS[r.id].seasonal && !p.fighters.some((x) => x.id === r.id)) p.fighters.push({ id: r.id, at: Math.max(0, num(r.at, 0)) });
+      }
+    }
     p.grandClaimed = bool(e.grandClaimed, false);
     p.day = typeof e.day === 'string' ? e.day.slice(0, 16) : '';
     p.dayTokens = Math.max(0, num(e.dayTokens, 0));
@@ -679,7 +691,7 @@ export function sanitize(raw: unknown): SaveData {
  */
 export function hasProgress(d: SaveData): boolean {
   if (d.matches > 0 || d.wins > 0 || d.totalEarned > 0 || d.fansEarned > 0 || d.reputation > 0 || d.money !== CAREER_START.money || d.hintsSeen) return true;
-  if (FIGHTER_ORDER.some((id) => d.fighters[id].matches > 0 || (d.fighters[id].unlocked && FIGHTERS[id].contract !== null))) return true;
+  if (FIGHTER_ORDER.some((id) => d.fighters[id].matches > 0 || (d.fighters[id].unlocked && (FIGHTERS[id].contract !== null || !!FIGHTERS[id].seasonal)))) return true;
   if (d.cards.owned.length > 0 || d.cosmetics.owned.length > 0 || d.careerClaimed.length > 0) return true;
   return JSON.stringify(d.modes) !== JSON.stringify(emptyModes());
 }

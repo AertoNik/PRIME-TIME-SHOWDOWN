@@ -92,10 +92,13 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
   // defensive set pieces happen when a threat shows up (the reaction above), not as a routine.
   const threatened = foe.overdrive > 0 || foe.adrenaline > 0 || fa.kind === 'windup';
   // finish a primed combo
+  const gap = Math.hypot(foe.x - me.x, foe.z - me.z);
   for (let k = 0; k < 3; k++) {
     const c = h.hand[k];
     const cb = m.combos.wouldCombo(0, c, m.time);
     if (cb && c === 'dash' && !CLASSIC.has(cb.id) && !threatened) continue;
+    // Alpha 1.7: BAT BITE is a lunge — wait inside the window until it can reach
+    if (cb && c === 'bat_bite' && (gap > 4.4 || foe.shield > 0)) continue;
     if (cb && h.energy >= CARDS[c].cost) {
       m.playCard(0, k);
       return;
@@ -110,6 +113,8 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
     if ((dashy || guard) && !threatened) continue;
     const a = h.hand.findIndex((c) => cb.first.includes(c));
     const b = h.hand.findIndex((c) => cb.second.includes(c));
+    // Alpha 1.7: a combo that ends in BAT BITE only opens within the lunge's reach
+    if (b >= 0 && h.hand[b] === 'bat_bite' && (gap > 4.0 || foe.shield > 0)) continue;
     if (a >= 0 && b >= 0 && a !== b && h.energy >= CARDS[h.hand[a]].cost + CARDS[h.hand[b]].cost - 2) {
       m.playCard(0, a);
       return;
@@ -117,6 +122,12 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
   }
   // Alpha 1.6: the plain sensible use of the new cards (what a player reads off the card text)
   if (newCardMove(m)) return;
+  // Alpha 1.7: LUCIEN's BAT BITE — close enough, the target open, a DASH kept in reserve
+  const bi = h.hand.indexOf('bat_bite');
+  if (bi >= 0 && gap < 4.2 && foe.shield <= 0 && foe.invuln <= 0 && foe.bleedTicks <= 2) {
+    const reserve = h.hand.includes('dash') ? 2 : 0;
+    if (h.energy >= CARDS.bat_bite.cost + reserve && m.playCard(0, bi) === null) return;
+  }
   // don't sit on full energy
   if (h.energy >= 9.5) {
     const order = [0, 1, 2].sort((x, y) => CARDS[h.hand[y]].cost - CARDS[h.hand[x]].cost);
@@ -189,6 +200,9 @@ const HIT_CARD: Partial<Record<string, CardId>> = {
   mine: 'pressure_mine',
   cable: 'cable_snare',
   release: 'frame_catch',
+  // Alpha 1.7
+  bite: 'bat_bite',
+  bleed: 'bat_bite',
 };
 
 export interface RunResult {

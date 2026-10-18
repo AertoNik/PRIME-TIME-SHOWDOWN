@@ -58,7 +58,12 @@ export interface BossDef {
    * Champion's poise (Alpha 1.3.4): stuns (SHOCK, KNOCKOUT, wall slams) and SYSTEM OVERLOAD last
    * this fraction of their usual time on the boss. They still interrupt DIRECTOR'S CUT.
    */
-  poise: { stunMult: number; glitchMult: number };
+  poise: {
+    stunMult: number;
+    glitchMult: number;
+    /** Alpha 1.7: share of a BAT BITE bleed the champion suffers (he shakes it off sooner). */
+    bleedMult: number;
+  };
   phases: BossPhase[];
   moves: BossMove[];
   /** Names the HUD shows when the boss plays a card. */
@@ -154,7 +159,7 @@ export const BOSSES: Record<string, BossDef> = {
     duration: 120,
     introTime: 5.6,
     unlock: { classicWins: 5 },
-    poise: { stunMult: 0.5, glitchMult: 0.5 },
+    poise: { stunMult: 0.5, glitchMult: 0.5, bleedMult: 0.5 },
     ai: {
       id: 'champion',
       label: 'ЛЕГЕНДА',

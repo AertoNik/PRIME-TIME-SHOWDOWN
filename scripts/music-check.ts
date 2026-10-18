@@ -146,11 +146,38 @@ check('crowd: the knockout roar always cuts in (never swallowed by a reaction a 
     const sd = Math.sqrt(win.reduce((x, y) => x + (y - mean) ** 2, 0) / win.length);
     return { crest: 20 * Math.log10(peak / rms), grain: sd / mean, peak };
   };
+  // (Alpha 1.7: the synthesis draws on Math.random — the check runs it on fixed seeds and averages
+  // four takes, so the verdict is the same on every run; the game itself is not changed)
+  const seeded = <T>(seed: number, fn: () => T): T => {
+    const keep = Math.random;
+    let a = seed >>> 0;
+    Math.random = () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    try {
+      return fn();
+    } finally {
+      Math.random = keep;
+    }
+  };
   const hands = (people: number) => {
-    const b = mk(6);
-    for (let p = 0; p < people; p++) addClapper(b, sr, p, people);
-    normalize(b, 0.8);
-    return measure(b);
+    let crest = 0;
+    let grain = 0;
+    for (const seed of [1, 2, 3, 4]) {
+      const m = seeded(seed * 7919 + people, () => {
+        const b = mk(6);
+        for (let p = 0; p < people; p++) addClapper(b, sr, p, people);
+        normalize(b, 0.8);
+        return measure(b);
+      });
+      crest += m.crest / 4;
+      grain += m.grain / 4;
+    }
+    return { crest, grain };
   };
   const dense = hands(64);
   const light = hands(26);

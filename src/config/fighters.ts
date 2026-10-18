@@ -275,9 +275,58 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
     idleStyle: 'feint',
     theme: { main: '#ff6f61', accent: '#ffe3c2', dark: '#22232a' },
   },
+  // Alpha 1.7 — BLOOD MOON PREMIERE: the guest star of the Halloween special. A dual-mode
+  // VAMPIRE CANE BLASTER: crimson bolts from afar, quick fencing strikes up close (one shared
+  // attack timer — the two never add up). No contract: opened in the Halloween Premiere
+  // exchange and kept forever (`seasonal`). Numbers tuned with headless fights (Alpha 1.7 report).
+  lucien: {
+    id: 'lucien',
+    name: 'LUCIEN',
+    nickname: 'THE NIGHT STAR',
+    fullName: 'Люсьен «The Night Star»',
+    style: 'Трость-бластер и дуэль',
+    tagline: 'Камера любит меня. Особенно в полночь.',
+    bio: 'Приглашённая звезда хэллоуинского спецвыпуска PRIME TIME. Молодой вампир с безупречными манерами и тростью, которая стреляет багровой энергией. Издалека он ведёт дуэль выстрелами, вблизи — быстрыми уколами, а в нужный момент исчезает в рое летучих мышей.',
+    strengths: ['Бой на любой дистанции', 'Точные уколы тростью', 'Кровотечение BAT BITE'],
+    weaknesses: ['Меньше здоровья', 'Укус нужно довести до цели', 'Средний урон издалека'],
+    stats: {
+      maxHp: 14400,
+      moveSpeed: 4.5,
+      armor: 0,
+      attack: {
+        weapon: 'cane',
+        interval: 0.6,
+        damage: 84,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.028,
+        speed: 23,
+        range: 8.8,
+        radius: 0.22,
+        homing: 0,
+        falloff: 1,
+        melee: { enter: 2.0, exit: 2.45, dwell: 0.5, interval: 0.46, damage: 68, windup: 0.13, reach: 2.3, arc: 0.9, shove: 1.4 },
+      },
+      preferredRange: 4.2,
+      evasion: 0.75,
+    },
+    bars: { health: 3, damage: 3, speed: 4, range: 4, control: 3 },
+    passive: 'duelist',
+    signature: 'bat_bite',
+    look: 'lucien',
+    defaultDeck: ['dash', 'shield', 'overdrive', 'bat_bite'],
+    startFans: 2400,
+    contract: null,
+    seasonal: { eventId: 'halloween-2026', title: 'Halloween Premiere 2026' },
+    dashStyle: 'swirl',
+    victoryStyle: 'nightstar',
+    idleStyle: 'duelist',
+    theme: { main: '#a3122c', accent: '#ff4d6d', dark: '#16070d' },
+  },
 };
 
-export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina'];
+/** Alpha 1.7: LUCIEN joins the end of the roster (a seasonal star: shown once owned or while his event runs). */
+export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien'];
 
 export const RIVALS: Record<RivalId, RivalDef> = {
   dex: {

@@ -1,10 +1,10 @@
 import { ARENA, BROADCAST, CARD_TUNING, COMBO_TUNING, MATCH, PASSIVE_TUNING } from '../config/balance';
 import { TAKE_CARDS } from '../config/cards';
-import type { CardId, ComboId, Side, WeaponType } from '../config/types';
+import type { CardId, ComboId, MeleeStats, Side, WeaponType } from '../config/types';
 import { clamp, clampRoundedRect, dampAngle, segSegDist, segmentCircleHit, wrapAngle, type ClampResult } from '../core/math';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
-import type { HitInfo, HitKind, Projectile, ProjectileKind, StageObject } from './types';
+import type { Decoy, HitInfo, HitKind, Projectile, ProjectileKind, StageObject } from './types';
 
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 const bankTmp = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
@@ -38,7 +38,9 @@ export interface SpawnOpts {
  * Alpha 1.5 — attacks a FALSE START can read (instant SHOCK / OVERLOAD, poison ticks, slams and shockwaves cannot).
  * Alpha 1.6: the new card shots are shots too; PROP DROP and PRESSURE MINE are areas, not attacks to read.
  */
-const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter', 'split', 'disc', 'cable', 'release']);
+const FEINTABLE = new Set<HitInfo['kind']>(['auto', 'power', 'adrenaline', 'knockout', 'cut', 'bank', 'counter', 'split', 'disc', 'cable', 'release', 'cane', 'bite']);
+/** Alpha 1.7 — ticking damage: no DASH dodges it, no smoke cuts it (the SYSTEM OVERLOAD glitch and the BAT BITE bleed). */
+const TICKS = new Set<HitKind>(['dot', 'bleed']);
 /** Alpha 1.6 — card hits a SPOTLIGHT TAG boosts. */
 const TAG_KINDS = new Set<HitKind>(['power', 'bank', 'knockout', 'disc', 'prop']);
 /** Alpha 1.6 — regular fire a HOLO DECOY soaks (card shots and charged attacks go through the hologram). */
@@ -177,6 +179,9 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
     case 'stinger':
       // Alpha 1.5: Rina's compact twin-barrel blaster, held close
       return { right: 0.3, fwd: 0.82 };
+    case 'cane':
+      // Alpha 1.7: Lucien's VAMPIRE CANE BLASTER pointed at the target at arm's length — the bolt leaves its tip
+      return { right: 0.28, fwd: 1.45 };
   }
 }
 
@@ -293,6 +298,46 @@ export class CombatSystem {
         });
       }
     }
+    // Alpha 1.7 — BAT BITE: the bleed ticks away (a new bite refreshed it, never stacked it)
+    if (f.bleedTicks > 0) {
+      f.bleedT -= dt;
+      if (f.bleedT <= 0) {
+        f.bleedTicks--;
+        f.bleedT += CARD_TUNING.bat_bite.tick;
+        if (!f.ko && this.m.phase === 'fight') {
+          this.applyHit(f, this.m.fighters[f.bleedBy], {
+            damage: f.bleedDmg,
+            kind: 'bleed',
+            heavy: false,
+            crit: false,
+            electric: false,
+            combo: null,
+            knockback: 0,
+            stun: 0,
+            slowAmount: 0,
+            slowDuration: 0,
+            dx: 0,
+            dz: 0,
+            sure: true,
+            projectile: null,
+          });
+        }
+        if (f.bleedTicks <= 0) this.m.emit({ type: 'bleedEnd', side: f.side });
+      }
+    }
+  }
+
+  /** Alpha 1.7 — BAT BITE landed: the target bleeds `bleedTime` s (the champion less); a new bite refreshes it, never stacks. */
+  applyBleed(target: FighterSim, src: FighterSim): void {
+    const t = CARD_TUNING.bat_bite;
+    if (target.ko) return;
+    let ticks = Math.round(t.bleedTime / t.tick);
+    if (target.side === 1 && this.m.boss) ticks = Math.max(1, Math.round(ticks * this.m.boss.def.poise.bleedMult));
+    if (target.bleedTicks <= 0) target.bleedT = t.tick;
+    target.bleedTicks = Math.max(target.bleedTicks, ticks);
+    target.bleedDmg = t.bleed * t.tick * src.dmgMult;
+    target.bleedBy = src.side;
+    this.m.emit({ type: 'bleed', side: target.side, duration: target.bleedTicks * t.tick });
   }
 
   // ---------------------------------------------------------------- movement
@@ -324,11 +369,12 @@ export class CombatSystem {
     let accel = 32;
     const a = f.action;
     // Alpha 1.6: a CABLE SNARE snaps on any real move away (DASH, FALSE START, BACKTRACK, a charge, a knockback)
-    if (f.tether > 0 && (a.kind === 'dash' || a.kind === 'feint' || a.kind === 'rewind' || a.kind === 'rush' || f.knockback > 0)) this.releaseTether(f, true);
-    if (a.kind === 'dash' || a.kind === 'rush' || a.kind === 'feint' || a.kind === 'rewind') {
+    if (f.tether > 0 && (a.kind === 'dash' || a.kind === 'feint' || a.kind === 'rewind' || a.kind === 'rush' || a.kind === 'bite' || f.knockback > 0)) this.releaseTether(f, true);
+    if (a.kind === 'dash' || a.kind === 'rush' || a.kind === 'feint' || a.kind === 'rewind' || a.kind === 'bite') {
+      // (Alpha 1.7: BAT BITE — the lunge, then the leap back after a bite)
       tvx = a.dirX * a.speed;
       tvz = a.dirZ * a.speed;
-      accel = a.kind === 'feint' ? 120 : 400;
+      accel = a.kind === 'feint' ? 120 : a.kind === 'bite' && a.stage === 'leap' ? 90 : 400;
     } else if (f.knockback > 0) {
       tvx = f.kbX;
       tvz = f.kbZ;
@@ -359,7 +405,7 @@ export class CombatSystem {
 
     // Aim / facing (model turns toward its aim point).
     const desired = a.kind === 'cut' ? Math.atan2(a.dirX, a.dirZ) : Math.atan2(f.aimX - f.x, f.aimZ - f.z);
-    if (a.kind === 'rush' || a.kind === 'dash' || a.kind === 'rewind') {
+    if (a.kind === 'rush' || a.kind === 'dash' || a.kind === 'rewind' || a.kind === 'bite') {
       // Keep facing; view handles the dash pose.
     } else if (f.stun <= 0) {
       f.facing = dampAngle(f.facing, desired, a.kind === 'windup' ? 10 : a.kind === 'cut' ? 12 : 15, dt);
@@ -506,6 +552,9 @@ export class CombatSystem {
       case 'cut':
         m.abilities.updateCut(f, foe, a, dt);
         break;
+      case 'bite':
+        m.abilities.updateBite(f, foe, a, dt);
+        break;
       default:
         break;
     }
@@ -515,6 +564,22 @@ export class CombatSystem {
   private autoFire(f: FighterSim, foe: FighterSim, dt: number): void {
     f.fireTimer -= dt;
     const canShoot = f.stun <= 0 && f.knockback <= 0 && f.action.kind === 'none' && !foe.ko;
+    // Alpha 1.7 — a dual-mode weapon (Lucien's cane): a strike on its way lands (a stun, a knockback
+    // or an action calls it off), and the mode follows the distance with a margin and a dwell time
+    const mel = f.stats.attack.melee;
+    if (mel) {
+      if (f.strikeT > 0) {
+        if (!canShoot) f.strikeT = 0;
+        else {
+          f.strikeT -= dt;
+          if (f.strikeT <= 0) {
+            f.strikeT = 0;
+            this.landStrike(f, foe, mel);
+          }
+        }
+      }
+      this.caneMode(f, mel);
+    }
     if (f.adrenaline > 0) {
       f.adrenaline -= dt;
       f.adrenalineTimer -= dt;
@@ -545,6 +610,14 @@ export class CombatSystem {
       }
     }
     if (canShoot && f.wantFire && f.fireTimer <= 0 && f.burstLeft <= 0) {
+      if (mel && f.caneStrike) {
+        // one attack timer for both modes: a strike replaces the shot, never adds to it
+        if (f.strikeT <= 0) {
+          this.startStrike(f, mel);
+          f.fireTimer = mel.interval / f.fireRateMult();
+        }
+        return;
+      }
       this.fireAuto(f);
       const atk = f.stats.attack;
       if (atk.burst) {
@@ -553,6 +626,136 @@ export class CombatSystem {
       }
       f.fireTimer = atk.interval / f.fireRateMult();
     }
+  }
+
+  // ------------------------------------------------- Alpha 1.7 — the cane up close
+  /**
+   * Shots or strikes: strikes once the target is closer than `enter`, shots again beyond `exit`,
+   * never sooner than `dwell` s after the last switch and never mid-swing. Coming back to shots,
+   * the next bolt waits for a whole shot interval after the last strike (the cadence holds).
+   */
+  private caneMode(f: FighterSim, mel: MeleeStats): void {
+    const t = this.m.time;
+    if (t - f.caneSince < mel.dwell || f.strikeT > 0) return;
+    const d = Math.hypot(f.meleeX - f.x, f.meleeZ - f.z);
+    if (!f.caneStrike && d < mel.enter) {
+      f.caneStrike = true;
+      f.caneSince = t;
+    } else if (f.caneStrike && d > mel.exit) {
+      f.caneStrike = false;
+      f.caneSince = t;
+      if (f.fireTimer > 0) f.fireTimer += (f.stats.attack.interval - mel.interval) / f.fireRateMult();
+    }
+  }
+
+  /** A cane strike begins: the swing reaches the contact `windup` s later (thrust, slash, back-slash — a fencing phrase, not random). */
+  private startStrike(f: FighterSim, mel: MeleeStats): void {
+    f.strikeT = mel.windup;
+    f.strikeVar = f.strikeN % 3;
+    f.strikeN++;
+    // the attack after a DASH hits harder — a strike is that attack as much as a shot is
+    const counter = f.counterShots > 0 && f.counterT > 0;
+    if (counter) f.counterShots--;
+    f.strikeCrit = counter;
+    f.m.shots++;
+    this.m.emit({ type: 'strike', side: f.side, windup: mel.windup, variant: f.strikeVar });
+  }
+
+  /**
+   * The contact: the swing covers `arc` either side of the fighter's facing up to `reach` and
+   * meets the nearest of the opponent and their decoys. A STAGE BARRIER between the cane and what
+   * it swings at takes the blow instead; DASH i-frames, FALSE START and a SHIELD answer it like a shot.
+   */
+  private landStrike(f: FighterSim, foe: FighterSim, mel: MeleeStats): void {
+    const m = this.m;
+    const fx = Math.sin(f.facing);
+    const fz = Math.cos(f.facing);
+    const cosArc = Math.cos(mel.arc);
+    const inArc = (x: number, z: number, r: number): number => {
+      const dx = x - f.x;
+      const dz = z - f.z;
+      const d = Math.hypot(dx, dz);
+      if (d > mel.reach + r * 0.5) return -1;
+      if (d < 0.05) return 0;
+      return (dx * fx + dz * fz) / d >= cosArc ? d : -1;
+    };
+    let best = Infinity;
+    let decoy: Decoy | null = null;
+    let onFoe = false;
+    if (!foe.ko) {
+      const d = inArc(foe.x, foe.z, foe.radius);
+      if (d >= 0) {
+        best = d;
+        onFoe = true;
+      }
+    }
+    for (const dc of m.decoys) {
+      if (!dc.alive || dc.owner === f.side) continue;
+      const d = inArc(dc.x, dc.z, MATCH.fighterRadius);
+      if (d >= 0 && d < best) {
+        best = d;
+        decoy = dc;
+        onFoe = false;
+      }
+    }
+    let outcome: 'hit' | 'blocked' | 'decoy' | 'dodged' | 'miss' = 'miss';
+    let cx = f.x + fx * mel.reach * 0.85;
+    let cz = f.z + fz * mel.reach * 0.85;
+    const dmg = mel.damage * f.outgoingDamageMult() * (f.strikeCrit ? CARD_TUNING.dash.counterMult : 1);
+    if (onFoe || decoy) {
+      const tx = decoy ? decoy.x : foe.x;
+      const tz = decoy ? decoy.z : foe.z;
+      const dx = tx - f.x;
+      const dz = tz - f.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const ux = dx / d;
+      const uz = dz / d;
+      cx = tx - ux * 0.35;
+      cz = tz - uz * 0.35;
+      const screen = m.objects.barrierOnLine(f.x, f.z, tx, tz, 0.05);
+      if (screen) {
+        // the cane rings off the screen: the barrier soaks the blow
+        outcome = 'blocked';
+        cx = screen.x;
+        cz = screen.z;
+        m.objects.damageBarrier(screen, dmg, cx, cz);
+        m.emit({ type: 'impact', side: f.side, x: cx, z: cz, kind: 'shield', heavy: false, weapon: f.stats.attack.weapon });
+      } else if (decoy) {
+        outcome = 'decoy';
+        if (decoy.kind === 'holo') {
+          if (decoy.soak < 0) decoy.soak = CARD_TUNING.holo_decoy.soak;
+        } else m.popDecoy(decoy);
+        m.emit({ type: 'impact', side: f.side, x: cx, z: cz, kind: 'decoy', heavy: false, weapon: f.stats.attack.weapon });
+      } else if (foe.invuln > 0) {
+        // DASHed through the swing
+        outcome = 'dodged';
+        foe.m.perfects++;
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: false });
+        this.onEvade(foe);
+      } else {
+        const r = this.applyHit(foe, f, {
+          damage: dmg,
+          kind: 'cane',
+          heavy: false,
+          crit: f.strikeCrit,
+          electric: false,
+          combo: null,
+          knockback: 0,
+          stun: 0,
+          slowAmount: 0,
+          slowDuration: 0,
+          dx: ux,
+          dz: uz,
+          sure: true,
+          projectile: null,
+        });
+        outcome = r === 'hit' ? 'hit' : r === 'blocked' ? 'blocked' : r === 'dodged' ? 'dodged' : 'miss';
+        if (r === 'hit') this.shove(foe, ux, uz, mel.shove);
+        else if (r === 'blocked') m.emit({ type: 'impact', side: f.side, x: cx, z: cz, kind: 'shield', heavy: false, weapon: f.stats.attack.weapon });
+      }
+    }
+    f.strikeCrit = false;
+    m.emit({ type: 'slash', side: f.side, x: cx, z: cz, dx: fx, dz: fz, outcome });
   }
 
   private muzzleWorld(f: FighterSim, muzzle: number, yaw: number): { x: number; z: number } {
@@ -821,6 +1024,8 @@ export class CombatSystem {
   }
 
   windupAim(f: FighterSim, card: string, combo: ComboId | null, out: { x: number; z: number }): { x: number; z: number } {
+    // Alpha 1.7 — BAT BITE: a lunge, led by how long it takes to get there (it bends on the way, too)
+    if (card === 'bat_bite') return this.leadAim(f, CARD_TUNING.bat_bite.rushSpeed, 0.7, out);
     if (combo === 'spotlight') {
       const speed = card === 'charged_shot' ? CARD_TUNING.charged_shot.speed : CARD_TUNING.power_shot.speed;
       return this.leadAim(f, speed, COMBO_TUNING.spotlightLead, out);
@@ -1409,7 +1614,7 @@ export class CombatSystem {
     if (target.ko || duration <= 0) return;
     // BOSS FIGHT: the champion shakes stuns off faster (poise), they still interrupt him
     if (target.side === 1 && this.m.boss) duration *= this.m.boss.def.poise.stunMult;
-    if (target.action.kind === 'windup' || target.action.kind === 'rush' || target.action.kind === 'cut') {
+    if (target.action.kind === 'windup' || target.action.kind === 'rush' || target.action.kind === 'cut' || (target.action.kind === 'bite' && target.action.stage === 'rush')) {
       this.m.emit({ type: 'interrupt', side: target.side, by });
       if (by !== target.side) this.m.fighters[by].m.perfects++;
     }
@@ -1424,7 +1629,7 @@ export class CombatSystem {
   applyHit(target: FighterSim, source: FighterSim, h: HitInfo): 'hit' | 'blocked' | 'dodged' | 'ignored' {
     const m = this.m;
     if (target.ko || m.phase !== 'fight') return 'ignored';
-    if (target.invuln > 0 && h.kind !== 'dot' && h.kind !== 'slam') {
+    if (target.invuln > 0 && !TICKS.has(h.kind) && h.kind !== 'slam') {
       return 'dodged';
     }
     if (target.feint > 0 && this.tryFeint(target, source, h)) return 'dodged';
@@ -1441,7 +1646,7 @@ export class CombatSystem {
       m.emit({ type: 'tagEnd', side: target.side });
     }
     if (target.glitch > 0) dmg *= CARD_TUNING.system_overload.damageTakenMult;
-    if (h.kind !== 'dot' && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;
+    if (!TICKS.has(h.kind) && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;
     dmg *= 1 - target.stats.armor;
     if (target.ironSkin > 0) dmg *= 1 - PASSIVE_TUNING.iron_skin.reduction;
 

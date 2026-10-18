@@ -3,7 +3,7 @@
 // Step-by-step guide in Russian: docs/SEASONAL_EVENTS.md
 import type { CosmeticId } from './cosmetics.config';
 import type { ThemeId } from './themes.config';
-import type { Difficulty } from './types';
+import type { Difficulty, FighterId } from './types';
 
 // ---------------------------------------------------------------- settings
 // mode 'auto'   — the event is chosen by the calendar below (normal published game).
@@ -89,6 +89,16 @@ export interface ShopItem {
   cost: number;
 }
 
+/**
+ * Alpha 1.7: a seasonal star in the event's exchange — a playable fighter opened once for the
+ * event's currency and kept forever (FighterDef.seasonal). Bought like the cosmetics, never paid
+ * with real money; after the event it cannot be opened through it any more.
+ */
+export interface SeasonFighter {
+  fighter: FighterId;
+  cost: number;
+}
+
 export interface EventDef {
   id: string;
   title: string;
@@ -104,6 +114,8 @@ export interface EventDef {
   earnings?: MatchEarnings;
   quests: QuestDef[];
   shop: ShopItem[];
+  /** Alpha 1.7: seasonal stars on sale in the exchange (Halloween Premiere: LUCIEN). */
+  fighters?: SeasonFighter[];
   /** Season grand prize, unlocked by finishing `questsNeeded` quests. */
   grandPrize?: { cosmetic: CosmeticId; questsNeeded: number };
 }
@@ -136,6 +148,10 @@ export const EVENTS: EventDef[] = [
       { cosmetic: 'frame_spooky', cost: 180 },
       { cosmetic: 'victory_pumpkin', cost: 220 },
     ],
+    // Alpha 1.7 — BLOOD MOON PREMIERE: the main star of the season. 500 tokens = all seven quests (305)
+    // plus about four days of matches for a regular player (40–60 tokens a day), so the season's
+    // other rewards stay within reach too (the calculation is in the Alpha 1.7 report).
+    fighters: [{ fighter: 'lucien', cost: 500 }],
     grandPrize: { cosmetic: 'title_halloween_champion', questsNeeded: 6 },
   },
   {

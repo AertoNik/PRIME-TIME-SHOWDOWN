@@ -141,10 +141,23 @@ export class ResultsScreen implements Screen {
       const quests = eo.completed
         .map((q) => `<div class="evr-quest">${ICONS.check}<span>Задание выполнено: <b>${esc(q.title)}</b> · +${q.reward}</span></div>`)
         .join('');
+      // Alpha 1.7: how close the season's star is (only while it is on sale and not yet opened)
+      const em = this.g.events;
+      const star = (ev.fighters ?? []).find((x) => !em.ownsFighter(x.fighter) && em.fighterOffer(x.fighter));
+      let starLine = '';
+      if (star) {
+        const have = em.tokens(ev);
+        const name = esc(FIGHTERS[star.fighter].name);
+        starLine =
+          have >= star.cost
+            ? `<button class="label evr-link evr-star-ready" data-act="events">${name} можно открыть в «Событиях» ›</button>`
+            : `<div class="evr-star"><span>До ${name}</span><div class="progress gold"><i style="transform:scaleX(${have / star.cost})"></i></div><span>${have}/${star.cost}</span></div>`;
+      }
       eventBlock = `<div class="section panel ev-result" style="animation:lineIn .35s ease ${T0 + 0.15}s both">
           <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+${eo.tokens}<span class="evr-coin">${icon}</span></span></div>
           <div class="muted evr-lines">${parts || 'Победы, высокий рейтинг и комбо приносят жетоны'}${eo.capped ? ' · дневной лимит жетонов за бои достигнут' : ''}</div>
           ${quests}
+          ${starLine}
           ${quests ? '<button class="label evr-link" data-act="events">Забрать награды в «Событиях» ›</button>' : ''}
         </div>`;
     }

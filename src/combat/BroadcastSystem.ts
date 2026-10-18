@@ -133,6 +133,8 @@ export class BroadcastSystem {
           // Alpha 1.6: the new set pieces landing are show moments
           if (e.kind === 'mine') this.callout('TRAP SPRUNG!', 2);
           else if (e.kind === 'prop') this.callout('PROP DROP!', 2);
+          // Alpha 1.7: LUCIEN's bite is a TV moment
+          else if (e.kind === 'bite') this.callout('BAT BITE!', 2);
           if (e.echo) this.callout('SECOND TAKE!', 2);
         } else if (e.heavy) {
           this.add(BROADCAST.takenHeavy, '');

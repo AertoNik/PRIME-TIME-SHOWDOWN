@@ -82,7 +82,25 @@ export interface CutAction {
   tune: CutTuning;
   empowered: boolean;
 }
-export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction | FeintAction | RewindAction;
+/**
+ * Alpha 1.7 — LUCIEN's BAT BITE after its coil: the swarm lunge ('rush', steering a little toward
+ * the target) and, once the bite landed, a light leap back out of reach ('leap', no attacks).
+ */
+export interface BiteAction {
+  kind: 'bite';
+  stage: 'rush' | 'leap';
+  t: number;
+  total: number;
+  dirX: number;
+  dirZ: number;
+  speed: number;
+  combo: ComboId | null;
+  /** The target's DASH i-frames let the lunge pass (it rushes on and misses). */
+  dodged: boolean;
+  /** FALSE START read the lunge: it cannot land any more. */
+  feinted: boolean;
+}
+export type Action = { kind: 'none' } | WindupAction | DashAction | RushAction | RecoverAction | CutAction | FeintAction | RewindAction | BiteAction;
 
 export interface FighterMatchStats {
   damageDealt: number;
@@ -240,6 +258,24 @@ export class FighterSim {
   /** BACKTRACK: positions sampled every CARD_TUNING.backtrack.sample s (ring buffer). */
   readonly hist: number[] = [];
   histT = 0;
+
+  // ------------------------------------------------ Alpha 1.7 — BLOOD MOON PREMIERE
+  /** Dual-mode weapon (Lucien's cane): striking up close instead of shooting, and since when (match time). */
+  caneStrike = false;
+  caneSince = -99;
+  /** What a melee swing goes at: the body this fighter's brain sees (or a HOLO DECOY), no lead. */
+  meleeX = 0;
+  meleeZ = 0;
+  /** A cane strike on its way to the contact (seconds left; 0 = none), its variant and DASH counter boost. */
+  strikeT = 0;
+  strikeVar = 0;
+  strikeCrit = false;
+  strikeN = 0;
+  /** BAT BITE bleed on this fighter: ticks left, seconds to the next tick, damage per tick, who bit. */
+  bleedTicks = 0;
+  bleedT = 0;
+  bleedDmg = 0;
+  bleedBy: Side = 0;
 
   readonly m: FighterMatchStats = {
     damageDealt: 0,

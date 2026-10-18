@@ -1503,6 +1503,15 @@ export class VFX {
         this.glows.spawn(p.x, p.y, p.z, _c.set(0xffe3c2), 1.2, 0.2, 0.55, 0.05);
         this.cone(p.x, p.y, p.z, dx, dz, color, 2, 7, 0.12, 0.07);
         break;
+      case 'cane':
+        // Alpha 1.7 — Lucien: a crimson bloom at the cane's tip, a thin ring and a few violet motes
+        this.flashes.spawn(p.x, p.y, p.z, _c.set(0xff3a5c), 2.4, 0.32, 0.75, 0.05);
+        this.glows.spawn(p.x, p.y, p.z, _c.set(0xffb3c1), 1.3, 0.25, 0.7, 0.06);
+        this.rings.spawn(p.x, p.y, p.z, _c.set(0xff2a4a), 1.8, 0.1, 0.5, 0.12, false);
+        for (let i = 0; i < 3; i++) {
+          this.sparks.spawn(p.x, p.y, p.z, dx * 2 + rng.range(-0.8, 0.8), rng.range(0, 0.8), dz * 2 + rng.range(-0.8, 0.8), 0.2, 0.12, 0.01, i % 2 ? _c.set(0x9b4dff) : color, 2.2, 4, 0);
+        }
+        break;
       case 'tech_carbine':
         this.flashes.spawn(p.x, p.y, p.z, color, 2.2, 0.3, 0.55, 0.04);
         for (let i = 0; i < 2; i++) {
@@ -1549,6 +1558,12 @@ export class VFX {
       case 'stinger':
         this.flashes.spawn(x, y, z, color, 2.2, 0.3, 0.8, 0.06, 2);
         this.burst(x, y, z, _c.set(0xffe3c2), 5, 5, 0.1, 0.24, 2.4);
+        break;
+      case 'cane':
+        // Alpha 1.7 — a crimson splash of energy (bolts and cane strikes alike)
+        this.flashes.spawn(x, y, z, _c.set(0xff3a5c), 2.4, 0.4, 0.95, 0.07, 2);
+        this.burst(x, y, z, color, 6, 5, 0.11, 0.28, 2.4);
+        this.burst(x, y, z, _c.set(0x9b4dff), 3, 4, 0.09, 0.24, 2.2);
         break;
       case 'tech_carbine':
         this.glows.spawn(x, y, z, color, 1.8, 0.4, 1, 0.1);

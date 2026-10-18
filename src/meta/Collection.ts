@@ -229,6 +229,31 @@ export class Collection {
     };
   }
 
+  /**
+   * Alpha 1.7: the seasonal stars the producer opened (they stay in the roster for good), with the
+   * event and the date from the event records. Unopened ones never show (no spoilers).
+   */
+  seasonalFighters(): { id: FighterId; eventId: string; at: number }[] {
+    const s = this.store.data;
+    const out: { id: FighterId; eventId: string; at: number }[] = [];
+    for (const id of FIGHTER_ORDER) {
+      const def = FIGHTERS[id].seasonal;
+      if (!def || !s.fighters[id]?.unlocked) continue;
+      let at = 0;
+      let eventId = def.eventId;
+      for (const [ev, p] of Object.entries(s.events)) {
+        const rec = p.fighters.find((f) => f.id === id);
+        if (rec) {
+          at = rec.at;
+          eventId = ev;
+          break;
+        }
+      }
+      out.push({ id, eventId, at });
+    }
+    return out;
+  }
+
   /** The visible items (seasonal ones only when owned), in collection order. */
   cosmetics(filter?: (d: CosmeticDef) => boolean, fighter?: FighterId): CosmeticView[] {
     return COSMETIC_ORDER.filter((id) => this.visible(id) && (!filter || filter(COSMETICS[id]))).map((id) => this.view(id, fighter));

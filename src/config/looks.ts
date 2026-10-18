@@ -1,9 +1,9 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto';
-export type PantsStyle = 'track' | 'cargo' | 'jogger';
-export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat';
+export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
+export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
 export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker';
 
 /** Visual recipe for a procedurally built fighter. */
@@ -49,6 +49,12 @@ export interface FaceTraits {
   grin: boolean;
   /** Mimicry: now and then one brow flashes up. */
   browFlash: boolean;
+  /** Alpha 1.7 (Lucien): angular, sharper cheekbones with a deeper hollow under them. */
+  sharp?: boolean;
+  /** Alpha 1.7: narrow brows rising toward the temples. */
+  narrowBrows?: boolean;
+  /** Alpha 1.7: two small neat fangs under the upper lip, a fine line on the upper eyelids. */
+  fangs?: boolean;
 }
 
 export const LOOKS: Record<string, LookDef> = {
@@ -241,6 +247,31 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x17181d,
     glow: 0xff7a6a,
     rim: 0xffb8a8,
+  },
+  // Alpha 1.7 — LUCIEN «The Night Star»: a young vampire guest star. Tall and lean, pale noble skin,
+  // dark hair swept back from a widow's peak, crimson eyes, narrow brows, sharp cheekbones and two
+  // small fangs. A fitted black tailcoat with a high vampire collar lined in bordeaux, metal clasps,
+  // coat tails, slim trousers, tall boots, black gloves — and the VAMPIRE CANE BLASTER.
+  lucien: {
+    id: 'lucien',
+    body: 'svelte',
+    skin: 0xe6c8bc,
+    hair: { style: 'swept', color: 0x15111b, color2: 0x5a1426 },
+    top: { style: 'tailcoat', main: 0x17121c, accent: 0x7c1029, trim: 0x5d6170, inner: 0xbdb2bf },
+    pants: { style: 'tailored', main: 0x19141e, accent: 0x5c0e20 },
+    shoes: { main: 0x120e16, accent: 0x6a6e7e, sole: 0x2b0913, boots: true },
+    gloves: 0x1c1519,
+    fingerless: false,
+    eyes: 0xc4122f,
+    brow: 'sly',
+    mouth: 'smirk',
+    accessories: [],
+    face: { cheekbones: 1, jaw: 0.8, eyeHeight: 0.9, archedBrows: false, grin: false, browFlash: true, sharp: true, narrowBrows: true, fangs: true },
+    weapon: 'cane',
+    weaponColor: 0x141119,
+    weaponDark: 0x3c3f4c,
+    glow: 0xff2a4a,
+    rim: 0xff7a92,
   },
   // Crash: heavy brawler in a sleeveless black jersey with big pink shoulder pads
   // and a tall hot-pink quiff — a different silhouette from Bruno and Tank.

@@ -310,6 +310,39 @@ export const CARD_TUNING = {
    * shot is easier to read: it is sidestepped `dodgeMult`× as often. Nothing is absorbed.
    */
   freeze_frame: { radius: 2.3, duration: 4, speed: 0.3, dodgeMult: 2 },
+
+  // ------------------------------------------------- Alpha 1.7 — BLOOD MOON PREMIERE
+  /**
+   * LUCIEN's BAT BITE: a short predatory coil (`windup`; a rival's would be the longer `telegraph`),
+   * then a lunge inside a swarm of bats straight at the opponent — `rushSpeed` m/s, at most
+   * `rushDistance` m, bending a little toward a moving target (`turn` rad/s), so a sideways DASH
+   * still slips it. Contact within `hitRange`: the bite deals `damage` and opens a BLEED of `bleed`
+   * HP/s for `bleedTime` s in `tick`-second ticks. A new bite refreshes the bleed — it never
+   * stacks. DASH i-frames, FALSE START and a raised SHIELD stop the bite (and so the bleed); a
+   * SHIELD raised later soaks the ticks; a STAGE BARRIER in the way stops the lunge. A miss leaves
+   * Lucien open (`missRecover`); after a bite he springs back out of reach. No healing, no
+   * invulnerability. The champion bleeds for half as long (BossDef.poise.bleedMult).
+   */
+  bat_bite: {
+    windup: 0.3,
+    telegraph: 0.8,
+    lockAt: 0.6,
+    rushSpeed: 15,
+    rushDistance: 5.2,
+    turn: 2.2,
+    hitRange: 1.3,
+    damage: 220,
+    bleed: 90,
+    bleedTime: 3,
+    tick: 0.5,
+    knockback: 1.2,
+    /** After a bite he springs back `leapDistance` m in `leap` s (no attacks meanwhile). */
+    leap: 0.3,
+    leapDistance: 1.6,
+    missRecover: 0.55,
+    /** Damage the swarm deals to a STAGE BARRIER it splashes against. */
+    barrierDamage: 260,
+  },
 };
 
 export const COMBO_TUNING = {

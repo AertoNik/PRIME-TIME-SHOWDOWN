@@ -421,6 +421,13 @@ export class AudioSystem {
         this.tone({ type: 'square', f0: 1700 + Math.random() * 200, f1: 600, dur: 0.05, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2600, q: 1.6 } });
         this.noise({ dur: 0.03, gain: 0.06 * v, type: 'highpass', f0: 3800 });
         break;
+      case 'cane':
+        // Alpha 1.7 — Lucien's cane: a glassy crimson "zing" with a soft low pulse under it
+        this.tone({ type: 'triangle', f0: 1450 + Math.random() * 120, f1: 640, dur: 0.11, gain: 0.075 * v });
+        this.tone({ type: 'sine', f0: 2300, f1: 1750, dur: 0.08, gain: 0.03 * v, delay: 0.01 });
+        this.tone({ type: 'sine', f0: 180, f1: 90, dur: 0.1, gain: 0.08 * v });
+        this.noise({ dur: 0.04, gain: 0.05 * v, type: 'bandpass', f0: 3200, q: 1.4 });
+        break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst
         this.tone({ type: 'square', f0: 1100 + Math.random() * 120, f1: 520, dur: 0.06, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2200, q: 2 } });
@@ -570,7 +577,34 @@ export class AudioSystem {
         this.tone({ type: 'sine', f0: 1320, f1: 165, dur: 0.6, gain: 0.04 });
         this.noise({ dur: 0.5, gain: 0.1, type: 'lowpass', f0: 3000, f1: 300 });
         break;
+      case 'bat_bite':
+        // Alpha 1.7: a flutter of small wings gathering, over a low dark swell
+        for (let i = 0; i < 7; i++) this.noise({ dur: 0.035, gain: 0.1 + (i % 2) * 0.04, type: 'bandpass', f0: 1300 + (i % 3) * 400, q: 2.2, delay: i * 0.038 });
+        this.tone({ type: 'sawtooth', f0: 70, f1: 140, dur: 0.38, gain: 0.07, filter: { type: 'lowpass', f0: 400, f1: 900 } });
+        this.tone({ type: 'triangle', f0: NOTE(75), f1: NOTE(74), dur: 0.35, gain: 0.03, delay: 0.05 });
+        break;
     }
+  }
+
+  /** Alpha 1.7 — a cane strike: a quick swish through the air (the contact is the hit sound). */
+  caneSwish(variant: number): void {
+    if (!this.throttle('swish', 60)) return;
+    const f0 = variant === 0 ? 1400 : 900;
+    this.noise({ dur: 0.12, gain: 0.16, type: 'bandpass', f0, f1: f0 * 3, q: 2.6 });
+    this.tone({ type: 'sine', f0: 520, f1: 260, dur: 0.07, gain: 0.03, delay: 0.06 });
+  }
+
+  /** Alpha 1.7 — the BAT BITE lunge (a rush of wings) and the bite itself (a sharp snap over a dark chord). */
+  batRush(): void {
+    this.noise({ dur: 0.3, gain: 0.2, type: 'bandpass', f0: 700, f1: 2600, q: 1.8 });
+    for (let i = 0; i < 4; i++) this.noise({ dur: 0.03, gain: 0.08, type: 'bandpass', f0: 1800 + i * 250, q: 2.5, delay: 0.04 + i * 0.05 });
+  }
+
+  bite(): void {
+    this.noise({ dur: 0.035, gain: 0.3, type: 'highpass', f0: 2600 });
+    this.tone({ type: 'sine', f0: 150, f1: 50, dur: 0.2, gain: 0.32 });
+    this.tone({ type: 'triangle', f0: NOTE(63), dur: 0.45, gain: 0.035, delay: 0.04, attack: 0.02 });
+    this.tone({ type: 'triangle', f0: NOTE(64), dur: 0.45, gain: 0.03, delay: 0.04, attack: 0.02 });
   }
 
   /** Alpha 1.6 — the key moments of the new cards (activation sounds are in card()). */

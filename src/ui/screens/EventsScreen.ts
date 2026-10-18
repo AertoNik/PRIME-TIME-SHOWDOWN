@@ -1,8 +1,11 @@
+import { CARDS } from '../../config/cards';
 import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosmetics.config';
 import type { EventDef } from '../../config/events.config';
+import { FIGHTERS } from '../../config/fighters';
+import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
-import { el, esc, setScreenHTML } from '../dom';
+import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { ICONS, REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -26,6 +29,7 @@ export function currencyIcon(e: EventDef | null): string {
 }
 
 const RARITY: Record<CosmeticDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
+const CARDS_NAME = (id: keyof typeof CARDS) => CARDS[id].name;
 
 /**
  * Seasonal events: banner, countdown, currency, quests and the reward exchange — the
@@ -111,6 +115,29 @@ export class EventsScreen implements Screen {
         g.audio.ui('deny');
         g.ui.toast(r.reason);
       }
+    } else if (act === 'buystar') {
+      // Alpha 1.7: open the season's star (once, for the event's currency — saved at once)
+      const id = t.dataset.f as FighterId;
+      const r = em.buyFighter(id);
+      if (r.ok) {
+        const fresh = g.career.refreshGoals();
+        g.save.save();
+        g.applyCosmetics();
+        const f = FIGHTERS[id];
+        g.showcase.show(f.look, f.theme.accent);
+        g.showcase.cheer();
+        this.render();
+        this.bumpWallet();
+        this.celebrateStar(id);
+        if (fresh.length) setTimeout(() => g.ui.toast('Цель карьеры выполнена — заберите награду!', true), 1200);
+      } else {
+        g.audio.ui('deny');
+        g.ui.toast(r.reason);
+      }
+    } else if (act === 'star') {
+      g.audio.ui('click');
+      g.ui.closeModal();
+      g.goto('roster', { back: 'events', fighter: t.dataset.f as FighterId });
     } else if (act === 'collection') {
       g.audio.ui('click');
       g.ui.closeModal();
@@ -151,6 +178,74 @@ export class EventsScreen implements Screen {
         });
       },
     );
+  }
+
+  /** Alpha 1.7: the season's star joined the roster — a big reveal with the fighter, already selected. */
+  private celebrateStar(id: FighterId): void {
+    const f = FIGHTERS[id];
+    const g = this.g;
+    g.audio.reward();
+    g.ui.modal(
+      `<div class="reward-pop rarity-legendary star-pop">
+         <div class="rp-rays"></div>
+         <div class="rp-portrait">${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}</div>
+         <div class="label rp-kind">Новый боец · сезонная звезда</div>
+         <div class="h1 rp-name">${esc(f.name)}</div>
+         <div class="rp-sub">${esc(f.nickname)}</div>
+         <p class="rp-desc">${esc(f.tagline)} Трость-бластер, уколы вблизи и фирменная карта ${esc(CARDS_NAME(f.signature))}.</p>
+         <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже выбран для следующего эфира</div>
+         <div class="rp-col muted">${esc(f.name)} остаётся в вашем составе навсегда — и после окончания ${esc(f.seasonal?.title ?? 'события')}.</div>
+         <div class="modal-actions"><button class="btn teal wide" data-a="play"><span class="shine"></span>В бой!</button><button class="btn ghost wide" data-act="star" data-f="${id}">Мои бойцы</button></div>
+       </div>`,
+      (root, close) => {
+        root.querySelector('[data-a="play"]')!.addEventListener('click', () => {
+          g.audio.ui('confirm');
+          close();
+          g.goto('prep', { mode: { kind: 'classic' } });
+        });
+        root.querySelector('[data-act="star"]')!.addEventListener('click', () => {
+          g.audio.ui('click');
+          close();
+          g.goto('roster', { back: 'events', fighter: id });
+        });
+      },
+    );
+  }
+
+  /**
+   * Alpha 1.7: the season's star in the exchange — portrait, name and title, the price and the
+   * player's progress toward it, the open button (or ОТКРЫТ once owned). `compact`: the short
+   * teaser on the quests tab.
+   */
+  private starCard(e: EventDef | null, id: FighterId, cost: number | null, compact = false): string {
+    const g = this.g;
+    const em = g.events;
+    const f = FIGHTERS[id];
+    const owned = em.ownsFighter(id);
+    const tokens = e ? em.tokens(e) : 0;
+    const icon = currencyIcon(e);
+    const live = cost !== null && !!e && em.playable;
+    const can = live && tokens >= (cost ?? 0);
+    let side: string;
+    if (owned) side = `<span class="chip teal es-open">${UI_ICONS.check.replace('<svg', '<svg width="10" height="10"')} ОТКРЫТ</span>`;
+    else if (compact) side = `<button class="btn ${can ? '' : 'ghost'} es-more" data-act="tab" data-tab="rewards">${can ? 'Открыть' : 'Подробнее'}</button>`;
+    else if (live) side = `<button class="btn es-buy ${can ? '' : 'short'}" data-act="buystar" data-f="${id}">${can ? '<span class="shine"></span>' : ''}${cost}<span class="eq-coin">${icon}</span></button>`;
+    else side = `<span class="er-lock">${ICONS.lock} Во время события</span>`;
+    const prog =
+      owned || cost === null
+        ? `<div class="es-own">${owned ? 'В вашем составе навсегда · фирменная карта ' + esc(CARDS_NAME(f.signature)) : ''}</div>`
+        : `<div class="es-prog"><div class="progress gold"><i style="transform:scaleX(${Math.min(1, tokens / cost)})"></i></div><span>${Math.min(tokens, cost)}/${cost}<span class="eq-coin">${icon}</span></span></div>`;
+    return `<div class="ev-star ${compact ? 'compact' : ''} ${owned ? 'owned' : ''} ${can && !owned ? 'ready' : ''}">
+        <button class="es-art" data-act="star" data-f="${id}" aria-label="${esc(f.name)}">${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark, 'es-portrait')}<span class="es-moon">${ICONS.moon}</span></button>
+        <div class="es-main">
+          <div class="es-kind">${compact ? 'Главная звезда сезона' : 'Эксклюзивный сезонный боец'}</div>
+          <div class="es-name">${esc(f.name)}</div>
+          <div class="es-title">${esc(f.nickname)}</div>
+          ${compact ? '' : `<div class="es-desc">${esc(f.style)} · дальний бой тростью-бластером, уколы вблизи и укус BAT BITE. Открывается один раз и остаётся у вас навсегда.</div>`}
+          ${prog}
+        </div>
+        <div class="es-side">${side}</div>
+      </div>`;
   }
 
   // ------------------------------------------------------------------ render
@@ -262,7 +357,9 @@ export class EventsScreen implements Screen {
         <div class="ev-how-row"><span>Победа <b>+${earn.win}</b></span>${earn.rating.map(([min, v]) => `<span>Рейтинг ${min}+ <b>+${v}</b></span>`).join('')}<span>Комбо <b>+${earn.perCombo}</b> (до ${earn.comboCap})</span></div>
         <div class="muted" style="font-size:11px">Не больше ${earn.dailyCap} жетонов за бои в день. Сдача боя не приносит жетонов.</div>
       </div>`;
-    return `${grand}<div class="ev-list">${rows}</div>${how}
+    // Alpha 1.7: the season's star, a short teaser (the full card is on the rewards tab)
+    const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost, true)).join('');
+    return `${grand}${stars}<div class="ev-list">${rows}</div>${how}
       <button class="btn big wide ev-play" data-act="play"><span class="shine"></span>В бой</button>`;
   }
 
@@ -295,7 +392,9 @@ export class EventsScreen implements Screen {
   private renderRewards(e: EventDef): string {
     const items = e.shop.map((s) => this.rewardCard(COSMETICS[s.cosmetic], s.cost, e));
     if (e.grandPrize) items.push(this.rewardCard(COSMETICS[e.grandPrize.cosmetic], null, e));
-    return `<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на косметику. Полученные предметы попадают в «Мою коллекцию» и остаются у вас после окончания события — надеть или снять их можно там.</div>
+    // Alpha 1.7: the season's star leads the exchange
+    const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost)).join('');
+    return `${stars}<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на награды сезона. Боец и предметы остаются у вас после окончания события; предметы надеваются и снимаются в «Моей коллекции».</div>
       <div class="ev-rewards">${items.join('')}</div>
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
@@ -317,8 +416,10 @@ export class EventsScreen implements Screen {
     // Items the player already earned in this season are shown (they live in MY COLLECTION).
     const season = active ?? em.upcoming;
     const ownedHere = season ? [...season.shop.map((x) => x.cosmetic), ...(season.grandPrize ? [season.grandPrize.cosmetic] : [])].filter((id) => em.owns(id)) : [];
+    // Alpha 1.7: a star opened in this season stays in the roster (shown here, never offered once the event is over)
+    const starsHere = season ? (season.fighters ?? []).filter((x) => em.ownsFighter(x.fighter)).map((x) => this.starCard(season, x.fighter, null)).join('') : '';
     const lineup = ownedHere.map((id) => this.rewardCard(COSMETICS[id], null, season!)).join('');
-    return `${top}${lineup ? `<div class="section-title ev-coll-title"><span class="h2">Ваши награды сезона</span><span class="label">${esc(season!.title)}</span></div><div class="ev-rewards">${lineup}</div>` : ''}
+    return `${top}${lineup || starsHere ? `<div class="section-title ev-coll-title"><span class="h2">Ваши награды сезона</span><span class="label">${esc(season!.title)}</span></div>${starsHere}${lineup ? `<div class="ev-rewards">${lineup}</div>` : ''}` : ''}
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
 }

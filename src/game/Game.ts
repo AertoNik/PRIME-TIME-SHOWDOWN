@@ -80,7 +80,7 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>
@@ -898,7 +898,7 @@ export class Game {
          <p><b style="color:var(--pink)">Рейтинг шоу</b> растёт за комбо, идеальные уклонения и блоки, мощные попадания, разнообразие приёмов и эффектный финиш. Простой и бездействие снижают его. Рейтинг определяет гонорар и новых фанатов.</p>
          <p><b style="color:var(--teal)">Карьера:</b> зарабатывайте деньги и репутацию, подписывайте новых бойцов, открывайте сложность «Профи» и «Чемпион».</p>
          <p><b style="color:var(--gold)">Режимы эфира:</b> кроме обычной дуэли есть <b>SURVIVAL</b> — пять боёв подряд одним бойцом, здоровье переносится между волнами, после каждой победы выбирается бонус, <b>PRIME CHALLENGE</b> — спецвыпуски с особыми правилами и наградой за первое прохождение — и <b>BOSS FIGHT</b>: бой с легендарным чемпионом в три фазы, победа только нокаутом. Вход — кнопка «Режимы эфира» в меню.</p>
-         <p><b style="color:var(--btn-a)">События:</b> в праздничные сезоны в меню появляется раздел «События» с заданиями, сезонными жетонами и бесплатными косметическими наградами. Полученные предметы остаются у вас навсегда.</p>
+         <p><b style="color:var(--btn-a)">События:</b> в праздничные сезоны в меню появляется раздел «События» с заданиями, сезонными жетонами, бесплатными косметическими наградами и сезонными бойцами (на Halloween Premiere — вампир LUCIEN). Полученные награды и бойцы остаются у вас навсегда.</p>
        </div>
        <div class="modal-actions"><button class="btn teal wide" data-a="ok">Понятно</button></div>`,
       (root) => {
@@ -1029,7 +1029,7 @@ export class Game {
         a.zapCharge(e.duration);
         break;
       case 'hit':
-        if (e.kind !== 'dot') a.hit(e.heavy, e.crit, e.side === 0);
+        if (e.kind !== 'dot' && e.kind !== 'bleed') a.hit(e.heavy, e.crit, e.side === 0);
         // Alpha 1.6.4: the crowd answers a crit / combo hit; a plain heavy hit only gets an «oh!» now and then
         if (e.heavy && e.source === 0) a.crowd(e.crit || e.combo ? 2 : 1);
         break;
@@ -1148,6 +1148,15 @@ export class Game {
         break;
       case 'erase':
         a.cardFx('erase');
+        break;
+      // Alpha 1.7 — LUCIEN: the cane's swish, the swarm lunge, the bite
+      case 'strike':
+        a.caneSwish(e.variant);
+        break;
+      case 'bite':
+        if (e.what === 'rush') a.batRush();
+        else if (e.what === 'hit') a.bite();
+        else if (e.what === 'barrier') a.cardFx('barrierHit');
         break;
       case 'bossPhase': {
         const ph = this.match?.boss?.def.phases[e.phase - 1];

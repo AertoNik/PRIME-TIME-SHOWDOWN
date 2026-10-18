@@ -265,7 +265,59 @@ export const DIMS: Record<BodyType, Dims> = {
     shoeL: 0.5,
     shoeW: 0.28,
   },
+  // Alpha 1.7 (Lucien): tall and lean — longer legs, a narrow waist under a V of shoulders, a slightly smaller head
+  svelte: {
+    hipY: 0.71,
+    hipW: 0.135,
+    thigh: 0.325,
+    shin: 0.345,
+    legR: 0.098,
+    pelvisW: 0.44,
+    pelvisH: 0.25,
+    pelvisD: 0.32,
+    spineY: 0.06,
+    torsoH: 0.64,
+    profile: [
+      [0.25, 0],
+      [0.26, 0.06],
+      [0.285, 0.2],
+      [0.34, 0.38],
+      [0.355, 0.48],
+      [0.32, 0.57],
+      [0.2, 0.64],
+      [0.001, 0.665],
+    ],
+    depth: 0.76,
+    shoulderX: 0.37,
+    shoulderY: 0.5,
+    upperArm: 0.28,
+    foreArm: 0.26,
+    armR: 0.092,
+    handR: 0.14,
+    neckY: 0.62,
+    neckR: 0.092,
+    headR: 0.44,
+    shoeL: 0.46,
+    shoeW: 0.25,
+  },
 };
+
+/** Alpha 1.7: turn an open shell inside out (reversed winding, normals flipped) — the lining of a collar. */
+function insideOut(g: BufferGeometry): BufferGeometry {
+  const idx = g.index;
+  if (idx) {
+    const a = idx.array as Uint16Array | Uint32Array;
+    for (let i = 0; i < a.length; i += 3) {
+      const t = a[i + 1];
+      a[i + 1] = a[i + 2];
+      a[i + 2] = t;
+    }
+    idx.needsUpdate = true;
+  }
+  const n = g.getAttribute('normal');
+  if (n) for (let i = 0; i < n.array.length; i++) (n.array as Float32Array)[i] *= -1;
+  return g;
+}
 
 function torsoR(d: Dims, y: number): number {
   const p = d.profile;
@@ -316,7 +368,9 @@ export type BoneName =
   | 'thighR'
   | 'shinR'
   | 'weaponR'
-  | 'weaponL';
+  | 'weaponL'
+  /** Alpha 1.7: coat tails on their own light bone (they flare with speed). */
+  | 'tail';
 
 interface BoneGeo {
   toon: BufferGeometry | null;
@@ -374,6 +428,7 @@ class Bones {
       'shinR',
       'weaponR',
       'weaponL',
+      'tail',
     ];
     const out = {} as Record<BoneName, BoneGeo>;
     for (const n of names) {
@@ -421,6 +476,27 @@ export function getRigGeometry(lookId: string): RigGeometry {
         P.add(rbox(0.035, 0.34, 0.26, 0.014), tm, { p: [ss * (d.pelvisW * 0.52), -0.12, -0.03], r: [0.12, 0, ss * 0.08] });
       }
     }
+    if (look.top.style === 'tailcoat') {
+      // Alpha 1.7 (Lucien): the fitted jacket ends in a short flared hem over the hips; the long
+      // tails hang from their own bone (below), the waistcoat's point shows between the front panels
+      const tm = look.top.main;
+      for (const ss of [1, -1]) {
+        P.add(rbox(0.19, 0.17, 0.035, 0.015), tm, { p: [ss * 0.125, -0.05, d.pelvisD * 0.5 + 0.012], r: [-0.14, ss * 0.1, ss * 0.1] });
+        P.add(rbox(0.03, 0.2, 0.22, 0.012), tm, { p: [ss * d.pelvisW * 0.52, -0.06, -0.03], r: [0.08, 0, ss * 0.1] });
+      }
+      P.add(rbox(0.07, 0.07, 0.02, 0.01), look.top.accent, { p: [0, 0.05, d.pelvisD * 0.5 + 0.01], r: [0, 0, Math.PI / 4] });
+      // the coat tails: black outside, bordeaux lining inside, pointed metal-capped ends
+      const TL = B.t('tail');
+      const TLG = B.g('tail');
+      for (const ss of [1, -1]) {
+        const rot: V3 = [0, ss * 0.08, ss * 0.06];
+        TL.add(rbox(0.15, 0.5, 0.03, 0.012), tm, { p: [ss * 0.08, -0.25, -0.012], r: rot });
+        TL.add(rbox(0.12, 0.46, 0.012, 0.006), look.top.accent, { p: [ss * 0.08, -0.25, 0.008], r: rot });
+        TL.add(rbox(0.105, 0.105, 0.03, 0.01), tm, { p: [ss * 0.095, -0.5, -0.012], r: [0, ss * 0.08, Math.PI / 4 + ss * 0.06] });
+        TL.add(sph(0.018, 8, 6), look.top.trim, { p: [ss * 0.1, -0.575, -0.012] });
+        TLG.add(rbox(0.006, 0.4, 0.008, 0.003), look.glow, { p: [ss * 0.152, -0.25, -0.012], r: rot }, GLOW * 0.55);
+      }
+    }
   }
 
   // ----------------------------------------------------------------- legs
@@ -432,7 +508,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
     const pm = look.pants.main;
     const pa = look.pants.accent;
     const style = look.pants.style;
-    const tr = d.legR * (style === 'cargo' ? 1.32 : style === 'track' ? 1.18 : 1.06);
+    const tr = d.legR * (style === 'cargo' ? 1.32 : style === 'track' ? 1.18 : style === 'tailored' ? 1.02 : 1.06);
     const sr = d.legR * (style === 'cargo' ? 1.18 : style === 'track' ? 1.08 : 0.96);
     T.add(cap(tr, d.thigh * 0.85), pm, { p: [0, -d.thigh * 0.5, 0] });
     S.add(cap(sr, d.shin * 0.62), pm, { p: [0, -d.shin * 0.45, 0] });
@@ -441,6 +517,18 @@ export function getRigGeometry(lookId: string): RigGeometry {
         T.add(rbox(0.024, d.thigh * 0.95, 0.03, 0.01), pa, { p: [s * (tr - 0.006), -d.thigh * 0.5, off] });
         S.add(rbox(0.024, d.shin * 0.8, 0.03, 0.01), pa, { p: [s * (sr - 0.006), -d.shin * 0.45, off] });
       }
+    } else if (style === 'tailored') {
+      // Alpha 1.7 (Lucien): slim tailored trousers — a pressed crease, a thin bordeaux side stripe —
+      // tucked into tall boots with a metal-buckled strap and a turned cuff under the knee
+      T.add(rbox(0.012, d.thigh * 0.9, 0.012, 0.004), shade(pm, 0.6), { p: [0, -d.thigh * 0.5, tr * 0.97] });
+      T.add(rbox(0.012, d.thigh * 0.95, 0.02, 0.005), pa, { p: [s * (tr - 0.004), -d.thigh * 0.5, 0] });
+      const sm = look.shoes.main;
+      S.add(cap(sr * 1.07, d.shin * 0.42), sm, { p: [0, -d.shin * 0.55, 0] });
+      const cuff = tor(sr * 1.1, 0.022);
+      cuff.rotateX(Math.PI / 2);
+      S.add(cuff, shade(sm, 1.5), { p: [0, -d.shin * 0.2, 0] });
+      S.add(rbox(sr * 2.5, 0.03, sr * 2.5, 0.01), shade(sm, 0.7), { p: [0, -d.shin * 0.46, 0] });
+      S.add(rbox(0.03, 0.04, 0.02, 0.006), look.shoes.accent, { p: [s * sr * 1.2, -d.shin * 0.46, 0.02] });
     } else if (style === 'cargo') {
       T.add(rbox(0.08, 0.16, 0.2, 0.03), shade(pm, 0.8), { p: [s * (tr + 0.005), -d.thigh * 0.6, 0.0] });
       T.add(rbox(0.09, 0.045, 0.21, 0.015), pa, { p: [s * (tr + 0.012), -d.thigh * 0.6 + 0.08, 0.0] });
@@ -478,16 +566,22 @@ export function getRigGeometry(lookId: string): RigGeometry {
     S.add(sph(sw * 0.46, 14, 10), sm, { p: [0, g + 0.15, sl * 0.33], s: [1, 0.62, 1.08] });
     // toe cap
     S.add(sph(sw * 0.42, 12, 8), boots ? shade(sm, 0.75) : sa, { p: [0, g + 0.13, sl * 0.42], s: [1, 0.48, 0.8] });
-    // laces
-    for (let i = 0; i < 3; i++) {
-      S.add(rbox(sw * 0.62, 0.022, 0.035, 0.01), boots ? sa : 0xffffff, {
-        p: [0, g + 0.23 + (boots ? 0.06 : 0) - i * 0.022, 0.06 + i * 0.06],
-        r: [0.45, 0, 0],
-      });
-    }
-    // side swoosh
-    for (const ss of [1, -1]) {
-      S.add(rbox(0.012, 0.045, sl * 0.5, 0.01), sa, { p: [ss * sw * 0.455, g + 0.17, 0.02], r: [-0.25, 0, 0] });
+    if (style === 'tailored') {
+      // Alpha 1.7: polished dress boots — a slim pointed toe with a metal tip, a low heel
+      S.add(sph(sw * 0.3, 10, 8), sa, { p: [0, g + 0.1, sl * 0.52], s: [0.9, 0.5, 0.9] });
+      S.add(rbox(sw * 0.8, 0.08, 0.12, 0.02), shade(so, 1.4), { p: [0, g + 0.04, -sl * 0.3] });
+    } else {
+      // laces
+      for (let i = 0; i < 3; i++) {
+        S.add(rbox(sw * 0.62, 0.022, 0.035, 0.01), boots ? sa : 0xffffff, {
+          p: [0, g + 0.23 + (boots ? 0.06 : 0) - i * 0.022, 0.06 + i * 0.06],
+          r: [0.45, 0, 0],
+        });
+      }
+      // side swoosh
+      for (const ss of [1, -1]) {
+        S.add(rbox(0.012, 0.045, sl * 0.5, 0.01), sa, { p: [ss * sw * 0.455, g + 0.17, 0.02], r: [-0.25, 0, 0] });
+      }
     }
     // heel tab
     S.add(rbox(sw * 0.4, 0.09, 0.05, 0.02), sa, { p: [0, g + 0.24 + (boots ? 0.08 : 0), -sl * 0.36] });
@@ -669,6 +763,34 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const ss of [1, -1]) T.add(rbox(0.06, 0.03, 0.2, 0.012), top.trim, { p: [ss * d.shoulderX * 0.82, d.shoulderY + 0.06, 0], r: [0, 0, -ss * 0.25] });
         break;
       }
+      case 'tailcoat': {
+        // Alpha 1.7 (Lucien): a fitted black tailcoat — a bordeaux waistcoat and a dark shirt in a deep V,
+        // satin lapels with a thin crimson energy line along their edges, three metal clasps, a crimson brooch
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(rbox(0.2, h * 0.5, 0.03, 0.02), top.accent, { p: [0, h * 0.4, zf(h * 0.4) - 0.004] });
+        T.add(rbox(0.1, h * 0.26, 0.03, 0.02), top.inner, { p: [0, h * 0.74, zf(h * 0.74) - 0.002] });
+        // a black cravat at the throat over the pale shirt
+        T.add(sph(0.05, 12, 10), shade(top.main, 1.3), { p: [0, h * 0.88, zf(h * 0.88) + 0.012], s: [1.25, 0.8, 0.6] });
+        T.add(rbox(0.05, 0.1, 0.02, 0.01), shade(top.main, 1.3), { p: [0, h * 0.8, zf(h * 0.8) + 0.012] });
+        for (const ss of [1, -1]) {
+          const lr: V3 = [0, ss * 0.32, -ss * 0.3];
+          T.add(rbox(0.085, h * 0.62, 0.03, 0.012), top.main, { p: [ss * 0.12, h * 0.58, zf(h * 0.58) + 0.006], r: lr });
+          T.add(rbox(0.05, h * 0.56, 0.032, 0.01), shade(top.main, 1.7), { p: [ss * 0.116, h * 0.59, zf(h * 0.59) + 0.012], r: lr });
+          TG.add(rbox(0.008, h * 0.54, 0.01, 0.003), look.glow, { p: [ss * 0.086, h * 0.58, zf(h * 0.58) + 0.022], r: lr }, GLOW * 0.7);
+        }
+        // three metal clasps across the waistcoat
+        for (let i = 0; i < 3; i++) {
+          const y = h * (0.2 + i * 0.11);
+          T.add(rbox(0.11, 0.022, 0.025, 0.008), top.trim, { p: [0, y, zf(y) + 0.014] });
+          T.add(sph(0.016, 8, 6), top.trim, { p: [0, y, zf(y) + 0.028] });
+        }
+        T.add(torsoRing(d, h * 0.14, 0.012, 0.022), shade(top.main, 0.7));
+        // the crimson brooch under the cravat
+        TG.add(sph(0.02, 12, 10), look.glow, { p: [0, h * 0.86, zf(h * 0.86) + 0.05], s: [1, 1.2, 0.6] }, GLOW * 0.5);
+        T.add(tor(0.026, 0.007, Math.PI * 2, 14), top.trim, { p: [0, h * 0.86, zf(h * 0.86) + 0.042] });
+        break;
+      }
       case 'pads': {
         // sleeveless jersey with a hazard-stripe badge (shoulder pads below)
         T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
@@ -715,6 +837,25 @@ export function getRigGeometry(lookId: string): RigGeometry {
         rim.rotateX(Math.PI / 2);
         T.add(rim, top.trim, { p: [ex, ey - 0.02, 0], r: [0, 0, -ss * 0.22], s: [1.25, 1, 1.08] });
         for (let i = -2; i <= 2; i++) T.add(rbox(0.02, 0.075, 0.02, 0.008), top.trim, { p: [ex + ss * 0.19, ey - 0.08, i * 0.055], r: [0, 0, -ss * 0.22] });
+      }
+    }
+    // Alpha 1.7 (Lucien): the high vampire collar — a flared stand rising behind the head, black
+    // outside, bordeaux inside, a crimson glow on its rim; structured shoulders with a dark-metal edge
+    if (top.style === 'tailcoat') {
+      // (an elliptic flare: broad wings to the sides, so the bordeaux lining shows beside the head from the front)
+      const open = 1.75;
+      const H = 0.48;
+      const at: PartOpts = { p: [0, h * 0.9 + H / 2, -0.03], r: [-0.1, 0, 0], s: [1.3, 1, 0.85] };
+      T.add(new CylinderGeometry(0.58, 0.2, H, 28, 1, true, open / 2, Math.PI * 2 - open), top.main, at);
+      T.add(insideOut(new CylinderGeometry(0.565, 0.19, H * 0.98, 28, 1, true, open / 2, Math.PI * 2 - open)), top.accent, at);
+      const rim = tor(0.58, 0.012, Math.PI * 2 - open, 30);
+      rim.rotateX(Math.PI / 2);
+      rim.rotateY(Math.PI * 1.5 - open / 2);
+      rim.translate(0, H / 2, 0);
+      TG.add(rim, look.glow, at, GLOW * 0.6);
+      for (const ss of [1, -1]) {
+        T.add(sph(0.13, 14, 10), top.main, { p: [ss * d.shoulderX * 0.95, d.shoulderY + 0.04, 0], s: [1.2, 0.5, 1.05], r: [0, 0, -ss * 0.18] });
+        T.add(rbox(0.16, 0.02, 0.21, 0.008), top.trim, { p: [ss * d.shoulderX * 0.98, d.shoulderY + 0.085, 0], r: [0, 0, -ss * 0.25] });
       }
     }
     // championship belt worn over the coat
@@ -819,6 +960,14 @@ export function getRigGeometry(lookId: string): RigGeometry {
       // wide turned-back gold cuff
       F.add(cyl(ar * 1.32, ar * 1.22, 0.1, 16), top.accent, { p: [0, -d.foreArm * 0.78, 0] });
     }
+    if (top.style === 'tailcoat') {
+      // Alpha 1.7: a turned-back bordeaux cuff with a metal band, a thin crimson line down the forearm
+      F.add(cyl(ar * 1.3, ar * 1.2, 0.08, 16), top.accent, { p: [0, -d.foreArm * 0.8, 0] });
+      const band = tor(ar * 1.32, 0.012);
+      band.rotateX(Math.PI / 2);
+      F.add(band, top.trim, { p: [0, -d.foreArm * 0.74, 0] });
+      FG.add(rbox(0.008, d.foreArm * 0.45, 0.01, 0.003), look.glow, { p: [s * ar * 1.12, -d.foreArm * 0.45, 0] }, GLOW * 0.5);
+    }
     if (!bare) {
       const cuff = tor(ar * 1.1, 0.035);
       cuff.rotateX(Math.PI / 2);
@@ -894,9 +1043,15 @@ export function getRigGeometry(lookId: string): RigGeometry {
     }
     if (face && face.cheekbones > 0) {
       // soft cheekbones: a warm highlight high on each cheek, a gentle shadow crease under it
+      // (Alpha 1.7 `sharp`: an angular ridge and a deeper hollow under it — Lucien's noble, striking face)
       const c = face.cheekbones;
       for (const s of [1, -1]) {
         const x = s * 0.24;
+        if (face.sharp) {
+          H.add(sph(0.09, 14, 10), shade(skin, 1.08), { p: [x, cy - 0.06, faceZ(x, -0.06) - 0.043], s: [1.55, 0.42 * c, 0.5], r: [0, s * 0.62, -s * 0.38] });
+          H.add(sph(0.085, 12, 8), shade(skin, 0.8), { p: [x * 0.93, cy - 0.135, faceZ(x * 0.93, -0.135) - 0.041], s: [1.45, 0.24 * c, 0.42], r: [0, s * 0.62, -s * 0.46] });
+          continue;
+        }
         H.add(sph(0.09, 14, 10), shade(skin, 1.1), { p: [x, cy - 0.07, faceZ(x, -0.07) - 0.045], s: [1.35, 0.6 * c, 0.55], r: [0, s * 0.6, -s * 0.22] });
         H.add(sph(0.08, 12, 8), shade(skin, 0.84), { p: [x * 0.95, cy - 0.13, faceZ(x * 0.95, -0.13) - 0.04], s: [1.25, 0.32 * c, 0.45], r: [0, s * 0.6, -s * 0.3] });
       }
@@ -1034,6 +1189,21 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const s of [1, -1]) H.add(rbox(0.05, 0.13, 0.07, 0.02), hc, { p: [s * R * 0.93, cy - 0.01, 0.08] });
         break;
       }
+      case 'swept': {
+        // Alpha 1.7 (Lucien): dark hair combed straight back from a widow's peak — sleek volume on top,
+        // a bordeaux sheen, a tapered nape and neat short sideburns
+        H.add(new SphereGeometry(R * 1.04, 26, 14, 0, Math.PI * 2, 0, 1.24), hc, { p: [0, cy + 0.01, -0.03], r: [-0.26, 0, 0] });
+        H.add(new SphereGeometry(R * 1.03, 22, 12, Math.PI, Math.PI, 0.45, 1.65), hc, { p: [0, cy, -0.01] });
+        // the slicked roll over the forehead, combed straight back, with a bordeaux sheen
+        H.add(sph(0.25, 18, 12), hc, { p: [0, cy + R * 0.8, R * 0.36], s: [1.18, 0.4, 0.95], r: [0.55, 0, 0] });
+        H.add(sph(0.22, 16, 12), shade(hc, 1.4), { p: [0, cy + R * 0.97, -R * 0.05], s: [1.0, 0.44, 1.4], r: [-0.12, 0, 0] });
+        H.add(sph(0.1, 12, 10), h2, { p: [-0.11, cy + R * 0.93, R * 0.22], s: [0.6, 0.34, 2.2], r: [0.45, -0.1, 0] });
+        // the widow's peak: a point of hair down onto the forehead
+        H.add(rbox(0.11, 0.11, 0.07, 0.02), hc, { p: [0, cy + R * 0.66, faceZ(0, R * 0.66) - 0.02], r: [-0.62, 0, Math.PI / 4] });
+        H.add(sph(0.21, 14, 10), hc, { p: [0, cy - R * 0.1, -R * 0.76], s: [1.4, 0.9, 0.7] });
+        for (const s of [1, -1]) H.add(rbox(0.045, 0.12, 0.06, 0.02), hc, { p: [s * R * 0.93, cy - 0.02, 0.07] });
+        break;
+      }
       case 'curtain': {
         // Alpha 1.5 (Kai): late-90s curtains — a middle part, two swept lobes over the temples
         // with copper frosted tips, volume on top, short tapered sides
@@ -1165,6 +1335,13 @@ export function getRigGeometry(lookId: string): RigGeometry {
         ? shade(look.hair.color, 0.7)
         : look.hair.color;
   for (const s of [1, -1]) {
+    if (look.face?.narrowBrows) {
+      // Alpha 1.7: narrow brows rising toward the temples (the left one a touch higher — arrogance)
+      const x = s * (eyeX + 0.01);
+      const by = eyeY + 0.13 + (s > 0 ? 0.012 : 0);
+      brows.add(rbox(0.14, 0.022, 0.035, 0.009), browC, { p: [x, cy + by, faceZ(x, by) + 0.002], r: [0, Math.asin(x / R) * 0.85, s * 0.27] });
+      continue;
+    }
     if (look.face?.archedBrows) {
       // Alpha 1.5.5: thick arched brows in two strokes, the right one cocked higher
       const lift = s < 0 ? 0.02 : 0;
@@ -1199,7 +1376,12 @@ export function getRigGeometry(lookId: string): RigGeometry {
   const mouth = new PartSet();
   const mouthOpen = new PartSet();
   const lip = 0x2a1418;
-  if (grin) {
+  if (look.face?.fangs) {
+    // Alpha 1.7 (Lucien): a confident half-smile — short, raised on one side
+    const arc = tor(0.058, 0.014, Math.PI * 0.6, 14);
+    arc.rotateZ(Math.PI + Math.PI * 0.2);
+    mouth.add(arc, lip, { p: [0, 0.03, 0], r: [0, 0, 0.32] });
+  } else if (grin) {
     // Alpha 1.5.5: a lopsided showman's grin, wider on one side, with a dimple at the raised corner
     const arc = tor(0.078, 0.016, Math.PI * 0.8, 14);
     arc.rotateZ(Math.PI + Math.PI * 0.1);
@@ -1215,6 +1397,17 @@ export function getRigGeometry(lookId: string): RigGeometry {
   mouthOpen.add(sph(0.075, 14, 10), 0x3a1018, { p: [0, -0.01, 0], s: [1.15, 0.85, 0.35] });
   mouthOpen.add(sph(0.045, 10, 8), 0xff6b7d, { p: [0, -0.035, 0.012], s: [1.2, 0.5, 0.3] });
   mouthOpen.add(rbox(0.1, 0.022, 0.02, 0.008), 0xffffff, { p: [0, 0.036, 0.018] });
+  if (look.face?.fangs) {
+    // Alpha 1.7 (Lucien): two small neat fangs — just showing under the smirk, clearer when the mouth opens
+    for (const s of [1, -1]) {
+      const f = cone(0.009, 0.026, 6);
+      f.rotateX(Math.PI);
+      mouth.add(f, 0xfbf6f0, { p: [s * 0.017 - 0.004, -0.021, 0.01] });
+      const fo = cone(0.015, 0.042, 6);
+      fo.rotateX(Math.PI);
+      mouthOpen.add(fo, 0xfbf6f0, { p: [s * 0.03, 0.016, 0.02] });
+    }
+  }
 
   // --------------------------------------------------------------- weapons
   let muzzleR: V3 | null = null;
@@ -1378,6 +1571,40 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(brace, wd, { p: [0, 0.05, -0.12], r: [0, 0, Math.PI / 2] });
     W.add(rbox(0.06, 0.09, 0.05, 0.02), 0xff6f61, { p: [0, 0.06, -0.2] });
     muzzleR = [0, 0.12, 0.42];
+  } else if (look.weapon === 'cane') {
+    // Alpha 1.7 — LUCIEN's VAMPIRE CANE BLASTER: a polished black cane with a dark-metal pommel set
+    // with a small crimson crystal, metal rings, a thin crimson conduit along the shaft and a
+    // futuristic emitter ferrule at the tip (the bolts leave from it). Weapon space: +Z = towards
+    // the tip, the hand grips just under the pommel at the origin.
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    const L = 0.98;
+    const collar = cyl(0.036, 0.03, 0.05, 14);
+    collar.rotateX(Math.PI / 2);
+    W.add(collar, wd, { p: [0, 0, -0.05] });
+    W.add(sph(0.052, 16, 12), wc, { p: [0, 0, -0.105], s: [1, 1, 1.1] });
+    W.add(tor(0.05, 0.009, Math.PI * 2, 16), wd, { p: [0, 0, -0.1] });
+    const gem = cone(0.026, 0.06, 6);
+    gem.rotateX(-Math.PI / 2);
+    WG.add(gem, gl, { p: [0, 0, -0.17] }, GLOW * 1.3);
+    const shaft = cyl(0.019, 0.025, L, 14);
+    shaft.rotateX(Math.PI / 2);
+    W.add(shaft, wc, { p: [0, 0, L / 2] });
+    const grip = cyl(0.03, 0.03, 0.12, 12);
+    grip.rotateX(Math.PI / 2);
+    W.add(grip, shade(wc, 1.6), { p: [0, 0, 0.02] });
+    for (const z of [0.1, 0.46]) W.add(tor(0.026, 0.006, Math.PI * 2, 14), wd, { p: [0, 0, z] });
+    WG.add(rbox(0.008, 0.008, 0.5, 0.003), gl, { p: [0, 0.022, 0.42] }, GLOW * 0.8);
+    const emitter = cyl(0.026, 0.03, 0.15, 14);
+    emitter.rotateX(Math.PI / 2);
+    W.add(emitter, wd, { p: [0, 0, L - 0.12] });
+    for (const sg of [1, -1]) WG.add(rbox(0.006, 0.022, 0.08, 0.003), gl, { p: [sg * 0.03, 0, L - 0.12] }, GLOW);
+    const ferrule = cone(0.024, 0.06, 10);
+    ferrule.rotateX(Math.PI / 2);
+    W.add(ferrule, wd, { p: [0, 0, L + 0.01] });
+    WG.add(tor(0.021, 0.006, Math.PI * 2, 14), gl, { p: [0, 0, L - 0.035] }, GLOW * 1.2);
+    WG.add(sph(0.013, 8, 6), gl, { p: [0, 0, L + 0.04] }, GLOW);
+    muzzleR = [0, 0, L + 0.05];
   } else if (look.weapon === 'pulse_rifle') {
     // long marksman rifle with a scope (weapon space: barrel +Z), shouldered with both hands
     const W = B.t('weaponR');
@@ -1498,6 +1725,8 @@ export interface FighterRig {
   kneeR: Group;
   weaponR: Group | null;
   weaponL: Group | null;
+  /** Alpha 1.7: coat tails (Lucien) — null for everyone else. */
+  tail: Group | null;
   /** [primary(right), secondary(left)] */
   muzzles: Object3D[];
   /** Centre of the right hand (fist charge effects). */
@@ -1569,6 +1798,12 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   const kneeR = boneGroup('kneeR', legR, [0, -d.thigh, 0]);
   attach('shinR', kneeR);
 
+  // Alpha 1.7: the coat tails swing on their own light bone at the back of the waist
+  let tail: Group | null = null;
+  if (G.bones.tail.toon) {
+    tail = boneGroup('tail', hips, [0, 0.07, -d.pelvisD * 0.46]);
+    attach('tail', tail);
+  }
   const spine = boneGroup('spine', hips, [0, d.spineY, 0]);
   attach('torso', spine);
   const head = boneGroup('head', spine, [0, d.neckY, 0]);
@@ -1649,6 +1884,7 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     kneeR,
     weaponR,
     weaponL,
+    tail,
     muzzles,
     handR,
     handL,

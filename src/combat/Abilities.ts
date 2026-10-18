@@ -1,8 +1,8 @@
 import { ARENA, CARD_TUNING, COMBO_TUNING, type CutTuning } from '../config/balance';
 import type { CardId, ComboDef } from '../config/types';
-import { clampRoundedRect, type ClampResult } from '../core/math';
+import { clamp, clampRoundedRect, wrapAngle, type ClampResult } from '../core/math';
 import { lineReach, type BankSolution } from './CombatSystem';
-import type { CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
+import type { BiteAction, CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
 import type { Match } from './Match';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
@@ -78,6 +78,7 @@ export class Abilities {
           foe.action.kind === 'windup' ||
           foe.action.kind === 'rush' ||
           foe.action.kind === 'cut' ||
+          foe.action.kind === 'bite' ||
           m.projectiles.some((p) => p.owner !== f.side && p.heavy && p.alive);
         f.stun = 0;
         clampRoundedRect(fromX + dir.x * dist, fromZ + dir.z * dist, ARENA.halfX, ARENA.halfZ, ARENA.cornerRadius, tmp);
@@ -89,9 +90,19 @@ export class Abilities {
       case 'power_shot':
       case 'charged_shot':
       case 'bank_shot':
-      case 'knockout': {
+      case 'knockout':
+      case 'bat_bite': {
+        // (Alpha 1.7: BAT BITE's predatory coil is a windup like the others — readable, interruptible)
         const t =
-          card === 'power_shot' ? CARD_TUNING.power_shot : card === 'charged_shot' ? CARD_TUNING.charged_shot : card === 'bank_shot' ? CARD_TUNING.bank_shot : CARD_TUNING.knockout;
+          card === 'power_shot'
+            ? CARD_TUNING.power_shot
+            : card === 'charged_shot'
+              ? CARD_TUNING.charged_shot
+              : card === 'bank_shot'
+                ? CARD_TUNING.bank_shot
+                : card === 'bat_bite'
+                  ? CARD_TUNING.bat_bite
+                  : CARD_TUNING.knockout;
         const telegraph = f.side === 1;
         const total = telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup;
         // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
@@ -473,6 +484,12 @@ export class Abilities {
         charged,
       );
       f.fireTimer = Math.max(f.fireTimer, 0.35);
+    } else if (a.card === 'bat_bite') {
+      // Alpha 1.7 — the swarm lunge (see updateBite)
+      const t = CARD_TUNING.bat_bite;
+      f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX, dirZ, speed: t.rushSpeed, combo: a.combo, dodged: false, feinted: false };
+      f.facing = Math.atan2(dirX, dirZ);
+      m.emit({ type: 'bite', side: f.side, what: 'rush', x: f.x, z: f.z, dx: dirX, dz: dirZ });
     } else {
       const t = CARD_TUNING.knockout;
       const rush: RushAction = {
@@ -754,6 +771,114 @@ export class Abilities {
     }
   }
 
+  /**
+   * Alpha 1.7 — BAT BITE after the coil: the lunge bends a little toward a moving target (never
+   * sharply: a sideways DASH slips it), stops at a STAGE BARRIER in the way, and bites on contact —
+   * unless DASH i-frames, FALSE START or a SHIELD answer it. A landed bite opens the bleed and he
+   * springs back out of reach; a miss leaves him open.
+   */
+  updateBite(f: FighterSim, foe: FighterSim, a: BiteAction, dt: number): void {
+    const m = this.m;
+    const t = CARD_TUNING.bat_bite;
+    a.t += dt;
+    if (a.stage === 'leap') {
+      if (a.t >= a.total) {
+        f.action = { kind: 'none' };
+        f.vx *= 0.3;
+        f.vz *= 0.3;
+      }
+      return;
+    }
+    if (!foe.ko && !a.dodged && !a.feinted) {
+      const want = Math.atan2(foe.x - f.x, foe.z - f.z);
+      const cur = Math.atan2(a.dirX, a.dirZ);
+      const diff = wrapAngle(want - cur);
+      if (Math.abs(diff) < Math.PI / 2) {
+        const ny = cur + clamp(diff, -t.turn * dt, t.turn * dt);
+        a.dirX = Math.sin(ny);
+        a.dirZ = Math.cos(ny);
+        f.facing = ny;
+      }
+    }
+    // a STAGE BARRIER in the way: the swarm splashes against the screen and the lunge stops
+    const step = a.speed * dt + f.radius * 0.6;
+    const screen = m.objects.barrierOnLine(f.x, f.z, f.x + a.dirX * step, f.z + a.dirZ * step, 0.05);
+    if (screen) {
+      m.objects.damageBarrier(screen, t.barrierDamage * f.outgoingDamageMult(), f.x + a.dirX * step, f.z + a.dirZ * step);
+      m.emit({ type: 'bite', side: f.side, what: 'barrier', x: f.x + a.dirX * step, z: f.z + a.dirZ * step, dx: a.dirX, dz: a.dirZ });
+      f.action = { kind: 'recover', t: 0, total: t.missRecover };
+      f.vx *= 0.1;
+      f.vz *= 0.1;
+      return;
+    }
+    // a phantom decoy in the way takes the lunge (a HOLO DECOY does not fool a charge)
+    for (const d of m.decoys) {
+      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) m.popDecoy(d);
+    }
+    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    if (!foe.ko && dist < t.hitRange && !a.feinted && !a.dodged && !m.objects.barrierOnLine(f.x, f.z, foe.x, foe.z, 0.05)) {
+      if (foe.invuln > 0) {
+        // DASHed through the swarm: the lunge rushes on past
+        a.dodged = true;
+        foe.m.perfects++;
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
+        m.combat.onEvade(foe);
+      } else {
+        // SUPERSTAR MOVE (OVERDRIVE → BAT BITE) boosts the bite itself; the bleed stays as it is
+        const mult = a.combo === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        const dx = foe.x - f.x;
+        const dz = foe.z - f.z;
+        const d = Math.hypot(dx, dz) || 1;
+        const r = m.combat.applyHit(foe, f, {
+          damage: t.damage * mult * f.outgoingDamageMult(),
+          kind: 'bite',
+          heavy: true,
+          crit: a.combo !== null,
+          electric: false,
+          combo: a.combo,
+          knockback: t.knockback,
+          stun: 0,
+          slowAmount: 0,
+          slowDuration: 0,
+          dx: dx / d,
+          dz: dz / d,
+          sure: true,
+          projectile: null,
+          boost: mult,
+        });
+        if (r === 'dodged') {
+          // FALSE START read the lunge
+          a.feinted = true;
+          a.dodged = true;
+        } else {
+          if (r === 'hit') {
+            m.combat.applyBleed(foe, f);
+            m.emit({ type: 'bite', side: f.side, what: 'hit', x: foe.x, z: foe.z, dx: dx / d, dz: dz / d });
+            // he springs back out of reach with a flourish (the view plays the bite in the first beat)
+            f.action = { kind: 'bite', stage: 'leap', t: 0, total: t.leap, dirX: -dx / d, dirZ: -dz / d, speed: t.leapDistance / t.leap, combo: a.combo, dodged: false, feinted: false };
+            return;
+          } else {
+            // a raised SHIELD stopped the bite (and so the bleed): he recoils off the dome
+            if (r === 'blocked') m.emit({ type: 'bite', side: f.side, what: 'blocked', x: foe.x, z: foe.z, dx: dx / d, dz: dz / d });
+            f.action = { kind: 'recover', t: 0, total: 0.4 };
+          }
+          f.vx *= 0.15;
+          f.vz *= 0.15;
+          return;
+        }
+      }
+    }
+    if (a.t >= a.total) {
+      if (!foe.ko && foe.readDash && m.time - foe.lastDash < 1.0 && !a.dodged) {
+        foe.m.perfects++;
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
+        m.combat.onEvade(foe);
+      }
+      m.emit({ type: 'whiff', side: f.side, x: f.x, z: f.z });
+      f.action = { kind: 'recover', t: 0, total: t.missRecover };
+    }
+  }
+
   /** Pick the safest sideways dash: away from incoming fire and telegraphed lines. */
   chooseDashDir(f: FighterSim, foe: FighterSim): { x: number; z: number } {
     const m = this.m;
@@ -792,7 +917,7 @@ export class Abilities {
       if (nd < 1.6) score -= 4;
       // dodge the telegraphed line: prefer perpendicular to the attack direction
       const fa = foe.action;
-      if (fa.kind === 'windup' || fa.kind === 'rush' || fa.kind === 'cut') {
+      if (fa.kind === 'windup' || fa.kind === 'rush' || fa.kind === 'cut' || fa.kind === 'bite') {
         const perp = Math.abs(c.x * fa.dirZ - c.z * fa.dirX);
         score += perp * 3;
       }

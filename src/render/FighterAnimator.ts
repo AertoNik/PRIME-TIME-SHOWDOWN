@@ -13,7 +13,7 @@ export interface AnimInput {
   facing: number;
   maxSpeed: number;
   combat: boolean;
-  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut' | 'feint' | 'rewind';
+  action: 'none' | 'windup' | 'dash' | 'rush' | 'recover' | 'cut' | 'feint' | 'rewind' | 'bite';
   /** DIRECTOR'S CUT stage while action === 'cut'. */
   cutStage: 'prep' | 'aim' | 'lock' | 'gap' | null;
   actionCard: CardId | null;
@@ -33,6 +33,10 @@ export interface AnimInput {
   fireIn: number;
   /** Alpha 1.5.5: Zoe's SHOCK is charging in her hand. */
   zap: boolean;
+  /** Alpha 1.7: Lucien's cane in its close-range mode (fencing guard, strikes instead of shots). */
+  melee: boolean;
+  /** Alpha 1.7: BAT BITE stage while action === 'bite'. */
+  biteStage: 'rush' | 'leap' | null;
 }
 
 export function defaultInput(): AnimInput {
@@ -60,6 +64,8 @@ export function defaultInput(): AnimInput {
     reading: false,
     fireIn: -1,
     zap: false,
+    melee: false,
+    biteStage: null,
   };
 }
 
@@ -100,6 +106,11 @@ function zeroPose(): Pose {
 
 /** Last victory routine per fighter look, so the same one never plays twice in a row. */
 const lastVictory = new Map<string, number>();
+
+/** Alpha 1.7: seconds of a cane strike animation (the contact comes at the strike's own windup). */
+const STRIKE_TIME = 0.4;
+/** Alpha 1.7: the thumb-across-the-lip flourish after a BAT BITE. */
+const SAVOR_TIME = 0.7;
 
 /** Victory routines that begin with a full turn on the spot. */
 const SPIN_START: ReadonlySet<VictoryMove> = new Set<VictoryMove>(['peace_sign', 'hype_spin', 'grace_pirouette']);
@@ -283,6 +294,23 @@ export class FighterAnimator {
   private twirlT = -1;
   private pumpT = -1;
   private tapT = -1;
+  // Alpha 1.7 — Lucien's cane: its tilt in the hand (+ = tip down), the guard / point / fencing weights,
+  // a strike in progress, the bite flourish and the coat tails
+  private caneTgt = 0;
+  private caneCur = 0;
+  private meleeW = 0;
+  private pointW = 0;
+  private strikeT = -1;
+  private strikeWind = 0.13;
+  private strikeVar = 0;
+  private savorT = -1;
+  private wasLeap = false;
+  private tailX = 0;
+  private tailZ = 0;
+  private tailKick = new Spring(90, 9);
+  /** The body steps forward into a strike (m, damped). */
+  private lungeZ = 0;
+  private lungeCur = 0;
   // per-frame outputs (reset at the top of update)
   private wSpin = 0;
   private wFlip = 0;
@@ -311,7 +339,7 @@ export class FighterAnimator {
     this.weaponBaseL = rig.weaponL?.position.y ?? 0;
     this.weaponTiltR = rig.weaponR?.rotation.x ?? 0;
     this.weaponTiltL = rig.weaponL?.rotation.x ?? 0;
-    this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : 1.7;
+    this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : idle === 'duelist' ? 1.45 : 1.7;
   }
 
   reset(yaw: number): void {
@@ -340,9 +368,23 @@ export class FighterAnimator {
     this.stopArmed = false;
     for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide, this.shotTwist, this.shotChest, this.shotDip, this.shotNod, this.climbR, this.climbL, this.push]) s.reset();
     this.stepT = this.pressT = this.evadeT = this.cueT = this.castT = -1;
+    this.strikeT = this.savorT = -1;
+    this.wasLeap = false;
+    this.caneCur = this.caneTgt = 0;
+    this.meleeW = this.pointW = 0;
+    this.tailX = this.tailZ = 0;
+    this.tailKick.reset();
     this.stillArmed = true;
     this.svx = this.svz = 0;
     this.cur = zeroPose();
+    if (this.rig.look.weapon === 'cane') {
+      // Lucien starts from his gentleman's carry: the cane hanging from the pommel never sweeps through the floor
+      this.cur.shRX = -0.22;
+      this.cur.elR = -1.3;
+      this.caneCur = this.caneTgt = 1.24;
+      this.rig.shoulderR.rotation.set(-0.22, 0, 0);
+      this.rig.elbowR.rotation.set(-1.3, 0, 0);
+    }
     const rig = this.rig;
     rig.body.visible = true;
     rig.koEyes.visible = false;
@@ -358,6 +400,7 @@ export class FighterAnimator {
       rig.weaponL.position.y = this.weaponBaseL;
       rig.weaponL.rotation.set(this.weaponTiltL, 0, 0);
     }
+    if (rig.tail) rig.tail.rotation.set(0, 0, 0);
   }
 
   // ----------------------------------------------------------- triggers
@@ -390,7 +433,7 @@ export class FighterAnimator {
     else {
       kickTo(this.climbR, climb);
       // the support hand rides along on two-handed weapons
-      if (wpn !== 'ricochet') kickTo(this.climbL, climb * 0.8);
+      if (wpn !== 'ricochet' && wpn !== 'cane') kickTo(this.climbL, climb * 0.8);
     }
     const settled = 1 - moving * 0.45;
     // Crash (brawler) barely gives ground: he leans back less and then presses forward
@@ -403,7 +446,7 @@ export class FighterAnimator {
     else this.recoilR.kick(r.kick * k);
     // Two-handed weapons rock both arms (Kai's trick pistol is one-handed: his free hand stays loose).
     const w = this.rig.look.weapon;
-    if (w !== 'twin_blasters' && w !== 'ricochet') this.recoilL.kick(r.kick * (w === 'stinger' ? 0.35 : 0.6) * k);
+    if (w !== 'twin_blasters' && w !== 'ricochet' && w !== 'cane') this.recoilL.kick(r.kick * (w === 'stinger' ? 0.35 : 0.6) * k);
     this.recoilBody.kick((r.spine * 60 + (heavy ? 2.5 : 0)) * k);
     if (r.shove > 0 || heavy) this.shove.kick(-(r.shove + (heavy ? 3 : 0)));
     if (heavy) this.squash.kick(-2.5);
@@ -452,6 +495,7 @@ export class FighterAnimator {
 
   dash(dx: number, dz: number): void {
     this.dashT = 0;
+    if (this.rig.tail) this.tailKick.kick(8);
     this.dashLanded = false;
     this.dashRecT = -1;
     this.dashYaw = Math.atan2(dx, dz);
@@ -492,6 +536,25 @@ export class FighterAnimator {
     if (kind === 'guard') kickTo(this.settle, 0.08);
     else if (kind === 'throw') kickTo(this.settle, variant === 1 ? 0.05 : 0.1);
     else if (kind === 'signal' && variant === 2) kickTo(this.settle, -0.07);
+  }
+
+  /**
+   * Alpha 1.7 — a cane strike (Lucien): `variant` 0 = a lunging thrust, 1 = a slash from high outside
+   * across the body, 2 = the back-slash. The contact lands `windup` s after the start — exactly when
+   * the simulation resolves it — then a short follow-through back to the guard.
+   */
+  strike(variant: number, windup: number): void {
+    if (this.koT >= 0 || this.victoryT >= 0) return;
+    this.strikeVar = variant;
+    this.strikeWind = Math.max(0.05, windup);
+    this.strikeT = 0;
+  }
+
+  /** Alpha 1.7 — BAT BITE landed: the coat tails flare as he springs away (the bite itself is the 'leap' pose). */
+  biteHit(): void {
+    if (this.koT >= 0) return;
+    this.tailKick.kick(9);
+    this.flash = Math.max(this.flash, 0.3);
   }
 
   /** The pose layer of a card gesture at progress `p` (0..1), mixed over the current pose. */
@@ -665,6 +728,8 @@ export class FighterAnimator {
     this.wFlip = 0;
     this.yawAdd = 0;
     this.sx = this.sy = this.sz = 1;
+    this.caneTgt = 0;
+    this.lungeZ = 0;
     const terminal = this.koT >= 0 || this.victoryT >= 0;
 
     rig.root.position.set(inp.x, 0, inp.z);
@@ -680,7 +745,7 @@ export class FighterAnimator {
       yawTarget = this.dashYaw;
       yawRate = 40;
     }
-    if (inp.action === 'rush') {
+    if (inp.action === 'rush' || (inp.action === 'bite' && inp.biteStage === 'rush')) {
       yawTarget = Math.atan2(inp.dashX, inp.dashZ);
       yawRate = 30;
     }
@@ -829,6 +894,16 @@ export class FighterAnimator {
       P.shLX = -0.6 - sinP * A * 0.1;
       P.shLZ = -0.3;
       P.elL = -1.3;
+    } else if (rig.look.weapon === 'cane') {
+      // Alpha 1.7 — Lucien strolls like a gentleman: the forearm level, the cane hanging from the
+      // pommel (tip near the floor), swinging forward with the step
+      P.shRX = -0.22 + sinP * A * 0.14;
+      P.shRZ = 0.06;
+      P.elR = -1.3;
+      this.caneTgt = 1.24 - sinP * A * 0.22 + A * 0.08;
+      P.shLX = sinP * A * 0.45;
+      P.shLZ = 0.1;
+      P.elL = -0.3 - A * 0.3;
     }
     // Shoulders counter-rotate against the stride (applied after the aim pose).
     const twist = sinP * A * 0.09 * fwdK;
@@ -1030,6 +1105,22 @@ export class FighterAnimator {
           P.spineRY += scan * 0.2 * idleW;
           break;
         }
+        case 'duelist': {
+          // Lucien: upright and poised — the weight on the back leg, the front foot pointed, chest high,
+          // chin up, a slow sway as if he listens to music only he can hear
+          const sw = Math.sin(t * 1.1);
+          P.hipsRZ += (0.05 + sw * 0.012) * idleW;
+          P.bodyX += 0.02 * idleW;
+          P.kneeL += 0.16 * idleW;
+          P.legRX -= 0.14 * idleW;
+          P.kneeR += 0.06 * idleW;
+          P.legLZ += 0.04 * idleW;
+          P.spineRX -= 0.05 * idleW;
+          P.spineRZ += sw * 0.02 * idleW;
+          P.headRX -= 0.06 * idleW;
+          P.headRZ += 0.03 * idleW;
+          break;
+        }
         case 'champion': {
           // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
           const br = Math.sin(t * 1.05);
@@ -1149,6 +1240,9 @@ export class FighterAnimator {
           P.spineRY += -0.06 * aw;
           P.headRX += 0.05 * aw;
           break;
+        case 'cane':
+          this.canePose(P, inp, aw, bob, sN, dt);
+          break;
       }
     }
     P.spineRY += twist * (1 - 0.6 * aw);
@@ -1200,7 +1294,25 @@ export class FighterAnimator {
       P.legLX -= 0.25 * crouch;
       P.legRX -= 0.25 * crouch;
       P.bodyY -= 0.08 * crouch;
-      if (inp.actionCard === 'knockout') {
+      if (inp.actionCard === 'bat_bite') {
+        // Alpha 1.7 — BAT BITE: a predatory coil — deep and low, chin up and eyes on the prey, the cane
+        // drawn back, the free hand a claw reaching forward (the bats gather around him meanwhile)
+        P.kneeL += 0.2 * crouch;
+        P.kneeR += 0.2 * crouch;
+        P.legLX -= 0.1 * crouch;
+        P.legRX -= 0.1 * crouch;
+        P.bodyY -= 0.05 * crouch;
+        P.spineRX += 0.42 * crouch;
+        P.rollRX += 0.1 * crouch;
+        P.headRX -= 0.38 * crouch;
+        P.shRX = mix(P.shRX, 0.55, crouch);
+        P.shRZ = mix(P.shRZ, -0.25, crouch);
+        P.elR = mix(P.elR, -0.35, crouch);
+        this.caneTgt = mix(this.caneTgt, 0.35, crouch);
+        P.shLX = mix(P.shLX, -1.15, crouch);
+        P.shLZ = mix(P.shLZ, -0.1, crouch);
+        P.elL = mix(P.elL, -0.75, crouch);
+      } else if (inp.actionCard === 'knockout') {
         P.spineRX += 0.38 * crouch;
         P.shRX = 0.75 * crouch;
         P.shRZ = -0.3;
@@ -1263,6 +1375,46 @@ export class FighterAnimator {
       P.legRX = Math.sin(rp) * 1.0;
       P.kneeL = Math.max(0, Math.cos(rp)) * 1.4;
       P.kneeR = Math.max(0, -Math.cos(rp)) * 1.4;
+    } else if (inp.action === 'bite') {
+      const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
+      if (inp.biteStage === 'rush') {
+        // Alpha 1.7 — the swarm lunge: diving forward almost flat, the cane trailing, the claw reaching
+        P.rollRX += 0.8;
+        P.spineRX += 0.18;
+        P.headRX -= 0.5;
+        P.shRX = 0.9;
+        P.shRZ = -0.2;
+        P.elR = -0.2;
+        this.caneTgt = 0.15;
+        P.shLX = -1.65;
+        P.shLZ = -0.05;
+        P.elL = -0.3;
+        P.legLX = 0.45;
+        P.legRX = 0.75;
+        P.kneeL = 0.7;
+        P.kneeR = 0.5;
+        P.bodyY += 0.12;
+      } else {
+        // the bite (a snap of the head, the claw on the shoulder), then a light leap back out of reach,
+        // the arms opening like wings
+        const snap = 1 - smoothstep(0.18, 0.4, p);
+        const hop = smoothstep(0.2, 0.42, p) * (1 - smoothstep(0.85, 1, p));
+        P.headRX += 0.42 * snap;
+        P.spineRX += 0.32 * snap - 0.12 * hop;
+        P.shLX = mix(P.shLX, -1.45, snap);
+        P.shLZ = mix(P.shLZ, -0.15, snap);
+        P.elL = mix(P.elL, -0.85, snap);
+        P.bodyY += Math.sin(clamp01((p - 0.2) / 0.8) * Math.PI) * 0.3;
+        P.rollRX -= 0.32 * hop;
+        P.shLZ += 1.15 * hop;
+        P.shRZ -= 1.0 * hop;
+        P.shRX = mix(P.shRX, -0.5, hop);
+        P.elR = mix(P.elR, -0.3, hop);
+        P.kneeL += 0.75 * hop;
+        P.kneeR += 0.75 * hop;
+        P.legLX -= 0.35 * hop;
+        P.legRX -= 0.35 * hop;
+      }
     } else if (inp.action === 'cut') {
       // DIRECTOR'S CUT: the rifle goes up over the head for the alert (free arm out to the crowd), then comes down to the
       // shoulder; each line is aimed from a crouched, shouldered stance that freezes at the lock
@@ -1381,6 +1533,32 @@ export class FighterAnimator {
       this.glowPulse = Math.max(this.glowPulse, 0.5 + Math.sin(t * 20) * 0.2);
     }
 
+    // --------------------------------------------- Alpha 1.7: cane strikes, bite flourish
+    if (this.strikeT >= 0) {
+      this.strikeT += dt;
+      if (this.strikeT >= STRIKE_TIME || terminal || inp.stunned || inp.action !== 'none') this.strikeT = -1;
+      else this.strikePose(P, this.strikeT);
+    }
+    const leap = inp.action === 'bite' && inp.biteStage === 'leap';
+    if (this.wasLeap && !leap && !terminal) this.savorT = 0;
+    this.wasLeap = leap;
+    if (this.savorT >= 0) {
+      // the thumb drawn slowly across the lower lip, a cocked brow: elegant, never gory
+      this.savorT += dt;
+      const p = this.savorT / SAVOR_TIME;
+      if (p >= 1 || terminal || inp.stunned) this.savorT = -1;
+      else {
+        const k = Math.sin(p * Math.PI);
+        P.shLX = mix(P.shLX, -1.75, k);
+        P.shLZ = mix(P.shLZ, -0.38, k);
+        P.elL = mix(P.elL, -2.4, k);
+        P.headRZ += 0.1 * k;
+        P.headRX -= 0.06 * k;
+        P.headRY += 0.12 * Math.sin(p * Math.PI * 2) * k;
+        this.browUp = Math.max(this.browUp, 0.2 * k);
+      }
+    }
+
     // ------------------------------------- Alpha 1.5.6: weight and show moments
     if (this.stepT >= 0) {
       // heavy shot / heavy hit: the right foot steps back to catch the weight, then comes home
@@ -1491,7 +1669,7 @@ export class FighterAnimator {
     rig.body.visible = true;
     if (this.dashT >= 0) {
       this.dashT += dt;
-      const dur = this.dashStyle === 'roll' ? 0.32 : this.dashStyle === 'slide' ? 0.34 : 0.3;
+      const dur = this.dashStyle === 'roll' ? 0.32 : this.dashStyle === 'slide' ? 0.34 : this.dashStyle === 'swirl' ? 0.36 : 0.3;
       const p = clamp01(this.dashT / dur);
       if (this.dashStyle === 'roll') {
         // anticipation stretch → tight tuck roll → landing squash
@@ -1558,6 +1736,26 @@ export class FighterAnimator {
         P.shLZ = 0.7 * k;
         P.elL = -0.3;
         P.hipsRY = 0.35 * k;
+      } else if (this.dashStyle === 'swirl') {
+        // Alpha 1.7 — Lucien: a swirl out of harm's way — one and a quarter turns, low and leaning,
+        // the cane held out level like a dancer's arm, the coat tails flaring (the view adds a few bats)
+        this.yawAdd += ease.inOutCubic(smoothstep(0.04, 0.96, p)) * TAU * 1.25;
+        const k = Math.sin(p * Math.PI);
+        P.rollRX = 0.28 * k;
+        P.rollRZ = -0.18 * k;
+        P.bodyY = -0.1 * k;
+        P.kneeL = 0.45 * k;
+        P.kneeR = 0.3 + 0.35 * k;
+        P.legRX = -0.3 * k;
+        P.legLX = 0.25 * k;
+        P.shRX = mix(P.shRX, -0.25, k);
+        P.shRZ = mix(P.shRZ, -1.25, k);
+        P.elR = mix(P.elR, -0.1, k);
+        this.caneTgt = mix(this.caneTgt, -0.2, k);
+        P.shLX = mix(P.shLX, -0.6, k);
+        P.shLZ = mix(P.shLZ, 0.5, k);
+        P.elL = mix(P.elL, -1.3, k);
+        P.headRX = -0.15 * k;
       } else {
         // blink: glitch-teleport flicker
         const k = Math.sin(p * Math.PI);
@@ -1570,7 +1768,7 @@ export class FighterAnimator {
           this.dashLanded = true;
           this.squash.kick(this.dashStyle === 'lunge' ? (this.heavyBody ? 8 : 6) : 4);
           if (this.dashStyle === 'lunge') this.events.onStep?.(true);
-          else if (this.dashStyle === 'slide' || this.dashStyle === 'spin') this.events.onStep?.(false);
+          else if (this.dashStyle === 'slide' || this.dashStyle === 'spin' || this.dashStyle === 'swirl') this.events.onStep?.(false);
           // the body carries on along the dash for a moment, then the stance catches it
           const rel = this.dashYaw - this.yaw;
           this.dashLX = Math.sin(rel);
@@ -1617,6 +1815,10 @@ export class FighterAnimator {
         } else if (this.dashStyle === 'slide') {
           // Rina pops up out of the slide
           P.bodyY += 0.07 * Math.sin(rp * Math.PI);
+        } else if (this.dashStyle === 'swirl') {
+          // Lucien comes out of the swirl with a little flick of the cane
+          this.caneTgt -= 0.4 * Math.sin(rp * Math.PI);
+          P.headRX -= 0.06 * w;
         }
       }
     }
@@ -1803,9 +2005,11 @@ export class FighterAnimator {
     const nd = this.shotNod.update(dt);
 
     rig.root.rotation.y = this.yaw + this.yawAdd;
+    // Alpha 1.7: a cane strike steps the body forward a little
+    this.lungeCur = damp(this.lungeCur, this.lungeZ, 22, dt);
     // Alpha 1.5.6: the lean springs (settle = fore/aft, settleSide = sideways) tilt the whole upper
     // body; the legs counter-rotate by the hip share so the feet stay where they are
-    rig.body.position.set(C.bodyX, C.bodyY + koLift - dp * 0.12, koSlide + sv * 0.035 - pz);
+    rig.body.position.set(C.bodyX, C.bodyY + koLift - dp * 0.12, koSlide + sv * 0.035 - pz + this.lungeCur);
     rig.body.rotation.x = -koFall;
     rig.roll.rotation.set(C.rollRX + rollSpin - rb * 0.012 + st * 0.45 - ch * 0.3, 0, C.rollRZ + ss * 0.45);
     rig.hips.rotation.set(0, C.hipsRY, C.hipsRZ);
@@ -1826,10 +2030,21 @@ export class FighterAnimator {
     // weapon slides back along its barrel on each shot (+y is "back" in forearm space);
     // wSpin rolls it around the barrel, wFlip spins it around the hand (revolver twirl)
     const slide = this.recoil.slide;
+    // Alpha 1.7: Lucien's cane turns in the hand (carried tip-down, pointed, swung) — 0 for every other weapon
+    this.caneCur = damp(this.caneCur, this.caneTgt, 18, dt);
     if (rig.weaponR) {
       // (Alpha 1.5.6: plus a visible slide back with the climb)
       rig.weaponR.position.y = this.weaponBaseR + clamp(rR * 0.012, -0.05, 0.2) * slide * 10 + cR * 0.12;
-      rig.weaponR.rotation.set(this.weaponTiltR + this.wFlip, this.wSpin, 0);
+      rig.weaponR.rotation.set(this.weaponTiltR + this.wFlip + this.caneCur, this.wSpin, 0);
+    }
+    if (rig.tail) {
+      // Alpha 1.7: the coat tails trail with speed, flare in a dash or a lunge and sway against a strafe
+      const tk = this.tailKick.update(dt);
+      const rushing = inp.action === 'bite' || this.dashT >= 0;
+      const tx = this.koT >= 0 ? 0.05 : 0.08 + sN * 0.42 + (rushing ? 0.6 : 0) + clamp(-this.accZ * 0.012, 0, 0.25);
+      this.tailX = damp(this.tailX, tx, 8, dt);
+      this.tailZ = damp(this.tailZ, this.koT >= 0 ? 0 : -lx * 0.3 * A, 6, dt);
+      rig.tail.rotation.set(clamp(this.tailX + tk * 0.06, -0.2, 1.35), 0, this.tailZ);
     }
     if (rig.weaponL) {
       rig.weaponL.position.y = this.weaponBaseL + clamp(rL * 0.012, -0.05, 0.2) * slide * 10 + cL * 0.12;
@@ -1852,7 +2067,7 @@ export class FighterAnimator {
     if (inp.stunned || this.flash > 0.4 || this.staggerT >= 0) eyeScale = Math.min(eyeScale, 0.35);
     rig.eyes.scale.y = damp(rig.eyes.scale.y, eyeScale, 40, dt);
     if (this.mouthT > 0) this.mouthT -= dt;
-    const open = this.mouthT > 0 || inp.stunned || this.koT >= 0 || inp.action === 'windup' || inp.action === 'rush' || inp.cutStage === 'prep';
+    const open = this.mouthT > 0 || inp.stunned || this.koT >= 0 || inp.action === 'windup' || inp.action === 'rush' || inp.action === 'bite' || inp.cutStage === 'prep';
     rig.mouth.visible = !open;
     rig.mouthOpen.visible = open;
     rig.brows.position.y = damp(rig.brows.position.y, inp.action !== 'none' || this.flash > 0.3 ? -0.025 : this.victoryT >= 0 ? 0.03 : 0, 14, dt);
@@ -1882,6 +2097,84 @@ export class FighterAnimator {
     if (!rig.holo) {
       (rig.glowMat as MeshBasicMaterial).color.setScalar(1 + this.glowPulse);
     }
+  }
+
+  /**
+   * Alpha 1.7 — Lucien's combat stance with the cane (aim layer, weight `aw`): the guard (forearm
+   * level, the cane toward the opponent, the free hand behind his back), the point just before each
+   * bolt (arm and cane in one line — from the simulation's own fire timer) and, up close, the
+   * fencing guard (lower, the cane at chest height, the free hand raised behind).
+   */
+  private canePose(P: Pose, inp: AnimInput, aw: number, bob: number, sN: number, dt: number): void {
+    this.meleeW = damp(this.meleeW, inp.melee ? 1 : 0, 7, dt);
+    const pre = !inp.melee && inp.fireIn >= 0 && inp.fireIn < 0.18 && inp.action === 'none' ? 1 - inp.fireIn / 0.18 : 0;
+    const post = inp.melee ? 0 : 1 - smoothstep(0.06, 0.22, this.t - this.lastShotT);
+    const want = Math.max(smoothstep(0, 1, pre), post);
+    this.pointW = damp(this.pointW, want, want > this.pointW ? 22 : 9, dt);
+    const m = this.meleeW;
+    const pt = this.pointW * (1 - m);
+    // (shRZ swings the raised arm back toward the centre line against the bladed torso, so the cane points at the opponent)
+    let shRX = mix(-0.68 + bob * 0.4, -1.52 + bob * 0.2, pt);
+    let shRZ = mix(0.4, 0.44, pt);
+    let elR = mix(-0.78, -0.04, pt);
+    let tilt = mix(-0.5, -0.03, pt);
+    shRX = mix(shRX, -1.18 + bob * 0.3, m);
+    shRZ = mix(shRZ, 0.46, m);
+    elR = mix(elR, -0.45, m);
+    tilt = mix(tilt, -0.14, m);
+    this.to('shRX', shRX);
+    this.to('shRZ', shRZ);
+    this.to('elR', elR);
+    this.to('shLX', mix(0.5, 0.15, m));
+    this.to('shLZ', mix(0.16, 1.25, m));
+    this.to('elL', -1.7);
+    this.caneTgt = mix(this.caneTgt, tilt, aw);
+    // bladed: the right shoulder leads, the head stays on the opponent
+    P.spineRY += (-0.22 - 0.08 * pt - 0.06 * m) * aw;
+    P.headRY += (0.16 + 0.06 * pt + 0.05 * m) * aw;
+    P.headRX -= 0.04 * pt * aw;
+    // planted feet: a duelist's stance, lower and wider in the fencing guard
+    const st = (1 - Math.min(1, sN * 2.5)) * aw;
+    P.legRX -= (0.22 + 0.22 * m) * st;
+    P.kneeR += (0.15 + 0.2 * m) * st;
+    P.legLX += (0.1 + 0.15 * m) * st;
+    P.kneeL += (0.2 + 0.18 * m) * st;
+    P.bodyY -= 0.05 * m * st;
+    // the crimson glow gathers in the cane as it comes up to point
+    if (pre > 0) this.glowPulse = Math.max(this.glowPulse, 0.4 + pre * 1.2);
+  }
+
+  /** Alpha 1.7 — one cane strike at `p` s: chambered → the contact at the windup → follow-through to the guard. */
+  private strikePose(P: Pose, p: number): void {
+    const w = this.strikeWind;
+    const env = smoothstep(0, 0.05, p) * (1 - smoothstep(0.24, STRIKE_TIME, p));
+    const q = p < w ? smoothstep(0, w, p) : 1;
+    // [shRX, shRZ, elR, cane tilt, spine twist] chambered and at the contact
+    let a0 = -0.88, a1 = 0.12, a2 = -1.3, a3 = -0.2, a4 = -0.2;
+    let b0 = -1.56, b1 = 0.03, b2 = -0.02, b3 = -0.02, b4 = -0.5;
+    if (this.strikeVar === 1) {
+      // a slash from high outside across the body
+      a0 = -2.1; a1 = -0.55; a2 = -0.55; a3 = -0.55; a4 = -0.55;
+      b0 = -1.25; b1 = 0.72; b2 = -0.15; b3 = 0.08; b4 = 0.28;
+    } else if (this.strikeVar === 2) {
+      // the back-slash: from low across the body up and out
+      a0 = -1.0; a1 = 0.78; a2 = -0.9; a3 = 0.25; a4 = 0.3;
+      b0 = -1.78; b1 = -0.5; b2 = -0.1; b3 = -0.32; b4 = -0.45;
+    }
+    P.shRX = mix(P.shRX, mix(a0, b0, q), env);
+    P.shRZ = mix(P.shRZ, mix(a1, b1, q), env);
+    P.elR = mix(P.elR, mix(a2, b2, q), env);
+    this.caneTgt = mix(this.caneTgt, mix(a3, b3, q), env);
+    P.spineRY = mix(P.spineRY, mix(a4, b4, q), env);
+    // the step into it: a full lunge for the thrust, half a step for the slashes
+    const lunge = (this.strikeVar === 0 ? 1 : 0.45) * q * env;
+    P.legRX -= 0.6 * lunge;
+    P.kneeR += 0.45 * lunge;
+    P.legLX += 0.35 * lunge;
+    P.rollRX += 0.22 * lunge;
+    P.spineRX += 0.08 * lunge;
+    this.lungeZ = 0.24 * lunge;
+    if (p >= w && p < w + 0.06) this.glowPulse = Math.max(this.glowPulse, 1.1);
   }
 
   /** Blend one pose key toward `v` by the current mix weight `this.w` (no per-frame closures). */
@@ -2423,6 +2716,69 @@ export class FighterAnimator {
         this.flourish(vt, 1.85, false);
         break;
       }
+      // ---- Lucien (Alpha 1.7): theatrical, poised, a little arrogant
+      case 'night_bow': {
+        // a sweeping theatrical bow, then he rises and plants the cane before him, both hands on the pommel, chin up
+        const sweep = smoothstep(0, 0.35, vt) * (1 - smoothstep(1.2, 1.5, vt));
+        const bow = vt > 0.3 && vt < 1.45 ? Math.sin(((vt - 0.3) / 1.15) * Math.PI) : 0;
+        const plant = smoothstep(1.3, 1.65, vt);
+        this.to('shLX', lerp(-1.0 * sweep, -0.85, plant));
+        this.to('shLZ', lerp(-0.7 * sweep, -0.42, plant));
+        this.to('elL', lerp(-1.4, -0.95, plant));
+        this.to('shRX', lerp(-0.4, -0.78, plant));
+        this.to('shRZ', lerp(-1.0 * sweep, 0.36, plant));
+        this.to('elR', lerp(-0.2, -0.85, plant));
+        this.caneTgt = mix(this.caneTgt, lerp(-0.6 * sweep, 1.32, plant), k);
+        this.to('spineRX', 0.55 * bow - 0.06 * plant);
+        this.to('headRX', 0.25 * bow - 0.14 * plant);
+        this.to('rollRX', 0.12 * bow);
+        this.to('legRX', 0.35 * bow);
+        this.to('kneeL', 0.25 * bow + 0.05);
+        this.to('legLZ', 0.06 * plant);
+        this.to('legRZ', -0.06 * plant);
+        this.flourish(vt, 1.4, false);
+        break;
+      }
+      case 'night_twirl': {
+        // the cane spun overhead three times, then snapped down to point straight at the camera, a hand on the hip
+        const spinP = clamp01((vt - 0.1) / 0.85);
+        this.wFlip = spinP > 0 && spinP < 1 ? ease.inOutCubic(spinP) * TAU * 3 : 0;
+        const pt = smoothstep(0.92, 1.12, vt);
+        this.to('shRX', lerp(-2.6, -1.5, pt));
+        this.to('shRZ', lerp(-0.2, 0.05, pt));
+        this.to('elR', lerp(-0.35, -0.05, pt));
+        this.caneTgt = mix(this.caneTgt, lerp(-1.4, -0.05, pt), k);
+        this.to('shLX', 0.1);
+        this.to('shLZ', 0.62);
+        this.to('elL', -1.45);
+        this.to('spineRY', -0.3 * pt);
+        this.to('headRY', 0.16 * pt);
+        this.to('headRX', -0.1);
+        this.to('hipsRZ', 0.06);
+        this.to('kneeL', 0.18);
+        this.flourish(vt, 0.98, false);
+        break;
+      }
+      case 'night_cape': {
+        // the high collar drawn across the lower face with a raised forearm, then flung open — chest out, chin up, the cane to the shoulder
+        const open = smoothstep(0.55, 0.85, vt);
+        this.to('shLX', lerp(-1.62, -0.55, open));
+        this.to('shLZ', lerp(-0.48, 1.3, open));
+        this.to('elL', lerp(-2.15, -0.2, open));
+        this.to('headRX', lerp(0.12, -0.16, open));
+        this.to('headRZ', 0.06 * open);
+        this.to('spineRX', lerp(0.06, -0.16, open));
+        this.to('shRX', lerp(-0.05, -0.5, open));
+        this.to('shRZ', lerp(0.0, -0.1, open));
+        this.to('elR', lerp(-0.25, -2.2, open));
+        this.caneTgt = mix(this.caneTgt, lerp(0.25, -0.2, open), k);
+        this.to('legLZ', 0.06);
+        this.to('legRZ', -0.06);
+        this.to('kneeR', 0.1);
+        if (vt > 0.9) this.browUp = Math.max(this.browUp, 0.1);
+        this.flourish(vt, 0.62, false);
+        break;
+      }
     }
   }
 
@@ -2493,6 +2849,16 @@ export class FighterAnimator {
         this.to('elL', -2.45);
         this.to('headRZ', 0.08);
         this.to('headRX', -0.08);
+        break;
+      case 'nightstar':
+        // Lucien: the cane twirled twice at his side, a glance over the collar
+        this.to('shRX', -1.15);
+        this.to('shRZ', -0.5);
+        this.to('elR', -0.3);
+        this.caneTgt = mix(this.caneTgt, -0.4, f);
+        this.wFlip = ease.inOutCubic(fp) * TAU * 2;
+        this.to('headRZ', 0.1);
+        this.to('headRY', 0.18);
         break;
     }
   }

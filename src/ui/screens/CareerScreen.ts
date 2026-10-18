@@ -8,6 +8,7 @@ import type { StageView } from '../../meta/careerStages';
 import { REWARD_ART } from '../eventArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
+import { currencyIcon } from './EventsScreen';
 import type { Screen } from '../UI';
 
 export class CareerScreen implements Screen {
@@ -80,6 +81,10 @@ export class CareerScreen implements Screen {
     } else if (act === 'contract') {
       g.audio.ui('click');
       g.goto('roster', t.dataset.f);
+    } else if (act === 'season') {
+      // Alpha 1.7: the season's star is opened in the event's exchange
+      g.audio.ui('click');
+      g.goto('events', { tab: 'rewards' });
     }
   }
 
@@ -106,19 +111,26 @@ export class CareerScreen implements Screen {
         ${btn}
       </div>`;
     }).join('');
-    const contracts = FIGHTER_ORDER.map((id) => {
+    // Alpha 1.7: a seasonal star shows only once owned or while its event runs (opened in «События»)
+    const roster = FIGHTER_ORDER.filter((id) => g.events.fighterVisible(id));
+    const contracts = roster.map((id) => {
       const f = FIGHTERS[id];
       const fp = s.fighters[id];
       const c = g.career.canSign(id);
+      const offer = f.seasonal && !fp.unlocked ? g.events.fighterOffer(id) : null;
       let right = '';
+      let note = fp.unlocked ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать');
       if (fp.unlocked) right = `<span class="chip teal">В составе</span>`;
-      else if (c.ok) right = `<button class="btn" data-act="contract" data-f="${id}"><span class="shine"></span>$${f.contract!.cost}</button>`;
+      else if (offer) {
+        right = `<button class="btn ${g.events.tokens(offer.event) >= offer.cost ? '' : 'ghost'}" data-act="season">${offer.cost}<span class="eq-coin">${currencyIcon(offer.event)}</span></button>`;
+        note = `Сезонная звезда · ${esc(offer.event.title)}`;
+      } else if (c.ok) right = `<button class="btn" data-act="contract" data-f="${id}"><span class="shine"></span>$${f.contract!.cost}</button>`;
       else right = `<button class="btn ghost" data-act="contract" data-f="${id}">$${f.contract!.cost}</button>`;
       return `<div class="contract">
         ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
         <div class="cm">
           <div class="gt" style="font-family:var(--font-display);font-weight:800;font-size:13px">${esc(f.name)} <span style="color:${f.theme.accent};font-size:10.5px;white-space:nowrap">«${esc(f.nickname)}»</span></div>
-          <div class="gd" style="font-size:11.5px;color:var(--muted)">${fp.unlocked ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать')}</div>
+          <div class="gd" style="font-size:11.5px;color:var(--muted)">${note}</div>
         </div>
         ${right}
       </div>`;
@@ -155,7 +167,7 @@ export class CareerScreen implements Screen {
           <div class="kv"><div class="v">${s.wins}-${s.losses}-${s.draws}</div><div class="k">Победы-пор.-ничьи</div></div>
           <div class="kv"><div class="v">${s.bestRating || '—'}</div><div class="k">Лучший рейтинг</div></div>
           <div class="kv"><div class="v">${formatNumber(g.career.totalFans())}</div><div class="k">Фанаты команды</div></div>
-          <div class="kv"><div class="v">${g.career.signedCount()}/${FIGHTER_ORDER.length}</div><div class="k">Бойцов в составе</div></div>
+          <div class="kv"><div class="v">${g.career.signedCount()}/${roster.length}</div><div class="k">Бойцов в составе</div></div>
           <div class="kv"><div class="v">${formatMoney(s.totalEarned)}</div><div class="k">Заработано</div></div>
         </div>
         <div class="section panel">

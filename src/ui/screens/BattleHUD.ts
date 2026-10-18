@@ -56,6 +56,8 @@ const STATUS_ORDER: { key: string; label: string; color: string }[] = [
   // Alpha 1.5.5: Zoe's SHOCK charge — the cue for DASH or SHIELD
   { key: 'zap', label: 'ШОКЕР!', color: '#ffe14d' },
   { key: 'glitch', label: 'ВЗЛОМ', color: '#ff4fd8' },
+  // Alpha 1.7: BAT BITE's bleed
+  { key: 'bleed', label: 'УКУС', color: '#ff4d6d' },
   { key: 'shield', label: 'ЩИТ', color: '#9ad8ff' },
   // Alpha 1.5: FALSE START read window (the next suitable attack is answered) and RIPOSTE ready
   { key: 'feint', label: 'ФИНТ', color: '#ff8a7a' },
@@ -686,6 +688,7 @@ export class BattleHUD implements Screen {
         feint: f.feint > 0,
         zap: f.zap > 0,
         riposte: f.riposte,
+        bleed: f.bleedTicks > 0,
       };
       const st: string[] = [];
       for (const s of STATUS_ORDER) {
@@ -1017,7 +1020,7 @@ export class BattleHUD implements Screen {
             agg.z = e.z;
             break;
           }
-          const f = this.spawnFloater(String(e.damage), e.kind === 'dot' ? 'dmg' : cls, e.x, 2.2, e.z, 0.7, 0.8);
+          const f = this.spawnFloater(String(e.damage), e.kind === 'dot' ? 'dmg' : e.kind === 'bleed' ? 'dmg bleed' : cls, e.x, 2.2, e.z, 0.7, 0.8);
           f.sum = e.damage;
           f.side = e.side;
         } else {

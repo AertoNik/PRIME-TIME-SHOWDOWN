@@ -138,6 +138,20 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.02,
     turnRate: 18,
   },
+  // Alpha 1.7 — Lucien: an elegant glide — long unhurried strides, almost no bob, the chest held high.
+  duelist: {
+    strideLength: 2.45,
+    legSwing: 0.7,
+    kneeLift: 1.05,
+    bob: 0.028,
+    sway: 0.035,
+    lean: 0.12,
+    accelLean: 0.07,
+    turnBank: 0.07,
+    armBob: 0.03,
+    contactSquash: 0.018,
+    turnRate: 16,
+  },
   // Vega: composed and economical — long smooth strides, minimal bob, snaps onto targets.
   poise: {
     strideLength: 2.3,
@@ -183,6 +197,8 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   ricochet: { kick: 12, stiffness: 360, damping: 15, spine: 0.012, shove: 0.25, slide: 0.07, shake: 0 },
   // Alpha 1.5 — Rina's compact twin-barrel: crisp light double-tap, almost no body follow
   stinger: { kick: 7, stiffness: 560, damping: 28, spine: 0.005, shove: 0.12, slide: 0.045, shake: 0 },
+  // Alpha 1.7 — Lucien's cane: a clean flick of the wrist, the body barely moves
+  cane: { kick: 6, stiffness: 430, damping: 22, spine: 0.005, shove: 0.12, slide: 0.03, shake: 0 },
 };
 
 /**
@@ -237,6 +253,8 @@ export const FIRE_STYLE: Record<WeaponType, FireStyle> = {
   ricochet: { firstShot: 1.4, series: [1, 0.8, 1.1, 0.75], twist: 0.13, chest: 0.06, dip: 0.035, nod: 0.05, sway: 0.07, brace: 0.1, braceAmt: 0.3, climb: 0.13, lean: 0.055, push: 0.03, weight: 0.9 },
   // Rina: a sharp double tap — quick in, quick out, ready to step
   stinger: { firstShot: 1.15, series: [1, 0.7], twist: 0.08, chest: 0.03, dip: 0.06, nod: 0.025, sway: 0.04, brace: 0, braceAmt: 0, climb: 0.16, lean: 0.06, push: 0.03, weight: 0.7 },
+  // Lucien: the cane is raised and pointed before each bolt (brace = the point), a small wrist flick, poised
+  cane: { firstShot: 1.15, series: [1, 0.85], twist: 0.05, chest: 0.03, dip: 0.03, nod: 0.03, sway: 0.02, brace: 0.24, braceAmt: 0.35, climb: 0.1, lean: 0.04, push: 0.02, weight: 0.8 },
 };
 
 export const HIT_REACTION = {
@@ -270,6 +288,8 @@ export const VICTORY_SETS = {
   brawler: ['brawl_roar', 'brawl_stomp', 'brawl_taunt'],
   // Victor (dignified): the rifle grounded and a measured wave / PRIME BREAKER raised like a trophy / fist over the heart, a bow of the head
   champion: ['champ_salute', 'champ_raise', 'champ_heart'],
+  // Alpha 1.7 — Lucien: a theatrical bow, the cane planted before him / a cane twirl and a point at the camera / the high collar drawn across the face, then opened
+  nightstar: ['night_bow', 'night_twirl', 'night_cape'],
 } as const satisfies Record<VictoryStyle, readonly string[]>;
 
 export type VictoryMove = (typeof VICTORY_SETS)[VictoryStyle][number];

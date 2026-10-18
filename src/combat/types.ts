@@ -22,7 +22,11 @@ export type HitKind =
   | 'prop'
   | 'mine'
   | 'cable'
-  | 'release';
+  | 'release'
+  // Alpha 1.7 — LUCIEN: a cane strike, the BAT BITE and its bleed ticks
+  | 'cane'
+  | 'bite'
+  | 'bleed';
 
 export type ProjectileKind =
   | 'auto'
@@ -314,7 +318,17 @@ export type MatchEvent =
   /** REPLAY: a projectile of the opponent was erased inside `side`'s freeze zone. */
   | { type: 'erase'; side: Side; x: number; z: number }
   /** `side` was held by nets / cables too long and broke free (short immunity). */
-  | { type: 'breakFree'; side: Side; x: number; z: number };
+  | { type: 'breakFree'; side: Side; x: number; z: number }
+  // ------------------------------------------------ Alpha 1.7 — BLOOD MOON PREMIERE
+  /** A cane strike begins (`windup` s to the contact; `variant` 0 thrust, 1 / 2 slashes from either side). */
+  | { type: 'strike'; side: Side; windup: number; variant: number }
+  /** The strike's contact moment at (x, z) along (dx, dz): 'hit', 'blocked' (shield or a STAGE BARRIER), 'decoy', 'dodged' or 'miss'. */
+  | { type: 'slash'; side: Side; x: number; z: number; dx: number; dz: number; outcome: 'hit' | 'blocked' | 'decoy' | 'dodged' | 'miss' }
+  /** BAT BITE: the swarm lunge leaves, the bite lands, a shield stops it, a STAGE BARRIER stops the lunge. */
+  | { type: 'bite'; side: Side; what: 'rush' | 'hit' | 'blocked' | 'barrier'; x: number; z: number; dx: number; dz: number }
+  /** `side` bleeds for `duration` s (a refresh re-sends it); bleedEnd: the bleed is over. */
+  | { type: 'bleed'; side: Side; duration: number }
+  | { type: 'bleedEnd'; side: Side };
 
 export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase' | 'risk' | 'recharge' | 'notake';
 

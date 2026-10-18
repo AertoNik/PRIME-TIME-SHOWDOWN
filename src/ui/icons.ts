@@ -78,6 +78,16 @@ export const CARD_ICONS: Record<CardId, string> = {
      <circle cx="46" cy="16" r="7.5" fill="#fff" ${STROKE}/><path d="M37 52 V34 C37 26 55 26 55 34 V52 Z" fill="#fff" ${STROKE}/>
      <path d="M30 40 L44 40 M40 35 L45 40 L40 45" fill="none" stroke="#ff6f61" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`,
   ),
+  // Alpha 1.7: BAT BITE — a crimson lunge streak, two bats in its wake and a pair of fangs at its point
+  bat_bite: S(
+    `<path d="M4 46 C18 40 30 36 44 31" stroke="#ff3a5c" stroke-width="7" stroke-linecap="round" opacity=".55"/>
+     <path d="M10 50 C22 44 32 40 44 34" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+     <path d="M6 16 C9 12 13 13 15 16 C16 13 18 12 19 15 C20 12 22 13 23 16 C25 13 29 12 32 16 C27 16 25 19 24 22 C22 20 20 20 19 22 C18 20 16 20 14 22 C13 19 11 16 6 16 Z" fill="#fff" ${STROKE}/>
+     <path d="M24 30 C26 27 29 27.5 30.5 29.5 C31.2 27.5 32.4 27 33 29 C33.6 27 34.8 27.5 35.5 29.5 C37 27.5 40 27 42 30 C38.5 30 37 32 36.5 34 C35 32.8 33.6 32.8 33 34 C32.4 32.8 31 32.8 29.5 34 C29 32 27.5 30 24 30 Z" fill="#fff" opacity=".8"/>
+     <path d="M40 14 C48 10 58 14 60 24 C61 34 54 42 46 44 C50 38 52 32 50 26 C48 20 44 17 40 14 Z" fill="#fff" ${STROKE}/>
+     <path d="M44 22 L47.5 33 L51 22 Z M52 21 L55 30.5 L57.5 20 Z" fill="#ff3a5c"/>
+     <circle cx="54" cy="50" r="5" fill="#ff3a5c" opacity=".9"/><circle cx="54" cy="50" r="2" fill="#fff"/>`,
+  ),
   // three warning lines from the champion's rifle, the last one the widest (DIRECTOR'S CUT)
   directors_cut: S(
     `<path d="M10 34 L56 12" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
@@ -229,6 +239,14 @@ export const PASSIVE_ICONS: Record<PassiveId, string> = {
     `<path d="M10 44 H40 M32 36 L40 44 L32 52" fill="none" stroke="#13b5a6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
      <path d="M20 12 L48 34" stroke="#ff9a4a" stroke-width="5" stroke-linecap="round"/>
      <circle cx="52" cy="37" r="6" fill="#fff"/>`,
+  ),
+  // Alpha 1.7: CANE DUEL — the cane as a blade (a thrust line) and as a blaster (a crimson bolt off its tip)
+  duelist: S(
+    `<path d="M12 54 L46 20" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+     <circle cx="10" cy="56" r="5.5" fill="#ff4d6d" stroke="#fff" stroke-width="2.5"/>
+     <path d="M46 20 L52 14" stroke="#ff4d6d" stroke-width="4" stroke-linecap="round"/>
+     <circle cx="56" cy="10" r="5" fill="#ff4d6d"/><circle cx="56" cy="10" r="2" fill="#fff"/>
+     <path d="M14 30 C20 22 30 18 40 18" fill="none" stroke="#ffb3c1" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 4"/>`,
   ),
   // Alpha 1.5: RIPOSTE — an arrow turning back on itself
   riposte: S(

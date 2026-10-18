@@ -303,6 +303,8 @@ export class PrepScreen implements Screen {
       else if (!d.includes('shield')) tip = 'SHIELD гасит выстрелы DIRECTOR\'S CUT и помогает пережить STAR POWER. Против чемпиона он очень полезен.';
       else if (!d.includes('dash')) tip = 'DASH в момент, когда линия прицела застыла, уводит от выстрела DIRECTOR\'S CUT и возвращает 1 энергию.';
       else if (d.includes('adrenaline') && !d.includes('overdrive')) tip = 'Бой длинный: OVERDRIVE чаще окупается против чемпиона, чем ADRENALINE.';
+      // Alpha 1.7: the champion shakes the bleed off twice as fast and the lunge walks into his rifle
+      else if (d.includes('bat_bite')) tip = 'Чемпион вдвое быстрее справляется с кровотечением BAT BITE, а рывок подводит Люсьена под его винтовку. Против Виктора надёжнее POWER SHOT вместо укуса.';
       // access: Classic Duel wins with the selected fighter
       const sel = g.save.data.selected;
       const acc = g.modes.bossAccess(def.id, sel);

@@ -138,6 +138,20 @@ export const CARDS: Record<CardId, CardDef> = {
     color2: '#2a2b33',
     exclusive: 'rina',
   },
+  // Alpha 1.7: Lucien's signature — a bat-swarm lunge, a bite and a short bleed (no healing)
+  bat_bite: {
+    id: 'bat_bite',
+    name: 'BAT BITE',
+    cost: 3,
+    role: 'Фирменная',
+    short: 'Укус ночи',
+    desc: `УКУС НОЧИ. Люсьен на миг замирает в хищной стойке и бросается на соперника в вихре летучих мышей (до ${ru(T.bat_bite.rushDistance)} м): укус — ${T.bat_bite.damage} урона и кровотечение ${T.bat_bite.bleed} урона в секунду ${T.bat_bite.bleedTime} с (всего до ${T.bat_bite.damage + T.bat_bite.bleed * T.bat_bite.bleedTime}). Новый укус обновляет кровотечение, но не складывается. DASH, SHIELD и FALSE START спасают от укуса, барьер останавливает рывок, а промах оставляет Люсьена открытым.`,
+    counter: 'Хищную стойку видно заранее: DASH в сторону или SHIELD. Поднятый позже SHIELD поглощает кровотечение.',
+    color: '#d8163c',
+    color2: '#2a0a2e',
+    exclusive: 'lucien',
+    heavy: true,
+  },
   // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
   directors_cut: {
     id: 'directors_cut',
@@ -444,7 +458,7 @@ export const COMBOS: ComboDef[] = [
     id: 'superstar',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
-    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start'],
+    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
@@ -689,6 +703,12 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
     id: 'riposte',
     name: 'RIPOSTE',
     desc: `После любого удачного уклонения следующая очередь Рины сильнее на ${pct(PT.riposte.mult)} (не чаще раза в ${PT.riposte.cooldown} с).`,
+  },
+  // Alpha 1.7: Lucien's dual-mode cane (numbers live in his weapon: FIGHTERS.lucien.stats.attack.melee)
+  duelist: {
+    id: 'duelist',
+    name: 'CANE DUEL',
+    desc: 'Трость Люсьена — и бластер, и шпага. Издалека он стреляет багровыми зарядами, а когда соперник рядом, сам переходит на быстрые уколы тростью: их не обойти шагом в сторону, но они короче и слабее выстрела. Атака одна — режим меняется, урон не удваивается.',
   },
 };
 

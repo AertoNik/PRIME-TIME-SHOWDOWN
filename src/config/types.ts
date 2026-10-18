@@ -1,6 +1,6 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
-export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina';
+export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina' | 'lucien';
 export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale' | 'bot';
 export type CardId =
   | 'dash'
@@ -35,7 +35,9 @@ export type CardId =
   | 'high_stakes'
   /** Alpha 1.6.1: replaced SIDE CAM (saves convert it). */
   | 'second_take'
-  | 'freeze_frame';
+  | 'freeze_frame'
+  /** Alpha 1.7: Lucien's bat-swarm lunge and bite (initial damage + a short bleed). */
+  | 'bat_bite';
 export type ComboId =
   | 'counter_strike'
   | 'electro_blast'
@@ -67,14 +69,14 @@ export type ComboId =
 export type CardFamily = 'attack' | 'control' | 'defense' | 'show';
 /** Alpha 1.6: how the fighter's body sells a card (FighterAnimator.cast). */
 export type CastKind = 'throw' | 'shot' | 'device' | 'guard' | 'signal';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger' | 'cane';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
-export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte';
-export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide';
+export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte' | 'duelist';
+export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide' | 'swirl';
 /** Victory set key (render only): picks which family of victory animations a fighter performs. */
-export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician';
+export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion' | 'nightstar';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician' | 'duelist';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 
@@ -102,6 +104,31 @@ export interface AttackStats {
   alternate?: boolean;
   /** Burst fire: several shots per trigger pull (carbine). */
   burst?: { count: number; gap: number };
+  /**
+   * Alpha 1.7 — a weapon that is also a melee weapon (Lucien's VAMPIRE CANE BLASTER): up close the
+   * fighter strikes instead of shooting. One shared attack timer, so the two never add up.
+   */
+  melee?: MeleeStats;
+}
+
+/** Alpha 1.7: the close-range half of a dual-mode weapon (see AttackStats.melee). */
+export interface MeleeStats {
+  /** Switch to strikes when the target is closer than this (centre to centre, m)... */
+  enter: number;
+  /** ...and back to shots only beyond this (hysteresis: no flicker at the edge). */
+  exit: number;
+  /** Minimum seconds in a mode before switching again. */
+  dwell: number;
+  /** Seconds between strikes (the shared attack timer). */
+  interval: number;
+  damage: number;
+  /** Swing time from the start of the strike to the contact (s). */
+  windup: number;
+  /** Contact reach, centre to centre (m), and the half-angle of the swing in front (rad). */
+  reach: number;
+  arc: number;
+  /** A small slide on contact (m/s, like PULSE PUSH: never a knockback, never an interrupt). */
+  shove: number;
 }
 
 export interface FighterStats {
@@ -147,6 +174,11 @@ export interface FighterDef {
   idleStyle: IdleStyle;
   /** CSS colours used by the UI theme for this fighter. */
   theme: { main: string; accent: string; dark: string };
+  /**
+   * Alpha 1.7: a seasonal star (LUCIEN) — no contract; opened for good in the shop of this
+   * seasonal event (src/config/events.config.ts, `fighters`). Kept forever once owned.
+   */
+  seasonal?: { eventId: string; title: string };
 }
 
 export interface RivalDef {

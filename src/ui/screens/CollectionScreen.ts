@@ -4,7 +4,7 @@ import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { AchievementView, CollectionTab, CosmeticView } from '../../meta/Collection';
-import { el, esc, setScreenHTML } from '../dom';
+import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
@@ -95,6 +95,9 @@ export class CollectionScreen implements Screen {
     } else if (act === 'events') {
       g.audio.ui('click');
       g.goto('events');
+    } else if (act === 'roster-star') {
+      g.audio.ui('click');
+      g.goto('roster', t.dataset.f);
     }
   }
 
@@ -142,14 +145,36 @@ export class CollectionScreen implements Screen {
   }
 
   private renderAll(owned: CosmeticView[], achDone: AchievementView[]): string {
-    if (!owned.length && !achDone.length) {
+    // Alpha 1.7: the seasonal stars the producer opened
+    const stars = this.g.collection.seasonalFighters();
+    const starBlock = stars.length
+      ? `<div class="col-section-title"><span class="h2">Сезонные бойцы</span><span class="label">${stars.length}</span></div><div class="col-list">${stars.map((x) => this.starCard(x.id, x.eventId, x.at)).join('')}</div>`
+      : '';
+    if (!owned.length && !achDone.length && !stars.length) {
       return `<div class="col-empty panel">${UI_ICONS.trophy}<div class="h2">Архив пока пуст</div>
         <div class="muted">Сюда попадают все награды продюсера: косметика сезонных событий, трофей за победу над Виктором, карьерные этапы, пройденные марафоны и испытания.</div>
         <div class="col-empty-actions"><button class="btn ghost" data-act="career">Карьера</button><button class="btn ghost" data-act="events">События</button></div></div>`;
     }
     const cos = owned.length ? `<div class="col-section-title"><span class="h2">Косметика</span><span class="label">${owned.length}</span></div><div class="col-list">${owned.map((v) => this.cosmeticCard(v)).join('')}</div>` : '';
     const ach = achDone.length ? `<div class="col-section-title"><span class="h2">Достижения</span><span class="label">${achDone.length}</span></div><div class="col-list">${achDone.map((a) => this.achievementCard(a)).join('')}</div>` : '';
-    return cos + ach;
+    return starBlock + cos + ach;
+  }
+
+  /** Alpha 1.7: a seasonal star in the archive — who, from which season and when (kept for good). */
+  private starCard(id: FighterId, eventId: string, at: number): string {
+    const f = FIGHTERS[id];
+    const ev = EVENTS.find((e) => e.id === eventId);
+    const when = at > 0 ? ` · ${fmtDate(at)}` : '';
+    return `<div class="col-card col-star owned">
+        <div class="cc-art">${portraitHTML(this.g.portraits[f.look], f.theme.main, f.theme.dark)}</div>
+        <div class="cc-body">
+          <div class="cc-top"><span class="cc-type">Сезонный боец</span><span class="cc-rarity">Эксклюзив</span></div>
+          <div class="cc-name">${esc(f.name)} · ${esc(f.nickname)}</div>
+          <div class="cc-desc">${esc(f.style)}: трость-бластер, уколы вблизи и фирменная карта BAT BITE. В вашем составе навсегда.</div>
+          <div class="cc-meta">${esc(ev?.title ?? f.seasonal?.title ?? '')}${when}</div>
+          <div class="cc-foot"><span class="cc-state on">${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} В составе</span><button class="btn teal cc-btn" data-act="roster-star" data-f="${id}">Мои бойцы</button></div>
+        </div>
+      </div>`;
   }
 
   private renderCosmetics(all: CosmeticView[]): string {
@@ -180,6 +205,9 @@ export class CollectionScreen implements Screen {
       list.push(v);
       groups.set(v.def.eventId, list);
     }
+    // Alpha 1.7: seasonal stars sit with the season that gave them
+    const stars = this.g.collection.seasonalFighters();
+    for (const st of stars) if (!groups.has(st.eventId)) groups.set(st.eventId, []);
     const em = this.g.events;
     const out: string[] = [];
     const live = em.active && em.playable ? em.active : null;
@@ -193,10 +221,11 @@ export class CollectionScreen implements Screen {
       const ev = EVENTS.find((e) => e.id === eventId);
       const running = live?.id === eventId;
       const state = running ? '<span class="chip orange">Идёт сейчас</span>' : '<span class="chip">Сезон завершён</span>';
+      const here = stars.filter((st) => st.eventId === eventId);
       out.push(`<div class="col-season panel">
-          <div class="cs-head"><div><div class="cs-name">${esc(ev?.title ?? items[0].def.sourceLabel)}</div><div class="label">Получено: ${items.length} · награды остаются навсегда</div></div>${state}</div>
+          <div class="cs-head"><div><div class="cs-name">${esc(ev?.title ?? items[0]?.def.sourceLabel ?? '')}</div><div class="label">Получено: ${items.length + here.length} · награды остаются навсегда</div></div>${state}</div>
           ${running ? `<button class="btn ghost wide cs-go" data-act="events">Задания и награды — в «Событиях»</button>` : ''}
-          <div class="col-list">${items.map((v) => this.cosmeticCard(v)).join('')}</div>
+          <div class="col-list">${here.map((st) => this.starCard(st.id, st.eventId, st.at)).join('')}${items.map((v) => this.cosmeticCard(v)).join('')}</div>
         </div>`);
     }
     if (!out.length) out.push('<div class="col-hint muted">Сезонных наград пока нет. Они появятся здесь, когда вы получите их во время события.</div>');
@@ -232,7 +261,7 @@ export class CollectionScreen implements Screen {
           return `<button class="cc-owner ${on ? 'on' : ''} ${f === sel ? 'sel' : ''}" data-act="${on ? 'unequip' : 'equip'}" data-id="${c.id}" data-f="${f}" aria-label="${on ? 'Снять' : 'Надеть'}: ${esc(FIGHTERS[f].name)}">${on ? UI_ICONS.check.replace('<svg', '<svg width="10" height="10"') : ''}${esc(FIGHTERS[f].name)}</button>`;
         })
         .join('');
-      const missing = FIGHTER_ORDER.filter((f) => !v.owners.includes(f)).map((f) => FIGHTERS[f].name);
+      const missing = FIGHTER_ORDER.filter((f) => !v.owners.includes(f) && this.g.events.fighterVisible(f)).map((f) => FIGHTERS[f].name);
       owners = `<div class="cc-owners">${v.owners.length ? `<span class="cc-ol">Получено:</span>${chips}` : ''}</div>
         ${missing.length ? `<div class="cc-missing">${v.owners.length ? 'Ещё не получено' : 'Пока ни у кого'}: ${esc(missing.join(', '))}</div>` : ''}`;
       state = v.owners.length

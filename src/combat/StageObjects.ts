@@ -301,6 +301,23 @@ export class StageObjects {
     return null;
   }
 
+  /**
+   * Alpha 1.7: the STAGE BARRIER standing on the line (x0, z0) → (x1, z1), if any — a cane strike
+   * or a BAT BITE lunge never goes through a screen (whoever's it is; nobody walks into one either).
+   */
+  barrierOnLine(x0: number, z0: number, x1: number, z1: number, pad: number): StageObject | null {
+    const th = CARD_TUNING.stage_barrier.thickness;
+    for (const o of this.list) {
+      if (o.kind !== 'barrier' || o.stage !== 'on') continue;
+      const ax = o.x - o.dirX * o.radius;
+      const az = o.z - o.dirZ * o.radius;
+      const bx = o.x + o.dirX * o.radius;
+      const bz = o.z + o.dirZ * o.radius;
+      if (segSegDist(x0, z0, x1, z1, ax, az, bx, bz) <= pad + th) return o;
+    }
+    return null;
+  }
+
   /** A projectile struck a screen: it soaks the damage and breaks when its hit points run out. */
   damageBarrier(o: StageObject, dmg: number, x: number, z: number): void {
     o.hp -= dmg;

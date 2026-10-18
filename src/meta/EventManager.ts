@@ -1,7 +1,7 @@
 import type { CosmeticId, CosmeticSlot } from '../config/cosmetics.config';
 import { EVENTS, eventSettings, plural, type EventDef, type EventSettings, type QuestDef, type QuestMetric } from '../config/events.config';
-import { DIFFICULTY_ORDER } from '../config/fighters';
-import type { Difficulty } from '../config/types';
+import { DIFFICULTY_ORDER, FIGHTERS } from '../config/fighters';
+import type { Difficulty, FighterId } from '../config/types';
 import type { MatchResultData } from '../combat/types';
 import { Collection } from './Collection';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
@@ -282,6 +282,54 @@ export class EventManager {
     p.spent += item.cost;
     if (!p.bought.includes(id)) p.bought.push(id);
     this.grant(id, e.id);
+    this.version++;
+    this.store.save();
+    return { ok: true };
+  }
+
+  // ------------------------------------------------------ Alpha 1.7: stars
+  /** The seasonal star `id` on sale in the running event's exchange, with its price (null otherwise). */
+  fighterOffer(id: FighterId): { cost: number; event: EventDef } | null {
+    const e = this.active;
+    if (!this.playable || !e?.fighters) return null;
+    const item = e.fighters.find((x) => x.fighter === id);
+    return item ? { cost: item.cost, event: e } : null;
+  }
+
+  /** In the producer's roster (a seasonal star stays there for good once opened). */
+  ownsFighter(id: FighterId): boolean {
+    return !!this.store.data.fighters[id]?.unlocked;
+  }
+
+  /**
+   * Who the roster shows: every contract fighter; a seasonal star once owned, or while its event
+   * runs (locked, with its price). Before and after its season an unopened star stays out of sight.
+   */
+  fighterVisible(id: FighterId): boolean {
+    if (!FIGHTERS[id].seasonal) return true;
+    return this.ownsFighter(id) || this.fighterOffer(id) !== null;
+  }
+
+  /**
+   * Opens a seasonal star once, during its event, for its price in the event's currency. The
+   * tokens, the record and the fighter are written together and saved at once, so a reload can
+   * neither take the tokens twice nor lose the fighter; an owned star is never charged again.
+   */
+  buyFighter(id: FighterId): BuyResult {
+    const e = this.active;
+    if (!this.playable || !e) return { ok: false, reason: 'Открыть бойца можно только во время события' };
+    const item = e.fighters?.find((x) => x.fighter === id);
+    if (!item) return { ok: false, reason: 'Этого бойца нет в обмене' };
+    const s = this.store.data;
+    if (s.fighters[id].unlocked) return { ok: false, reason: 'Боец уже в вашем составе' };
+    const p = this.progress(e.id);
+    const lack = item.cost - p.tokens;
+    if (lack > 0) return { ok: false, reason: `Не хватает ${lack} ${plural(lack, e.currency!.short)}` };
+    p.tokens -= item.cost;
+    p.spent += item.cost;
+    if (!p.fighters.some((f) => f.id === id)) p.fighters.push({ id, at: this.now() });
+    s.fighters[id].unlocked = true;
+    s.selected = id;
     this.version++;
     this.store.save();
     return { ok: true };

@@ -5,6 +5,7 @@ import { formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
 import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
+import { currencyIcon } from './EventsScreen';
 import { PASSIVE_ICONS, UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
@@ -21,7 +22,7 @@ export class RosterScreen implements Screen {
   private g: Game;
   private idx = 0;
   private dragId: number | null = null;
-  private backTo: 'menu' | 'prep' | 'career' = 'menu';
+  private backTo: 'menu' | 'prep' | 'career' | 'events' = 'menu';
   private lastX = 0;
 
   constructor(g: Game) {
@@ -50,15 +51,22 @@ export class RosterScreen implements Screen {
     window.addEventListener('pointercancel', end);
   }
 
-  get viewing(): FighterId {
-    return FIGHTER_ORDER[this.idx];
+  /** Alpha 1.7: who the roster shows — a seasonal star only once owned or while its event runs. */
+  private get order(): FighterId[] {
+    return FIGHTER_ORDER.filter((id) => this.g.events.fighterVisible(id));
   }
 
-  /** params: a fighter id (opened from a contract in Career) or { back: 'prep' }. */
+  get viewing(): FighterId {
+    const o = this.order;
+    return o[Math.min(this.idx, o.length - 1)];
+  }
+
+  /** params: a fighter id (opened from a contract in Career), { back: 'prep' }, or { back: 'events', fighter } (the season's star). */
   onShow(params?: unknown): void {
-    this.backTo = typeof params === 'string' ? 'career' : (params as { back?: 'prep' } | undefined)?.back === 'prep' ? 'prep' : 'menu';
-    const id = (typeof params === 'string' ? params : this.g.save.data.selected) as FighterId;
-    this.idx = Math.max(0, FIGHTER_ORDER.indexOf(id));
+    const p = params as { back?: 'prep' | 'events'; fighter?: FighterId } | undefined;
+    this.backTo = typeof params === 'string' ? 'career' : p?.back === 'prep' ? 'prep' : p?.back === 'events' ? 'events' : 'menu';
+    const id = (typeof params === 'string' ? params : (p?.fighter ?? this.g.save.data.selected)) as FighterId;
+    this.idx = Math.max(0, this.order.indexOf(id));
     this.render(false);
   }
 
@@ -69,14 +77,20 @@ export class RosterScreen implements Screen {
     const g = this.g;
     if (act === 'back') {
       g.audio.ui('click');
-      g.goto(this.backTo);
+      if (this.backTo === 'events') g.goto('events', { tab: 'rewards' });
+      else g.goto(this.backTo);
+    } else if (act === 'season') {
+      // Alpha 1.7: a seasonal star is opened in the event's exchange
+      g.audio.ui('click');
+      g.goto('events', { tab: 'rewards' });
     } else if (act === 'tab') {
       g.audio.ui('swipe');
       this.idx = Number(t.dataset.i);
       this.render();
     } else if (act === 'prev' || act === 'next') {
       g.audio.ui('swipe');
-      this.idx = (this.idx + (act === 'next' ? 1 : FIGHTER_ORDER.length - 1)) % FIGHTER_ORDER.length;
+      const n = this.order.length;
+      this.idx = (Math.min(this.idx, n - 1) + (act === 'next' ? 1 : n - 1)) % n;
       this.render();
     } else if (act === 'select') {
       if (g.career.select(this.viewing)) {
@@ -111,10 +125,11 @@ export class RosterScreen implements Screen {
     g.showcase.show(f.look, f.theme.accent);
     const sig = CARDS[f.signature];
     const pas = PASSIVES[f.passive];
-    const tabs = FIGHTER_ORDER.map((fid, i) => {
+    const order = this.order;
+    const tabs = order.map((fid, i) => {
       const ff = FIGHTERS[fid];
       const locked = !s.fighters[fid].unlocked;
-      return `<button class="roster-tab ${i === this.idx ? 'active' : ''} ${locked ? 'locked' : ''}" data-act="tab" data-i="${i}">
+      return `<button class="roster-tab ${fid === id ? 'active' : ''} ${locked ? 'locked' : ''} ${ff.seasonal ? 'seasonal' : ''}" data-act="tab" data-i="${i}">
         ${portraitHTML(g.portraits[ff.look], ff.theme.main, ff.theme.dark)}
         ${locked ? `<span class="lock">${UI_ICONS.lock}</span>` : ''}
       </button>`;
@@ -127,11 +142,24 @@ export class RosterScreen implements Screen {
     ).join('');
 
     let action = '';
+    const offer = f.seasonal && !fp.unlocked ? g.events.fighterOffer(id) : null;
     if (fp.unlocked) {
       action =
         s.selected === id
           ? `<button class="btn ghost wide disabled">${UI_ICONS.check.replace('<svg', '<svg width="16" height="16"')} Выбран для эфира</button>`
           : `<button class="btn teal wide" data-act="select">Выбрать бойца</button>`;
+    } else if (f.seasonal) {
+      // Alpha 1.7: a seasonal star — opened in the running event's exchange, kept for good
+      const ev = offer?.event ?? null;
+      const tokens = ev ? g.events.tokens(ev) : 0;
+      const cost = offer?.cost ?? 0;
+      const ok = !!offer && tokens >= cost;
+      action = `<div class="req-list">
+          <span class="req ${ok ? 'ok' : ''}">${ok ? '✓' : '✗'} ${cost} ${esc(ev?.currency?.name ?? '')}${ok ? '' : ` · у вас ${tokens}`}</span>
+          <span class="req ok">✓ Остаётся в составе навсегда</span>
+        </div>
+        <button class="btn wide season-btn" data-act="season"><span class="shine"></span>${ok ? 'Открыть' : 'Подробнее'} в «Событиях» · ${cost}<span class="eq-coin">${currencyIcon(ev)}</span></button>
+        <div class="center muted" style="font-size:11.5px;margin-top:8px">Эксклюзивный боец ${esc(f.seasonal.title)}: только во время события</div>`;
     } else {
       const c = g.career.canSign(id);
       const lvl = g.career.level().level;
@@ -167,10 +195,11 @@ export class RosterScreen implements Screen {
             <div class="fnick" style="color:${f.theme.accent}">«${esc(f.nickname)}»</div>
           </div>
           <div style="text-align:right">
-            <span class="chip ${s.selected === id ? 'gold' : fp.unlocked ? 'teal' : 'orange'}">${s.selected === id ? '★ Выбран' : fp.unlocked ? 'В составе' : 'Свободный агент'}</span>
+            <span class="chip ${s.selected === id ? 'gold' : fp.unlocked ? 'teal' : f.seasonal ? 'season' : 'orange'}">${s.selected === id ? '★ Выбран' : fp.unlocked ? 'В составе' : f.seasonal ? 'Сезонная звезда' : 'Свободный агент'}</span>
             <div class="label" style="margin-top:6px">${esc(f.style)}</div>
           </div>
         </div>
+        ${f.seasonal ? `<div class="season-star">${UI_ICONS.star.replace('<svg', '<svg width="12" height="12"')} ${esc(f.seasonal.title.toUpperCase())} · СЕЗОННАЯ ЗВЕЗДА</div>` : ''}
         <div class="proscons">${f.strengths.map((x) => `<span class="pro">+ ${esc(x)}</span>`).join('')}${f.weaknesses.map((x) => `<span class="con">− ${esc(x)}</span>`).join('')}</div>
         <p>${esc(f.bio)}</p>
         <div class="stat-bars">${bars}</div>

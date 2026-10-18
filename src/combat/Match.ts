@@ -17,7 +17,7 @@ import { StageObjects } from './StageObjects';
 import type { CardFailReason, Decoy, MatchEvent, MatchPhase, MatchResultData, Projectile, PropState, SmokeZone } from './types';
 
 /** Cards that need the fighter's body free (no charge, rush or recovery running); a DASH-like move defers them. */
-const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack']);
+const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack', 'bat_bite']);
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 
 export interface MatchConfig {
@@ -392,7 +392,7 @@ export class Match implements BroadcastHost {
     const a = f.action.kind;
     let defer = false;
     if (NEEDS_BODY.has(card)) {
-      if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut') return no('busy');
+      if (a === 'windup' || a === 'rush' || a === 'recover' || a === 'cut' || a === 'bite') return no('busy');
       if (a === 'dash' || a === 'feint' || a === 'rewind') {
         if (card === 'dash' || card === 'false_start' || this.deferred[side]) return no('busy');
         defer = true;
@@ -400,7 +400,7 @@ export class Match implements BroadcastHost {
     }
     // one read window at a time
     if (card === 'false_start' && f.feint > 0) return no('busy');
-    if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut')) return no('busy');
+    if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut' || a === 'bite')) return no('busy');
     return { fail: null, defer };
   }
 
@@ -611,6 +611,12 @@ export class Match implements BroadcastHost {
     target.shield = 0;
     target.overdrive = 0;
     target.adrenaline = 0;
+    // Alpha 1.7: a knocked-out fighter stops bleeding and swinging
+    target.strikeT = 0;
+    if (target.bleedTicks > 0) {
+      target.bleedTicks = 0;
+      this.emit({ type: 'bleedEnd', side: target.side });
+    }
     this.emit({ type: 'ko', side: target.side, x: target.x, z: target.z, heavy });
     this.finish('ko', (1 - target.side) as Side);
   }
@@ -657,6 +663,12 @@ export class Match implements BroadcastHost {
       f.tether = 0;
       f.frame = 0;
       f.shoveX = f.shoveZ = 0;
+      // Alpha 1.7: a bleed and a swing on its way end with the fight
+      f.strikeT = 0;
+      if (f.bleedTicks > 0) {
+        f.bleedTicks = 0;
+        this.emit({ type: 'bleedEnd', side: f.side });
+      }
     }
     // Alpha 1.6: every temporary set piece leaves the stage
     this.objects.clear();

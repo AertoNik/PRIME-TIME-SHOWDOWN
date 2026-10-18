@@ -1907,6 +1907,12 @@ input {
   color: #9ad8ff;
   font-size: 12px;
 }
+/* Alpha 1.7: BAT BITE bleed ticks — small crimson numbers */
+.dmg.bleed {
+  color: #ff5a78;
+  font-size: 13px;
+  text-shadow: 0 2px 0 rgba(40, 0, 12, 0.7), 0 0 8px rgba(255, 40, 80, 0.55);
+}
 .dmg.miss {
   color: #c8c0ff;
   font-size: 12px;
@@ -7147,4 +7153,257 @@ input {
   to {
     opacity: 0;
   }
+}
+
+/* ------------------------------------------------------------------ Alpha 1.7 — BLOOD MOON PREMIERE */
+/* the roster keeps square portraits when a seasonal star makes it seven */
+.roster-tabs {
+  gap: 8px;
+}
+.roster-tab {
+  flex: 0 1 64px;
+  height: auto;
+  aspect-ratio: 1;
+}
+.roster-tab.seasonal .portrait {
+  box-shadow: 0 0 0 2px rgba(255, 77, 109, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.roster-tab.seasonal.active .portrait {
+  box-shadow: 0 0 0 3px #ff4d6d, 0 0 20px rgba(255, 60, 100, 0.55);
+}
+.chip.season {
+  color: #ffb3c1;
+  background: rgba(196, 18, 58, 0.18);
+  box-shadow: 0 0 0 1px rgba(255, 77, 109, 0.5);
+}
+.season-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: #ffd0d8;
+  background: linear-gradient(90deg, rgba(196, 18, 58, 0.35), rgba(80, 12, 60, 0.25));
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 109, 0.45);
+}
+.season-btn {
+  background: linear-gradient(180deg, #e0244a, #7a0f2c);
+  box-shadow: 0 6px 0 #3e0716, 0 10px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* the season's star in «События» */
+.ev-star {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 12px 12px 10px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, rgba(196, 18, 58, 0.42), rgba(60, 10, 50, 0.18) 55%, transparent 80%), linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 0 0 1.5px rgba(255, 77, 109, 0.55), 0 10px 24px rgba(0, 0, 0, 0.45), 0 0 26px rgba(196, 18, 58, 0.18);
+}
+.ev-star::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -40px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 90, 120, 0.22), transparent 65%);
+  pointer-events: none;
+}
+.ev-star.ready {
+  box-shadow: inset 0 0 0 2px #ff4d6d, 0 0 28px rgba(255, 60, 100, 0.5), 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+.ev-star.owned {
+  box-shadow: inset 0 0 0 1.5px rgba(var(--teal-rgb), 0.6), 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+.es-art {
+  position: relative;
+  flex: none;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.ev-star.compact .es-art {
+  width: 60px;
+  height: 60px;
+}
+.es-portrait {
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  box-shadow: 0 0 0 2px rgba(255, 77, 109, 0.7), 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.es-moon {
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  width: 26px;
+  height: 26px;
+  filter: drop-shadow(0 0 6px rgba(255, 60, 100, 0.7));
+}
+.es-moon svg {
+  width: 100%;
+  height: 100%;
+}
+.es-main {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.es-kind {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ff8aa0;
+}
+.es-name {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.ev-star.compact .es-name {
+  font-size: 16px;
+}
+.es-title {
+  margin-top: 2px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #ffd0d8;
+}
+.es-desc {
+  margin: 6px 0 2px;
+  font-size: 11.5px;
+  line-height: 1.32;
+  color: #dccfe8;
+}
+.es-prog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+.es-prog .progress {
+  flex: 1;
+  height: 7px;
+}
+.es-prog span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.es-own {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--teal);
+}
+.es-side {
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+.es-buy,
+.es-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.es-buy.short {
+  filter: saturate(0.6) brightness(0.85);
+}
+.es-open {
+  white-space: nowrap;
+}
+@container (max-width: 360px) {
+  .ev-star:not(.compact) {
+    flex-wrap: wrap;
+  }
+  .ev-star:not(.compact) .es-side {
+    width: 100%;
+  }
+  .ev-star:not(.compact) .es-buy {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* the reveal of a new seasonal star */
+.star-pop .rp-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(255, 60, 100, 0.26) 0 10deg, transparent 10deg 24deg);
+}
+.rp-portrait {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  margin: 0 auto 10px;
+  animation: rpPop 0.6s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.rp-portrait .portrait {
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  box-shadow: 0 0 0 3px #ff4d6d, 0 0 34px rgba(255, 60, 100, 0.6);
+}
+.star-pop .rp-kind {
+  color: #ff8aa0;
+}
+.rp-sub {
+  position: relative;
+  margin: -2px 0 8px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: #ffd0d8;
+}
+
+/* MY COLLECTION: a seasonal star */
+.col-card.col-star.owned {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 77, 109, 0.55), 0 0 18px rgba(196, 18, 58, 0.15);
+}
+.col-star .cc-art .portrait {
+  width: 70px;
+  height: 70px;
+  border-radius: 14px;
+}
+.col-star .cc-rarity {
+  color: #ff8aa0;
+}
+/* the results screen: progress toward the season's star */
+.evr-star {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #ffd0d8;
+}
+.evr-star .progress {
+  flex: 1;
+  height: 6px;
 }

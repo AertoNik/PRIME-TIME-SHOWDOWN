@@ -26,6 +26,7 @@ import type { CameraRig } from './CameraRig';
 import { CardVisuals } from './CardVisuals';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache } from './ModelCache';
+import { NightFX } from './NightFX';
 import type { Renderer } from './Renderer';
 import { glowTexture, shadowTexture, streakTexture, teamRingTexture } from './textures';
 import type { FighterFX, VFX } from './VFX';
@@ -123,6 +124,10 @@ export class BattleView {
   private cutOwner = -1;
   /** Alpha 1.6: nets, mines, barriers, props, cameras, freeze zones, tags, cables and frames. */
   private cards: CardVisuals;
+  /** Alpha 1.7: LUCIEN's bats, cane slashes and the vampire mark. */
+  private night: NightFX;
+  /** Alpha 1.7: the variant of each side's cane strike in progress (for its slash arc). */
+  private strikeVar: [number, number] = [0, 0];
 
   constructor(r: Renderer, arena: Arena, vfx: VFX, cam: CameraRig, models: ModelCache, timeFx: TimeFx) {
     this.r = r;
@@ -133,6 +138,7 @@ export class BattleView {
     this.timeFx = timeFx;
     r.scene.add(this.root);
     this.cards = new CardVisuals(this.root);
+    this.night = new NightFX(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
     const streakGeo = new PlaneGeometry(1, 1);
     streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
@@ -297,6 +303,7 @@ export class BattleView {
     this.vfx.cutLane.hide();
     this.cutOwner = -1;
     this.cards.reset();
+    this.night.reset();
     this.slots = [];
     this.match = null;
   }
@@ -376,6 +383,9 @@ export class BattleView {
       (side) => this.slots[side].pos,
       (side, out) => this.slots[side].model.rig.handL.getWorldPosition(out),
     );
+    // Alpha 1.7: LUCIEN's swarm follows him; the marks follow the bleeding
+    const luc = m.fighters.find((f) => f.stats.attack.weapon === 'cane') ?? null;
+    this.night.update(dt, luc, (side) => this.slots[side].pos);
     // Alpha 1.6.1 SECOND TAKE: the replay ghosts appear, raise the weapon, fire and fade
     for (const [id, e] of this.echoes) {
       e.age += dt;
@@ -459,10 +469,13 @@ export class BattleView {
     inp.cutStage = f.action.kind === 'cut' ? f.action.stage : null;
     inp.actionT = 't' in f.action ? f.action.t : 0;
     inp.actionTotal = 'total' in f.action ? f.action.total : 1;
-    if (f.action.kind === 'rush' || f.action.kind === 'dash' || f.action.kind === 'feint' || f.action.kind === 'rewind') {
+    if (f.action.kind === 'rush' || f.action.kind === 'dash' || f.action.kind === 'feint' || f.action.kind === 'rewind' || f.action.kind === 'bite') {
       inp.dashX = f.action.dirX;
       inp.dashZ = f.action.dirZ;
     }
+    // Alpha 1.7: Lucien's cane mode and the BAT BITE stage
+    inp.melee = f.caneStrike;
+    inp.biteStage = f.action.kind === 'bite' ? f.action.stage : null;
     inp.reading = f.feint > 0;
     inp.fireIn = f.wantFire && !f.ko ? f.fireTimer : -1;
     inp.zap = f.zap > 0;
@@ -498,7 +511,9 @@ export class BattleView {
     const cutCharge = ca.kind === 'cut' && ca.stage === 'lock' ? 0.45 + clamp01(ca.t / ca.total) * 0.75 : ca.kind === 'cut' && ca.stage === 'prep' ? 0.35 : 0;
     // Alpha 1.5.5: Zoe's SHOCK charge glows in her hand until the bolt leaves
     const zapCharge = f.zap > 0 ? 0.9 + Math.sin(this.t * 40) * 0.3 : 0;
-    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : Math.max(cutCharge, zapCharge), 12, dt);
+    // Alpha 1.7: crimson light gathers at the cane's tip as Lucien points it for the next bolt
+    const caneCharge = f.stats.attack.weapon === 'cane' && !f.caneStrike && f.wantFire && f.action.kind === 'none' && !f.ko && f.fireTimer < 0.18 ? 0.35 + (0.18 - Math.max(0, f.fireTimer)) * 3.5 : 0;
+    fx.chargeOn = damp(fx.chargeOn, winding ? 0.4 + (f.action.kind === 'windup' ? f.action.t / f.action.total : 0) : Math.max(cutCharge, zapCharge, caneCharge), 12, dt);
     if (f.zap > 0 && rng.chance(dt * 30)) {
       const h = s.model.rig.handR.getWorldPosition(_v3);
       this.vfx.burst(h.x, h.y, h.z, _c.set(0xffe14d), 3, 2.5, 0.06, 0.18, 2.4);
@@ -559,11 +574,16 @@ export class BattleView {
     if (s.trailT > 0) s.trailT -= dt;
     const fast = Math.hypot(f.vx, f.vz) > f.stats.moveSpeed * 1.05;
     const buffed = (f.overdrive > 0 || f.adrenaline > 0 || f.momentum > 0) && fast;
-    const emit = !f.ko && (s.trailT > 0 || f.action.kind === 'rush' || buffed);
+    const lunge = f.action.kind === 'bite' && f.action.stage === 'rush';
+    const emit = !f.ko && (s.trailT > 0 || f.action.kind === 'rush' || lunge || buffed);
     const tr = fx.trail;
     if (f.action.kind === 'rush') {
       tr.width = 1.1;
       tr.color.set(0xff5a2a);
+    } else if (lunge) {
+      // Alpha 1.7: the BAT BITE lunge leaves a crimson-violet wake
+      tr.width = 1.0;
+      tr.color.set(0xc4123a);
     } else if (s.trailT > 0) {
       tr.width = s.dashColor !== s.accent ? 1.05 : 0.9;
       tr.color.copy(s.dashColor);
@@ -714,6 +734,14 @@ export class BattleView {
         elong = 3.6;
         v.streakLen = 1.6;
         v.streakWidth = 0.14;
+        if (p.weapon === 'cane') {
+          // Alpha 1.7 — Lucien's bolt: a fat crimson drop of energy with a short pulsing wake
+          r = 0.13;
+          elong = 2.4;
+          v.streakLen = 1.35;
+          v.streakWidth = 0.22;
+          v.flicker = true;
+        }
     }
     v.core.scale.set(r, r, r * elong);
     v.coreMat.color.copy(accent).lerp(_c.set(0xffffff), 0.55).multiplyScalar(p.kind === 'power' ? 4 : 3);
@@ -778,6 +806,10 @@ export class BattleView {
       this.vfx.sparks.spawn(x, v.y, z, 0, 0.05, 0, 0.32, 0.22, 0, rng.chance(0.5) ? _c.set(0x7ff6ff) : _c.set(0xc08cff), 2, 0, 0);
     }
     if (p.echo && rng.chance(0.5)) this.vfx.sparks.spawn(x, v.y, z, -p.vx * 0.04, 0.1, -p.vz * 0.04, 0.25, 0.18, 0.02, _c.set(0xc08cff), 2.2, 1, 0);
+    // Alpha 1.7: crimson and violet motes shed by Lucien's bolts
+    if (p.weapon === 'cane' && p.kind === 'auto' && rng.chance(0.35)) {
+      this.vfx.sparks.spawn(x, v.y, z, -p.vx * 0.03 + rng.range(-0.3, 0.3), rng.range(0, 0.5), -p.vz * 0.03 + rng.range(-0.3, 0.3), 0.3, 0.16, 0.01, rng.chance(0.5) ? _c.set(0xff4d6d) : _c.set(0x9b4dff), 2.2, 1, 0);
+    }
 
     // sparse particle wake (power shots and bolts only — tracers do the rest)
     const s = this.slots[p.owner];
@@ -840,14 +872,21 @@ export class BattleView {
       case 'hit': {
         const s = this.slots[e.side];
         const src = this.slots[e.source];
-        if (e.kind !== 'dot') s.model.anim.hit(e.dx, e.dz, e.heavy);
+        if (e.kind !== 'dot' && e.kind !== 'bleed') s.model.anim.hit(e.dx, e.dz, e.heavy);
         const p = this.chest(e.side, _v);
         const col = e.electric ? _c.set(0xffe14d) : src.accent;
         if (e.kind === 'dot') {
           this.vfx.burst(p.x, p.y, p.z, _c.set(0xff4fd8), 4, 3, 0.12, 0.3, 2);
           break;
         }
-        const weapon: WeaponType | null = e.kind === 'auto' || e.kind === 'adrenaline' ? src.model.rig.look.weapon : null;
+        if (e.kind === 'bleed') {
+          // Alpha 1.7: the bleed is crimson energy rising off the target — never blood
+          for (let i = 0; i < 5; i++) {
+            this.vfx.sparks.spawn(p.x + rng.range(-0.25, 0.25), p.y + rng.range(-0.2, 0.3), p.z + rng.range(-0.25, 0.25), rng.range(-0.2, 0.2), rng.range(1.2, 2.2), rng.range(-0.2, 0.2), rng.range(0.4, 0.7), 0.18, -0.4, i % 2 ? _c.set(0xff3a5c) : _c.set(0x9b4dff), 2.2, 1, 0);
+          }
+          break;
+        }
+        const weapon: WeaponType | null = e.kind === 'auto' || e.kind === 'adrenaline' || e.kind === 'cane' ? src.model.rig.look.weapon : null;
         this.vfx.impactFor(weapon, p.x + e.dx * -0.3, p.y, p.z + e.dz * -0.3, col, e.heavy, e.crit);
         if (e.electric) {
           for (let i = 0; i < 4; i++) {
@@ -989,9 +1028,15 @@ export class BattleView {
       case 'telegraph': {
         const s = this.slots[e.side];
         const ko = e.card === 'knockout';
+        const bite = e.card === 'bat_bite';
         s.fx.laneLocked = false;
-        s.fx.laneLen = ko ? 5.8 : e.player ? 6 : 11;
-        s.fx.laneWidth = ko ? 1.5 : 1.0;
+        s.fx.laneLen = ko ? 5.8 : bite ? 5.2 : e.player ? 6 : 11;
+        s.fx.laneWidth = ko ? 1.5 : bite ? 1.3 : 1.0;
+        // Alpha 1.7 — BAT BITE: the bats gather around him in the predatory coil
+        if (bite) {
+          this.night.gather(e.side, s.pos.x, s.pos.z);
+          this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xc4123a), 0.5, 2.6, 0.4, 2.2);
+        }
         s.fx.laneMat.color.copy(e.side === 1 ? _c.set(0xff3a2a) : _c.set(0x2ad8ff)).multiplyScalar(e.player ? 0.9 : 1.6);
         s.fx.ringMat.color.copy(s.fx.laneMat.color);
         break;
@@ -1076,8 +1121,55 @@ export class BattleView {
           this.vfx.burst(e.fromX, 1.1, e.fromZ, dc, 20, 4, 0.2, 0.35, 2.6);
           this.vfx.burst(e.toX, 1.1, e.toZ, dc, 20, 4, 0.2, 0.35, 2.6);
         }
+        // Alpha 1.7: Lucien swirls away in a flurry of bats
+        if (e.style === 'swirl') this.night.dashBurst(e.fromX, e.fromZ);
         break;
       }
+      // ------------------------------------------------ Alpha 1.7 — LUCIEN
+      case 'strike': {
+        this.strikeVar[e.side] = e.variant;
+        this.slots[e.side].model.anim.strike(e.variant, e.windup);
+        break;
+      }
+      case 'slash': {
+        const s = this.slots[e.side];
+        const hit = e.outcome === 'hit';
+        this.night.slash(s.pos.x, s.pos.z, e.dx, e.dz, this.strikeVar[e.side], hit, hit ? 0xff3a5c : 0xff7a92);
+        if (hit) this.vfx.flash(e.x, 1.15, e.z, _c.set(0xff4d6d), 0.4, 1.3, 0.1, 2.4);
+        else if (e.outcome === 'blocked') this.vfx.burst(e.x, 1.1, e.z, _c.set(0xffd0d8), 8, 4, 0.1, 0.25, 2.4);
+        break;
+      }
+      case 'bite': {
+        const s = this.slots[e.side];
+        if (e.what === 'rush') {
+          this.night.trail();
+          this.vfx.dust(e.x, e.z, 10, e.dx, e.dz);
+          this.vfx.ring(e.x, e.z, _c.set(0xc4123a), 0.5, 2.8, 0.3, 2.2);
+          this.cam.addTrauma(0.12);
+        } else if (e.what === 'hit') {
+          // the bite: a crimson flash, a burst of crimson and violet energy, the bats scatter
+          s.model.anim.biteHit();
+          this.night.scatter();
+          const crim = _c.set(0xff2a4a);
+          this.vfx.flash(e.x, 1.4, e.z, crim, 1, 3.2, 0.22, 3);
+          this.vfx.rays(e.x, 1.4, e.z, crim, 0.8, 3.4, 0.4, 2.4);
+          this.vfx.burst(e.x, 1.4, e.z, crim, 22, 6, 0.16, 0.5, 2.6, -1, 1);
+          this.vfx.burst(e.x, 1.4, e.z, _c.set(0x9b4dff), 14, 5, 0.14, 0.5, 2.4, -1, 1);
+          this.vfx.ring(e.x, e.z, crim, 0.6, 3.4, 0.4, 2.6);
+        } else {
+          // a shield or a STAGE BARRIER stopped it: the swarm splashes and scatters
+          this.night.scatter();
+          this.vfx.burst(e.x, 1.2, e.z, _c.set(0xff7a92), 14, 5, 0.14, 0.35, 2.4);
+          if (e.what === 'barrier') this.vfx.wallHit(e.x, e.z, _c.set(0xc4123a), true);
+        }
+        break;
+      }
+      case 'bleed':
+        this.night.setMark(e.side, true);
+        break;
+      case 'bleedEnd':
+        this.night.setMark(e.side, false);
+        break;
       case 'rush': {
         const s = this.slots[e.side];
         this.vfx.dust(e.x, e.z, 12, e.dx, e.dz);

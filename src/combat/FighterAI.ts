@@ -167,7 +167,9 @@ export class FighterAI {
     } else if (b.retreatHp > 0 && f.hpFrac < b.retreatHp && losing) {
       desired *= 1.2;
     }
-    if (this.surgeT > 0) desired *= 0.65;
+    // (Alpha 1.7: a duelist with a cane surges all the way in on a gunfighter — a phrase of strikes,
+    // then out again; a shotgun brawler comes close by himself, and nobody walks into the champion's rifle)
+    if (this.surgeT > 0) desired *= f.stats.attack.melee && foe.stats.attack.range >= 7 && !this.m.boss ? 0.42 : 0.65;
     // relentless fighters never back off for low health
     if (b.pressure > 0 && f.hpFrac < 0.3) desired = Math.min(desired, f.stats.preferredRange * b.rangeMult);
     // BOSS FIGHT: the champion's rifle outranges everyone — whatever the surge or phase, he
@@ -524,6 +526,13 @@ export class FighterAI {
     f.seenZ = t.z;
     f.seenVX = t.vx;
     f.seenVZ = t.vz;
+    // Alpha 1.7: a melee swing goes at the body this fighter sees (a HOLO DECOY fools it too), no lead
+    f.meleeX = holo ? holo.x : t.x;
+    f.meleeZ = holo ? holo.z : t.z;
+    if (f.caneStrike) {
+      f.aimX = f.meleeX;
+      f.aimZ = f.meleeZ;
+    }
     this.aimTimer -= dt;
     if (this.aimTimer <= 0) {
       this.aimTimer = 0.22;
@@ -597,7 +606,7 @@ export class FighterAI {
         if (near >= 0) return { key: 'cl' + fa.shot + '_' + Math.round(fa.lockedAt * 20), kind: 'incoming' };
       }
     }
-    if (fa.kind === 'rush') {
+    if (fa.kind === 'rush' || (fa.kind === 'bite' && fa.stage === 'rush')) {
       const toX = f.x - foe.x;
       const toZ = f.z - foe.z;
       const along = toX * fa.dirX + toZ * fa.dirZ;
@@ -699,7 +708,7 @@ export class FighterAI {
         if (!first || !second || first === second) continue;
         const total = CARDS[first].cost + CARDS[second].cost;
         if (hand.energy < CARDS[first].cost || hand.energy + regen < total) continue;
-        if (!this.comboMakesSense(c.id, f, foe)) continue;
+        if (!this.comboMakesSense(c.id, f, foe, second)) continue;
         if (this.tryPlay(first)) {
           this.plan = { second, until: m.time + MATCH.comboWindow - 0.1 };
           return;
@@ -742,8 +751,10 @@ export class FighterAI {
     return false;
   }
 
-  private comboMakesSense(id: string, f: FighterSim, foe: FighterSim): boolean {
+  private comboMakesSense(id: string, f: FighterSim, foe: FighterSim, second?: CardId): boolean {
     const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    // Alpha 1.7: BAT BITE is a lunge — the combo only makes sense within its reach
+    if (second === 'bat_bite') return dist < CARD_TUNING.bat_bite.rushDistance * 0.85 && foe.shield <= 0;
     const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
     switch (id) {
       // Alpha 1.6
@@ -822,6 +833,17 @@ export class FighterAI {
         if (foe.hp < 700) s += 2.5;
         if (opening) s += 2.5;
         break;
+      case 'bat_bite': {
+        // Alpha 1.7: the lunge needs to reach — close enough, and not into a raised shield
+        const reach = CARD_TUNING.bat_bite.rushDistance;
+        s = dist < reach * 0.8 ? 5.5 : dist < reach ? 2.5 : 0;
+        if (foeDisabled) s += 4.5;
+        if (foeBlocking) s -= 6;
+        if (combo) s += 4;
+        if (foe.hp < 500) s += 2;
+        if (foe.bleedTicks > 2) s -= 2;
+        break;
+      }
       case 'knockout':
         s = dist < 4.8 ? 5.2 : 0.5;
         if (foeDisabled) s += 4.5;

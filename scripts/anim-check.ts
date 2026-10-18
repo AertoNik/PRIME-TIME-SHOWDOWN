@@ -9,7 +9,7 @@ import { defaultInput, type AnimInput } from '../src/render/FighterAnimator';
 import { ModelCache } from '../src/render/ModelCache';
 import type { FighterRig } from '../src/render/FighterModel';
 
-const LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
+const LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
 const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
 const models = new ModelCache();
@@ -129,7 +129,7 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
 {
   let repeats = 0;
   const seen = new Set<string>();
-  for (const look of ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'crash', 'vale']) {
+  for (const look of ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'crash', 'vale']) {
     const { anim } = models.get(look);
     let last: string | null = null;
     for (let i = 0; i < 40; i++) {
@@ -142,13 +142,13 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
     }
   }
   check(`victories: never the same routine twice in a row (repeats: ${repeats})`, repeats === 0);
-  check(`victories: all 24 routines of the eight characters come up (${seen.size})`, seen.size === 24);
+  check(`victories: all 27 routines of the nine characters come up (${seen.size})`, seen.size === 27);
 }
 
 // weapon fire styles
 {
   const weapons = Object.keys(FIRE_STYLE);
-  check(`fire styles exist for all ${weapons.length} weapons`, weapons.length === 7);
+  check(`fire styles exist for all ${weapons.length} weapons`, weapons.length === 8);
   // the opening shot after a pause commits harder than the next shot of the series
   const { rig, anim } = models.get('bruno');
   anim.reset(0);
