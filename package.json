@@ -1,8 +1,8 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.7.5-alpha",
-  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.7.5: Graveyard Broadcast)",
+  "version": "1.7.6-alpha",
+  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.7.6: Graveyard Broadcast)",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

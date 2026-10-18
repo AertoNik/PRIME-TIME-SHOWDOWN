@@ -1308,9 +1308,11 @@ export class GraveyardStage extends Stage {
       this.group.add(c.pivot);
       this.cones.push(c);
     }
-    // a lighting truss across the set (the spotlights hang from it)
+    // the lighting truss the spotlights hang from: two rails along the sides of the set, above the
+    // lamps (Alpha 1.7.6 — beams ACROSS the set at this height hung between the battle camera and the
+    // floor and cut the fight with a dark bar whenever it moved to the far half)
     const steel = new MeshStandardMaterial({ color: 0x2a2c34, roughness: 0.4, metalness: 0.8 });
-    this.group.add(new Mesh(merge([new BoxGeometry(20, 0.18, 0.18).translate(0, 11.5, -6), new BoxGeometry(20, 0.18, 0.18).translate(0, 11.5, 4)]), steel));
+    this.group.add(new Mesh(merge([new BoxGeometry(0.18, 0.18, 12).translate(-9, 11.5, -1), new BoxGeometry(0.18, 0.18, 12).translate(9, 11.5, -1)]), steel));
   }
 
   // ------------------------------------------------------------------ cover
