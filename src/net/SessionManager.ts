@@ -5,9 +5,11 @@ import { PrimeApiError, type PrimeApi, type SessionToken } from './PrimeApi';
 //
 //   claim      opening the game / «Продолжить здесь» — this page takes the session over; every
 //              other page of the account loses it at once (the server raises a fencing generation)
-//   heartbeat  every ~20 s while the page is visible: «still here». It NEVER takes the session back:
-//              a page that lost it only learns so and stops (no tab ever grabs the session in the
-//              background, so two pages cannot keep snatching it from each other)
+//   heartbeat  «still here» — every 4 s while the player uses the visible page, every ~20 s while it
+//              only stays open, none in the background, plus a check at once when the page comes back,
+//              gets the focus or is touched, and before a match starts (1.8.3.1). It NEVER takes the
+//              session back: a page that lost it only learns so and stops (no tab ever grabs the session
+//              in the background, so two pages cannot keep snatching it from each other)
 //   writes     every cloud write carries { key, generation } (PrimeApi.session); the server checks it
 //              in the same transaction as the write — a late request of a page that lost the session
 //              is refused, it cannot overwrite what the new page saved
@@ -42,7 +44,16 @@ export interface SessionOptions {
   ttlMs?: number;
   /** Heartbeat by itself (browser). The checks call beat() directly. */
   autoTimers?: boolean;
+  /** 1.8.3.1: the heartbeat while the player uses the page (default 4 s); `heartbeatMs` is the idle one. */
+  activeMs?: number;
+  /** 1.8.3.1: no touch / key for this long = the page only stays open (default 90 s). */
+  idleAfterMs?: number;
 }
+
+/** 1.8.3.1: checks triggered by the player (touch, focus) — at most one per this gap. */
+const NUDGE_GAP_MS = 1500;
+/** 1.8.3.1: after «too many requests» the heartbeat slows down this long (the session stays as it was). */
+const RATE_BACKOFF_MS = 60000;
 
 function newKey(): string {
   const bytes = new Uint8Array(16);
@@ -69,14 +80,25 @@ export class SessionManager {
   previous: { label: string } | null = null;
   heartbeatMs: number;
   ttlMs: number;
+  /** 1.8.3.1: the heartbeat while the player uses the page. */
+  readonly activeMs: number;
+  private readonly idleAfterMs: number;
   private listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private timerAt = 0;
   private paused = false;
   private beating: Promise<SessionState> | null = null;
+  /** 1.8.3.1: last touch / key / focus on this page, last heartbeat sent, slow-down after a 429. */
+  private lastInput = 0;
+  private lastBeat = 0;
+  private backoffUntil = 0;
 
   constructor(private readonly o: SessionOptions) {
     this.heartbeatMs = o.heartbeatMs ?? 20000;
     this.ttlMs = o.ttlMs ?? 75000;
+    this.activeMs = o.activeMs ?? 4000;
+    this.idleAfterMs = o.idleAfterMs ?? 90000;
+    this.lastInput = this.now();
   }
 
   private now(): number {
@@ -149,6 +171,7 @@ export class SessionManager {
   private async doBeat(): Promise<SessionState> {
     const t = this.token;
     if (!t || !this.canWrite) return this.state;
+    this.lastBeat = this.now();
     try {
       await this.o.api.heartbeat(t);
       this.lastConfirmed = this.now();
@@ -157,11 +180,45 @@ export class SessionManager {
       const err = e instanceof PrimeApiError ? e : new PrimeApiError('network', 'network', 0);
       if (err.kind === 'superseded') this.markSuperseded(err.data);
       else if (err.kind === 'unauthorized') this.set('signed-out');
+      // the server answered «too many requests» (it is there): slow down, the session stays as it was
+      else if (err.kind === 'rate') this.backoffUntil = this.now() + RATE_BACKOFF_MS;
       // offline / server trouble: still ours as far as we know; matches stop once it is too long ago
       else this.set('unconfirmed');
     }
     this.schedule();
     return this.state;
+  }
+
+  /**
+   * 1.8.3.1: «is this page still the one that plays?» — answered from the last confirmation when it is
+   * at most `maxAgeMs` old, otherwise asked now (a match is about to start).
+   */
+  check(maxAgeMs: number): Promise<SessionState> {
+    if (this.state === 'active' && this.now() - this.lastConfirmed <= maxAgeMs) return Promise.resolve(this.state);
+    return this.beat();
+  }
+
+  /**
+   * 1.8.3.1: the player touched / focused the page: back to the quick heartbeat, and a check right away
+   * if the last one is a little old (so another device's takeover shows the moment they look here).
+   */
+  noteActivity(): void {
+    const t = this.now();
+    this.lastInput = t;
+    if (this.paused || !this.canWrite) return;
+    if (t - this.lastBeat >= NUDGE_GAP_MS && t >= this.backoffUntil) {
+      void this.beat();
+      return;
+    }
+    // a slow (idle) heartbeat was planned: bring it forward
+    if (this.timer && this.timerAt - t > this.activeMs) this.schedule();
+  }
+
+  /** 1.8.3.1: how long until the next heartbeat (quick while the player uses the page). */
+  nextDelay(): number {
+    const t = this.now();
+    if (t < this.backoffUntil) return Math.max(this.heartbeatMs, 20000);
+    return t - this.lastInput < this.idleAfterMs ? Math.min(this.activeMs, this.heartbeatMs) : this.heartbeatMs;
   }
 
   /** The server refused a write or a heartbeat: another page holds the session now. */
@@ -193,6 +250,7 @@ export class SessionManager {
   /** Back in front: check at once whether this page still holds the session. */
   resume(): void {
     this.paused = false;
+    this.lastInput = this.now();
     if (this.canWrite) void this.beat();
   }
 
@@ -204,10 +262,12 @@ export class SessionManager {
   private schedule(): void {
     this.stopTimer();
     if (!this.o.autoTimers || this.paused || !this.canWrite) return;
+    const ms = this.nextDelay();
+    this.timerAt = this.now() + ms;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.beat();
-    }, this.heartbeatMs);
+    }, ms);
   }
 
   private stopTimer(): void {

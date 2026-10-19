@@ -1,12 +1,14 @@
 import type { ProfileId } from '../meta/SaveSystem';
 import { AccountService, type LoginPlan } from '../net/AccountService';
-import { AUTH_KEY, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
+import { AUTH_KEY, emptySyncMeta, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
+import { readCloudText } from '../net/cloudSave';
 import { browserStorage } from '../net/build';
 import type { NetworkConfig } from '../net/config';
 import { PrimeApi, PrimeApiError, type CloudSave, type Me, type RegisterInput, type RegisterResult, type ServerConfig } from '../net/PrimeApi';
 import { SessionManager, deviceLabel } from '../net/SessionManager';
 import { SyncManager, type SyncStatus } from '../net/SyncManager';
 import { accountAction, accountPanelHTML, cloudLabel, explainGate, showKeptDevice, showSessionTaken, showSyncDecision, syncLine } from '../ui/accountUI';
+import type { CloudState } from '../ui/cloudPill';
 import type { Game } from './Game';
 
 // Alpha 1.8.1–1.8.3 — the accounts layer of a running page. It owns the API client, the
@@ -39,6 +41,11 @@ export type AccountView =
 
 /** 1.8.3: why a match under the PRIME ID cannot start right now (null: it can). */
 export type PlayGate = 'loading' | 'offline' | 'superseded' | 'signed-out';
+
+/** 1.8.3.1: before a match the session must have been confirmed at most this long ago… */
+const FRESH_MS = 1000;
+/** …otherwise it is asked, waiting at most this long for the answer. */
+const FRESH_WAIT_MS = 2500;
 
 export class AccountRuntime {
   api: PrimeApi | null = null;
@@ -156,6 +163,25 @@ export class AccountRuntime {
   /** A finished match must not pay into the account: this page lost the game session. */
   rewardsBlocked(): boolean {
     return this.cloud2 && !!this.playing && this.session?.state === 'superseded';
+  }
+
+  /**
+   * 1.8.3.1: a match is about to start and the last confirmation is a few seconds old — ask the server
+   * first (another device may have taken over since the last heartbeat).
+   */
+  needsFreshCheck(): boolean {
+    const s = this.session;
+    return this.cloud2 && !!this.playing && !!s && s.state === 'active' && Date.now() - s.lastConfirmed > FRESH_MS;
+  }
+
+  /**
+   * …that check: the answer of the server — or, if it is slow, the gate as it stands (still within
+   * the session's lifetime: a slow network does not hold the match back). Never claims.
+   */
+  async confirmFresh(): Promise<PlayGate | null> {
+    const s = this.session;
+    if (s) await Promise.race([s.check(FRESH_MS), new Promise((r) => setTimeout(r, FRESH_WAIT_MS))]);
+    return this.gate();
   }
 
   /** The tap on a match button met the gate: say why (and offer what can be done). */
@@ -341,7 +367,7 @@ export class AccountRuntime {
     this.g.pauseForAccount();
     if (!this.lostShown) {
       this.lostShown = true;
-      showSessionTaken(this.g, this.session?.holder ?? '');
+      showSessionTaken(this.g);
     }
   }
 
@@ -357,6 +383,18 @@ export class AccountRuntime {
   }
 
   private wire(): void {
+    // 1.8.3.1: the player looks at / touches this page — a quick check (never a claim): another device's
+    // takeover shows at once instead of at the next heartbeat
+    const nudge = () => {
+      if (!document.hidden) this.session?.noteActivity();
+    };
+    window.addEventListener('focus', nudge);
+    window.addEventListener('pointerdown', nudge, { capture: true, passive: true });
+    window.addEventListener('keydown', nudge, { capture: true, passive: true });
+    window.addEventListener('pageshow', (e) => {
+      // back from the browser's page cache (iOS app switch, back/forward): visibilitychange may not come
+      if ((e as PageTransitionEvent).persisted && this.activated && !document.hidden) this.session?.resume();
+    });
     window.addEventListener('online', () => {
       if (this.serverUp === false) void this.recheckServer();
       const s = this.session;
@@ -469,7 +507,7 @@ export class AccountRuntime {
   }
 
   /** 1.8.3: the small PRIME CLOUD line of the main menu (null: the page plays the guest career). */
-  cloudStatus(): { text: string; tone: string } | null {
+  cloudStatus(): CloudState | null {
     const v = this.view();
     return v.kind === 'account' ? cloudLabel(v) : null;
   }
@@ -575,6 +613,30 @@ export class AccountRuntime {
   switchTo(p: ProfileId): void {
     this.service!.activate(p);
     this.reload();
+  }
+
+  /**
+   * 1.8.3.1: the account's copy on this device is unreadable — write the PRIME CLOUD version over it
+   * (the unreadable text stays in its quarantine record) and reload: the account plays its real progress.
+   */
+  async reloadFromCloud(): Promise<boolean> {
+    const uid = this.playing;
+    if (!uid || !this.api?.sessionRecord || this.api.sessionRecord.id !== uid) return false;
+    try {
+      const cloud = await this.api.getSave();
+      const read = cloud ? readCloudText(cloud.text) : null;
+      if (!cloud || !read || !read.ok) return false;
+      if (!this.g.save.applyExternal(read.data, read.extra, 'cloud')) return false;
+      const m = emptySyncMeta();
+      m.revision = cloud.revision;
+      m.hash = cloud.hash;
+      m.syncedAt = Date.now();
+      writeSync(this.storage, this.g.save.profile, m);
+      this.reload();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** 1.8.3: «Играть как гость» — the account stays signed in, its session is given up, the guest career plays. */

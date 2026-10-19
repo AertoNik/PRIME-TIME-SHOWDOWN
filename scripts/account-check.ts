@@ -13,7 +13,9 @@ import { ACCOUNTS_KEY, bootProfile, emptySyncMeta, readAccounts, readSync, userI
 import { canonicalJSON, cloudCopyOf, readCloudText } from '../src/net/cloudSave';
 import { DEFAULT_LOCAL_API, accountsSwitch, effectiveFlag, isLoopbackUrl, resolveNetwork } from '../src/net/config';
 import { sha256 } from '../src/net/sha256';
+import { SessionManager } from '../src/net/SessionManager';
 import { decideSync } from '../src/net/SyncManager';
+import { CLOUD_SYNCED_MS, cloudPillPlan } from '../src/ui/cloudPill';
 import { rulesSource } from './backend';
 import { MemoryStorage, olderSave, save176 } from './lib/fixtures';
 import { cp, crypto, fs, nodeModule, os, path, proc } from './lib/node';
@@ -305,7 +307,7 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
 {
   const game = read('src/game/Game.ts');
   const starts = ['startMatch(): void {', 'startSurvival(): void {', 'startSurvivalWave(): void {', 'startChallenge(id: string, difficulty: Difficulty): void {', 'startBoss(id: string): void {'];
-  check('every way into a match (Classic, Survival and each of its waves, Challenge, Boss) first asks the account gate', starts.every((sig) => new RegExp(sig.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&') + '\\s*if \\(this\\.accountHolds\\(\\)\\) return;').test(game)));
+  check('every way into a match (Classic, Survival and each of its waves, Challenge, Boss) first asks the account gate', starts.every((sig) => new RegExp(sig.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&') + '\\s*if \\(this\\.accountHolds\\(\\(\\) => this\\.' + sig.split('(')[0] + '\\(').test(game)));
   check('a match that ends after the page lost the game session pays nothing (checked before any career / event / mode result)', /if \(mode\.kind === 'tutorial'\) return;\s*(\/\/[^\n]*\n\s*)*if \(this\.account\?\.rewardsBlocked\(\)\) \{/.test(game) && game.indexOf('rewardsBlocked()') < game.indexOf('this.career.applyMatch(m.result'));
   check('only an account tab the player looks at takes the profile from another tab; the guest keeps the 1.8 rule', /takeOverLock: profile !== 'guest' && visible/.test(game));
   const sm = read('src/net/SessionManager.ts');
@@ -323,6 +325,37 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   check('server: a claim raises the generation in a transaction; an old game without a session gets 426 (stops), a lost page 409', /runInTransaction[\s\S]{0,1600}const generation = rec\.getInt\('generation'\) \+ 1;/.test(prime) && /\[426, \{ code: 'session_required' \}\]/.test(prime) && /\[409, supersededBody\(rec\)\]/.test(prime));
   const mig = read('backend/pb_migrations/1792500000_prime_sessions.js');
   check('migration 1.8.3: game_sessions has no API rule at all, one record per account (unique index); purely additive', (mig.match(/Rule: null/g) ?? []).length === 5 && /CREATE UNIQUE INDEX `idx_game_sessions_user`/.test(mig) && !/app\.delete\(|truncate|DROP/i.test(mig.split('(app) => {\n    try')[0]));
+}
+
+// ------------------------------------------------------------ PRIME CLOUD POLISH (1.8.3.1)
+{
+  // the menu line: shows work and problems, «синхронизировано» only for a moment, problems never time out
+  const plans = [cloudPillPlan(null, 'synced'), cloudPillPlan('saving', 'synced'), cloudPillPlan('loading', 'synced'), cloudPillPlan('synced', 'synced'), cloudPillPlan('synced', 'waiting'), cloudPillPlan('synced', 'saving'), cloudPillPlan('saving', 'offline'), cloudPillPlan('offline', 'superseded'), cloudPillPlan('synced', 'signin'), cloudPillPlan('synced', 'issue')];
+  check(`PRIME CLOUD line: loaded / saved → «синхронизировано» for ${CLOUD_SYNCED_MS} ms; nothing new → hidden; saving, no connection, another device, sign-in, a decision → shown until it changes (${plans.join(',')})`, plans.join(',') === 'flash,flash,flash,hide,keep,show,show,show,show,show' && CLOUD_SYNCED_MS >= 2000 && CLOUD_SYNCED_MS <= 3000);
+  const menu = read('src/ui/screens/MenuScreen.ts');
+  check('…only the «синхронизировано» moment is ever hidden by a timer; the line keeps its place (fades, nothing in the menu moves)', (menu.match(/setTimeout\(/g) ?? []).length === 1 && /if \(el && this\.cloudKind === 'synced'\) this\.setCloud\(el, null, false\);/.test(menu) && /\.cloud-pill\.on \{\s*opacity: 1;\s*visibility: visible;/.test(read('src/styles/main.css')));
+  // the session: quick while the player uses the page, slow when it only stays open, a check on touch
+  let t = 1_000_000;
+  const sm = new SessionManager({ api: {} as any, device: 'd', label: 'l', clock: () => t, heartbeatMs: 20000 });
+  const quick = sm.nextDelay();
+  t += 120_000;
+  const idle = sm.nextDelay();
+  sm.noteActivity();
+  const back = sm.nextDelay();
+  (sm as any).backoffUntil = t + 30_000;
+  const slowed = sm.nextDelay();
+  check(`session heartbeat: ${quick} ms while the player uses the page, ${idle} ms when it only stays open, ${back} ms again on a touch, ${slowed} ms after «too many requests»`, quick === 4000 && idle === 20000 && back === 4000 && slowed === 20000);
+  const rtm = read('src/game/AccountRuntime.ts');
+  check('a quick check (never a claim) on coming back, focus, a touch, a page from the browser cache — and before every match when the last confirmation is over 1 s old', /window\.addEventListener\('focus', nudge\)/.test(rtm) && /'pointerdown', nudge/.test(rtm) && /\.persisted && this\.activated && !document\.hidden\) this\.session\?\.resume\(\)/.test(rtm) && /const FRESH_MS = 1000;/.test(rtm) && /s\.check\(FRESH_MS\)/.test(rtm) && !/noteActivity[\s\S]{0,400}claim\(/.test(read('src/net/SessionManager.ts')));
+  // one current progress: no picking old versions from the game
+  const ui = read('src/ui/accountUI.ts');
+  const care = read('src/ui/saveCare.ts');
+  const accTools = care.slice(care.indexOf('function openAccountSaveTools'), care.indexOf('/** Choose a file'));
+  const accDamaged = care.slice(care.indexOf('function showAccountDamaged'), care.indexOf('function showNewer'));
+  check('no «Облачные копии» window and no restore of an old version for a PRIME ID career (local copies: download only; a damaged copy is loaded again from PRIME CLOUD)', !/Облачные копии/.test(ui) && !/openCloudHistory|\.restore\(h\)/.test(ui) && /if \(s\.profile !== 'guest'\) return openAccountSaveTools\(g, back\);/.test(care) && !/data-restore|data-a="import"/.test(accTools) && /reloadFromCloud\(\)/.test(accDamaged) && !/data-restore|data-a="fresh"/.test(accDamaged));
+  check('…while the server keeps its history and the restore route for an emergency (nothing deleted)', /function restoreSave\(e\)/.test(read('backend/pb_hooks/lib/prime.js')) && /HISTORY_MAX = 10/.test(read('backend/pb_hooks/lib/prime.js')) && /async restore\(/.test(read('src/net/PrimeApi.ts')));
+  const taken = ui.slice(ui.indexOf('export function showSessionTaken'), ui.indexOf('export function showKeptDevice'));
+  check('«PRIME ID ОТКРЫТ НА ДРУГОМ УСТРОЙСТВЕ»: one short sentence and two buttons — no device names or technical details', /Вы продолжили игру в другой вкладке или на другом устройстве\./.test(taken) && !/holder|Облачн|session|сесси/i.test(taken.replace(/showSessionTaken/g, '')) && (taken.match(/<button /g) ?? []).length === 2);
 }
 
 // --------------------------------------------- browser security and deployment kit (1.8.2)

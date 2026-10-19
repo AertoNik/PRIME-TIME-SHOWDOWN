@@ -7,8 +7,9 @@ import { accountText, checkEmail, checkInvite, checkRegistration, normalizeInvit
 import { readSync, userProfile } from '../net/accountStore';
 import { browserStorage } from '../net/build';
 import { readCloudText } from '../net/cloudSave';
-import { PrimeApiError, type HistoryEntry } from '../net/PrimeApi';
+import { PrimeApiError } from '../net/PrimeApi';
 import type { SyncStatus } from '../net/SyncManager';
+import type { CloudState } from './cloudPill';
 import { esc } from './dom';
 
 // Alpha 1.8.1 — PRIME NETWORK in the interface: the account block of PRIME ID and its dialogs
@@ -103,15 +104,17 @@ function tone(v: AccountState): string {
  * 1.8.3: the PRIME CLOUD line of the main menu — short, and «синхронизировано» only after the
  * server confirmed the last write.
  */
-export function cloudLabel(v: AccountState): { text: string; tone: string } {
+export function cloudLabel(v: AccountState): CloudState {
   const t = tone(v);
-  if (v.gate === 'superseded' || v.status === 'superseded') return { text: 'PRIME ID АКТИВЕН НА ДРУГОМ УСТРОЙСТВЕ', tone: 'bad' };
-  if (v.gate === 'loading' || v.status === 'idle') return { text: 'PRIME CLOUD · ЗАГРУЗКА…', tone: 'wait' };
-  if (v.gate === 'offline' || v.status === 'offline') return { text: 'PRIME CLOUD · НЕТ СОЕДИНЕНИЯ', tone: 'off' };
-  if (v.gate === 'signed-out' || !v.signedIn) return { text: 'PRIME CLOUD · ВОЙДИТЕ СНОВА', tone: 'off' };
-  if (v.status === 'saving' || v.status === 'pending') return { text: 'PRIME CLOUD · СОХРАНЕНИЕ…', tone: 'wait' };
-  if (v.status === 'synced' && !v.conflict) return { text: 'PRIME CLOUD · СИНХРОНИЗИРОВАНО', tone: 'ok' };
-  return { text: 'PRIME CLOUD · ' + syncLine(v).toUpperCase(), tone: t };
+  if (v.gate === 'superseded' || v.status === 'superseded') return { text: 'PRIME ID АКТИВЕН НА ДРУГОМ УСТРОЙСТВЕ', tone: 'bad', kind: 'superseded' };
+  if (v.gate === 'loading' || v.status === 'idle') return { text: 'PRIME CLOUD · ЗАГРУЗКА…', tone: 'wait', kind: 'loading' };
+  if (v.gate === 'offline' || v.status === 'offline') return { text: 'PRIME CLOUD · НЕТ СОЕДИНЕНИЯ', tone: 'off', kind: 'offline' };
+  if (v.gate === 'signed-out' || !v.signedIn) return { text: 'PRIME CLOUD · ВОЙДИТЕ СНОВА', tone: 'off', kind: 'signin' };
+  if (v.status === 'saving') return { text: 'PRIME CLOUD · СОХРАНЕНИЕ…', tone: 'wait', kind: 'saving' };
+  // (a change waiting a few seconds before it goes up: nothing to announce yet)
+  if (v.status === 'pending' && !v.conflict) return { text: 'PRIME CLOUD · СОХРАНЕНИЕ…', tone: 'wait', kind: 'waiting' };
+  if (v.status === 'synced' && !v.conflict) return { text: 'PRIME CLOUD · СИНХРОНИЗИРОВАНО', tone: 'ok', kind: 'synced' };
+  return { text: 'PRIME CLOUD · ' + syncLine(v).toUpperCase(), tone: t, kind: 'issue' };
 }
 
 // ------------------------------------------------------------ PRIME ID block
@@ -174,7 +177,6 @@ export function accountPanelHTML(g: Game): string {
       else if (v.conflict || v.status === 'conflict' || v.status === 'newer') acts.push(btn('decide', 'Решить', ''));
       else if (v.status === 'outdated') acts.push(btn('reload', 'Обновить страницу', ''));
       else acts.push(btn('sync', 'Синхронизировать', ''));
-      if (v.signedIn && v.gate !== 'superseded') acts.push(btn('history', 'Облачные копии'));
       acts.push(btn('logout', 'Выйти'));
       // 1.8.3: say plainly what the session means — only when the server really enforces it
       const sess = v.cloud2 && !v.gate ? '<p class="pid-acc-text pid-acc-sess">PRIME CLOUD 2.0 · играть под этим PRIME ID сейчас можно только здесь. Откроете игру на другом устройстве — продолжите там, прогресс загрузится сам.</p>' : '';
@@ -214,7 +216,6 @@ export function accountAction(g: Game, act: string): void {
   else if (act === 'here') r.continueHere();
   else if (act === 'retry') void r.retry();
   else if (act === 'reload') r.reload();
-  else if (act === 'history') void openCloudHistory(g);
   else if (act === 'logout') confirmLogout(g);
 }
 
@@ -691,15 +692,15 @@ export function showSyncDecision(g: Game): void {
         kind === 'cloud-newer'
           ? 'Карьеру продолжили на другом устройстве. На этом устройстве изменений нет — загрузите версию аккаунта.'
           : kind === 'damaged'
-            ? 'Сервер вернул сохранение, которое не удаётся прочитать. Его можно заменить прогрессом этого устройства — повреждённая версия останется в облачных копиях.'
+            ? 'Сервер вернул сохранение, которое не удаётся прочитать. Его можно заменить прогрессом этого устройства — повреждённая версия останется в резервной копии на сервере.'
             : kind === 'missing'
               ? 'На сервере больше нет сохранения этого аккаунта. Прогресс этого устройства можно сохранить в аккаунт заново.'
-              : 'Прогресс на этом устройстве и в аккаунте изменился независимо. Выберите версию — вторая сохранится в облачных копиях. Ничего не объединяется автоматически.';
+              : 'Прогресс на этом устройстве и в аккаунте изменился независимо. Выберите версию — вторая не удаляется, она останется в резервной копии на сервере. Ничего не объединяется автоматически.';
       const actions =
         kind === 'cloud-newer'
           ? `<button class="btn wide" data-a="cloud">Загрузить из аккаунта</button><button class="btn teal wide" data-a="later">Позже</button>`
           : kind === 'damaged' || kind === 'missing'
-            ? `<button class="btn wide" data-a="device">${kind === 'missing' ? 'Сохранить прогресс устройства' : 'Заменить прогрессом устройства'}</button>${kind === 'damaged' ? '<button class="btn ghost wide" data-a="history">Облачные копии</button>' : ''}<button class="btn teal wide" data-a="later">Позже</button>`
+            ? `<button class="btn wide" data-a="device">${kind === 'missing' ? 'Сохранить прогресс устройства' : 'Заменить прогрессом устройства'}</button><button class="btn teal wide" data-a="later">Позже</button>`
             : `<button class="btn wide" data-a="cloud">Использовать облако</button><button class="btn ghost wide" data-a="device">Использовать это устройство</button><button class="btn teal wide" data-a="later">Решить позже</button>`;
       g.ui.modal(
         `<div class="h1">${title}</div>
@@ -714,7 +715,6 @@ export function showSyncDecision(g: Game): void {
             g.audio.ui('click');
             close();
           });
-          root.querySelector('[data-a="history"]')?.addEventListener('click', () => void openCloudHistory(g));
           root.querySelector('[data-a="cloud"]')?.addEventListener('click', () => {
             lock(true);
             err.textContent = 'Загрузка версии аккаунта…';
@@ -750,60 +750,10 @@ export function showSyncDecision(g: Game): void {
     .catch(() => g.ui.toast('Нет подключения к серверу аккаунтов — решить можно позже'));
 }
 
-// ----------------------------------------------------------- cloud copies
-const HISTORY_REASON: Record<string, string> = {
-  previous: 'Предыдущая версия',
-  'conflict-cloud': 'Версия аккаунта до решения конфликта',
-  'conflict-device': 'Версия устройства из конфликта',
-  'before-restore': 'Перед восстановлением',
-  'before-restore-device': 'Устройство перед восстановлением',
-  'session-device': 'С этого устройства · не попало в облако',
-  damaged: 'Повреждённая версия',
-};
-
-async function openCloudHistory(g: Game): Promise<void> {
-  const s = rt(g).sync;
-  if (!s) return;
-  let list: HistoryEntry[];
-  try {
-    list = await s.history();
-  } catch (e) {
-    g.ui.toast(errText(e));
-    return;
-  }
-  const rows = list
-    .map((h, i) => {
-      const read = readCloudText(h.text);
-      const line = read.ok ? `${esc(read.summary.orgName)} · ур. ${read.summary.level} · ${formatMoney(read.summary.money)} · матчей ${read.summary.matches}` : read.reason === 'newer' ? 'Сохранение более новой версии игры' : 'Не читается';
-      return `<div class="sc-row"><div class="sc-info"><b>${whenIso(h.created)}</b><span>${HISTORY_REASON[h.reason] ?? 'Копия'} · ревизия ${h.revision}</span><small>${line}</small></div>
-        <button class="btn ghost sc-act" data-i="${i}" ${read.ok ? '' : 'disabled'}>Восстановить</button></div>`;
-    })
-    .join('');
-  g.ui.modal(
-    `<div class="h1">Облачные копии</div>
-     <p class="center muted acc-note">До 10 прошлых версий сохранения аккаунта на сервере. Восстановление создаёт новую версию — текущая тоже останется в копиях.</p>
-     ${list.length ? `<div class="sc-list">${rows}</div>` : '<p class="muted acc-note">Копий пока нет: они появляются, когда сохранение аккаунта заменяется новым.</p>'}
-     <div class="modal-actions"><button class="btn teal wide" data-a="back">Закрыть</button></div>`,
-    (root, close) => {
-      root.querySelector('[data-a="back"]')!.addEventListener('click', () => close());
-      root.querySelectorAll<HTMLButtonElement>('[data-i]').forEach((b) =>
-        b.addEventListener('click', () => {
-          const h = list[Number(b.dataset.i)];
-          g.confirm(
-            'Восстановить копию?',
-            `${HISTORY_REASON[h.reason] ?? 'Копия'} · ${whenIso(h.created)}<br><br>Сохранение аккаунта станет этой версией (новой ревизией); текущая версия и несинхронизированный прогресс устройства сохранятся в облачных копиях. Игра перезапустится.`,
-            'Восстановить',
-            () =>
-              void s.restore(h).then((ok) => {
-                if (!ok) g.ui.toast(s.status === 'offline' ? 'Нет подключения — повторите позже' : 'Не удалось восстановить копию');
-              }),
-            () => void openCloudHistory(g),
-          );
-        }),
-      );
-    },
-  );
-}
+// ------------------------------------------------------------ cloud copies
+// 1.8.3.1: the account has ONE current progress, loaded automatically — the player no longer picks
+// earlier versions. The server keeps its history (and every device its local safety copies) for an
+// emergency restore by the organiser: docs/PRIME_CLOUD_2_DEPLOY.md, «Восстановление прогресса».
 
 function confirmLogout(g: Game): void {
   const r = rt(g);
@@ -826,7 +776,7 @@ const spinner = '<div class="cloud-spin" aria-hidden="true"><i></i><i></i><i></i
  */
 export function explainGate(g: Game, why: PlayGate, then?: () => void): void {
   const r = rt(g);
-  if (why === 'superseded') return showSessionTaken(g, r.session?.holder ?? '');
+  if (why === 'superseded') return showSessionTaken(g);
   if (why === 'loading') {
     g.ui.modal(
       `<div class="cloud-head"><span class="pid-acc-logo">PRIME<b>CLOUD</b></span></div>
@@ -921,13 +871,11 @@ function confirmGuest(g: Game, back: () => void): void {
 }
 
 /** This page lost the account's game session: nothing more happens here until «Продолжить здесь». */
-export function showSessionTaken(g: Game, holder: string): void {
+export function showSessionTaken(g: Game): void {
   const r = rt(g);
-  const unsynced = r.sync?.hasUnsynced() ?? false;
   g.ui.modal(
     `<div class="h1">PRIME ID ОТКРЫТ НА ДРУГОМ УСТРОЙСТВЕ</div>
-     <p class="acc-note">Ваш игровой аккаунт сейчас используется в другой вкладке или на другом устройстве${holder ? ` (<b>${esc(holder)}</b>)` : ''}. Чтобы продолжить игру здесь, нажмите «Продолжить здесь».</p>
-     ${unsynced ? '<p class="acc-note muted">Прогресс этой вкладки, который не успел попасть в PRIME CLOUD, не пропадёт: после «Продолжить здесь» он отправится в облако или, если на другом устройстве уже играли, сохранится в «Облачных копиях».</p>' : ''}
+     <p class="acc-note">Вы продолжили игру в другой вкладке или на другом устройстве. Чтобы играть здесь, нажмите «Продолжить здесь» — прогресс загрузится сам.</p>
      <div class="modal-actions">
        <button class="btn wide" data-a="here">Продолжить здесь</button>
        <button class="btn ghost wide" data-a="guest">Играть как гость</button>
@@ -939,7 +887,7 @@ export function showSessionTaken(g: Game, holder: string): void {
         here.disabled = true;
         r.continueHere();
       });
-      root.querySelector('[data-a="guest"]')!.addEventListener('click', () => confirmGuest(g, () => showSessionTaken(g, holder)));
+      root.querySelector('[data-a="guest"]')!.addEventListener('click', () => confirmGuest(g, () => showSessionTaken(g)));
     },
     false,
   );
@@ -949,8 +897,8 @@ export function showSessionTaken(g: Game, holder: string): void {
 export function showKeptDevice(g: Game): void {
   g.ui.modal(
     `<div class="h1">PRIME CLOUD</div>
-     <p class="acc-note">Пока эта вкладка была неактивна, PRIME ID продолжили на другом устройстве. Загружен актуальный прогресс аккаунта.</p>
-     <p class="acc-note muted">Изменения этого устройства, которые не успели попасть в облако, не удалены: они сохранены отдельно — PRIME ID → «Облачные копии» (и в резервных копиях на этом устройстве).</p>
+     <p class="acc-note">Пока здесь не было связи с сервером, в PRIME ID играли на другом устройстве. Загружен актуальный прогресс аккаунта.</p>
+     <p class="acc-note muted">Изменения с этого устройства, которые не успели сохраниться, не удалены — они хранятся в резервной копии. Если чего-то не хватает, напишите организатору теста.</p>
      <div class="modal-actions"><button class="btn wide" data-a="ok">Понятно</button></div>`,
     (root, close) => root.querySelector('[data-a="ok"]')!.addEventListener('click', () => close()),
   );

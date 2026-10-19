@@ -11,6 +11,7 @@ import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
+import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
 
 export class MenuScreen implements Screen {
   readonly el: HTMLElement;
@@ -39,15 +40,70 @@ export class MenuScreen implements Screen {
     g.account?.onChange(() => this.paintCloud());
   }
 
-  /** 1.8.3: «PRIME CLOUD · СИНХРОНИЗИРОВАНО» and the other states, under the studio name. */
-  private paintCloud(): void {
+  // 1.8.3.1: the PRIME CLOUD line no longer hangs there — it shows loading / saving and anything the
+  // player must act on, and «СИНХРОНИЗИРОВАНО» only for a moment after a save went through
+  private cloudKind: CloudKind | null = null;
+  private cloudOn = false;
+  private cloudHideAt = 0;
+  private cloudFlashPending = false;
+  private cloudTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The PRIME CLOUD line under the studio name (`shown`: the menu was just drawn). */
+  private paintCloud(shown = false): void {
     const pill = this.el.querySelector('[data-cloud]') as HTMLElement | null;
     if (!pill) return;
     const c = this.g.account?.cloudStatus() ?? null;
+    // the guest career has no line at all (and leaves no gap)
     pill.hidden = !c;
-    if (!c) return;
-    pill.dataset.tone = c.tone;
-    (pill.querySelector('span') as HTMLElement).textContent = c.text;
+    if (!c) {
+      this.cloudOn = false;
+      return;
+    }
+    const visible = shown || this.g.ui.current === 'menu';
+    const plan = c.kind === this.cloudKind ? null : cloudPillPlan(this.cloudKind, c.kind);
+    this.cloudKind = c.kind;
+    if (plan === 'show') this.setCloud(pill, c, true);
+    else if (plan === 'hide') this.setCloud(pill, c, false);
+    else if (plan === 'flash') {
+      // a save went through while the menu was not on screen: the player sees it on coming back
+      if (visible) this.flashCloud(pill, c);
+      else {
+        this.cloudFlashPending = true;
+        this.setCloud(pill, c, false);
+      }
+    } else if (plan === null) {
+      // same state (the menu drawn again, or another update): keep what the player sees
+      if (c.kind === 'synced') {
+        if (this.cloudFlashPending && visible) this.flashCloud(pill, c);
+        else this.setCloud(pill, c, Date.now() < this.cloudHideAt);
+      } else if (c.kind === 'waiting') this.setCloud(pill, null, this.cloudOn);
+      else this.setCloud(pill, c, true);
+    }
+    // 'keep': a change waits to go up — nothing new to say (a running «синхронизировано» finishes)
+    else this.setCloud(pill, null, this.cloudOn);
+  }
+
+  private flashCloud(pill: HTMLElement, c: CloudState): void {
+    this.cloudFlashPending = false;
+    this.cloudHideAt = Date.now() + CLOUD_SYNCED_MS;
+    this.setCloud(pill, c, true);
+    if (this.cloudTimer) clearTimeout(this.cloudTimer);
+    this.cloudTimer = setTimeout(() => {
+      this.cloudTimer = null;
+      const el = this.el.querySelector('[data-cloud]') as HTMLElement | null;
+      if (el && this.cloudKind === 'synced') this.setCloud(el, null, false);
+    }, CLOUD_SYNCED_MS);
+  }
+
+  private setCloud(pill: HTMLElement, c: CloudState | null, on: boolean): void {
+    if (c) {
+      pill.dataset.tone = c.tone;
+      (pill.querySelector('span') as HTMLElement).textContent = c.text;
+    }
+    this.cloudOn = on;
+    pill.classList.toggle('on', on);
+    pill.setAttribute('aria-hidden', on ? 'false' : 'true');
+    pill.tabIndex = on ? 0 : -1;
   }
 
   onShow(): void {
@@ -100,7 +156,7 @@ export class MenuScreen implements Screen {
       <div class="menu-head">
         <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span>${ev ? `<span class="season-tag">${esc(ev.title)}</span>` : ''}</div>
         <div class="label menu-org" data-act="profile" role="button" tabindex="0" aria-label="Открыть PRIME ID" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
-        <button class="cloud-pill" data-cloud data-act="profile" aria-live="polite" hidden><i></i><span></span></button>
+        <button class="cloud-pill" data-cloud data-act="profile" aria-live="polite" aria-hidden="true" tabindex="-1" hidden><i></i><span></span></button>
       </div>
       <div class="fill pass"></div>
       <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">
@@ -144,7 +200,7 @@ export class MenuScreen implements Screen {
     }
     if (this.shownRep >= 0 && this.shownRep !== s.reputation) countUp(repEl, this.shownRep, s.reputation, 0.9, (n) => String(Math.floor(n)));
     this.shownMoney = s.money;
-    this.paintCloud();
+    this.paintCloud(true);
     this.shownRep = s.reputation;
   }
 }

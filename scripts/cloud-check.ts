@@ -102,7 +102,7 @@ class Browser {
     return me;
   }
 
-  page(uid: string, opts: { tabs?: boolean; takeOver?: boolean } = {}): Page {
+  page(uid: string, opts: { tabs?: boolean; takeOver?: boolean; timers?: boolean } = {}): Page {
     return new Page(this, uid, opts);
   }
 }
@@ -116,13 +116,13 @@ class Page {
   constructor(
     readonly b: Browser,
     readonly uid: string,
-    opts: { tabs?: boolean; takeOver?: boolean },
+    opts: { tabs?: boolean; takeOver?: boolean; timers?: boolean },
   ) {
     const p = userProfile(uid);
     this.api = b.api();
     const lock = opts.tabs ? new TabLock(b.storage, profileKeys(p).lock, clock) : null;
     this.save = new SaveSystem({ profile: p, storage: b.storage, lock, clock, takeOverLock: opts.takeOver });
-    this.session = new SessionManager({ api: this.api, device: this.save.meta.device, label: b.label, clock });
+    this.session = new SessionManager({ api: this.api, device: this.save.meta.device, label: b.label, clock, autoTimers: opts.timers });
     this.sync = new SyncManager({ save: this.save, api: this.api, storage: b.storage, session: this.session, clock });
   }
 
@@ -265,7 +265,7 @@ async function main(): Promise<void> {
   const keptB = (await ph.api.history()).filter((h) => h.reason === 'session-device');
   check(`B · back on the phone («Продолжить здесь»): the computer's matches arrive by themselves (${phOpen}); money ${ph.save.data.money} = ${deskMoney}`, ph.save.data.money === deskMoney && ph.save.data.matches === dk.save.data.matches);
   check(`B · the phone's unsent +50 (refused while it had lost the session) is not merged and not lost: kept in the cloud copies (${keptB.length})`, keptB.length === 1 && money(keptB[0]) === deskMoney - 120 + 50);
-  check('B · …and the player is told once after the reload («сохранены отдельно — Облачные копии»)', readSync(phone.storage, userProfile(P)).notice?.kind === 'kept-device');
+  check('B · …and the player is told once after the reload («сохранены отдельно, в резервной копии»)', readSync(phone.storage, userProfile(P)).notice?.kind === 'kept-device');
   check('B · the computer lost the session in turn', (await dk.session.beat()) === 'superseded');
 
   // ================================================================ C/D: two tabs
@@ -513,6 +513,52 @@ async function main(): Promise<void> {
   const overwrite = await s2.transferGuest(meR2);
   const cloudR2 = await (s2 as any).o.api.getSave();
   check(`N · on a second device with its own guest career the account's save is loaded (${planR2.kind}), never replaced by that guest career — even when asked to (${overwrite}); that guest career stays there`, planR2.kind === 'switch' && overwrite === false && money(cloudR2) === money(cloudR) && new SaveSystem({ storage: gb2.storage, lock: null, clock }).data.money === g2save.data.money);
+
+  // ================================================================ 1.8.3.1: detection time
+  section('1.8.3.1 · как быстро прежняя страница узнаёт о другом устройстве');
+  const watchBrowser = new Browser('Watcher');
+  watchBrowser.token = phone.token;
+  watchBrowser.record = phone.record;
+  const other = new Browser('Other device');
+  other.token = phone.token;
+  other.record = phone.record;
+  const timeToLose = async (w: Page, timeoutMs: number): Promise<number> => {
+    const t0 = Date.now();
+    while (w.session.state !== 'superseded' && Date.now() - t0 < timeoutMs) await sleep(25);
+    return w.session.state === 'superseded' ? Date.now() - t0 : -1;
+  };
+  // the page is open and used, nobody touches it at the moment of the takeover: the quick heartbeat finds it
+  const polled: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const w = watchBrowser.page(P, { timers: true });
+    await w.session.claim();
+    await sleep(600 + Math.floor(Math.random() * 3000)); // the takeover lands anywhere between two heartbeats
+    await other.page(P).session.claim();
+    polled.push(await timeToLose(w, 9000));
+    w.session.stop();
+  }
+  check(`the old page, open and in use, learns of the other device within ${Math.max(...polled)} ms (3 takeovers: ${polled.join(' / ')} ms; was up to 20 000 ms in 1.8.3)`, polled.every((ms) => ms >= 0 && ms <= 5000));
+  // …and at the first touch (or when it comes back to the screen) it knows at once
+  const w2 = watchBrowser.page(P, { timers: true });
+  await w2.session.claim();
+  await sleep(2000);
+  await other.page(P).session.claim();
+  w2.session.noteActivity();
+  const touched = await timeToLose(w2, 3000);
+  w2.session.stop();
+  const w3 = watchBrowser.page(P, { timers: true });
+  await w3.session.claim();
+  w3.session.pause(); // in the background: no heartbeat at all
+  await sleep(300);
+  await other.page(P).session.claim();
+  const genOther = (await genRow()).generation;
+  await sleep(1500);
+  const stillUnaware = w3.session.state === 'active';
+  w3.session.resume(); // back on screen
+  const resumed = await timeToLose(w3, 3000);
+  w3.session.stop();
+  const genAfter = (await genRow()).generation;
+  check(`at a touch it knows in ${touched} ms; a page in the background sends nothing (${stillUnaware ? 'silent' : 'NOT silent'}) and knows ${resumed} ms after it comes back — never taking the session back`, touched >= 0 && touched <= 1000 && stillUnaware && resumed >= 0 && resumed <= 1000 && genAfter === genOther);
 
   // ================================================================ security
   section('Безопасность сессий');

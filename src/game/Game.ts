@@ -525,13 +525,33 @@ export class Game {
    * Alpha 1.8.3: a match under a PRIME ID needs the account's game session (no-op for the guest
    * career and a 1.8.2 server). True = held back (the reason is shown).
    */
-  private accountHolds(): boolean {
-    const why = this.account?.gate();
-    if (!why) return false;
-    this.audio.ui('deny');
-    this.account!.explainGate(why);
-    return true;
+  private accountHolds(retry: () => void): boolean {
+    const a = this.account;
+    if (!a) return false;
+    const why = a.gate();
+    if (why) {
+      this.audio.ui('deny');
+      a.explainGate(why);
+      return true;
+    }
+    // 1.8.3.1: a few seconds since the server last confirmed this page plays: ask once more first
+    if (this.freshChecked) this.freshChecked = false;
+    else if (a.needsFreshCheck()) {
+      void a.confirmFresh().then((w) => {
+        if (w) {
+          this.audio.ui('deny');
+          a.explainGate(w);
+          return;
+        }
+        this.freshChecked = true;
+        retry();
+      });
+      return true;
+    }
+    return false;
   }
+  /** 1.8.3.1: the start in progress was just confirmed by the server (its retry skips the check). */
+  private freshChecked = false;
 
   /** Alpha 1.8.3: the account's session moved elsewhere — a running fight stops here (nothing is paid). */
   pauseForAccount(): void {
@@ -540,7 +560,7 @@ export class Game {
 
   /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
   startMatch(): void {
-    if (this.accountHolds()) return;
+    if (this.accountHolds(() => this.startMatch())) return;
     const s = this.save.data;
     const fighter = s.selected;
     const difficulty = this.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
@@ -549,7 +569,7 @@ export class Game {
 
   /** SURVIVAL: start a new marathon with the selected fighter and deck. */
   startSurvival(): void {
-    if (this.accountHolds()) return;
+    if (this.accountHolds(() => this.startSurvival())) return;
     const s = this.save.data;
     const fighter = s.selected;
     if (!s.fighters[fighter].unlocked) return;
@@ -567,7 +587,7 @@ export class Game {
 
   /** SURVIVAL: fight the next wave of the active marathon. */
   startSurvivalWave(): void {
-    if (this.accountHolds()) return;
+    if (this.accountHolds(() => this.startSurvivalWave())) return;
     const run = this.modes.activeRun;
     if (!run || run.pendingPerk) return;
     const w = this.modes.waveSetup(run);
@@ -577,7 +597,7 @@ export class Game {
 
   /** PRIME CHALLENGE: one special broadcast with its own rules. */
   startChallenge(id: string, difficulty: Difficulty): void {
-    if (this.accountHolds()) return;
+    if (this.accountHolds(() => this.startChallenge(id, difficulty))) return;
     const def = challengeById(id);
     if (!def) return;
     const s = this.save.data;
@@ -590,7 +610,7 @@ export class Game {
 
   /** BOSS FIGHT: the selected fighter against the legendary champion. */
   startBoss(id: string): void {
-    if (this.accountHolds()) return;
+    if (this.accountHolds(() => this.startBoss(id))) return;
     const def = bossById(id);
     if (!def) return;
     const s = this.save.data;
@@ -962,7 +982,7 @@ export class Game {
                 showSaveProblem(this);
                 return;
               }
-              const inAccount = this.save.profile !== 'guest' ? ' Это карьера аккаунта: сброс уйдёт и в облако, прежняя версия останется в облачных копиях.' : '';
+              const inAccount = this.save.profile !== 'guest' ? ' Это карьера аккаунта: сброс уйдёт и в облако (прежняя версия останется в резервной копии на сервере).' : '';
               this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Перед сбросом прогресс сохранится в резервную копию (Настройки → Сохранение и копии).' + inAccount, 'Сбросить', () => {
                 // the tutorial already seen is not forced again after a reset
                 const seen = this.save.data.tutorial !== 'pending';

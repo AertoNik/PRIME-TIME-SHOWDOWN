@@ -90,6 +90,9 @@ export function showOtherTab(g: Game, takenAway: boolean): void {
 
 function showDamaged(g: Game): void {
   const s = g.save;
+  // 1.8.3.1: a PRIME ID career is in PRIME CLOUD — load it again instead of an old copy or an empty career
+  // (either of those would go up to the cloud and replace the account's real progress)
+  if (s.profile !== 'guest' && g.account) return showAccountDamaged(g);
   const list = s.backups();
   g.ui.modal(
     `<div class="h1">Сохранение повреждено</div>
@@ -126,6 +129,47 @@ function showDamaged(g: Game): void {
   );
 }
 
+/** 1.8.3.1: the copy of a PRIME ID career on this device cannot be read — its progress is in PRIME CLOUD. */
+function showAccountDamaged(g: Game): void {
+  const s = g.save;
+  const a = g.account!;
+  g.ui.modal(
+    `<div class="h1">Копия на устройстве повреждена</div>
+     <p class="center muted sc-text">Браузер вернул копию карьеры PRIME ID, которую не удаётся прочитать. Ваш прогресс хранится в PRIME CLOUD — загрузите его заново. Повреждённая копия не удаляется: её можно скачать для поддержки.</p>
+     <div class="acc-err" role="alert" aria-live="polite"></div>
+     <div class="modal-actions">
+       <button class="btn wide" data-a="cloud">Загрузить из PRIME CLOUD</button>
+       <button class="btn ghost wide" data-a="export">Скачать повреждённый файл</button>
+       <button class="btn ghost wide" data-a="guest">Играть как гость</button>
+     </div>`,
+    (root) => {
+      const err = root.querySelector('.acc-err') as HTMLElement;
+      const cloud = root.querySelector('[data-a="cloud"]') as HTMLButtonElement;
+      cloud.addEventListener('click', () => {
+        g.audio.ui('confirm');
+        cloud.disabled = true;
+        err.textContent = 'Загрузка из PRIME CLOUD…';
+        void a.reloadFromCloud().then((ok) => {
+          if (ok) err.textContent = 'Готово. Перезапуск игры…';
+          else {
+            cloud.disabled = false;
+            err.textContent = 'Не получилось: проверьте интернет и вход в PRIME ID, затем повторите.';
+          }
+        });
+      });
+      root.querySelector('[data-a="export"]')!.addEventListener('click', () => {
+        g.audio.ui('click');
+        downloadText(exportName(), s.exportJSON());
+      });
+      root.querySelector('[data-a="guest"]')!.addEventListener('click', () => {
+        g.audio.ui('click');
+        a.switchTo('guest');
+      });
+    },
+    false,
+  );
+}
+
 function showNewer(g: Game): void {
   const s = g.save;
   g.ui.modal(
@@ -155,6 +199,9 @@ function showNewer(g: Game): void {
 /** Settings → «Сохранение»: the profile, the safety copies, export and import. */
 export function openSaveTools(g: Game, back: () => void): void {
   const s = g.save;
+  // 1.8.3.1: a PRIME ID career has ONE current progress (PRIME CLOUD): no going back to a copy or loading
+  // a file over it from here — the copies stay for an emergency restore by the organiser
+  if (s.profile !== 'guest') return openAccountSaveTools(g, back);
   const list = s.backups();
   const state = !s.persistent
     ? 'Браузер не даёт хранить данные: прогресс не сохраняется'
@@ -202,6 +249,36 @@ export function openSaveTools(g: Game, back: () => void): void {
           g.audio.ui('click');
           pickImport(g, back);
         }
+      });
+    },
+  );
+}
+
+/** 1.8.3.1: the save panel of a PRIME ID career — what is kept where; only a download for support. */
+function openAccountSaveTools(g: Game, back: () => void): void {
+  const s = g.save;
+  const copies = s.backups().length;
+  g.ui.modal(
+    `<div class="h1">Сохранение</div>
+     <div class="sc-profile">
+       <b>Профиль PRIME ID</b>
+       <span>Прогресс карьеры хранится в PRIME CLOUD и сам загружается на любом устройстве, где вы входите в PRIME ID.</span>
+       <small>${esc(s.passive ? 'Игра открыта в другой вкладке: здесь прогресс не сохраняется' : `Последняя запись на этом устройстве: ${when(s.meta.savedAt)}`)}</small>
+     </div>
+     <p class="muted sc-text">У аккаунта один актуальный прогресс — вернуть карьеру к старой версии отсюда нельзя. Резервные копии (на сервере и ${copies ? `${copies} на этом устройстве` : 'на этом устройстве'}) хранятся для аварийного восстановления: если что-то пропало, напишите организатору теста.</p>
+     <div class="modal-actions">
+       <button class="btn ghost wide" data-a="export">Скачать сохранение (JSON)</button>
+       <button class="btn teal wide" data-a="back">Назад</button>
+     </div>`,
+    (root) => {
+      root.querySelector('[data-a="back"]')!.addEventListener('click', () => {
+        g.audio.ui('click');
+        back();
+      });
+      root.querySelector('[data-a="export"]')!.addEventListener('click', () => {
+        g.audio.ui('click');
+        downloadText(exportName(), s.exportJSON());
+        g.ui.toast('Файл сохранения скачан');
       });
     },
   );
