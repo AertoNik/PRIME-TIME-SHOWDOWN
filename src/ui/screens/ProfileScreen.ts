@@ -7,6 +7,7 @@ import { buildProfile, hallOfFame, type FighterRecord, type HallSort, type Profi
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
+import { accountsOffNotice } from '../../net/build';
 
 type Pane = 'overview' | 'hall' | 'collection';
 
@@ -46,6 +47,10 @@ export class ProfileScreen implements Screen {
     this.g = g;
     this.el = el('div', 'profile');
     this.el.addEventListener('click', (e) => this.onClick(e));
+    // Alpha 1.8.1: the account block follows the sync status live
+    g.account?.onChange(() => {
+      if (g.ui.current === 'profile') this.render();
+    });
   }
 
   onShow(): void {
@@ -57,6 +62,11 @@ export class ProfileScreen implements Screen {
   }
 
   private onClick(e: Event): void {
+    const acc = (e.target as HTMLElement).closest('[data-acc]') as HTMLElement | null;
+    if (acc && this.g.account) {
+      this.g.account.action(acc.dataset.acc!);
+      return;
+    }
     const t = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
     if (!t) return;
     const g = this.g;
@@ -110,11 +120,26 @@ export class ProfileScreen implements Screen {
       </div>
       <div class="fill scroll pid-scroll">
         ${this.pass(p, !keep)}
+        ${g.account?.panelHTML() ?? this.accountsOff()}
         <div class="seg-control pid-tabs" role="tablist">${PANES.map((x) => `<button class="${this.pane === x.id ? 'on' : ''}" data-act="pane" data-pane="${x.id}" role="tab" aria-selected="${this.pane === x.id}">${x.label}</button>`).join('')}</div>
         <div class="pid-pane ${enter ? 'enter' : ''}" data-pane="${this.pane}" role="tabpanel">${body}</div>
       </div>`,
       keep,
     );
+  }
+
+  /**
+   * Dev builds only (1.8.1): accounts are not running on this page — say why and how to switch
+   * them on, instead of the block silently missing. Empty in the published game.
+   */
+  private accountsOff(): string {
+    if (!import.meta.env.DEV) return '';
+    const note = accountsOffNotice();
+    if (!note) return '';
+    return `<section class="pid-acc" data-kind="off">
+        <div class="pid-acc-head"><span class="pid-acc-logo">PRIME<b>NETWORK</b></span><span class="pid-acc-env">РАЗРАБОТКА</span></div>
+        <p class="pid-acc-text">${esc(note)}</p>
+      </section>`;
   }
 
   /** The producer's pass: a TV-show participant card of the late 90s. */
@@ -124,6 +149,8 @@ export class ProfileScreen implements Screen {
     const fav = p.favourite !== null;
     const next = p.level.next;
     const repLine = next === null ? `${int(p.reputation)} · высший уровень` : `${int(p.reputation)} · ещё ${int(next - p.reputation)} до уровня ${p.level.level + 1}`;
+    // Alpha 1.8.1: an account fills the producer field and the status; the guest pass stays as in 1.8
+    const acc = this.g.account?.passInfo() ?? null;
     return `
       <section class="pid-card ${opening ? 'opening' : ''}" style="--pc:${f.theme.main};--pa:${f.theme.accent}">
         <div class="pid-band">
@@ -139,8 +166,7 @@ export class ProfileScreen implements Screen {
           <div class="pid-fields">
             <div class="pid-field">
               <span>Продюсер</span>
-              <b class="pid-producer">GUEST PRODUCER</b>
-              <small>Гостевой продюсер</small>
+              ${acc ? `<b class="pid-producer pid-nick">${esc(acc.nickname)}</b><small>Аккаунт PRIME ID</small>` : `<b class="pid-producer">GUEST PRODUCER</b><small>Гостевой продюсер</small>`}
             </div>
             <div class="pid-field">
               <span>Студия</span>
@@ -159,11 +185,11 @@ export class ProfileScreen implements Screen {
         <div class="pid-strip">
           <div><span>Любимый боец</span><b style="color:${f.theme.accent}">${fav ? esc(f.name) : '—'}</b></div>
           <div><span>Серия побед</span><b>${p.streak}</b></div>
-          <div><span>Статус</span><b class="pid-guest">ГОСТЬ</b></div>
+          <div><span>Статус</span>${acc ? '<b class="pid-member">АККАУНТ</b>' : '<b class="pid-guest">ГОСТЬ</b>'}</div>
         </div>
         <div class="pid-foot">
           <span class="pid-code" aria-hidden="true"></span>
-          <span class="pid-status">Гостевой профиль · прогресс хранится в этом браузере</span>
+          <span class="pid-status">${acc ? `PRIME NETWORK · ${esc(acc.line)}` : 'Гостевой профиль · прогресс хранится в этом браузере'}</span>
         </div>
       </section>`;
   }

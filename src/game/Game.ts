@@ -42,6 +42,8 @@ import { openSaveTools, saveNeedsAttention, showOtherTab, showSaveProblem } from
 import { ThemeManager } from './ThemeManager';
 import { FirstBroadcast, TUTORIAL } from './FirstBroadcast';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
+import { ACCOUNTS_BUILD, buildBootProfile, networkConfig } from '../net/build';
+import { AccountRuntime } from './AccountRuntime';
 
 export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'battle' | 'results' | 'survival';
 
@@ -102,7 +104,10 @@ const nextFrame = () =>
 export class Game {
   readonly ui: UIManager;
   readonly audio = new AudioSystem();
-  readonly save = new SaveSystem();
+  /** Alpha 1.8.1: the guest career, or — in `npm run dev:accounts` — the signed-in account's local copy. */
+  readonly save = new SaveSystem({ profile: buildBootProfile() });
+  /** Alpha 1.8.1: PRIME NETWORK accounts (null in every build without them, e.g. the published game). */
+  readonly account: AccountRuntime | null;
   readonly career: CareerSystem;
   readonly events: EventManager;
   /** MY COLLECTION (Alpha 1.5): owned cosmetics and achievements (state in save.cosmetics). */
@@ -164,6 +169,10 @@ export class Game {
     this.audio.musicOn = this.save.data.settings.music;
     // Alpha 1.6.3: the menu music downloads while the title screen waits for the first tap
     if (this.save.data.settings.music && this.save.data.settings.sound) this.audio.prefetchMusic(this.menuMusic());
+    // Alpha 1.8.1: local test accounts — only when the build has them and the page runs on this computer
+    const net = ACCOUNTS_BUILD ? networkConfig() : null;
+    this.account = ACCOUNTS_BUILD && net && net.mode !== 'off' ? new AccountRuntime(this, net) : null;
+    void this.account?.init();
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
     this.ui.show('title');
@@ -340,6 +349,8 @@ export class Game {
     this.ui.showSoundFab(true);
     this.ui.show(name, param);
     this.frameShowcase();
+    // Alpha 1.8.1: an account decision that waited for the end of a fight is asked now
+    this.account?.onScreen();
   }
 
   /**
@@ -900,7 +911,8 @@ export class Game {
                 showSaveProblem(this);
                 return;
               }
-              this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Перед сбросом прогресс сохранится в резервную копию (Настройки → Сохранение и копии).', 'Сбросить', () => {
+              const inAccount = this.save.profile !== 'guest' ? ' Это карьера аккаунта: сброс уйдёт и в облако, прежняя версия останется в облачных копиях.' : '';
+              this.confirm('Сбросить прогресс?', 'Деньги, бойцы, фанаты и цели будут удалены. Перед сбросом прогресс сохранится в резервную копию (Настройки → Сохранение и копии).' + inAccount, 'Сбросить', () => {
                 // the tutorial already seen is not forced again after a reset
                 const seen = this.save.data.tutorial !== 'pending';
                 this.save.reset();

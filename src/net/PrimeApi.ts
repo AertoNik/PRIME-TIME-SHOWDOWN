@@ -1,0 +1,276 @@
+import type PocketBase from 'pocketbase';
+import { APP_VERSION } from '../config/version';
+
+// Alpha 1.8.1 — the game's only door to the accounts server: the official PocketBase JS SDK plus
+// the PRIME routes (backend/pb_hooks). Every failure becomes a PrimeApiError with a `kind` the
+// game understands (no raw server error ever reaches the screen). The browser loads the SDK on
+// demand (AccountRuntime): a build without accounts never contains or downloads it.
+
+export type ApiFailKind = 'network' | 'unauthorized' | 'unverified' | 'forbidden' | 'notfound' | 'conflict' | 'rate' | 'invalid' | 'server';
+
+export class PrimeApiError extends Error {
+  constructor(
+    readonly kind: ApiFailKind,
+    readonly code: string,
+    readonly status: number,
+    readonly data: Record<string, unknown> = {},
+  ) {
+    super(code || kind);
+    this.name = 'PrimeApiError';
+  }
+}
+
+export interface Me {
+  id: string;
+  email: string;
+  verified: boolean;
+  nickname: string | null;
+  created: string;
+  save: { revision: number; hash: string; schema: number; updated: string } | null;
+}
+
+export interface CloudSave {
+  id: string;
+  revision: number;
+  schema: number;
+  hash: string;
+  client: string;
+  device: string;
+  reason: string;
+  updated: string;
+  text: string;
+}
+
+export interface HistoryEntry extends CloudSave {
+  created: string;
+}
+
+export type PutReason = 'sync' | 'transfer' | 'new' | 'resolve-device' | 'replace-damaged';
+
+export interface PutBody {
+  base: number;
+  text: string;
+  hash: string;
+  op: string;
+  device: string;
+  reason: PutReason;
+}
+
+export interface PutResult {
+  revision: number;
+  hash: string;
+  /** The same request (op) had been applied already — nothing was written twice. */
+  duplicate: boolean;
+  /** …and the account has moved on since (another device wrote after it). */
+  superseded: boolean;
+  /** The cloud already held exactly this text. */
+  unchanged: boolean;
+}
+
+export interface RegisterInput {
+  nickname: string;
+  email: string;
+  password: string;
+  passwordConfirm: string;
+  /** 1.8.2: the PRIME NETWORK invite (closed beta). */
+  invite?: string;
+}
+
+/** 1.8.2: what the server says about itself (GET /api/prime/config — public, no secrets). */
+export type RegistrationMode = 'disabled' | 'invite_only' | 'public';
+export interface ServerConfig {
+  registration: RegistrationMode;
+  inviteRequired: boolean;
+  beta: boolean;
+  /**
+   * The server sends email (verification, password reset). false — including a server too old to
+   * say — means none: accounts are confirmed by the administrator and the game promises no letter.
+   */
+  mail: boolean;
+}
+
+/** After a registration: was the verification letter sent, or does the account wait for the administrator? */
+export interface RegisterResult {
+  mailSent: boolean;
+  manual: boolean;
+}
+
+/** Email as the server stores it (registration lower-cases it; sign-in compares exactly). */
+export const normEmail = (e: string) => e.trim().toLowerCase();
+
+function toError(e: unknown): PrimeApiError {
+  if (e instanceof PrimeApiError) return e;
+  const r = e as { status?: number; isAbort?: boolean; response?: Record<string, unknown> } | null;
+  if (!r || typeof r !== 'object' || typeof r.status !== 'number') return new PrimeApiError('network', 'network', 0);
+  const status = r.status;
+  const body = (r.response ?? {}) as Record<string, unknown>;
+  const code = typeof body.code === 'string' ? body.code : '';
+  if (r.isAbort || status === 0) return new PrimeApiError('network', 'network', 0);
+  if (status === 401) return new PrimeApiError('unauthorized', code || 'unauthorized', status, body);
+  if (status === 403) return new PrimeApiError(code === 'not_verified' ? 'unverified' : 'forbidden', code || 'forbidden', status, body);
+  if (status === 404) return new PrimeApiError('notfound', code || 'not_found', status, body);
+  if (status === 409) return new PrimeApiError('conflict', code || 'conflict', status, body);
+  if (status === 429) return new PrimeApiError('rate', 'rate_limited', status, body);
+  if (status >= 500) return new PrimeApiError('server', code || 'server_error', status, body);
+  return new PrimeApiError('invalid', code || 'invalid', status, body);
+}
+
+type Rec = Record<string, unknown>;
+const str = (v: unknown) => (typeof v === 'string' ? v : '');
+const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 0);
+
+function cloudSaveOf(r: Rec): CloudSave {
+  return {
+    id: str(r.id),
+    revision: int(r.revision),
+    schema: int(r.schema),
+    hash: str(r.hash),
+    client: str(r.client),
+    device: str(r.device),
+    reason: str(r.reason),
+    updated: str(r.updated),
+    text: str(r.data),
+  };
+}
+
+export class PrimeApi {
+  constructor(
+    readonly pb: PocketBase,
+    private readonly timeoutMs = 10000,
+    /** Replaces fetch for every request (the checks use it to lose a reply on purpose). */
+    private readonly fetchImpl?: typeof fetch,
+  ) {
+    // the SDK would cancel a request when the next one to the same endpoint starts — never wanted here
+    pb.autoCancellation(false);
+  }
+
+  /** The account in the stored session (also offline; may be expired). */
+  get sessionRecord(): { id: string; email: string; verified: boolean } | null {
+    const r = this.pb.authStore.record as Record<string, unknown> | null;
+    if (!this.pb.authStore.token || !r || typeof r.id !== 'string') return null;
+    return { id: r.id, email: str(r.email), verified: r.verified === true };
+  }
+
+  get userId(): string | null {
+    return this.pb.authStore.isValid ? (str(this.pb.authStore.record?.id) || null) : null;
+  }
+
+  get signedIn(): boolean {
+    return this.userId !== null;
+  }
+
+  private async call<T>(fn: (o: { signal: AbortSignal; requestKey: null; keepalive?: boolean; fetch?: typeof fetch }) => Promise<T>, keepalive = false): Promise<T> {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), this.timeoutMs);
+    try {
+      return await fn({ signal: ctl.signal, requestKey: null, ...(keepalive ? { keepalive: true } : {}), ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
+    } catch (e) {
+      throw toError(e);
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async health(): Promise<boolean> {
+    try {
+      await this.call((o) => this.pb.health.check(o));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async register(input: RegisterInput): Promise<RegisterResult> {
+    const body: Rec = { nickname: input.nickname.trim(), email: normEmail(input.email), password: input.password, passwordConfirm: input.passwordConfirm };
+    if (input.invite) body.invite = input.invite.trim();
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/register', { ...o, method: 'POST', body }));
+    return { mailSent: r.mailSent === true, manual: r.verification === 'manual' };
+  }
+
+  /**
+   * The server's registration mode. An unreadable or unknown answer counts as «disabled»: the game
+   * never offers a registration the server has not opened.
+   */
+  async config(): Promise<ServerConfig> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/config', { ...o, method: 'GET' }));
+    const m = r.registration === 'invite_only' || r.registration === 'public' ? r.registration : 'disabled';
+    return { registration: m, inviteRequired: m === 'invite_only', beta: m === 'invite_only', mail: r.mail === true };
+  }
+
+  async login(email: string, password: string): Promise<Me> {
+    await this.call((o) => this.pb.collection('users').authWithPassword(normEmail(email), password, o));
+    return this.me();
+  }
+
+  /** Renew the session token (and read the account again). 401 = the session is over: signed out. */
+  async refresh(): Promise<Me> {
+    try {
+      await this.call((o) => this.pb.collection('users').authRefresh(o));
+    } catch (e) {
+      const err = toError(e);
+      if (err.kind === 'unauthorized' || err.kind === 'notfound') this.pb.authStore.clear();
+      throw err;
+    }
+    return this.me();
+  }
+
+  async me(): Promise<Me> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/me', { ...o, method: 'GET' }));
+    const s = r.save as Rec | null;
+    return {
+      id: str(r.id),
+      email: str(r.email),
+      verified: r.verified === true,
+      nickname: typeof r.nickname === 'string' ? r.nickname : null,
+      created: str(r.created),
+      save: s ? { revision: int(s.revision), hash: str(s.hash), schema: int(s.schema), updated: str(s.updated) } : null,
+    };
+  }
+
+  logout(): void {
+    this.pb.authStore.clear();
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    await this.call((o) => this.pb.collection('users').requestVerification(normEmail(email), o));
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    await this.call((o) => this.pb.collection('users').requestPasswordReset(normEmail(email), o));
+  }
+
+  /** This account's cloud save (null: none yet). The collection rule lets an account read only its own. */
+  async getSave(): Promise<CloudSave | null> {
+    const list = await this.call((o) => this.pb.collection('saves').getList<Rec>(1, 1, { ...o, sort: '-updated' }));
+    return list.items.length ? cloudSaveOf(list.items[0]) : null;
+  }
+
+  async putSave(b: PutBody, keepalive = false): Promise<PutResult> {
+    const r = await this.call(
+      (o) =>
+        this.pb.send<Rec>('/api/prime/save', {
+          ...o,
+          method: 'PUT',
+          body: { base: b.base, data: b.text, hash: b.hash, op: b.op, device: b.device, client: APP_VERSION, reason: b.reason },
+        }),
+      keepalive,
+    );
+    return { revision: int(r.revision), hash: str(r.hash), duplicate: r.duplicate === true, superseded: r.superseded === true, unchanged: r.unchanged === true };
+  }
+
+  /** Keep a device version in the account history without making it current. */
+  async archive(text: string, hash: string, reason: 'conflict-device' | 'before-restore', device: string): Promise<void> {
+    await this.call((o) => this.pb.send('/api/prime/save/archive', { ...o, method: 'POST', body: { data: text, hash, reason, device, client: APP_VERSION } }));
+  }
+
+  /** The account's earlier versions, newest first (only its own — collection rule). */
+  async history(): Promise<HistoryEntry[]> {
+    const list = await this.call((o) => this.pb.collection('save_history').getList<Rec>(1, 20, { ...o, sort: '-created,-revision' }));
+    return list.items.map((r) => ({ ...cloudSaveOf(r), created: str(r.created) }));
+  }
+
+  async restore(historyId: string, base: number, op: string, device: string): Promise<PutResult> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/save/restore', { ...o, method: 'POST', body: { history: historyId, base, op, device } }));
+    return { revision: int(r.revision), hash: str(r.hash), duplicate: r.duplicate === true, superseded: false, unchanged: r.unchanged === true };
+  }
+}

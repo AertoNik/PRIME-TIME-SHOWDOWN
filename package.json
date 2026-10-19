@@ -1,11 +1,12 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.8-alpha",
-  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.8: PRIME ID & Save Foundation)",
+  "version": "1.8.2-alpha.beta",
+  "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.8.2 Stage 1: PRIME Cloud closed beta — pre-deployment foundation)",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:accounts": "vite --mode accounts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
@@ -24,11 +25,25 @@
     "tutorial": "tsx scripts/tutorial-check.ts",
     "lucien": "tsx scripts/lucien-check.ts",
     "graveyard": "tsx scripts/graveyard-check.ts",
-    "primeid": "tsx scripts/prime-id-check.ts"
+    "primeid": "tsx scripts/prime-id-check.ts",
+    "accounts": "tsx scripts/account-check.ts",
+    "backend": "tsx scripts/backend.ts start",
+    "backend:install": "tsx scripts/backend.ts install",
+    "backend:stop": "tsx scripts/backend.ts stop",
+    "backend:status": "tsx scripts/backend.ts status",
+    "backend:backup": "tsx scripts/backend.ts backup",
+    "backend:rules": "tsx scripts/backend.ts rules",
+    "backend:test": "tsx scripts/backend-check.ts",
+    "invites": "tsx scripts/backend.ts invites",
+    "backend:migrate-check": "tsx scripts/backend.ts migrate-check",
+    "beta:test": "tsx scripts/closed-beta-check.ts",
+    "server:bundle": "tsx scripts/server-bundle.ts",
+    "publish:sync": "tsx scripts/publish-sync.ts"
   },
   "dependencies": {
     "@fontsource/rubik": "^5.3.0",
     "@fontsource/unbounded": "^5.3.0",
+    "pocketbase": "0.28.1",
     "three": "^0.186.1"
   },
   "devDependencies": {

@@ -1,0 +1,18 @@
+# PRIME TIME: SHOWDOWN — one consistent PRIME NETWORK backup (started daily by prime-backup.timer).
+#   sudo systemctl start prime-backup        make a backup right now (or: sudo -u pocketbase /opt/primetime/deploy/backup.sh)
+#   sudo journalctl -u prime-backup -n 20    what happened
+
+[Unit]
+Description=PRIME TIME: SHOWDOWN — PRIME NETWORK backup
+After=pocketbase.service
+
+[Service]
+Type=oneshot
+# the same user as PocketBase: SQLite's helper files (-wal/-shm) must never become root's
+User=pocketbase
+Group=pocketbase
+# optional settings: keep count, age public key, upload command (see backup.sh)
+EnvironmentFile=-/etc/primetime/backup.env
+ExecStart=/opt/primetime/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

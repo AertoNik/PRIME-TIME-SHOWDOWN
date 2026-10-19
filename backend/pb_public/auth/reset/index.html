@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex" />
+    <title>PRIME ID — новый пароль</title>
+    <link rel="stylesheet" href="../auth.css" />
+  </head>
+  <body data-page="reset">
+    <main class="card">
+      <div class="logo">PRIME<b>ID</b></div>
+      <h1>Новый пароль</h1>
+      <form id="form" novalidate>
+        <label><span>Новый пароль</span><input id="pw" type="password" autocomplete="new-password" maxlength="71" required /></label>
+        <label><span>Повтор пароля</span><input id="pw2" type="password" autocomplete="new-password" maxlength="71" required /></label>
+        <p class="hint">Минимум 8 символов, буквы и цифры.</p>
+        <button id="submit" class="btn" type="submit">Сохранить пароль</button>
+      </form>
+      <p id="status" class="status"></p>
+      <a id="back" class="btn ghost" href="#" hidden>Вернуться в игру</a>
+      <p class="small">PRIME TIME: SHOWDOWN · PRIME NETWORK</p>
+    </main>
+    <script src="../auth.js"></script>
+  </body>
+</html>

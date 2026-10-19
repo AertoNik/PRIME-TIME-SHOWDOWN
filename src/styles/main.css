@@ -8399,3 +8399,306 @@ button.pid-mini:active {
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------ Alpha 1.8.1: PRIME NETWORK (local accounts) */
+.pid-acc {
+  position: relative;
+  flex: none;
+  padding: 12px 14px 13px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(20, 30, 76, 0.95), rgba(10, 14, 38, 0.97));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(var(--teal-rgb), 0.28);
+}
+.pid-acc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pid-acc-logo {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+.pid-acc-logo b {
+  margin-left: 4px;
+  color: var(--teal);
+}
+.pid-acc-env {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  background: rgba(255, 210, 58, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 58, 0.35);
+  white-space: nowrap;
+}
+.pid-acc-text {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.pid-acc-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 8px;
+  min-width: 0;
+}
+.pid-acc-who b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 16px;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+.pid-acc-who span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.pid-acc-sync {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text);
+}
+.pid-acc-sync i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.pid-acc-sync[data-tone='ok'] i {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(61, 255, 154, 0.7);
+}
+.pid-acc-sync[data-tone='wait'] i {
+  background: var(--orange);
+  animation: pid-acc-blink 1s ease-in-out infinite;
+}
+.pid-acc-sync[data-tone='bad'] i {
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(255, 58, 74, 0.7);
+}
+@keyframes pid-acc-blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+.pid-acc-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+}
+.pid-acc-row + .pid-acc-row {
+  margin-top: 8px;
+}
+.pid-acc-btn {
+  min-height: 46px;
+  padding: 10px 8px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  white-space: normal;
+  line-height: 1.15;
+  text-align: center;
+}
+/* the main action of the block takes the whole row (long Russian words never break mid-word) */
+.pid-acc-row > .pid-acc-btn:not(.ghost) {
+  grid-column: 1 / -1;
+}
+.pid-field b.pid-nick {
+  font-size: 17px;
+  color: var(--teal);
+}
+.pid-strip b.pid-member {
+  color: var(--teal);
+}
+
+/* account dialogs */
+.acc-env {
+  margin: -6px auto 10px;
+  width: max-content;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  background: rgba(255, 210, 58, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 58, 0.35);
+}
+.acc-note {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.acc-note a,
+.acc-legal a {
+  color: var(--teal);
+}
+.acc-legal {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--dim);
+  text-align: center;
+}
+.acc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.acc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.acc-field > span:first-child {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.acc-field input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 13px;
+  outline: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  /* 16px keeps iOS Safari from zooming into the field */
+  font-family: var(--font-body);
+  font-size: 16px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  transition: box-shadow 0.15s;
+}
+.acc-field input:focus {
+  box-shadow: inset 0 0 0 2px var(--teal);
+}
+.acc-field.bad input {
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+.acc-field small {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--dim);
+}
+.acc-pw {
+  position: relative;
+  display: block;
+}
+.acc-pw input {
+  padding-right: 50px;
+}
+.acc-eye {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.acc-eye.on {
+  color: var(--teal);
+}
+.acc-err {
+  min-height: 18px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #ff8a95;
+  text-align: center;
+}
+.acc-err:empty {
+  min-height: 0;
+}
+.acc-sum,
+.acc-ver {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--line);
+  margin-bottom: 10px;
+}
+.acc-sum > div,
+.acc-ver > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.acc-sum span,
+.acc-ver span {
+  color: var(--muted);
+  flex: none;
+}
+.acc-sum b,
+.acc-ver div b {
+  min-width: 0;
+  color: #fff;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.acc-compare {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.acc-compare .acc-ver {
+  margin: 0;
+}
+.acc-ver > b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pid-acc-sync[data-tone='wait'] i {
+    animation: none;
+  }
+}
+/* 1.8.1: long dialog buttons («Использовать это устройство») wrap instead of touching the edges on 375 px */
+.modal .modal-actions .btn {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+}
+/* 1.8.2: the invite code — monospace, easy to read back and paste */
+.acc-invite input {
+  padding: 0 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.acc-invite input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+}

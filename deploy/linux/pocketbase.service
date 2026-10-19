@@ -1,0 +1,67 @@
+# PRIME TIME: SHOWDOWN — PRIME NETWORK API (PocketBase) on a Linux VPS (Ubuntu 24.04 LTS).
+# Installed by deploy/linux/install.sh to /etc/systemd/system/pocketbase.service.
+#
+#   sudo systemctl status pocketbase      is it running?
+#   sudo journalctl -u pocketbase -n 100  its log
+#   sudo systemctl restart pocketbase     restart (after an update)
+#
+# PocketBase listens ONLY on 127.0.0.1:8090; the internet reaches it through Caddy (HTTPS, port 443).
+# It runs as the unprivileged system user «pocketbase», may write only to /var/lib/primetime, and
+# starts again by itself after a crash or a reboot.
+
+[Unit]
+Description=PRIME TIME: SHOWDOWN — PRIME NETWORK API (PocketBase)
+Documentation=file:///opt/primetime/docs/PRIME_CLOUD_DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pocketbase
+Group=pocketbase
+WorkingDirectory=/opt/primetime
+# server settings and secrets (registration mode, API address, SMTP, encryption key) — never in git
+EnvironmentFile=/etc/primetime/pocketbase.env
+ExecStart=/opt/primetime/bin/pocketbase serve \
+  --http=127.0.0.1:8090 \
+  --dir=/var/lib/primetime/pb_data \
+  --hooksDir=/opt/primetime/pb_hooks \
+  --migrationsDir=/opt/primetime/pb_migrations \
+  --publicDir=/opt/primetime/pb_public \
+  --automigrate=false \
+  --hooksWatch=false \
+  --origins=${PRIME_ORIGINS} \
+  --encryptionEnv=PB_ENCRYPTION_KEY
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=8192
+
+# hardening: no new privileges, a read-only system, writes only to the data folder
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/primetime
+UMask=0077
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

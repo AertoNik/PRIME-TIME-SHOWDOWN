@@ -1,0 +1,45 @@
+# PRIME TIME: SHOWDOWN — HTTPS for the PRIME NETWORK API (Caddy, Ubuntu package).
+# Installed by deploy/linux/install.sh to /etc/caddy/Caddyfile with the real domain in place of
+# API_DOMAIN_PLACEHOLDER. Caddy gets and renews the Let's Encrypt certificate by itself
+# (the domain's DNS A record must point at this server, ports 80 and 443 open).
+#
+#   sudo systemctl reload caddy     after editing this file
+#   sudo journalctl -u caddy -n 50  its log
+
+API_DOMAIN_PLACEHOLDER {
+	encode zstd gzip
+
+	# no request of the game is anywhere near this size (a cloud save is ≤ 512 KB)
+	request_body {
+		max_size 1MB
+	}
+
+	# The PocketBase dashboard and every superuser endpoint are NOT reachable from the internet.
+	# The administrator uses an SSH tunnel instead (docs/PRIME_CLOUD_DEPLOY.md, «Панель администратора»).
+	@admin path /_ /_/* /api/collections/_superusers/* /api/settings /api/settings/* /api/backups /api/backups/* /api/logs /api/logs/* /api/crons /api/crons/* /api/collections /api/collections/import /api/collections/meta/*
+	respond @admin 404
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# the email confirmation / password pages (pb_public/auth)
+	@authpages path /auth/*
+	header @authpages Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+	# PocketBase on the loopback interface; Caddy passes the visitor's IP in X-Forwarded-For
+	# (PRIME_TRUSTED_PROXY_HEADER=X-Forwarded-For lets PocketBase rate-limit per visitor)
+	reverse_proxy 127.0.0.1:8090
+
+	log {
+		output file /var/log/caddy/primetime-access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

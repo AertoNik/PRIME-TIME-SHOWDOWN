@@ -14,6 +14,8 @@ const REASON: Record<BackupReason, string> = {
   reset: 'Перед сбросом',
   import: 'Перед импортом',
   restore: 'Перед восстановлением',
+  cloud: 'Перед загрузкой из аккаунта',
+  account: 'Перед переносом в аккаунт',
 };
 
 const when = (t: number) => (t > 0 ? new Date(t).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');

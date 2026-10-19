@@ -738,9 +738,10 @@ export function hasProgress(d: SaveData): boolean {
 export type ProfileId = 'guest' | `user:${string}`;
 
 /** The localStorage keys of one local profile. The guest keeps the historic key, so every existing career loads as before. */
-export function profileKeys(profile: ProfileId): { save: string; backups: string; damaged: string; meta: string; lock: string } {
+export function profileKeys(profile: ProfileId): { save: string; backups: string; damaged: string; meta: string; lock: string; sync: string } {
   const base = profile === 'guest' ? KEY : `${KEY}:${profile}`;
-  return { save: base, backups: `${base}:backups`, damaged: `${base}:damaged`, meta: `${base}:meta`, lock: `${base}:lock` };
+  // 1.8.1: `sync` — the account's cloud bookkeeping (revision, hash, conflict), kept apart from the progress
+  return { save: base, backups: `${base}:backups`, damaged: `${base}:damaged`, meta: `${base}:meta`, lock: `${base}:lock`, sync: `${base}:sync` };
 }
 
 /** One id per browser (diagnostics in exports; the device of a save in 1.8.1). Not a fingerprint. */
@@ -776,7 +777,8 @@ export interface SaveSummary {
   fighters: number;
 }
 
-export type BackupReason = 'auto' | 'migration' | 'reset' | 'import' | 'restore';
+/** 1.8.1: 'cloud' — before the account's cloud save replaced this copy; 'account' — before the guest career moved into an account. */
+export type BackupReason = 'auto' | 'migration' | 'reset' | 'import' | 'restore' | 'cloud' | 'account';
 
 /** One local safety copy: the save text exactly as it was stored. */
 export interface SaveBackup {
@@ -814,13 +816,13 @@ export function savedVersion(obj: Record<string, unknown>): number {
 }
 
 /** Top-level fields this version does not know (kept and written back unchanged). */
-function unknownFields(obj: Record<string, unknown>): Record<string, unknown> {
+export function unknownFields(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) if (k !== 'version' && !KNOWN_FIELDS.has(k)) out[k] = v;
   return out;
 }
 
-function parseObject(raw: string): Record<string, unknown> | null {
+export function parseObject(raw: string): Record<string, unknown> | null {
   try {
     const v: unknown = JSON.parse(raw);
     return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -890,6 +892,10 @@ export class SaveSystem {
   passive = false;
   /** Called when another tab takes the profile over while this one plays. */
   onLockLost: (() => void) | null = null;
+  /** 1.8.1: called after every successful local write (the account sync notes the change). */
+  onSaved: (() => void) | null = null;
+  /** 1.8.1: the page is about to switch profile and reload — nothing more is written. */
+  private suspended = false;
   meta: SaveMeta;
   readonly lock: TabLock | null;
   private available = true;
@@ -993,7 +999,7 @@ export class SaveSystem {
 
   /** Nothing blocks writing: the save is readable and of this schema, and this tab holds the profile. */
   get writable(): boolean {
-    return this.status !== 'damaged' && this.status !== 'newer' && !this.passive;
+    return this.status !== 'damaged' && this.status !== 'newer' && !this.passive && !this.suspended;
   }
 
   save(): void {
@@ -1021,6 +1027,17 @@ export class SaveSystem {
     } catch {
       /* the save itself is written; the counter catches up next time */
     }
+    this.onSaved?.();
+  }
+
+  /** 1.8.1: stop writing for good (the profile is switched and the page reloads next). */
+  suspend(): void {
+    this.suspended = true;
+  }
+
+  /** 1.8.1: the save text as it is written now (the account sync derives its cloud copy from it). */
+  serialized(): string {
+    return this.serialize();
   }
 
   get persistent(): boolean {
@@ -1102,17 +1119,32 @@ export class SaveSystem {
    * (after a damaged save the copy's settings come back, the current ones being defaults); what is
    * stored now is copied first. The caller reloads the page so every system reads it anew.
    */
-  private replace(data: SaveData, extra: Record<string, unknown>, reason: BackupReason): boolean {
-    if (this.passive || this.status === 'newer') return false;
+  private replace(data: SaveData, extra: Record<string, unknown>, reason: BackupReason, keepGivenSettings = false): boolean {
+    if (this.passive || this.suspended || this.status === 'newer') return false;
     this.backupCurrent(reason);
     // the device keeps its own settings — unless the save was unreadable (then they are only defaults)
-    if (this.status !== 'damaged') data.settings = { ...this.data.settings };
+    if (this.status !== 'damaged' && !keepGivenSettings) data.settings = { ...this.data.settings };
     this.data = data;
     this.extra = extra;
     this.status = this.available ? 'ok' : this.status;
     this.damagedRaw = null;
     this.save();
     return true;
+  }
+
+  /**
+   * 1.8.1: replace the progress with a career that came from the account (the cloud save, or the
+   * guest career moved into a new account). What is stored now becomes a safety copy first; the
+   * device settings stay this device's own (or the given ones — the guest's, on the same device).
+   */
+  applyExternal(data: SaveData, extra: Record<string, unknown>, reason: 'cloud' | 'account', settings?: SaveData['settings']): boolean {
+    if (settings) data.settings = { ...settings };
+    return this.replace(data, extra, reason, !!settings);
+  }
+
+  /** 1.8.1: copy what is stored now into the local safety copies (before it leaves for an account). */
+  backupNow(reason: BackupReason): void {
+    this.backupCurrent(reason);
   }
 
   /** Put a safety copy back (by its time). */
@@ -1200,7 +1232,7 @@ function parseList(raw: string | null): SaveBackup[] {
     for (const e of v) {
       const b = e as Partial<SaveBackup> | null;
       if (!b || typeof b.raw !== 'string' || typeof b.at !== 'number' || !b.summary || typeof b.summary !== 'object') continue;
-      const reason: BackupReason = b.reason === 'migration' || b.reason === 'reset' || b.reason === 'import' || b.reason === 'restore' ? b.reason : 'auto';
+      const reason: BackupReason = b.reason === 'migration' || b.reason === 'reset' || b.reason === 'import' || b.reason === 'restore' || b.reason === 'cloud' || b.reason === 'account' ? b.reason : 'auto';
       out.push({ at: b.at, reason, app: typeof b.app === 'string' ? b.app : '', summary: b.summary as SaveSummary, raw: b.raw });
     }
     return out;

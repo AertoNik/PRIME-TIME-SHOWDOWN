@@ -1,7 +1,24 @@
-node_modules/
-dist/
+node_modules
+dist
 .DS_Store
 *.log
-coverage/
-
+.vite
+# (the publish folder also has these — keep them out of git there too)
 .pnpm-store/
+coverage/
+# Alpha 1.8.1 — local accounts: never publish local env overrides, backend binaries, databases,
+# test mail, run files or backups (backend/.gitignore lists the backend ones again)
+.env.local
+.env.*.local
+backend/bin/
+backend/pb_data/
+backend/.run/
+backend/.download/
+backend/backups/
+backend/test-data/
+# 1.8.2: private copies of the account database, and real server settings (never in git)
+backups-private/
+deploy/**/*.env
+!deploy/**/*.env.example
+# the VPS upload archive (npm run server:bundle) — rebuilt any time, not source
+server-bundle/
