@@ -280,7 +280,7 @@ function sqlite(db: string, sql: string): string {
 /** Row counts of the PRIME collections (missing tables count as -1). */
 export function dbCounts(db: string): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const t of ['users', 'profiles', 'saves', 'save_history', 'invites', '_superusers']) {
+  for (const t of ['users', 'profiles', 'saves', 'save_history', 'invites', 'game_sessions', '_superusers']) {
     try {
       out[t] = Number(sqlite(db, `select count(*) from ${t};`));
     } catch {

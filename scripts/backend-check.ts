@@ -4,6 +4,11 @@
 // touched. Every check goes through real HTTP requests as ordinary test users (the access rules too);
 // the "browsers" are the game's own modules (SaveSystem, AccountService, SyncManager, PrimeApi) with
 // separate in-memory localStorage. Saves are artificial fixtures, not real players' files.
+//
+// 1.8.3: these are the 1.8.2 cloud rules (two devices writing in turn, conflicts decided by the
+// player…). The server keeps them behind its emergency switch PRIME_SESSIONS=off — so this suite runs
+// with that switch and proves it still gives exactly the 1.8.2 behaviour. PRIME CLOUD 2.0 itself (one
+// active game session per account, the server's default) is checked by `npm run cloud:test`.
 
 import PocketBase, { BaseAuthStore } from 'pocketbase';
 import { CAREER_START } from '../src/config/career';
@@ -64,7 +69,7 @@ const dataDir = path.join(work, 'pb_data');
 async function startPb(dir = dataDir): Promise<void> {
   // the 1.8.1 account flows run with open registration — allowed ONLY in this isolated, temporary database
   // (the invite-only closed beta has its own checks: npm run beta:test)
-  pb = spawnPocketBase({ dir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public' } });
+  pb = spawnPocketBase({ dir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public', PRIME_SESSIONS: 'off' } });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 400) pbLog.splice(0, pbLog.length - 400);

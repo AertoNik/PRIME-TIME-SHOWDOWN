@@ -8,7 +8,9 @@
 //   - revision check, history copy and the write happen in ONE database transaction, so of two
 //     requests replacing the same revision exactly one wins and the other gets 409 «conflict»;
 //   - a request carries an id (op): a repeated request (the reply was lost) is recognised and
-//     answered again without writing a second time.
+//     answered again without writing a second time;
+//   - 1.8.3: a request must come from the account's ACTIVE GAME SESSION (key + generation, checked
+//     in the same transaction as the write): a page that lost the session cannot write any more.
 
 const V = require('./validate.js');
 const RULES = require('./save_rules.js');
@@ -16,7 +18,13 @@ const RULES = require('./save_rules.js');
 const HISTORY_MAX = 10;
 const OP_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const PUT_REASONS = ['sync', 'transfer', 'new', 'resolve-device', 'replace-damaged'];
-const ARCHIVE_REASONS = ['conflict-device', 'before-restore'];
+const ARCHIVE_REASONS = ['conflict-device', 'before-restore', 'session-device'];
+
+// 1.8.3: game sessions
+const SESSION_HEARTBEAT_MS = 20000;
+/** A session not confirmed for this long counts as gone (shown to the next device; the game stops starting matches). */
+const SESSION_TTL_MS = 75000;
+const SESSION_KEY_RE = /^[a-f0-9]{32}$/;
 
 function body(e) {
   const b = e.requestInfo().body;
@@ -74,6 +82,15 @@ function mailMode() {
   return 'off';
 }
 
+/**
+ * 1.8.3: one active game session per account — «on» unless the server sets PRIME_SESSIONS=off (the
+ * emergency switch back to the 1.8.2 behaviour: saves without a session are accepted again and the
+ * game is told so; nothing in the database changes either way).
+ */
+function sessionsMode() {
+  return String($os.getenv('PRIME_SESSIONS') || '').trim() === 'off' ? 'off' : 'on';
+}
+
 /** What the game may know about this server (public; no secrets). */
 function config(e) {
   const m = mode();
@@ -86,6 +103,9 @@ function config(e) {
     // without email the game must not promise letters: accounts wait for the administrator
     mail: mailMode() !== 'off',
     verification: mailMode() === 'off' ? 'manual' : 'email',
+    // 1.8.3: 1 = cloud writes need the account's active game session (0 / missing: the 1.8.2 rules)
+    sessions: sessionsMode() === 'on' ? 1 : 0,
+    session: { heartbeatMs: SESSION_HEARTBEAT_MS, ttlMs: SESSION_TTL_MS },
   });
 }
 
@@ -265,9 +285,140 @@ function prune(tx, uid) {
 /** Was this request (op) already applied? (now current, or kept in the history since) */
 function applied(tx, uid, cur, op) {
   if (cur && cur.getString('op') === op) return { revision: cur.getInt('revision'), hash: cur.getString('hash'), superseded: false };
-  const h = findOne(tx, 'save_history', 'owner = {:u} && op = {:op} && reason != "conflict-device" && reason != "before-restore-device"', { u: uid, op: op });
+  const h = findOne(tx, 'save_history', 'owner = {:u} && op = {:op} && reason != "conflict-device" && reason != "before-restore-device" && reason != "session-device"', { u: uid, op: op });
   if (h) return { revision: h.getInt('revision'), hash: h.getString('hash'), superseded: true };
   return null;
+}
+
+// ------------------------------------------------------------- game sessions (1.8.3)
+const sessionHash = (key) => $security.sha256('prime-session:v1:' + key);
+const nowMs = () => Date.now();
+
+/** «iPhone · Safari»: letters, digits, spaces and a few signs only (it is shown to the other device). */
+function cleanLabel(v) {
+  return typeof v === 'string' ? v.replace(/[^A-Za-z0-9\u0400-\u04FF ·._()-]/g, '').trim().slice(0, 40) : '';
+}
+
+/** The session named by a request body: { key, generation } — or null if missing or malformed. */
+function sessionArg(b) {
+  const s = b && typeof b.session === 'object' && b.session ? b.session : null;
+  if (!s) return null;
+  const key = typeof s.key === 'string' ? s.key : '';
+  const g = s.generation;
+  if (!SESSION_KEY_RE.test(key) || typeof g !== 'number' || !isFinite(g) || Math.floor(g) !== g || g < 1) return null;
+  return { key: key, generation: g };
+}
+
+function sessionLive(rec) {
+  return !!rec && !rec.getInt('releasedAt') && nowMs() - rec.getInt('heartbeatAt') < SESSION_TTL_MS;
+}
+
+/** What a page that lost the session is told (never the key or its hash). */
+function supersededBody(rec) {
+  return { code: 'session_superseded', generation: rec ? rec.getInt('generation') : 0, label: rec && !rec.getInt('releasedAt') ? rec.getString('label') : '', live: sessionLive(rec) };
+}
+
+/**
+ * Inside a write transaction: may this request change the account's cloud data? null = yes.
+ * Otherwise [status, body]: 426 for a game too old to name a session (1.8.2 and earlier — it must
+ * not loop on it: an old game treats 426 as «refused» and stops), 409 when another page holds the
+ * session now. The claim runs in a transaction on the same record, so the two are strictly ordered.
+ */
+function sessionProblem(tx, uid, b) {
+  if (sessionsMode() === 'off') return null;
+  const s = sessionArg(b);
+  if (!s) return [426, { code: 'session_required' }];
+  const rec = findOne(tx, 'game_sessions', 'user = {:u}', { u: uid });
+  if (!rec || rec.getInt('releasedAt') > 0 || rec.getInt('generation') !== s.generation || rec.getString('keyHash') !== sessionHash(s.key)) return [409, supersededBody(rec)];
+  return null;
+}
+
+/**
+ * POST /api/prime/session/claim — this page becomes the account's active game session (opening the
+ * game, «Продолжить здесь»). The same page claiming again keeps its generation; any other page takes
+ * over: generation + 1, and every request of the previous page is refused from now on.
+ */
+function claimSession(e) {
+  if (!requireVerified(e)) return;
+  if (sessionsMode() === 'off') return fail(e, 409, 'sessions_off');
+  const b = body(e);
+  const uid = e.auth.id;
+  const key = typeof b.key === 'string' ? b.key : '';
+  if (!SESSION_KEY_RE.test(key)) return fail(e, 400, 'invalid_session');
+  const h = sessionHash(key);
+  const label = cleanLabel(b.label);
+  const device = short(b.device, 64);
+  let out = null;
+  e.app.runInTransaction((tx) => {
+    let rec = findOne(tx, 'game_sessions', 'user = {:u}', { u: uid });
+    const t = nowMs();
+    if (rec && !rec.getInt('releasedAt') && rec.getString('keyHash') === h) {
+      rec.set('heartbeatAt', t);
+      tx.save(rec);
+      out = [200, { ok: true, generation: rec.getInt('generation'), previous: null, heartbeatMs: SESSION_HEARTBEAT_MS, ttlMs: SESSION_TTL_MS }];
+      return;
+    }
+    const previous = sessionLive(rec) ? { label: rec.getString('label') } : null;
+    if (!rec) {
+      rec = new Record(tx.findCollectionByNameOrId('game_sessions'));
+      rec.set('user', uid);
+      rec.set('generation', 0);
+    }
+    const generation = rec.getInt('generation') + 1;
+    rec.set('generation', generation);
+    rec.set('keyHash', h);
+    rec.set('label', label);
+    rec.set('device', device);
+    rec.set('claimedAt', t);
+    rec.set('heartbeatAt', t);
+    rec.set('releasedAt', 0);
+    tx.save(rec);
+    out = [200, { ok: true, generation: generation, previous: previous, heartbeatMs: SESSION_HEARTBEAT_MS, ttlMs: SESSION_TTL_MS }];
+  });
+  return e.json(out[0], out[1]);
+}
+
+/**
+ * POST /api/prime/session/heartbeat — «still here». Never takes the session: a page that lost it
+ * only learns so (409) and stops. A page whose session simply ran out while nobody else claimed
+ * (offline for a while) keeps it — no other page could have written meanwhile.
+ */
+function heartbeat(e) {
+  if (!requireVerified(e)) return;
+  if (sessionsMode() === 'off') return fail(e, 409, 'sessions_off');
+  const s = sessionArg(body(e));
+  if (!s) return fail(e, 400, 'invalid_session');
+  const uid = e.auth.id;
+  let out = null;
+  e.app.runInTransaction((tx) => {
+    const rec = findOne(tx, 'game_sessions', 'user = {:u}', { u: uid });
+    if (!rec || rec.getInt('releasedAt') > 0 || rec.getInt('generation') !== s.generation || rec.getString('keyHash') !== sessionHash(s.key)) {
+      out = [409, supersededBody(rec)];
+      return;
+    }
+    const renewed = !sessionLive(rec);
+    rec.set('heartbeatAt', nowMs());
+    tx.save(rec);
+    out = [200, { ok: true, generation: rec.getInt('generation'), renewed: renewed, ttlMs: SESSION_TTL_MS }];
+  });
+  return e.json(out[0], out[1]);
+}
+
+/** POST /api/prime/session/release — signing out / playing as a guest here: the session is free (only its own page can free it). */
+function releaseSession(e) {
+  const s = sessionArg(body(e));
+  if (!s) return fail(e, 400, 'invalid_session');
+  const uid = e.auth.id;
+  let released = false;
+  e.app.runInTransaction((tx) => {
+    const rec = findOne(tx, 'game_sessions', 'user = {:u}', { u: uid });
+    if (rec && !rec.getInt('releasedAt') && rec.getInt('generation') === s.generation && rec.getString('keyHash') === sessionHash(s.key)) {
+      rec.set('releasedAt', nowMs());
+      tx.save(rec);
+      released = true;
+    }
+  });
+  return e.json(200, { ok: true, released: released });
 }
 
 // --------------------------------------------------------------------- PUT save
@@ -287,7 +438,14 @@ function putSave(e) {
     const cur = findOne(tx, 'saves', 'owner = {:u}', { u: uid });
     const done = applied(tx, uid, cur, op);
     if (done) {
+      // (a repeat of a write that DID land is answered as such, even after the session moved on:
+      // that page then knows its progress is in the cloud — nothing is written either way)
       out = [200, { ok: true, duplicate: true, revision: done.revision, hash: done.hash, superseded: done.superseded }];
+      return;
+    }
+    const lost = sessionProblem(tx, uid, b);
+    if (lost) {
+      out = lost;
       return;
     }
     const info = saveInfo(cur);
@@ -336,6 +494,11 @@ function archiveSave(e) {
   if (!up) return;
   let out = null;
   e.app.runInTransaction((tx) => {
+    const lost = sessionProblem(tx, uid, b);
+    if (lost) {
+      out = lost;
+      return;
+    }
     if (findOne(tx, 'save_history', 'owner = {:u} && hash = {:h}', { u: uid, h: up.hash })) {
       out = [200, { ok: true, duplicate: true }];
       return;
@@ -345,7 +508,7 @@ function archiveSave(e) {
       out = [200, { ok: true, duplicate: true }];
       return;
     }
-    archive(tx, uid, { data: up.text, schema: up.schema, client: short(b.client, 32), revision: cur ? cur.getInt('revision') : 0, hash: up.hash, device: short(b.device, 64), op: '' }, reason === 'before-restore' ? 'before-restore-device' : 'conflict-device');
+    archive(tx, uid, { data: up.text, schema: up.schema, client: short(b.client, 32), revision: cur ? cur.getInt('revision') : 0, hash: up.hash, device: short(b.device, 64), op: '' }, reason === 'before-restore' ? 'before-restore-device' : reason === 'session-device' ? 'session-device' : 'conflict-device');
     prune(tx, uid);
     out = [200, { ok: true }];
   });
@@ -375,6 +538,11 @@ function restoreSave(e) {
     const done = applied(tx, uid, cur, op);
     if (done) {
       out = [200, { ok: true, duplicate: true, revision: done.revision, hash: done.hash }];
+      return;
+    }
+    const lost = sessionProblem(tx, uid, b);
+    if (lost) {
+      out = lost;
       return;
     }
     const info = saveInfo(cur);
@@ -439,4 +607,19 @@ function blockMailRequests(e) {
   return e.next();
 }
 
-module.exports = { mode: mode, mailMode: mailMode, blockMailRequests: blockMailRequests, config: config, register: register, me: me, putSave: putSave, archiveSave: archiveSave, restoreSave: restoreSave, guardMail: guardMail };
+module.exports = {
+  mode: mode,
+  mailMode: mailMode,
+  sessionsMode: sessionsMode,
+  blockMailRequests: blockMailRequests,
+  config: config,
+  register: register,
+  me: me,
+  claimSession: claimSession,
+  heartbeat: heartbeat,
+  releaseSession: releaseSession,
+  putSave: putSave,
+  archiveSave: archiveSave,
+  restoreSave: restoreSave,
+  guardMail: guardMail,
+};

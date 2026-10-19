@@ -16,6 +16,7 @@ import { AccountService } from '../src/net/AccountService';
 import { bootProfile, readSync, userProfile } from '../src/net/accountStore';
 import { cloudCopyOf } from '../src/net/cloudSave';
 import { PrimeApi } from '../src/net/PrimeApi';
+import { SessionManager } from '../src/net/SessionManager';
 import { SyncManager } from '../src/net/SyncManager';
 import { HOOKS, MIGRATIONS, PB_BIN, ROOT, binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, snapshot, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { MemoryStorage, save176 } from './lib/fixtures';
@@ -116,6 +117,12 @@ function device(fetchImpl?: typeof fetch, timeoutMs = 6000) {
   const storage = new MemoryStorage();
   const api = new PrimeApi(new PocketBase(API, new BaseAuthStore()), timeoutMs, fetchImpl);
   return { storage, api };
+}
+
+/** 1.8.3: what the game does before it writes an account's cloud save — it takes the account's game session. */
+async function claim(api: PrimeApi): Promise<void> {
+  const s = new SessionManager({ api, device: 'beta-check', label: 'Beta check' });
+  if ((await s.claim()) !== 'active') throw new Error('no game session: ' + s.state);
 }
 
 async function main(): Promise<void> {
@@ -306,6 +313,7 @@ async function main(): Promise<void> {
   // the same request as the «Verified» switch in the PocketBase dashboard (superuser only)
   await admin.collection('users').update(manUser.id, { verified: true });
   const meV = await tester.api.refresh();
+  await claim(tester.api);
   await tester.api.putSave({ base: 0, text: manText.text, hash: manText.hash, op: 'op_manual_2', device: 'x', reason: 'sync' });
   const cloudV = await tester.api.getSave();
   const otherVerify = await statusOf(new PocketBase(API, new BaseAuthStore()).collection('users').update(manUser.id, { verified: false }));
@@ -340,6 +348,7 @@ async function main(): Promise<void> {
   const guest = new SaveSystem({ profile: 'guest', storage: d.storage, lock: null });
   const service = new AccountService({ api: d.api, storage: d.storage, current: guest });
   const me = await d.api.login('net@beta.test', PW);
+  await claim(d.api);
   const moved = await service.transferGuest(me);
   let save = new SaveSystem({ profile: bootProfile(d.storage), storage: d.storage, lock: null });
   let sync = new SyncManager({ save, api: d.api, storage: d.storage });
@@ -386,6 +395,7 @@ async function main(): Promise<void> {
   const before = await d.api.getSave();
   const other = device();
   await other.api.login('friend@beta.test', 'NewBeta2027');
+  await claim(other.api);
   const otherText = cloudCopyOf(JSON.stringify({ ...save176(), version: 12, money: 1 }));
   await other.api.putSave({ base: 0, text: otherText.text, hash: otherText.hash, op: 'op_other_account_1', device: 'x', reason: 'sync' }).catch(() => null);
   const mine = await d.api.getSave();

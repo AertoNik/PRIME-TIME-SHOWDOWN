@@ -11,8 +11,12 @@
 //                                   verification email. The only way to create a player account:
 //                                   the users collection has no create rule.
 //   GET  /api/prime/me              the signed-in account: id, email, verified, nickname, cloud save info
-//   PUT  /api/prime/save            write the cloud save (owner = you, confirmed email, revision check,
-//                                   history copy, idempotent by op) — the only way to change a save
+//   POST /api/prime/session/claim   1.8.3: this page becomes the account's ONE active game session
+//   POST /api/prime/session/heartbeat        «still here» (never takes the session back)
+//   POST /api/prime/session/release          signing out / playing as a guest: the session is free
+//   PUT  /api/prime/save            write the cloud save (owner = you, confirmed email, the active game
+//                                   session, revision check, history copy, idempotent by op) — the only
+//                                   way to change a save
 //   POST /api/prime/save/archive    keep this device's version in the history (conflict «use the cloud»)
 //   POST /api/prime/save/restore    put a history copy back as a NEW revision
 //
@@ -24,6 +28,13 @@ routerAdd('GET', '/api/prime/config', (e) => require(`${__hooks}/lib/prime.js`).
 routerAdd('POST', '/api/prime/register', (e) => require(`${__hooks}/lib/prime.js`).register(e), $apis.bodyLimit(8 * 1024));
 
 routerAdd('GET', '/api/prime/me', (e) => require(`${__hooks}/lib/prime.js`).me(e), $apis.requireAuth('users'));
+
+// 1.8.3 PRIME CLOUD 2.0: one active game session per account (see lib/prime.js, «game sessions»)
+routerAdd('POST', '/api/prime/session/claim', (e) => require(`${__hooks}/lib/prime.js`).claimSession(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+
+routerAdd('POST', '/api/prime/session/heartbeat', (e) => require(`${__hooks}/lib/prime.js`).heartbeat(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+
+routerAdd('POST', '/api/prime/session/release', (e) => require(`${__hooks}/lib/prime.js`).releaseSession(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
 
 routerAdd('PUT', '/api/prime/save', (e) => require(`${__hooks}/lib/prime.js`).putSave(e), $apis.requireAuth('users'), $apis.bodyLimit(720 * 1024));
 

@@ -100,12 +100,23 @@ const nextFrame = () =>
     setTimeout(go, 40);
   });
 
+/**
+ * The page's save. Alpha 1.8.3: an account opened in a tab the player is looking at takes the profile
+ * from another tab of this browser (the newly opened tab plays, the old one stops — PRIME CLOUD 2.0);
+ * the guest career keeps the 1.8 rule (the second tab waits).
+ */
+function bootSave(): SaveSystem {
+  const profile = buildBootProfile();
+  const visible = typeof document !== 'undefined' && document.visibilityState === 'visible';
+  return new SaveSystem({ profile, takeOverLock: profile !== 'guest' && visible });
+}
+
 /** Top-level state machine wiring simulation, rendering, UI, audio and career. */
 export class Game {
   readonly ui: UIManager;
   readonly audio = new AudioSystem();
   /** Alpha 1.8.1: the guest career, or — in `npm run dev:accounts` — the signed-in account's local copy. */
-  readonly save = new SaveSystem({ profile: buildBootProfile() });
+  readonly save = bootSave();
   /** Alpha 1.8.1: PRIME NETWORK accounts (null in every build without them, e.g. the published game). */
   readonly account: AccountRuntime | null;
   readonly career: CareerSystem;
@@ -157,10 +168,12 @@ export class Game {
     // A marathon interrupted by closing the game ends with the waves it really cleared — only by the
     // tab in charge of a readable save (Alpha 1.8: a second tab must not close the first tab's run)
     this.abandoned = this.save.writable ? this.modes.closeAbandoned() : null;
-    // Alpha 1.8: another tab took the profile over — stop here (a running fight pauses first)
+    // Alpha 1.8: another tab took the profile over — stop here (a running fight pauses first).
+    // 1.8.3: for an account under PRIME CLOUD 2.0 that is the account's game session moving to that tab.
     this.save.onLockLost = () => {
-      if (this.screen === 'battle' && this.match?.phase === 'fight' && !this.paused) this.paused = true;
-      showOtherTab(this, true);
+      this.pauseForAccount();
+      if (this.account?.handlesLocalTakeover()) this.account.onLocalTakeover();
+      else showOtherTab(this, true);
     };
     this.ui = new UIManager(uiRoot);
     this.ui.onSoundToggle = () => this.toggleSound();
@@ -309,6 +322,16 @@ export class Game {
     this.audio.setSound(this.save.data.settings.sound);
     this.audio.setMusic(this.save.data.settings.music);
     this.audio.ui('confirm');
+    // Alpha 1.8.3: an account first gets its current progress from PRIME CLOUD (the tutorial, the
+    // menu and every match wait for it) — «PRIME CLOUD · Синхронизация…» meanwhile
+    if (this.account) {
+      this.account.holdUntilReady(() => this.afterTitle());
+      return;
+    }
+    this.afterTitle();
+  }
+
+  private afterTitle(): void {
     // Alpha 1.8: a damaged save, one from a newer version or another open tab comes first
     if (saveNeedsAttention(this)) {
       this.goto('menu');
@@ -498,8 +521,26 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- battle
+  /**
+   * Alpha 1.8.3: a match under a PRIME ID needs the account's game session (no-op for the guest
+   * career and a 1.8.2 server). True = held back (the reason is shown).
+   */
+  private accountHolds(): boolean {
+    const why = this.account?.gate();
+    if (!why) return false;
+    this.audio.ui('deny');
+    this.account!.explainGate(why);
+    return true;
+  }
+
+  /** Alpha 1.8.3: the account's session moved elsewhere — a running fight stops here (nothing is paid). */
+  pauseForAccount(): void {
+    if (this.screen === 'battle' && this.match?.phase === 'fight' && !this.paused) this.paused = true;
+  }
+
   /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
   startMatch(): void {
+    if (this.accountHolds()) return;
     const s = this.save.data;
     const fighter = s.selected;
     const difficulty = this.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
@@ -508,6 +549,7 @@ export class Game {
 
   /** SURVIVAL: start a new marathon with the selected fighter and deck. */
   startSurvival(): void {
+    if (this.accountHolds()) return;
     const s = this.save.data;
     const fighter = s.selected;
     if (!s.fighters[fighter].unlocked) return;
@@ -525,6 +567,7 @@ export class Game {
 
   /** SURVIVAL: fight the next wave of the active marathon. */
   startSurvivalWave(): void {
+    if (this.accountHolds()) return;
     const run = this.modes.activeRun;
     if (!run || run.pendingPerk) return;
     const w = this.modes.waveSetup(run);
@@ -534,6 +577,7 @@ export class Game {
 
   /** PRIME CHALLENGE: one special broadcast with its own rules. */
   startChallenge(id: string, difficulty: Difficulty): void {
+    if (this.accountHolds()) return;
     const def = challengeById(id);
     if (!def) return;
     const s = this.save.data;
@@ -546,6 +590,7 @@ export class Game {
 
   /** BOSS FIGHT: the selected fighter against the legendary champion. */
   startBoss(id: string): void {
+    if (this.accountHolds()) return;
     const def = bossById(id);
     if (!def) return;
     const s = this.save.data;
@@ -744,6 +789,12 @@ export class Game {
     // Alpha 1.6.5: FIRST BROADCAST ends on its own («ГОТОВ К ЭФИРУ!» → menu): no results, no
     // career, money, fans, rating, Classic wins, boss access, events or modes — nothing counts
     if (mode.kind === 'tutorial') return;
+    // Alpha 1.8.3: the account's game session moved to another device mid-fight — nothing is paid here
+    if (this.account?.rewardsBlocked()) {
+      this.paused = true;
+      this.account.explainGate('superseded');
+      return;
+    }
     if (!this.save.data.hintsSeen) {
       this.save.data.hintsSeen = true;
       this.save.save();

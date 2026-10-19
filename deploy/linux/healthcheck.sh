@@ -14,6 +14,13 @@ if [ -n "$DOMAIN" ]; then
   curl -fsS "https://$DOMAIN/api/health" >/dev/null 2>&1 && ok "https://$DOMAIN/api/health отвечает (сертификат действителен)" || bad "https://$DOMAIN не отвечает (DNS, порт 443, Caddy?)"
   MODE="$(curl -fsS "https://$DOMAIN/api/prime/config" 2>/dev/null | sed -n 's/.*"registration":"\([a-z_]*\)".*/\1/p')"
   [ -n "$MODE" ] && ok "режим регистрации: $MODE" || bad "не удалось прочитать /api/prime/config"
+  # 1.8.3: one active game session per PRIME ID (PRIME_SESSIONS=off is the emergency switch back to 1.8.2)
+  SESS="$(curl -fsS "https://$DOMAIN/api/prime/config" 2>/dev/null | sed -n 's/.*"sessions":\([0-9]\).*/\1/p')"
+  case "$SESS" in
+    1) ok "PRIME CLOUD 2.0: одна активная игровая сессия на PRIME ID включена" ;;
+    0) printf '  INFO  %s\n' "PRIME CLOUD 2.0 выключен (PRIME_SESSIONS=off) — сохранения по правилам 1.8.2" ;;
+    *) printf '  INFO  %s\n' "сервер ещё без PRIME CLOUD 2.0 (код до 1.8.3)" ;;
+  esac
   CODE="$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/_/")"
   [ "$CODE" = "404" ] && ok "панель администратора из интернета закрыта (404)" || bad "панель /_/ отвечает снаружи кодом $CODE — проверьте Caddyfile"
 fi

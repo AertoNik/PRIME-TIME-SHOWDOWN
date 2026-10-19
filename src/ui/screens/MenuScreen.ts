@@ -35,6 +35,19 @@ export class MenuScreen implements Screen {
       else if (act === 'collection') this.g.goto('collection');
       else if (act === 'profile') this.g.goto('profile');
     });
+    // Alpha 1.8.3: the PRIME CLOUD line follows the account live (only an account career shows it)
+    g.account?.onChange(() => this.paintCloud());
+  }
+
+  /** 1.8.3: «PRIME CLOUD · СИНХРОНИЗИРОВАНО» and the other states, under the studio name. */
+  private paintCloud(): void {
+    const pill = this.el.querySelector('[data-cloud]') as HTMLElement | null;
+    if (!pill) return;
+    const c = this.g.account?.cloudStatus() ?? null;
+    pill.hidden = !c;
+    if (!c) return;
+    pill.dataset.tone = c.tone;
+    (pill.querySelector('span') as HTMLElement).textContent = c.text;
   }
 
   onShow(): void {
@@ -87,6 +100,7 @@ export class MenuScreen implements Screen {
       <div class="menu-head">
         <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span>${ev ? `<span class="season-tag">${esc(ev.title)}</span>` : ''}</div>
         <div class="label menu-org" data-act="profile" role="button" tabindex="0" aria-label="Открыть PRIME ID" style="margin-top:2px">${esc(s.orgName)} · ${esc(lvl.title)}</div>
+        <button class="cloud-pill" data-cloud data-act="profile" aria-live="polite" hidden><i></i><span></span></button>
       </div>
       <div class="fill pass"></div>
       <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">
@@ -130,6 +144,7 @@ export class MenuScreen implements Screen {
     }
     if (this.shownRep >= 0 && this.shownRep !== s.reputation) countUp(repEl, this.shownRep, s.reputation, 0.9, (n) => String(Math.floor(n)));
     this.shownMoney = s.money;
+    this.paintCloud();
     this.shownRep = s.reputation;
   }
 }

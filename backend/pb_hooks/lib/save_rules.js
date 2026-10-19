@@ -4,7 +4,7 @@
 // while it is out of date) and restart the backend.
 
 module.exports = {
-  "app": "1.8.2-alpha.beta",
+  "app": "1.8.3-alpha",
   "schemaMax": 12,
   "fighters": {
     "ray": {

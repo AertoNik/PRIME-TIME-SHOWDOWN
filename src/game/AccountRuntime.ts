@@ -1,17 +1,29 @@
 import type { ProfileId } from '../meta/SaveSystem';
 import { AccountService, type LoginPlan } from '../net/AccountService';
-import { AUTH_KEY, readAccounts, readSync, rememberName, userIdOf } from '../net/accountStore';
+import { AUTH_KEY, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
 import { browserStorage } from '../net/build';
 import type { NetworkConfig } from '../net/config';
-import { PrimeApi, PrimeApiError, type Me, type RegisterInput, type RegisterResult, type ServerConfig } from '../net/PrimeApi';
+import { PrimeApi, PrimeApiError, type CloudSave, type Me, type RegisterInput, type RegisterResult, type ServerConfig } from '../net/PrimeApi';
+import { SessionManager, deviceLabel } from '../net/SessionManager';
 import { SyncManager, type SyncStatus } from '../net/SyncManager';
-import { accountAction, accountPanelHTML, showSyncDecision, syncLine } from '../ui/accountUI';
+import { accountAction, accountPanelHTML, cloudLabel, explainGate, showKeptDevice, showSessionTaken, showSyncDecision, syncLine } from '../ui/accountUI';
 import type { Game } from './Game';
 
-// Alpha 1.8.1–1.8.2 — the accounts layer of a running page (`npm run dev:accounts` today; a beta
-// build in stage 2). It owns the API client, the AccountService (sign-in/out, switching) and — when
-// this page plays an account — the SyncManager. PRIME ID reads `view()`; the dialogs live in
-// ui/accountUI.ts. Who may register is read from the server (GET /api/prime/config), never assumed.
+// Alpha 1.8.1–1.8.3 — the accounts layer of a running page. It owns the API client, the
+// AccountService (sign-in/out, switching) and — when this page plays an account — the SyncManager.
+// PRIME ID reads `view()`; the dialogs live in ui/accountUI.ts. Who may register is read from the
+// server (GET /api/prime/config), never assumed.
+//
+// 1.8.3 PRIME CLOUD 2.0 — with a server that enforces game sessions (config `sessions: 1`):
+//   - opening the game on an account claims the account's ONE game session (SessionManager); any
+//     other tab / browser / device of the account loses it and shows «PRIME ID ОТКРЫТ НА ДРУГОМ
+//     УСТРОЙСТВЕ» with «Продолжить здесь» (which reloads the page — and the reload claims);
+//   - the claim is followed by reconcile(): the account's current progress is loaded automatically
+//     (no import, no choice in the ordinary case); only then may a match start (`gate()`);
+//   - while the server cannot confirm the session for longer than its lifetime, no new match starts
+//     under the PRIME ID (another device may have taken over) — playing as a guest is offered;
+//   - a page that lost the session starts no match, pays no reward and writes nothing.
+// With a 1.8.2 server (or PRIME_SESSIONS=off) everything works exactly as in 1.8.2.
 
 export type AccountView =
   | { kind: 'starting' }
@@ -23,23 +35,34 @@ export type AccountView =
   /** Signed in and confirmed, but the account is not loaded on this page yet (a choice was put off). */
   | { kind: 'not-loaded'; nickname: string; email: string }
   /** The page plays the account. */
-  | { kind: 'account'; nickname: string; email: string; status: SyncStatus; unsynced: boolean; syncedAt: number; conflict: string | null; signedIn: boolean };
+  | { kind: 'account'; nickname: string; email: string; status: SyncStatus; unsynced: boolean; syncedAt: number; conflict: string | null; signedIn: boolean; gate: PlayGate | null; cloud2: boolean };
+
+/** 1.8.3: why a match under the PRIME ID cannot start right now (null: it can). */
+export type PlayGate = 'loading' | 'offline' | 'superseded' | 'signed-out';
 
 export class AccountRuntime {
   api: PrimeApi | null = null;
   service: AccountService | null = null;
   sync: SyncManager | null = null;
+  /** 1.8.3: this page's game session (only with a server that has sessions, while it plays an account). */
+  session: SessionManager | null = null;
   me: Me | null = null;
   serverUp: boolean | null = null;
   /** When the server check fails: nothing answers (down) or it answers but refuses this page (blocked, CORS). */
   serverProblem: 'down' | 'blocked' | null = null;
   /** 1.8.2: the server's registration mode (null: not known yet — then nothing is offered). */
   serverConfig: ServerConfig | null = null;
+  /** 1.8.3: the account's progress is loaded and compared with PRIME CLOUD — matches may start. */
+  ready = false;
   private started = false;
   private listeners = new Set<() => void>();
   /** The decision dialog was already shown for this conflict (don't nag on every screen). */
   private promptedAt = -1;
   private lastCheck = 0;
+  /** 1.8.3: this page has claimed (or tried to) at least once — later claims only on an explicit action. */
+  private activated = false;
+  private activating: Promise<void> | null = null;
+  private lostShown = false;
 
   constructor(
     readonly g: Game,
@@ -53,6 +76,14 @@ export class AccountRuntime {
   /** The account this page plays (null: the guest career). */
   get playing(): string | null {
     return userIdOf(this.g.save.profile);
+  }
+
+  /**
+   * 1.8.3: does this server enforce game sessions? Not known yet (it was unreachable at start) counts
+   * as yes: until the server says otherwise, no match starts on an account it cannot confirm.
+   */
+  get cloud2(): boolean {
+    return this.serverConfig ? this.serverConfig.sessions : true;
   }
 
   onChange(fn: () => void): () => void {
@@ -85,6 +116,8 @@ export class AccountRuntime {
         syncedAt: m.syncedAt,
         conflict: m.conflict ? m.conflict.kind : null,
         signedIn: !!this.api?.sessionRecord && this.api.sessionRecord.id === uid,
+        gate: this.gate(),
+        cloud2: this.cloud2,
       };
     }
     if (this.serverUp === false && !this.me) return { kind: 'server-down' };
@@ -93,6 +126,56 @@ export class AccountRuntime {
     return this.serverUp === false ? { kind: 'server-down' } : { kind: 'guest' };
   }
 
+  // ------------------------------------------------------------- 1.8.3 gate
+  /**
+   * Why a match under the PRIME ID cannot start now (null: it can). Guests and 1.8.2 servers are
+   * never held back.
+   */
+  gate(): PlayGate | null {
+    if (!this.playing || !this.cloud2) return null;
+    if (!this.started) return 'loading';
+    const s = this.session;
+    // no session: not signed in to this account here — unless the save itself is in trouble (another
+    // tab holds it, damaged, newer): the save dialogs of 1.8 handle that
+    if (!s) return this.g.save.writable ? 'signed-out' : null;
+    switch (s.state) {
+      case 'superseded':
+        return 'superseded';
+      case 'signed-out':
+        return 'signed-out';
+      case 'failed':
+        return 'offline';
+      case 'idle':
+      case 'claiming':
+        return 'loading';
+    }
+    if (!this.ready) return s.state === 'unconfirmed' ? 'offline' : 'loading';
+    return s.canPlay ? null : 'offline';
+  }
+
+  /** A finished match must not pay into the account: this page lost the game session. */
+  rewardsBlocked(): boolean {
+    return this.cloud2 && !!this.playing && this.session?.state === 'superseded';
+  }
+
+  /** The tap on a match button met the gate: say why (and offer what can be done). */
+  explainGate(why: PlayGate): void {
+    explainGate(this.g, why);
+  }
+
+  /**
+   * After the title tap: if the account is still being loaded, show «PRIME CLOUD — Синхронизация…»
+   * and continue only once it is ready (or the player picks another way).
+   */
+  holdUntilReady(then: () => void): void {
+    if (this.gate() !== 'loading') {
+      then();
+      return;
+    }
+    explainGate(this.g, 'loading', then);
+  }
+
+  // ------------------------------------------------------------------ start
   async init(): Promise<void> {
     try {
       // the SDK is downloaded only now; the session token lives in its LocalAuthStore (a token, never a password).
@@ -114,7 +197,7 @@ export class AccountRuntime {
     this.serverProblem = this.serverUp ? null : await this.diagnose();
     if (this.serverUp) await this.loadServerConfig();
     // one line for the developer's console: which server, from which page, with what result
-    console.info(`[PRIME NETWORK] сервер ${this.config.apiUrl} · страница ${location.origin} · ${this.serverUp ? 'доступен' : this.serverProblem === 'blocked' ? 'отвечает, но не принимает запросы с этой страницы (CORS)' : 'не отвечает'}`);
+    console.info(`[PRIME NETWORK] сервер ${this.config.apiUrl} · страница ${location.origin} · ${this.serverUp ? 'доступен' : this.serverProblem === 'blocked' ? 'отвечает, но не принимает запросы с этой страницы (CORS)' : 'не отвечает'}${this.serverConfig?.sessions ? ' · PRIME CLOUD 2.0 (одна активная сессия)' : ''}`);
     if (this.api.sessionRecord) {
       try {
         this.me = await this.api.refresh();
@@ -126,11 +209,15 @@ export class AccountRuntime {
     }
     this.started = true;
     const uid = this.playing;
-    if (uid && this.g.save.writable) this.startSync(uid);
+    if (uid && this.g.save.writable) {
+      if (this.cloud2) this.startSession(uid);
+      else this.startSync(uid);
+    }
     this.wire();
     this.emit();
   }
 
+  /** 1.8.2: the account's uploads, no game session (a server without sessions). */
   private startSync(uid: string): void {
     if (!this.api) return;
     this.sync?.stop();
@@ -150,18 +237,149 @@ export class AccountRuntime {
     void this.sync.start();
   }
 
+  /** 1.8.3: the account plays under a game session — claimed once the page is in front. */
+  private startSession(uid: string): void {
+    if (!this.api) return;
+    const signed = this.api.sessionRecord;
+    if (!signed || signed.id !== uid) {
+      // no PRIME ID session on this device for this account: sign in first (the gate says so)
+      this.session = null;
+      this.g.save.onSaved = () => this.emit();
+      return;
+    }
+    this.sync?.stop();
+    this.session?.stop();
+    const cfg = this.serverConfig;
+    const session = new SessionManager({ api: this.api, device: this.g.save.meta.device, label: deviceLabel(), heartbeatMs: cfg?.heartbeatMs, ttlMs: cfg?.ttlMs, autoTimers: true });
+    this.session = session;
+    this.ready = false;
+    this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, session, soonMs: 800, debounceMs: 10000, onReplaced: () => this.reload() });
+    this.sync.onChange(() => {
+      this.emit();
+      this.maybePrompt();
+    });
+    session.onChange(() => {
+      if (session.state === 'superseded') this.lost();
+      this.emit();
+    });
+    // a page opened in the background claims only when the player looks at it
+    if (document.visibilityState === 'visible') void this.activate();
+  }
+
+  /**
+   * Claim the session and load the account's current progress (opening the game; «Повторить» after
+   * a failed claim). Never called by a timer for a page that once held the session.
+   */
+  activate(): Promise<void> {
+    if (this.activating) return this.activating;
+    this.activating = this.doActivate().finally(() => (this.activating = null));
+    return this.activating;
+  }
+
+  private async doActivate(): Promise<void> {
+    const session = this.session;
+    const sync = this.sync;
+    if (!session || !sync) return;
+    this.activated = true;
+    this.emit();
+    let st = await session.claim();
+    if (st === 'failed') {
+      // one quick second try for a blip right at the start; after that only «Повторить» claims
+      await new Promise((r) => setTimeout(r, 2500));
+      if (this.session !== session) return;
+      st = await session.claim();
+    }
+    if (st !== 'active') {
+      this.emit();
+      return;
+    }
+    if (session.previous) this.g.ui.toast(`PRIME ID продолжен здесь · ${session.previous.label || 'другое устройство'} больше не играет`, true);
+    const res = await sync.reconcile();
+    if (res === 'reload') return; // the cloud version is in — the page reloads to read it
+    if (res === 'failed') {
+      this.emit();
+      return;
+    }
+    // another tab of this browser managed one more write just before this one took over: read it
+    if (this.g.save.storedChanged()) {
+      this.reload();
+      return;
+    }
+    this.ready = true;
+    sync.startSession();
+    this.emit();
+    const m = readSync(this.storage, this.g.save.profile);
+    if (m.notice) {
+      m.notice = null;
+      writeSync(this.storage, this.g.save.profile, m);
+      showKeptDevice(this.g);
+    }
+    this.maybePrompt();
+  }
+
+  /** «Повторить» in the offline dialog: confirm the session (heartbeat) or — never held yet — claim it. */
+  async retry(): Promise<void> {
+    if (this.serverUp === false || !this.serverConfig) await this.recheckServer();
+    const s = this.session;
+    if (!s) return;
+    if (!this.cloud2) return;
+    if (s.state === 'failed' || s.state === 'idle') return this.activate();
+    if (s.state === 'unconfirmed' || s.state === 'active') {
+      await s.beat();
+      if (s.state === 'active' && !this.ready) return this.activate();
+      this.sync?.soon(300);
+      this.emit();
+    }
+  }
+
+  /** This page lost the game session (a heartbeat, a refused write, or another tab of this browser). */
+  private lost(): void {
+    this.ready = false;
+    this.sync?.stop();
+    // nothing more is written here, locally either: the page reloads to play again («Продолжить здесь»)
+    this.g.save.suspend();
+    this.g.pauseForAccount();
+    if (!this.lostShown) {
+      this.lostShown = true;
+      showSessionTaken(this.g, this.session?.holder ?? '');
+    }
+  }
+
+  /** Game.save.onLockLost: does the account handle another tab taking the profile? (1.8.3 server) */
+  handlesLocalTakeover(): boolean {
+    return !!this.playing && this.cloud2 && !!this.session;
+  }
+
+  /** Another tab of this browser took the account over: the same as losing the session to it. */
+  onLocalTakeover(): void {
+    // (the session's listener then stops this page; another tab of this browser claims the server session too)
+    this.session?.markSuperseded({});
+  }
+
   private wire(): void {
     window.addEventListener('online', () => {
-      this.sync?.soon(500);
       if (this.serverUp === false) void this.recheckServer();
+      const s = this.session;
+      // a heartbeat only confirms — it never takes the session back
+      if (s && (s.state === 'unconfirmed' || s.state === 'active')) void s.beat().then(() => this.sync?.soon(500));
+      else if (!s) this.sync?.soon(500);
     });
     document.addEventListener('visibilitychange', () => {
       const s = this.sync;
+      const session = this.session;
+      if (session) {
+        if (document.hidden) {
+          session.pause();
+        } else if (!this.activated) {
+          // first time in front since the page was opened (in the background): this is the opening
+          void this.activate();
+        } else session.resume();
+      }
       if (!s || s.status === 'signed-out') return;
       // leaving the page: try to send what is waiting (not relied upon — it is retried next time anyway)
       if (document.hidden && s.hasUnsynced() && !s.blocked) void s.syncNow(true);
-      // back after a while: maybe another device played meanwhile
-      if (!document.hidden && Date.now() - this.lastCheck > 60_000) {
+      // back after a while: maybe another device played meanwhile (1.8.2; with sessions the heartbeat tells)
+      if (!session && !document.hidden && Date.now() - this.lastCheck > 60_000) {
         this.lastCheck = Date.now();
         void s.check();
       }
@@ -190,12 +408,13 @@ export class AccountRuntime {
     try {
       this.serverConfig = await this.api.config();
     } catch {
-      this.serverConfig = { registration: 'disabled', inviteRequired: false, beta: false, mail: false };
+      this.serverConfig = null;
     }
   }
 
   async recheckServer(): Promise<boolean> {
     if (!this.api) return false;
+    const before = this.serverConfig;
     this.serverUp = await this.api.health();
     this.serverProblem = this.serverUp ? null : await this.diagnose();
     if (this.serverUp) await this.loadServerConfig();
@@ -206,17 +425,24 @@ export class AccountRuntime {
         /* stays signed out */
       }
     }
+    // the server turned out to be a 1.8.2 one (no sessions): the account plays by the 1.8.2 rules
+    const uid = this.playing;
+    if (uid && !before && this.serverConfig && !this.serverConfig.sessions && this.g.save.writable) {
+      this.session?.stop();
+      this.session = null;
+      this.startSync(uid);
+    }
     this.emit();
     return this.serverUp;
   }
 
-  /** The newer cloud version right at the start (nothing played yet here): take it without asking. */
+  /** The newer cloud version right at the start (nothing played yet here): take it without asking (1.8.2). */
   private maybePrompt(): void {
     const s = this.sync;
     if (!s || s.status !== 'conflict') return;
     const m = readSync(this.storage, this.g.save.profile);
     if (!m.conflict) return;
-    if (m.conflict.kind === 'cloud-newer' && this.g.ui.current === 'title' && !s.hasUnsynced()) {
+    if (!this.session && m.conflict.kind === 'cloud-newer' && this.g.ui.current === 'title' && !s.hasUnsynced()) {
       void s.useCloud();
       return;
     }
@@ -240,6 +466,12 @@ export class AccountRuntime {
   passInfo(): { nickname: string; line: string } | null {
     const v = this.view();
     return v.kind === 'account' ? { nickname: v.nickname, line: syncLine(v) } : null;
+  }
+
+  /** 1.8.3: the small PRIME CLOUD line of the main menu (null: the page plays the guest career). */
+  cloudStatus(): { text: string; tone: string } | null {
+    const v = this.view();
+    return v.kind === 'account' ? cloudLabel(v) : null;
   }
 
   /** Game.goto: a decision that waited for the end of a fight is asked now. */
@@ -282,7 +514,42 @@ export class AccountRuntime {
   /** Signed in again to the account this page plays: uploads go on. */
   private resume(): void {
     const uid = this.playing;
-    if (uid && this.g.save.writable) this.startSync(uid);
+    if (!uid || !this.g.save.writable) return;
+    if (this.cloud2) {
+      this.startSession(uid);
+      this.activated = false;
+      void this.activate();
+    } else this.startSync(uid);
+  }
+
+  /**
+   * 1.8.3: a first save of an account is written from this page (moving the guest career, a new
+   * career, replacing a damaged save): the page claims that account's session first — the player
+   * asked for it right here. Nothing to do with a 1.8.2 server.
+   */
+  private async claimFor(userId: string): Promise<void> {
+    if (!this.cloud2 || !this.api) return;
+    if (this.session && this.playing === userId && this.session.state === 'active') return;
+    const s = new SessionManager({ api: this.api, device: this.g.save.meta.device, label: deviceLabel() });
+    const st = await s.claim();
+    if (st === 'signed-out') throw new PrimeApiError('unauthorized', 'unauthorized', 401);
+    if (st !== 'active') throw new PrimeApiError('network', 'network', 0);
+  }
+
+  /** «Перенести прогресс» (see AccountService.transferGuest), under the account's session. */
+  async transferGuest(me: Me): Promise<boolean> {
+    await this.claimFor(me.id);
+    return this.service!.transferGuest(me);
+  }
+
+  async startNewCareer(me: Me, replaceRevision = 0): Promise<boolean> {
+    await this.claimFor(me.id);
+    return this.service!.startNewCareer(me, replaceRevision);
+  }
+
+  async replaceDamagedWithGuest(me: Me, cloud: CloudSave): Promise<boolean> {
+    await this.claimFor(me.id);
+    return this.service!.replaceDamagedWithGuest(me, cloud);
   }
 
   /** «Я подтвердил email»: read the account again and continue the sign-in. */
@@ -310,8 +577,21 @@ export class AccountRuntime {
     this.reload();
   }
 
+  /** 1.8.3: «Играть как гость» — the account stays signed in, its session is given up, the guest career plays. */
+  async playAsGuest(): Promise<void> {
+    await this.session?.release(true);
+    this.switchTo('guest');
+  }
+
+  /** 1.8.3: «Продолжить здесь» — reload: opening the game is what claims the session. */
+  continueHere(): void {
+    this.g.save.suspend();
+    setTimeout(() => location.reload(), 150);
+  }
+
   reload(): void {
     this.sync?.stop();
+    this.session?.stop();
     this.g.save.suspend();
     setTimeout(() => location.reload(), 300);
   }
@@ -320,6 +600,7 @@ export class AccountRuntime {
   async logout(): Promise<void> {
     const s = this.sync;
     if (s && s.hasUnsynced() && !s.blocked) await s.syncNow().catch(() => s.status);
+    await this.session?.release();
     this.service!.logout();
     this.me = null;
     this.reload();

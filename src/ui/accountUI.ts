@@ -1,5 +1,5 @@
 import { formatMoney } from '../core/math';
-import type { AccountView } from '../game/AccountRuntime';
+import type { AccountView, PlayGate } from '../game/AccountRuntime';
 import type { Game } from '../game/Game';
 import { VERSION, summarize, type SaveSummary } from '../meta/SaveSystem';
 import type { LoginPlan } from '../net/AccountService';
@@ -67,12 +67,19 @@ export const SYNC_TEXT: Record<SyncStatus, string> = {
   unverified: 'Email не подтверждён',
   rejected: 'Сервер не принял сохранение',
   error: 'Ошибка сервера · повтор позже',
+  superseded: 'PRIME ID активен на другом устройстве',
+  outdated: 'Обновите страницу, чтобы продолжить синхронизацию',
 };
 
 type AccountState = Extract<AccountView, { kind: 'account' }>;
 
 /** One line about the account save (PRIME ID pass and panel). */
 export function syncLine(v: AccountState): string {
+  // 1.8.3: the game session comes first — it decides whether this page may play at all
+  if (v.gate === 'superseded') return SYNC_TEXT.superseded;
+  if (v.gate === 'loading') return 'PRIME CLOUD · загрузка прогресса…';
+  if (v.gate === 'signed-out') return SYNC_TEXT['signed-out'];
+  if (v.gate === 'offline') return v.unsynced ? 'Нет соединения · изменения ждут отправки' : 'Нет соединения с PRIME CLOUD';
   if (v.conflict === 'cloud-newer') return 'В аккаунте новый прогресс с другого устройства';
   if (v.conflict === 'damaged') return 'Облачное сохранение повреждено';
   if (v.conflict === 'missing') return 'В аккаунте нет сохранения';
@@ -83,10 +90,28 @@ export function syncLine(v: AccountState): string {
 }
 
 function tone(v: AccountState): string {
-  if (v.conflict || v.status === 'conflict' || v.status === 'newer' || v.status === 'rejected') return 'bad';
+  if (v.gate === 'superseded') return 'bad';
+  if (v.gate === 'loading') return 'wait';
+  if (v.gate) return 'off';
+  if (v.conflict || v.status === 'conflict' || v.status === 'newer' || v.status === 'rejected' || v.status === 'superseded' || v.status === 'outdated') return 'bad';
   if (!v.signedIn || v.status === 'offline' || v.status === 'error') return 'off';
   if (v.status === 'synced') return 'ok';
   return 'wait';
+}
+
+/**
+ * 1.8.3: the PRIME CLOUD line of the main menu — short, and «синхронизировано» only after the
+ * server confirmed the last write.
+ */
+export function cloudLabel(v: AccountState): { text: string; tone: string } {
+  const t = tone(v);
+  if (v.gate === 'superseded' || v.status === 'superseded') return { text: 'PRIME ID АКТИВЕН НА ДРУГОМ УСТРОЙСТВЕ', tone: 'bad' };
+  if (v.gate === 'loading' || v.status === 'idle') return { text: 'PRIME CLOUD · ЗАГРУЗКА…', tone: 'wait' };
+  if (v.gate === 'offline' || v.status === 'offline') return { text: 'PRIME CLOUD · НЕТ СОЕДИНЕНИЯ', tone: 'off' };
+  if (v.gate === 'signed-out' || !v.signedIn) return { text: 'PRIME CLOUD · ВОЙДИТЕ СНОВА', tone: 'off' };
+  if (v.status === 'saving' || v.status === 'pending') return { text: 'PRIME CLOUD · СОХРАНЕНИЕ…', tone: 'wait' };
+  if (v.status === 'synced' && !v.conflict) return { text: 'PRIME CLOUD · СИНХРОНИЗИРОВАНО', tone: 'ok' };
+  return { text: 'PRIME CLOUD · ' + syncLine(v).toUpperCase(), tone: t };
 }
 
 // ------------------------------------------------------------ PRIME ID block
@@ -143,13 +168,18 @@ export function accountPanelHTML(g: Game): string {
       break;
     case 'account': {
       const acts: string[] = [];
-      if (!v.signedIn) acts.push(btn('login', 'Войти снова', ''));
+      if (v.gate === 'superseded') acts.push(btn('here', 'Продолжить здесь', ''));
+      else if (v.gate === 'offline') acts.push(btn('retry', 'Повторить', ''));
+      else if (!v.signedIn || v.gate === 'signed-out') acts.push(btn('login', 'Войти снова', ''));
       else if (v.conflict || v.status === 'conflict' || v.status === 'newer') acts.push(btn('decide', 'Решить', ''));
+      else if (v.status === 'outdated') acts.push(btn('reload', 'Обновить страницу', ''));
       else acts.push(btn('sync', 'Синхронизировать', ''));
-      if (v.signedIn) acts.push(btn('history', 'Облачные копии'));
+      if (v.signedIn && v.gate !== 'superseded') acts.push(btn('history', 'Облачные копии'));
       acts.push(btn('logout', 'Выйти'));
+      // 1.8.3: say plainly what the session means — only when the server really enforces it
+      const sess = v.cloud2 && !v.gate ? '<p class="pid-acc-text pid-acc-sess">PRIME CLOUD 2.0 · играть под этим PRIME ID сейчас можно только здесь. Откроете игру на другом устройстве — продолжите там, прогресс загрузится сам.</p>' : '';
       body = `<p class="pid-acc-who"><b>${esc(v.nickname)}</b><span>${esc(v.email)}</span></p>
-        <p class="pid-acc-sync" data-tone="${tone(v)}"><i></i>${esc(syncLine(v))}</p>
+        <p class="pid-acc-sync" data-tone="${tone(v)}"><i></i>${esc(syncLine(v))}</p>${sess}
         <div class="pid-acc-row">${acts.join('')}</div>`;
       break;
     }
@@ -181,6 +211,9 @@ export function accountAction(g: Game, act: string): void {
     if (!s) return;
     void s.syncNow().then((st) => g.ui.toast(st === 'synced' ? 'Синхронизировано' : SYNC_TEXT[st]));
   } else if (act === 'decide') showSyncDecision(g);
+  else if (act === 'here') r.continueHere();
+  else if (act === 'retry') void r.retry();
+  else if (act === 'reload') r.reload();
   else if (act === 'history') void openCloudHistory(g);
   else if (act === 'logout') confirmLogout(g);
 }
@@ -516,13 +549,13 @@ export function continueLogin(g: Game, plan: LoginPlan): void {
           root.querySelector('[data-a="later"]')!.addEventListener('click', () => close());
           root.querySelector('[data-a="guest"]')!.addEventListener('click', () =>
             void r
-              .service!.replaceDamagedWithGuest(plan.me, plan.cloud)
+              .replaceDamagedWithGuest(plan.me, plan.cloud)
               .then((ok) => (ok ? r.switchTo(userProfile(plan.me.id)) : (err.textContent = 'Сохранение аккаунта изменилось. Войдите снова.')))
               .catch((e) => (err.textContent = errText(e))),
           );
           root.querySelector('[data-a="new"]')!.addEventListener('click', () =>
             void r
-              .service!.startNewCareer(plan.me, plan.cloud.revision)
+              .startNewCareer(plan.me, plan.cloud.revision)
               .then((ok) => (ok ? r.reload() : (err.textContent = 'Сохранение аккаунта изменилось. Войдите снова.')))
               .catch((e) => (err.textContent = errText(e))),
           );
@@ -567,7 +600,7 @@ function showTransfer(g: Game, me: LoginPlan['me'], guest: SaveSummary): void {
       root.querySelector('[data-a="move"]')!.addEventListener('click', () => {
         lock(true);
         err.textContent = 'Перенос… дождитесь подтверждения сервера.';
-        r.service!
+        r
           .transferGuest(me)
           .then((ok) => {
             if (!ok) {
@@ -600,7 +633,7 @@ function showTransfer(g: Game, me: LoginPlan['me'], guest: SaveSummary): void {
 
 async function startNew(g: Game, me: LoginPlan['me']): Promise<void> {
   try {
-    const ok = await rt(g).service!.startNewCareer(me);
+    const ok = await rt(g).startNewCareer(me);
     if (!ok) g.ui.toast('В аккаунте уже есть сохранение — войдите снова');
     else rt(g).reload();
   } catch (e) {
@@ -724,6 +757,7 @@ const HISTORY_REASON: Record<string, string> = {
   'conflict-device': 'Версия устройства из конфликта',
   'before-restore': 'Перед восстановлением',
   'before-restore-device': 'Устройство перед восстановлением',
+  'session-device': 'С этого устройства · не попало в облако',
   damaged: 'Повреждённая версия',
 };
 
@@ -782,3 +816,142 @@ function confirmLogout(g: Game): void {
   );
 }
 
+
+// ------------------------------------------------- 1.8.3 PRIME CLOUD 2.0 dialogs
+const spinner = '<div class="cloud-spin" aria-hidden="true"><i></i><i></i><i></i></div>';
+
+/**
+ * Why a match under the PRIME ID cannot start (or the title waits): loading → «Синхронизация…»
+ * (closes by itself when ready and runs `then`), offline, another device, signed out.
+ */
+export function explainGate(g: Game, why: PlayGate, then?: () => void): void {
+  const r = rt(g);
+  if (why === 'superseded') return showSessionTaken(g, r.session?.holder ?? '');
+  if (why === 'loading') {
+    g.ui.modal(
+      `<div class="cloud-head"><span class="pid-acc-logo">PRIME<b>CLOUD</b></span></div>
+       ${spinner}
+       <p class="center acc-note cloud-msg">Синхронизация игрового прогресса…</p>`,
+      (root, close) => {
+        const off = r.onChange(() => {
+          if (!root.isConnected) return void off();
+          const now = r.gate();
+          if (now === 'loading') return;
+          off();
+          if (now === null) {
+            close();
+            g.ui.toast('PRIME CLOUD · Синхронизировано', true);
+            then?.();
+          } else explainGate(g, now, then);
+        });
+      },
+      false,
+    );
+    return;
+  }
+  const unsynced = r.sync?.hasUnsynced() ?? false;
+  const goMenu = then ?? (() => {});
+  if (why === 'offline') {
+    g.ui.modal(
+      `<div class="h1">PRIME CLOUD · НЕТ СОЕДИНЕНИЯ</div>
+       <p class="acc-note">Не удалось связаться с сервером. Пока связь не восстановится, матчи под PRIME ID не начинаются: так прогресс не разойдётся между устройствами. Всё, что сервер уже подтвердил, на месте.${unsynced ? ' Изменения этого устройства ждут отправки.' : ''}</p>
+       <div class="acc-err" role="alert" aria-live="polite"></div>
+       <div class="modal-actions">
+         <button class="btn wide" data-a="retry">Повторить</button>
+         <button class="btn ghost wide" data-a="guest">Играть как гость</button>
+         <button class="btn teal wide" data-a="menu">${then ? 'В меню' : 'Закрыть'}</button>
+       </div>`,
+      (root, close) => {
+        const err = root.querySelector('.acc-err') as HTMLElement;
+        const retry = root.querySelector('[data-a="retry"]') as HTMLButtonElement;
+        retry.addEventListener('click', () => {
+          retry.disabled = true;
+          err.textContent = 'Проверяем связь…';
+          void r.retry().then(() => {
+            const now = r.gate();
+            if (now === null) {
+              close();
+              g.ui.toast('PRIME CLOUD · Синхронизировано', true);
+              then?.();
+            } else if (now === 'offline') {
+              retry.disabled = false;
+              err.textContent = 'Сервер всё ещё недоступен. Попробуйте чуть позже.';
+            } else explainGate(g, now, then);
+          });
+        });
+        root.querySelector('[data-a="guest"]')!.addEventListener('click', () => confirmGuest(g, () => explainGate(g, why, then)));
+        root.querySelector('[data-a="menu"]')!.addEventListener('click', () => {
+          close();
+          goMenu();
+        });
+      },
+      false,
+    );
+    return;
+  }
+  // signed out
+  g.ui.modal(
+    `<div class="h1">Войдите в PRIME ID</div>
+     <p class="acc-note">Сессия PRIME ID на этом устройстве завершена. Войдите снова, чтобы продолжить карьеру аккаунта, — или играйте как гость.${unsynced ? ' Изменения этого устройства ждут отправки и уйдут после входа.' : ''}</p>
+     <div class="modal-actions">
+       <button class="btn wide" data-a="login">Войти</button>
+       <button class="btn ghost wide" data-a="guest">Играть как гость</button>
+       <button class="btn teal wide" data-a="menu">${then ? 'В меню' : 'Закрыть'}</button>
+     </div>`,
+    (root, close) => {
+      root.querySelector('[data-a="login"]')!.addEventListener('click', () => openLogin(g));
+      root.querySelector('[data-a="guest"]')!.addEventListener('click', () => confirmGuest(g, () => explainGate(g, why, then)));
+      root.querySelector('[data-a="menu"]')!.addEventListener('click', () => {
+        close();
+        goMenu();
+      });
+    },
+    false,
+  );
+}
+
+function confirmGuest(g: Game, back: () => void): void {
+  g.confirm(
+    'Играть как гость?',
+    'Игра перезапустится с гостевой карьерой этого устройства — это отдельный прогресс, он не попадает в PRIME ID. Вход в аккаунт сохранится: вернуться к нему можно в PRIME ID → «Загрузить аккаунт».',
+    'Играть как гость',
+    () => void rt(g).playAsGuest(),
+    back,
+  );
+}
+
+/** This page lost the account's game session: nothing more happens here until «Продолжить здесь». */
+export function showSessionTaken(g: Game, holder: string): void {
+  const r = rt(g);
+  const unsynced = r.sync?.hasUnsynced() ?? false;
+  g.ui.modal(
+    `<div class="h1">PRIME ID ОТКРЫТ НА ДРУГОМ УСТРОЙСТВЕ</div>
+     <p class="acc-note">Ваш игровой аккаунт сейчас используется в другой вкладке или на другом устройстве${holder ? ` (<b>${esc(holder)}</b>)` : ''}. Чтобы продолжить игру здесь, нажмите «Продолжить здесь».</p>
+     ${unsynced ? '<p class="acc-note muted">Прогресс этой вкладки, который не успел попасть в PRIME CLOUD, не пропадёт: после «Продолжить здесь» он отправится в облако или, если на другом устройстве уже играли, сохранится в «Облачных копиях».</p>' : ''}
+     <div class="modal-actions">
+       <button class="btn wide" data-a="here">Продолжить здесь</button>
+       <button class="btn ghost wide" data-a="guest">Играть как гость</button>
+     </div>`,
+    (root) => {
+      const here = root.querySelector('[data-a="here"]') as HTMLButtonElement;
+      here.addEventListener('click', () => {
+        g.audio.ui('confirm');
+        here.disabled = true;
+        r.continueHere();
+      });
+      root.querySelector('[data-a="guest"]')!.addEventListener('click', () => confirmGuest(g, () => showSessionTaken(g, holder)));
+    },
+    false,
+  );
+}
+
+/** After the cloud replaced this device's unsent progress (another device had played on). */
+export function showKeptDevice(g: Game): void {
+  g.ui.modal(
+    `<div class="h1">PRIME CLOUD</div>
+     <p class="acc-note">Пока эта вкладка была неактивна, PRIME ID продолжили на другом устройстве. Загружен актуальный прогресс аккаунта.</p>
+     <p class="acc-note muted">Изменения этого устройства, которые не успели попасть в облако, не удалены: они сохранены отдельно — PRIME ID → «Облачные копии» (и в резервных копиях на этом устройстве).</p>
+     <div class="modal-actions"><button class="btn wide" data-a="ok">Понятно</button></div>`,
+    (root, close) => root.querySelector('[data-a="ok"]')!.addEventListener('click', () => close()),
+  );
+}

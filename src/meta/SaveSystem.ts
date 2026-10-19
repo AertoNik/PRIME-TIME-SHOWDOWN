@@ -858,6 +858,12 @@ export interface SaveSystemOptions {
   /** Default in a browser: a TabLock on this profile; null = no tab check (the headless checks). */
   lock?: TabLock | null;
   clock?: () => number;
+  /**
+   * 1.8.3: this page takes the profile from another tab of this browser instead of staying passive
+   * (a PRIME ID account: the newly opened tab plays, the old one stops). The lock is taken BEFORE
+   * the save is read, so the old tab's last write is either read here or refused there.
+   */
+  takeOverLock?: boolean;
 }
 
 function browserStorage(): SaveStorage | null {
@@ -903,19 +909,25 @@ export class SaveSystem {
   private damagedRaw: string | null = null;
   private storage: SaveStorage | null;
   private clock: () => number;
+  /** 1.8.3: the stored text as this page last read or wrote it. */
+  private knownRaw: string | null = null;
 
   constructor(opts: SaveSystemOptions = {}) {
     this.profile = opts.profile ?? 'guest';
     this.keys = profileKeys(this.profile);
     this.storage = opts.storage === undefined ? browserStorage() : opts.storage;
     this.clock = opts.clock ?? (() => Date.now());
+    this.lock = opts.lock === undefined ? (this.storage && typeof window !== 'undefined' ? new TabLock(this.storage, this.keys.lock, this.clock) : null) : opts.lock;
+    // 1.8.3: an account tab opened now takes the profile first (the other tab stops writing), then reads
+    const takeFirst = !!opts.takeOverLock && !!this.lock;
+    if (takeFirst) this.lock!.takeOver();
     const loaded = this.load();
     this.data = loaded.data;
+    this.knownRaw = loaded.stored;
     this.meta = this.loadMeta();
     // one tab per profile: a tab that finds another live tab on it stays passive
-    this.lock = opts.lock === undefined ? (this.storage && typeof window !== 'undefined' ? new TabLock(this.storage, this.keys.lock, this.clock) : null) : opts.lock;
     if (this.lock && this.status !== 'unavailable') {
-      if (this.lock.acquire() === 'busy') {
+      if (!takeFirst && this.lock.acquire() === 'busy') {
         this.passive = true;
         this.lock.markLost();
       }
@@ -929,13 +941,16 @@ export class SaveSystem {
     }
   }
 
-  /** Read the stored save. `raw`: the text of a readable save of this or an older schema (for its safety copy). */
-  private load(): { data: SaveData; raw: string | null } {
+  /**
+   * Read the stored save. `raw`: the text of a readable save of this or an older schema (for its
+   * safety copy); `stored`: exactly what the storage held (1.8.3 storedChanged()).
+   */
+  private load(): { data: SaveData; raw: string | null; stored: string | null } {
     const st = this.storage;
     if (!st) {
       this.available = false;
       this.status = 'unavailable';
-      return { data: defaultSave(), raw: null };
+      return { data: defaultSave(), raw: null, stored: null };
     }
     let raw: string | null;
     try {
@@ -943,11 +958,11 @@ export class SaveSystem {
     } catch {
       this.available = false;
       this.status = 'unavailable';
-      return { data: defaultSave(), raw: null };
+      return { data: defaultSave(), raw: null, stored: null };
     }
-    if (raw === null) return { data: defaultSave(), raw: null };
+    if (raw === null) return { data: defaultSave(), raw: null, stored: null };
     const obj = parseObject(raw);
-    if (!obj) return { data: this.quarantine(raw), raw: null };
+    if (!obj) return { data: this.quarantine(raw), raw: null, stored: raw };
     const v = savedVersion(obj);
     this.loadedVersion = v;
     this.extra = unknownFields(obj);
@@ -955,9 +970,9 @@ export class SaveSystem {
     if (v > VERSION) {
       // a newer game wrote this: show what we can, write nothing
       this.status = 'newer';
-      return { data, raw: null };
+      return { data, raw: null, stored: raw };
     }
-    return { data, raw };
+    return { data, raw, stored: raw };
   }
 
   /** The stored text is not a readable save: keep it aside (export / support) and write nothing. */
@@ -1012,7 +1027,9 @@ export class SaveSystem {
     const st = this.storage;
     if (!st) return;
     try {
-      st.setItem(this.keys.save, this.serialize());
+      const text = this.serialize();
+      st.setItem(this.keys.save, text);
+      this.knownRaw = text;
       this.available = true;
       if (this.status === 'unavailable') this.status = 'ok';
     } catch {
@@ -1033,6 +1050,16 @@ export class SaveSystem {
   /** 1.8.1: stop writing for good (the profile is switched and the page reloads next). */
   suspend(): void {
     this.suspended = true;
+  }
+
+  /**
+   * 1.8.3: did another tab write this profile after this page read or last wrote it? (The tiny gap
+   * between an account tab taking the profile over and the old tab noticing: if the old tab managed
+   * one more write, this page reloads to read it rather than ever writing over it.)
+   */
+  storedChanged(): boolean {
+    if (!this.storage || this.status === 'unavailable') return false;
+    return this.readStored() !== this.knownRaw;
   }
 
   /** 1.8.1: the save text as it is written now (the account sync derives its cloud copy from it). */

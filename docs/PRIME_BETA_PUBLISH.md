@@ -1,5 +1,7 @@
 # Alpha 1.8.2 — закрытая бета на основном сайте
 
+> Alpha 1.8.3 «PRIME CLOUD 2.0» публикуется так же (`publish:sync`), но сервер обновляется вместе с ней — порядок в [PRIME_CLOUD_2_DEPLOY.md](PRIME_CLOUD_2_DEPLOY.md).
+
 Основной сайт: https://aertonik.github.io/PRIME-TIME-SHOWDOWN/
 Сервер: https://primetime-showdown-beta.duckdns.org (Timeweb Cloud, `invite_only`).
 

@@ -276,7 +276,7 @@ function invites(): void {
 async function migrateCheck(): Promise<void> {
   const src = proc.argv[3] ? path.resolve(proc.argv[3]) : '';
   if (!src || !fs.existsSync(src)) {
-    log('Укажите резервную копию: npm run backend:migrate-check -- <папка с data.db или архив .zip>');
+    log('Укажите резервную копию: npm run backend:migrate-check -- <папка с data.db, архив .zip или серверный .tar.gz>');
     proc.exit(1);
   }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'prime-migrate-check-'));
@@ -284,9 +284,13 @@ async function migrateCheck(): Promise<void> {
   fs.mkdirSync(dir);
   try {
     let from = src;
-    if (src.endsWith('.zip')) {
-      cp.spawnSync('/usr/bin/unzip', ['-q', src, '-d', path.join(work, 'unzipped')]);
-      const found = cp.spawnSync('/usr/bin/find', [path.join(work, 'unzipped'), '-name', 'data.db'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean)[0];
+    if (src.endsWith('.age')) throw new Error('архив зашифрован (age): сначала расшифруйте его на Mac — docs/PRIME_CLOUD_BACKUP.md');
+    if (src.endsWith('.zip') || src.endsWith('.tar.gz') || src.endsWith('.tgz')) {
+      fs.mkdirSync(path.join(work, 'unzipped'));
+      // 1.8.3: also the server's own archives (deploy/linux/backup.sh → pb_data-….tar.gz)
+      if (src.endsWith('.zip')) cp.spawnSync('/usr/bin/unzip', ['-q', src, '-d', path.join(work, 'unzipped')]);
+      else cp.spawnSync('/usr/bin/tar', ['-xzf', src, '-C', path.join(work, 'unzipped')]);
+      const found = cp.spawnSync('/usr/bin/find', [path.join(work, 'unzipped'), '-name', 'data.db', '-not', '-path', '*/storage/*'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean)[0];
       if (!found) throw new Error('в архиве нет data.db');
       from = path.dirname(found);
     }
@@ -296,20 +300,26 @@ async function migrateCheck(): Promise<void> {
     log(`Копия: аккаунтов ${before.counts.users}, профилей ${before.counts.profiles}, сохранений ${before.counts.saves}, версий истории ${before.counts.save_history}`);
     const ports = { api: 18290, smtp: 11290, mailUi: 18291 };
     await ensurePortsFree([ports.api]);
-    const pb = spawnPocketBase({ dir, ports, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled' } });
+    // a copy of the SERVER's database has its settings encrypted: the key comes only from this shell's
+    // environment (typed with `read -rs PB_ENCRYPTION_KEY` — never an argument, never a file)
+    const keyed = !!proc.env.PB_ENCRYPTION_KEY;
+    const pb = spawnPocketBase({ dir, ports, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled' }, args: keyed ? ['--encryptionEnv=PB_ENCRYPTION_KEY'] : [] });
     const logs: string[] = [];
     pb.stdout.on('data', (b: unknown) => logs.push(String(b)));
     pb.stderr.on('data', (b: unknown) => logs.push(String(b)));
     const up = (await waitHealthy(`http://127.0.0.1:${ports.api}/api/health`)) && (await ownServerStarted(pb, logs));
     await stopChild(pb);
+    if (!up && /message authentication failed|missing encryption key/.test(logs.join(''))) {
+      throw new Error(keyed ? 'ключ PB_ENCRYPTION_KEY не подходит к этой копии (ничего не изменено)' : 'это копия с сервера: её настройки зашифрованы. Запустите проверку с ключом сервера — docs/PRIME_CLOUD_2_DEPLOY.md, шаг 2 (ничего не изменено)');
+    }
     if (!up) throw new Error('PocketBase не запустился на копии:\n' + logs.join('').slice(-800));
     const after = { counts: dbCounts(db), print: dbFingerprint(db) };
     const mig = cp.spawnSync('/usr/bin/sqlite3', [db, "select file from _migrations where file like '%prime%' order by file;"], { encoding: 'utf8' }).stdout.trim().split('\n');
-    const same = before.print === after.print && ['users', 'profiles', 'saves', 'save_history'].every((t) => before.counts[t] === after.counts[t]);
+    const same = before.print === after.print && ['users', 'profiles', 'saves', 'save_history', 'invites'].every((t) => before.counts[t] === after.counts[t] || (t === 'invites' && before.counts[t] < 0));
     log(`Миграции PRIME на копии: ${mig.join(', ')}`);
-    log(`Коллекция invites: ${after.counts.invites >= 0 ? 'есть' : 'НЕТ'}`);
+    log(`Коллекция invites: ${after.counts.invites >= 0 ? 'есть' : 'НЕТ'} · game_sessions (1.8.3): ${after.counts.game_sessions >= 0 ? 'есть' : 'НЕТ'}`);
     log(same ? 'OK: аккаунты, хеши паролей, статусы email, никнеймы, сохранения, ревизии и история не изменились.' : 'ОШИБКА: данные на копии изменились — не применяйте эти миграции к рабочей базе!');
-    if (!same || after.counts.invites < 0) proc.exitCode = 1;
+    if (!same || after.counts.invites < 0 || after.counts.game_sessions < 0) proc.exitCode = 1;
   } catch (e) {
     log('Проверка не прошла: ' + String((e as Error)?.message ?? e));
     proc.exitCode = 1;

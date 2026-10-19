@@ -68,7 +68,7 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8') as strin
   const runtime = read('src/game/AccountRuntime.ts');
   check('the SDK is imported only inside a build-time condition (no SDK file in a build without accounts)', /if \(import\.meta\.env\.DEV \|\| import\.meta\.env\.VITE_PRIME_ACCOUNTS === 'beta' \|\| import\.meta\.env\.VITE_PRIME_ACCOUNTS === 'production'\) \{\s*const sdk = await import\('pocketbase'\)/.test(runtime));
   const game = read('src/game/Game.ts');
-  check('Game: the account runtime exists only when ACCOUNTS_BUILD and the network config allow it', /ACCOUNTS_BUILD && net && net\.mode !== 'off' \? new AccountRuntime/.test(game) && /profile: buildBootProfile\(\)/.test(game));
+  check('Game: the account runtime exists only when ACCOUNTS_BUILD and the network config allow it', /ACCOUNTS_BUILD && net && net\.mode !== 'off' \? new AccountRuntime/.test(game) && /const profile = buildBootProfile\(\);/.test(game));
   const src = ['src/net/PrimeApi.ts', 'src/net/SyncManager.ts', 'src/net/AccountService.ts', 'src/game/AccountRuntime.ts', 'src/ui/accountUI.ts'].map(read).join('\n');
   check('client code holds no superuser / admin access and no secrets', !/_superusers|superuser|admin.*password|PB_ADMIN|secret\s*[:=]/i.test(src));
   // 1.8.2: both builds are made here, in temporary folders — the result no longer depends on what the
@@ -294,11 +294,35 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   const api = read('src/net/PrimeApi.ts');
   const ui = read('src/ui/accountUI.ts');
   const runtime = read('src/game/AccountRuntime.ts');
-  check('no email on the server (or a server too old to say) = no letter promised: mail only when the server answers mail:true; unreadable config → mail:false', /mail: r\.mail === true/.test(api) && /mail: false \}/.test(runtime) && /const mailOn = \(g: Game\) => g\.account\?\.serverConfig\?\.mail === true;/.test(ui));
+  check('no email on the server (or a server too old to say) = no letter promised: mail only when the server answers mail:true; unreadable config → mail:false', /mail: r\.mail === true/.test(api) && /this\.serverConfig = null;/.test(runtime) && /get cloud2\(\): boolean \{\s*return this\.serverConfig \? this\.serverConfig\.sessions : true;/.test(runtime) && /const mailOn = \(g: Game\) => g\.account\?\.serverConfig\?\.mail === true;/.test(ui));
   check('without email: registration → «Аккаунт ожидает проверки», password reset says it is unavailable and sends nothing, no «resend» button', /if \(r\.manual \|\| !mailOn\(g\)\) showPending/.test(ui) && /function openForgot[\s\S]{0,80}if \(!mailOn\(g\)\) \{[\s\S]*?return;\s*\}/.test(ui) && /else showPending\(g, plan\.me\.email\)/.test(ui) && /Аккаунт ожидает проверки/.test(ui));
   check('server without email: config says manual, registration attempts no letter, every outgoing letter is refused, «send a letter» endpoints answer 503', /mail: mailMode\(\) !== 'off'/.test(prime) && /if \(mailMode\(\) === 'off'\) return e\.json\(200, \{ ok: true, mailSent: false, verification: 'manual' \}\);\s*let mailSent/.test(prime) && /if \(m === 'off'\) throw new Error/.test(prime) && /request-\(verification\|password-reset\|email-change\)/.test(read('backend/pb_hooks/prime.pb.js')));
   const mig = read('backend/pb_migrations/1792400000_prime_closed_beta.js');
   check('migration 1.8.2: the invites collection has no API rule at all (server and superuser only); purely additive', (mig.match(/Rule: null/g) ?? []).length === 5 && !/app\.delete\(|truncate|DROP/i.test(mig.split('(app) => {\n    try')[0]));
+}
+
+// ------------------------------------------------------------ PRIME CLOUD 2.0 (1.8.3)
+{
+  const game = read('src/game/Game.ts');
+  const starts = ['startMatch(): void {', 'startSurvival(): void {', 'startSurvivalWave(): void {', 'startChallenge(id: string, difficulty: Difficulty): void {', 'startBoss(id: string): void {'];
+  check('every way into a match (Classic, Survival and each of its waves, Challenge, Boss) first asks the account gate', starts.every((sig) => new RegExp(sig.replace(/[()[\]{}.*+?^$|\\]/g, '\\$&') + '\\s*if \\(this\\.accountHolds\\(\\)\\) return;').test(game)));
+  check('a match that ends after the page lost the game session pays nothing (checked before any career / event / mode result)', /if \(mode\.kind === 'tutorial'\) return;\s*(\/\/[^\n]*\n\s*)*if \(this\.account\?\.rewardsBlocked\(\)\) \{/.test(game) && game.indexOf('rewardsBlocked()') < game.indexOf('this.career.applyMatch(m.result'));
+  check('only an account tab the player looks at takes the profile from another tab; the guest keeps the 1.8 rule', /takeOverLock: profile !== 'guest' && visible/.test(game));
+  const sm = read('src/net/SessionManager.ts');
+  const doBeat = sm.slice(sm.indexOf('private async doBeat'), sm.indexOf('markSuperseded('));
+  check('the heartbeat never claims (no background tab can take the session back); the key is 128 random bits kept only in memory', !/claimSession|claim\(/.test(doBeat) && /crypto\.getRandomValues\(bytes\)/.test(sm) && /new Uint8Array\(16\)/.test(sm) && !/\b(localStorage|sessionStorage)\.|\.setItem\(/.test(sm));
+  const rtm = read('src/game/AccountRuntime.ts');
+  check('the account claims only when the game is opened (in front), on «Повторить» after a failed claim, or before a first upload the player asked for — never from a timer', (rtm.match(/session\.claim\(\)|s\.claim\(\)/g) ?? []).length === 3 && /if \(document\.visibilityState === 'visible'\) void this\.activate\(\);/.test(rtm) && /\} else if \(!this\.activated\) \{/.test(rtm) && !/setInterval/.test(rtm));
+  check('a match cannot start before the account\'s progress is loaded and compared with PRIME CLOUD; unknown server = sessions assumed (no false freedom offline)', /if \(!this\.ready\) return s\.state === 'unconfirmed' \? 'offline' : 'loading';/.test(rtm) && /return this\.serverConfig \? this\.serverConfig\.sessions : true;/.test(rtm));
+  const api = read('src/net/PrimeApi.ts');
+  check('every cloud write (save, archive, restore) carries the page\'s game session', (api.match(/\.\.\.this\.sessionBody\(\)/g) ?? []).length === 3);
+  const sync = read('src/net/SyncManager.ts');
+  check('uploads only from the page holding the session; a refused write stops uploads; «Синхронизировано» only from the server', /if \(this\.o\.session && !this\.o\.session\.canWrite\) return this\.status;/.test(sync) && /case 'superseded':[\s\S]{0,300}this\.stop\(\);/.test(sync));
+  const prime = read('backend/pb_hooks/lib/prime.js');
+  check('server: save, archive and restore check the active session INSIDE their write transaction (after the repeat check, before any write)', (prime.match(/const lost = sessionProblem\(tx, uid, b\);/g) ?? []).length === 3 && /const done = applied\(tx, uid, cur, op\);[\s\S]{0,400}const lost = sessionProblem\(tx, uid, b\);/.test(prime));
+  check('server: a claim raises the generation in a transaction; an old game without a session gets 426 (stops), a lost page 409', /runInTransaction[\s\S]{0,1600}const generation = rec\.getInt\('generation'\) \+ 1;/.test(prime) && /\[426, \{ code: 'session_required' \}\]/.test(prime) && /\[409, supersededBody\(rec\)\]/.test(prime));
+  const mig = read('backend/pb_migrations/1792500000_prime_sessions.js');
+  check('migration 1.8.3: game_sessions has no API rule at all, one record per account (unique index); purely additive', (mig.match(/Rule: null/g) ?? []).length === 5 && /CREATE UNIQUE INDEX `idx_game_sessions_user`/.test(mig) && !/app\.delete\(|truncate|DROP/i.test(mig.split('(app) => {\n    try')[0]));
 }
 
 // --------------------------------------------- browser security and deployment kit (1.8.2)

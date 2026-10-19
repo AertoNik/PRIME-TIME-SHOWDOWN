@@ -121,10 +121,15 @@ export interface SyncMeta {
   conflict: { kind: ConflictKind; revision: number; hash: string; at: number } | null;
   /** The cloud holds a schema this game cannot read (0 = none). */
   newer: number;
+  /**
+   * 1.8.3: something the player should hear once after the page reloads — «this device's unsent
+   * progress was kept in the cloud copies, the account's current progress was loaded».
+   */
+  notice: { kind: 'kept-device'; at: number } | null;
 }
 
 export function emptySyncMeta(): SyncMeta {
-  return { revision: 0, hash: '', syncedAt: 0, pending: null, conflict: null, newer: 0 };
+  return { revision: 0, hash: '', syncedAt: 0, pending: null, conflict: null, newer: 0, notice: null };
 }
 
 export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
@@ -140,6 +145,8 @@ export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
   const c = r.conflict as SyncMeta['conflict'];
   if (c && (c.kind === 'diverged' || c.kind === 'cloud-newer' || c.kind === 'damaged' || c.kind === 'missing')) m.conflict = { kind: c.kind, revision: n(c.revision), hash: typeof c.hash === 'string' ? c.hash : '', at: n(c.at) };
   m.newer = n(r.newer);
+  const no = r.notice as SyncMeta['notice'];
+  if (no && no.kind === 'kept-device') m.notice = { kind: 'kept-device', at: n(no.at) };
   return m;
 }
 

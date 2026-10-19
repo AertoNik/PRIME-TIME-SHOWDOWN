@@ -47,7 +47,7 @@ const list = String(cp.spawnSync('/usr/bin/tar', ['-tzf', file], { encoding: 'ut
   .filter(Boolean);
 const bad = list.filter((p) => /(^|\/)\._|\.DS_Store$|(^|\/)pb_data\/|(^|\/)bin\/|(^|\/)backups(-private)?\/|\.env$|\.db$|(^|\/)node_modules\//.test(p));
 if (bad.length) fail('в архив попало лишнее: ' + bad.slice(0, 5).join(', '), file);
-const must = ['backend/pb_hooks/prime.pb.js', 'backend/pb_migrations/1792400000_prime_closed_beta.js', 'backend/pb_public/auth/verify/index.html', 'deploy/linux/install.sh', 'deploy/linux/pocketbase.env.example'];
+const must = ['backend/pb_hooks/prime.pb.js', 'backend/pb_migrations/1792400000_prime_closed_beta.js', 'backend/pb_migrations/1792500000_prime_sessions.js', 'backend/pb_public/auth/verify/index.html', 'deploy/linux/install.sh', 'deploy/linux/pocketbase.env.example'];
 const missing = must.filter((m) => !list.includes(m));
 if (missing.length) fail('в архиве нет: ' + missing.join(', '), file);
 

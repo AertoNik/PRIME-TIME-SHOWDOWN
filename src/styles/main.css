@@ -8411,9 +8411,10 @@ button.pid-mini:active {
 }
 .pid-acc-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   margin-bottom: 8px;
 }
 .pid-acc-logo {
@@ -8702,3 +8703,116 @@ button.pid-mini:active {
   text-transform: none;
   letter-spacing: 0;
 }
+
+/* ---------------------------------------------------------------- Alpha 1.8.3 PRIME CLOUD 2.0 */
+/* the account's cloud state under the studio name (main menu) */
+.cloud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 24px);
+  margin-top: 6px;
+  padding: 4px 11px 4px 9px;
+  border: 0;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  background: rgba(8, 12, 34, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(92, 240, 255, 0.28), 0 0 14px rgba(92, 240, 255, 0.08);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.cloud-pill[hidden] {
+  display: none;
+}
+.cloud-pill span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cloud-pill i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.cloud-pill[data-tone='ok'] i {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(61, 255, 154, 0.7);
+}
+.cloud-pill[data-tone='wait'] i {
+  background: var(--orange);
+  animation: pid-acc-blink 1s ease-in-out infinite;
+}
+.cloud-pill[data-tone='bad'] {
+  color: #ffd2d6;
+  box-shadow: inset 0 0 0 1px rgba(255, 58, 74, 0.55), 0 0 14px rgba(255, 58, 74, 0.15);
+}
+.cloud-pill[data-tone='bad'] i {
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(255, 58, 74, 0.7);
+}
+.cloud-pill[data-tone='off'] i {
+  background: var(--muted);
+}
+
+/* «PRIME CLOUD — Синхронизация игрового прогресса…» */
+.cloud-head {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0 14px;
+}
+.cloud-head .pid-acc-logo {
+  font-size: 17px;
+}
+.cloud-msg {
+  margin-top: 12px;
+}
+.cloud-spin {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  height: 14px;
+}
+.cloud-spin i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 10px rgba(92, 240, 255, 0.6);
+  animation: cloud-dot 1.05s ease-in-out infinite;
+}
+.cloud-spin i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.cloud-spin i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes cloud-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0) scale(0.75);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-5px) scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cloud-spin i,
+  .cloud-pill[data-tone='wait'] i {
+    animation: none;
+  }
+}
+/* the PRIME ID panel: what the single session means */
+.pid-acc-sess {
+  margin-top: -4px;
+  font-size: 11.5px;
+}
+

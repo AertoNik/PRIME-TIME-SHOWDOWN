@@ -6,7 +6,11 @@ import { APP_VERSION } from '../config/version';
 // game understands (no raw server error ever reaches the screen). The browser loads the SDK on
 // demand (AccountRuntime): a build without accounts never contains or downloads it.
 
-export type ApiFailKind = 'network' | 'unauthorized' | 'unverified' | 'forbidden' | 'notfound' | 'conflict' | 'rate' | 'invalid' | 'server';
+export type ApiFailKind = 'network' | 'unauthorized' | 'unverified' | 'forbidden' | 'notfound' | 'conflict' | 'rate' | 'invalid' | 'server'
+  /** 1.8.3: another page holds the account's game session now (this page may not write). */
+  | 'superseded'
+  /** 1.8.3: the server wants a game session this request did not carry (a game older than the server). */
+  | 'outdated';
 
 export class PrimeApiError extends Error {
   constructor(
@@ -87,6 +91,27 @@ export interface ServerConfig {
    * say — means none: accounts are confirmed by the administrator and the game promises no letter.
    */
   mail: boolean;
+  /**
+   * 1.8.3 PRIME CLOUD 2.0: the server enforces ONE active game session per account — cloud writes
+   * must carry it. false (a 1.8.2 server, or PRIME_SESSIONS=off) = the 1.8.2 rules, unchanged.
+   */
+  sessions: boolean;
+  heartbeatMs: number;
+  ttlMs: number;
+}
+
+/** 1.8.3: the page's game session, sent with every cloud write (the key is random and lives only in memory). */
+export interface SessionToken {
+  key: string;
+  generation: number;
+}
+
+export interface ClaimResult {
+  generation: number;
+  /** The page that held the session until now, if it was still active (its coarse device name). */
+  previous: { label: string } | null;
+  heartbeatMs: number;
+  ttlMs: number;
 }
 
 /** After a registration: was the verification letter sent, or does the account wait for the administrator? */
@@ -109,7 +134,9 @@ function toError(e: unknown): PrimeApiError {
   if (status === 401) return new PrimeApiError('unauthorized', code || 'unauthorized', status, body);
   if (status === 403) return new PrimeApiError(code === 'not_verified' ? 'unverified' : 'forbidden', code || 'forbidden', status, body);
   if (status === 404) return new PrimeApiError('notfound', code || 'not_found', status, body);
+  if (status === 409 && code === 'session_superseded') return new PrimeApiError('superseded', code, status, body);
   if (status === 409) return new PrimeApiError('conflict', code || 'conflict', status, body);
+  if (status === 426) return new PrimeApiError('outdated', code || 'session_required', status, body);
   if (status === 429) return new PrimeApiError('rate', 'rate_limited', status, body);
   if (status >= 500) return new PrimeApiError('server', code || 'server_error', status, body);
   return new PrimeApiError('invalid', code || 'invalid', status, body);
@@ -134,6 +161,9 @@ function cloudSaveOf(r: Rec): CloudSave {
 }
 
 export class PrimeApi {
+  /** 1.8.3: the game session this page holds (set by SessionManager); attached to every cloud write. */
+  session: SessionToken | null = null;
+
   constructor(
     readonly pb: PocketBase,
     private readonly timeoutMs = 10000,
@@ -194,7 +224,40 @@ export class PrimeApi {
   async config(): Promise<ServerConfig> {
     const r = await this.call((o) => this.pb.send<Rec>('/api/prime/config', { ...o, method: 'GET' }));
     const m = r.registration === 'invite_only' || r.registration === 'public' ? r.registration : 'disabled';
-    return { registration: m, inviteRequired: m === 'invite_only', beta: m === 'invite_only', mail: r.mail === true };
+    const sess = (r.session ?? {}) as Rec;
+    return {
+      registration: m,
+      inviteRequired: m === 'invite_only',
+      beta: m === 'invite_only',
+      mail: r.mail === true,
+      sessions: r.sessions === 1,
+      heartbeatMs: Math.min(60000, Math.max(5000, int(sess.heartbeatMs) || 20000)),
+      ttlMs: Math.min(300000, Math.max(30000, int(sess.ttlMs) || 75000)),
+    };
+  }
+
+  // ------------------------------------------------------------ game sessions (1.8.3)
+  /** This page becomes the account's active game session (only on opening the game or «Продолжить здесь»). */
+  async claimSession(key: string, label: string, device: string): Promise<ClaimResult> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/session/claim', { ...o, method: 'POST', body: { key, label, device } }));
+    const prev = r.previous as Rec | null;
+    return { generation: int(r.generation), previous: prev && typeof prev === 'object' ? { label: str(prev.label) } : null, heartbeatMs: int(r.heartbeatMs) || 20000, ttlMs: int(r.ttlMs) || 75000 };
+  }
+
+  /** «Still here» — never takes the session back (409 → kind 'superseded'). */
+  async heartbeat(s: SessionToken): Promise<{ generation: number; renewed: boolean }> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/session/heartbeat', { ...o, method: 'POST', body: { session: s } }));
+    return { generation: int(r.generation), renewed: r.renewed === true };
+  }
+
+  /** Free the session (signing out, playing as a guest here). Best effort. */
+  async releaseSession(s: SessionToken, keepalive = false): Promise<void> {
+    await this.call((o) => this.pb.send('/api/prime/session/release', { ...o, method: 'POST', body: { session: s } }), keepalive);
+  }
+
+  /** The session part of a cloud write's body (nothing when no session is held — a 1.8.2 server needs none). */
+  private sessionBody(): { session?: SessionToken } {
+    return this.session ? { session: { key: this.session.key, generation: this.session.generation } } : {};
   }
 
   async login(email: string, password: string): Promise<Me> {
@@ -251,7 +314,7 @@ export class PrimeApi {
         this.pb.send<Rec>('/api/prime/save', {
           ...o,
           method: 'PUT',
-          body: { base: b.base, data: b.text, hash: b.hash, op: b.op, device: b.device, client: APP_VERSION, reason: b.reason },
+          body: { base: b.base, data: b.text, hash: b.hash, op: b.op, device: b.device, client: APP_VERSION, reason: b.reason, ...this.sessionBody() },
         }),
       keepalive,
     );
@@ -259,8 +322,8 @@ export class PrimeApi {
   }
 
   /** Keep a device version in the account history without making it current. */
-  async archive(text: string, hash: string, reason: 'conflict-device' | 'before-restore', device: string): Promise<void> {
-    await this.call((o) => this.pb.send('/api/prime/save/archive', { ...o, method: 'POST', body: { data: text, hash, reason, device, client: APP_VERSION } }));
+  async archive(text: string, hash: string, reason: 'conflict-device' | 'before-restore' | 'session-device', device: string): Promise<void> {
+    await this.call((o) => this.pb.send('/api/prime/save/archive', { ...o, method: 'POST', body: { data: text, hash, reason, device, client: APP_VERSION, ...this.sessionBody() } }));
   }
 
   /** The account's earlier versions, newest first (only its own — collection rule). */
@@ -270,7 +333,7 @@ export class PrimeApi {
   }
 
   async restore(historyId: string, base: number, op: string, device: string): Promise<PutResult> {
-    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/save/restore', { ...o, method: 'POST', body: { history: historyId, base, op, device } }));
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/save/restore', { ...o, method: 'POST', body: { history: historyId, base, op, device, ...this.sessionBody() } }));
     return { revision: int(r.revision), hash: str(r.hash), duplicate: r.duplicate === true, superseded: false, unchanged: r.unchanged === true };
   }
 }

@@ -3,6 +3,7 @@ import { randomId } from '../meta/TabLock';
 import { readSync, writeSync, type SyncMeta } from './accountStore';
 import { cloudCopyOf, readCloudText, type CloudCopy } from './cloudSave';
 import { PrimeApiError, type CloudSave, type HistoryEntry, type PrimeApi } from './PrimeApi';
+import type { SessionManager } from './SessionManager';
 
 // Alpha 1.8.1 — SYNC MANAGER: keeps the signed-in account's local copy and its cloud save in step.
 //
@@ -14,8 +15,30 @@ import { PrimeApiError, type CloudSave, type HistoryEntry, type PrimeApi } from 
 // the server confirmed the write. Each upload names the revision it is based on — the server takes it
 // only if that is still the current one; otherwise the two versions are compared and, if both have
 // changed, the player decides (nothing is merged, nothing is picked by level or money).
+//
+// 1.8.3 PRIME CLOUD 2.0 (a server with game sessions): only the page holding the account's game
+// session uploads (SessionManager), and every upload carries that session. Right after the page
+// claims the session, reconcile() makes PRIME CLOUD the source of truth automatically: a newer cloud
+// is loaded, this device's own progress is uploaded when the cloud did not move — and when both moved
+// (another device played on while this one had unsent progress) the cloud stays, this device's
+// version goes into the account's cloud copies (and the local safety copies), and the player is told.
 
-export type SyncStatus = 'idle' | 'synced' | 'pending' | 'saving' | 'offline' | 'conflict' | 'newer' | 'signed-out' | 'unverified' | 'rejected' | 'error';
+export type SyncStatus =
+  | 'idle'
+  | 'synced'
+  | 'pending'
+  | 'saving'
+  | 'offline'
+  | 'conflict'
+  | 'newer'
+  | 'signed-out'
+  | 'unverified'
+  | 'rejected'
+  | 'error'
+  /** 1.8.3: another page holds the account's game session — this page uploads nothing */
+  | 'superseded'
+  /** 1.8.3: the server needs a game session this page cannot give (reload the game) */
+  | 'outdated';
 
 export type SyncDecision = 'in-sync' | 'upload' | 'adopt' | 'fast-forward' | 'conflict' | 'newer' | 'damaged' | 'missing';
 
@@ -55,6 +78,8 @@ export interface SyncOptions {
   soonMs?: number;
   /** Schedule uploads by itself (browser). The checks call syncNow() / check() directly. */
   autoTimers?: boolean;
+  /** 1.8.3: the page's game session (a server with sessions) — uploads only while it may write. */
+  session?: SessionManager;
 }
 
 const RETRY_MS = [5000, 15000, 30000, 60000];
@@ -78,6 +103,13 @@ export class SyncManager {
   constructor(private readonly o: SyncOptions) {
     this.profile = o.save.profile;
     this.lastMatches = o.save.data.matches;
+    // 1.8.3: the page lost the account's game session (a heartbeat said so): nothing more goes up from here
+    o.session?.onChange(() => {
+      if (o.session!.state === 'superseded' && this.status !== 'superseded') {
+        this.stop();
+        this.set('superseded');
+      }
+    });
   }
 
   private now(): number {
@@ -118,7 +150,8 @@ export class SyncManager {
   /** A decision or a sign-in is needed: no automatic upload until then. */
   get blocked(): boolean {
     const m = this.meta;
-    return m.conflict !== null || m.newer > 0 || this.status === 'signed-out' || this.status === 'unverified';
+    if (this.o.session && !this.o.session.canWrite) return true;
+    return m.conflict !== null || m.newer > 0 || this.status === 'signed-out' || this.status === 'unverified' || this.status === 'superseded' || this.status === 'outdated';
   }
 
   start(): Promise<SyncStatus> {
@@ -133,6 +166,20 @@ export class SyncManager {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     this.o.save.onSaved = null;
+  }
+
+  /**
+   * 1.8.3: uploads go on from here (after reconcile, which just compared with the cloud). A change
+   * still waiting (made before the reload, or while offline) goes out soon.
+   */
+  startSession(): void {
+    this.stopped = false;
+    this.o.save.onSaved = () => this.noteLocalChange();
+    this.lastMatches = this.o.save.data.matches;
+    if (this.hasUnsynced() && !this.blocked) {
+      this.set('pending');
+      this.schedule(this.o.soonMs ?? 3000);
+    }
   }
 
   /** SaveSystem wrote locally (hooked to save.onSaved). */
@@ -187,6 +234,8 @@ export class SyncManager {
 
   private async upload(keepalive: boolean): Promise<SyncStatus> {
     if (this.stopped) return this.status;
+    // 1.8.3: only the page that holds the account's game session writes
+    if (this.o.session && !this.o.session.canWrite) return this.status;
     let m = this.meta;
     if (m.conflict) return this.set('conflict');
     if (m.newer) return this.set('newer');
@@ -228,6 +277,18 @@ export class SyncManager {
   private failed(e: unknown): Promise<SyncStatus> | SyncStatus {
     const err = e instanceof PrimeApiError ? e : new PrimeApiError('network', 'network', 0);
     switch (err.kind) {
+      case 'superseded':
+        // another page holds the session: this write did not land (the server checked before writing),
+        // and nothing more is sent from here
+        this.o.session?.markSuperseded(err.data);
+        this.stop();
+        return this.set('superseded');
+      case 'outdated':
+        // the server enforces game sessions and this page has none (it started against an older
+        // server): nothing is retried — the progress waits on this device until the game reloads
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        return this.set('outdated', err.code);
       case 'conflict': {
         if (err.code === 'schema_downgrade' || err.code === 'schema_unsupported') {
           const m = this.meta;
@@ -323,6 +384,94 @@ export class SyncManager {
         m.pending = null;
         this.setMeta(m);
         return this.set('newer');
+    }
+  }
+
+  // ------------------------------------------------------------- 1.8.3 reconcile
+  /**
+   * Right after this page claimed the account's game session: make the local copy and PRIME CLOUD
+   * agree, without asking in the ordinary cases.
+   *   'ok'      in step (this device's waiting progress uploaded if the cloud had not moved)
+   *   'reload'  the cloud version was written here (the page reloads to read it)
+   *   'decide'  the cloud save is damaged / missing / from a newer game: the usual dialog
+   *   'failed'  the server could not be reached
+   */
+  async reconcile(): Promise<'ok' | 'reload' | 'decide' | 'failed'> {
+    if (this.stopped) this.stopped = false;
+    let cloud: CloudSave | null;
+    try {
+      cloud = await this.o.api.getSave();
+    } catch (e) {
+      await this.failed(e);
+      return 'failed';
+    }
+    const m = this.meta;
+    this.cloudInfo = cloud ? { revision: cloud.revision, hash: cloud.hash, schema: cloud.schema, updated: cloud.updated, device: cloud.device } : null;
+    if (m.pending) {
+      if (cloud && cloud.hash === m.pending.hash) {
+        m.revision = cloud.revision;
+        m.hash = cloud.hash;
+        m.pending = null;
+        m.syncedAt = this.now();
+      } else if ((cloud ? cloud.revision : 0) === m.pending.base) m.pending = null;
+    }
+    const local = this.local();
+    const read = cloud ? readCloudText(cloud.text) : null;
+    const readable = !read || read.ok || read.reason === 'newer';
+    const d = decideSync(m, local.hash, cloud, readable);
+    m.conflict = null;
+    m.newer = 0;
+    switch (d) {
+      case 'in-sync':
+      case 'adopt':
+        if (cloud) {
+          m.revision = cloud.revision;
+          m.hash = cloud.hash;
+          m.syncedAt = this.now();
+        }
+        m.pending = null;
+        this.setMeta(m);
+        this.failures = 0;
+        this.set('synced');
+        return 'ok';
+      case 'upload':
+        // the cloud did not move since this device's last confirmed save: its own progress goes up
+        this.setMeta(m);
+        await this.upload(false);
+        return this.status === 'superseded' ? 'failed' : 'ok';
+      case 'fast-forward':
+        this.setMeta(m);
+        return this.replaceLocal(cloud!.text, cloud!.revision, cloud!.hash) ? 'reload' : 'failed';
+      case 'conflict': {
+        // both moved: PRIME CLOUD stays the account's truth; this device's unsent version is kept in
+        // the account's cloud copies (and, by replaceLocal, in the local safety copies) — not merged
+        try {
+          await this.o.api.archive(local.text, local.hash, 'session-device', this.o.save.meta.device);
+        } catch (e) {
+          if (!(e instanceof PrimeApiError) || e.kind !== 'invalid') {
+            await this.failed(e);
+            return 'failed';
+          }
+        }
+        m.pending = null;
+        m.notice = { kind: 'kept-device', at: this.now() };
+        this.setMeta(m);
+        return this.replaceLocal(cloud!.text, cloud!.revision, cloud!.hash) ? 'reload' : 'failed';
+      }
+      case 'damaged':
+      case 'missing': {
+        m.conflict = { kind: d, revision: cloud ? cloud.revision : 0, hash: cloud ? cloud.hash : '', at: this.now() };
+        m.pending = null;
+        this.setMeta(m);
+        this.set('conflict');
+        return 'decide';
+      }
+      case 'newer':
+        m.newer = cloud!.schema;
+        m.pending = null;
+        this.setMeta(m);
+        this.set('newer');
+        return 'decide';
     }
   }
 

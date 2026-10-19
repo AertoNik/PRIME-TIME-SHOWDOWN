@@ -1,8 +1,9 @@
-import { VERSION, defaultSave, hasProgress, summarize, SaveSystem, type ProfileId, type SaveStorage, type SaveSummary } from '../meta/SaveSystem';
-import { randomId } from '../meta/TabLock';
+import { VERSION, defaultSave, hasProgress, profileKeys, summarize, SaveSystem, type ProfileId, type SaveStorage, type SaveSummary } from '../meta/SaveSystem';
+import { LOCK_STALE_MS, randomId } from '../meta/TabLock';
 import { bootProfile, emptySyncMeta, hasLocalSlot, readAccounts, readSync, rememberName, userProfile, writeAccounts, writeSync } from './accountStore';
 import { cloudCopyOf, readCloudText } from './cloudSave';
 import { PrimeApiError, type CloudSave, type Me, type PrimeApi, type PutReason } from './PrimeApi';
+import { decideSync } from './SyncManager';
 
 // Alpha 1.8.1 — signing in, out and switching the local profile, with no DOM: the UI asks, this
 // does. The rules that keep progress safe:
@@ -64,7 +65,10 @@ export class AccountService {
     if (!me.verified) return { kind: 'unverified', me };
     const p = userProfile(me.id);
     if (this.o.current.profile === p) return { kind: 'resume', me };
-    if (hasLocalSlot(this.o.storage, p)) return { kind: 'switch', me, from: 'local' };
+    if (hasLocalSlot(this.o.storage, p)) {
+      await this.freshenSlot(p);
+      return { kind: 'switch', me, from: 'local' };
+    }
     const cloud = await this.o.api.getSave();
     if (cloud) {
       const read = readCloudText(cloud.text);
@@ -80,14 +84,41 @@ export class AccountService {
   }
 
   /**
+   * 1.8.3: this browser already has a copy of the account, and the cloud moved on since (another
+   * device played) while this copy has nothing unsent: write the cloud version into the slot now, so
+   * the account opens with its current progress right away. Anything else (unsent progress here, no
+   * connection, the account open in another tab of this browser) is left to the reconcile after the
+   * switch — it never overwrites progress.
+   */
+  private async freshenSlot(p: ProfileId): Promise<void> {
+    try {
+      const lock = this.o.storage.getItem(profileKeys(p).lock);
+      const held = lock ? (JSON.parse(lock) as { at?: number }) : null;
+      if (held && typeof held.at === 'number' && this.now() - held.at < LOCK_STALE_MS) return;
+      const cloud = await this.o.api.getSave();
+      if (!cloud) return;
+      const read = readCloudText(cloud.text);
+      if (!read.ok) return;
+      const slot = this.slot(p);
+      if (!slot.writable) return;
+      const meta = readSync(this.o.storage, p);
+      if (decideSync(meta, cloudCopyOf(slot.serialized()).hash, cloud, true) !== 'fast-forward') return;
+      this.writeSlot(p, cloud.text, cloud.revision, cloud.hash, 'cloud', true);
+    } catch {
+      /* the reconcile after the switch does it */
+    }
+  }
+
+  /**
    * Write an account's local slot from a cloud text (keeps this device's settings) and remember the
    * confirmed revision. The slot is complete before anything switches to it.
    */
-  private writeSlot(p: ProfileId, text: string, revision: number, hash: string, reason: 'cloud' | 'account'): void {
+  private writeSlot(p: ProfileId, text: string, revision: number, hash: string, reason: 'cloud' | 'account', keepSlotSettings = false): void {
     const read = readCloudText(text);
     if (!read.ok) throw new Error('cloud save unreadable');
     const s = this.slot(p);
-    if (!s.applyExternal(read.data, read.extra, reason, this.o.current.data.settings)) throw new Error('local slot write failed');
+    // (a new slot takes this device's current settings; an existing one keeps its own)
+    if (!s.applyExternal(read.data, read.extra, reason, keepSlotSettings ? undefined : this.o.current.data.settings)) throw new Error('local slot write failed');
     const m = emptySyncMeta();
     m.revision = revision;
     m.hash = hash;
