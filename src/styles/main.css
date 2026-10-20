@@ -8839,3 +8839,282 @@ button.pid-mini:active {
   font-size: 11.5px;
 }
 
+
+/* 1.8.4 — PRIME ID: country and age, the document ticks, documents on top of the window, «Мои данные» */
+.acc-field select {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 40px 0 14px;
+  border: 0;
+  border-radius: 13px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238f9ad0' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 15px center,
+    rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 16px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.acc-field select:focus {
+  box-shadow: inset 0 0 0 2px var(--teal);
+}
+.acc-field select option {
+  color: #111;
+}
+.acc-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 2px;
+}
+.acc-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.acc-check input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--teal);
+}
+.acc-doc {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--teal);
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.acc-small {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* a field people never see (only form-filling robots fill it) */
+.acc-hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.acc-spam {
+  color: var(--gold);
+}
+.acc-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.btn.acc-danger {
+  color: #ff8a95;
+}
+.btn.acc-danger-fill {
+  --btn-a: #ff6b78;
+  --btn-b: #e8323f;
+  --btn-c: #b81d2a;
+  --btn-edge: #7a0f18;
+  --btn-glow: rgba(255, 58, 74, 0.3);
+}
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.legal-links > button {
+  padding: 5px 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal-links > i {
+  font-style: normal;
+  color: var(--dim);
+}
+.legal-lang {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.legal-lang button {
+  min-width: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.legal-lang button.on {
+  background: rgba(var(--teal-rgb), 0.16);
+  color: var(--teal);
+}
+.legal-contact {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+.legal-contact a {
+  color: var(--muted);
+}
+.legal-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 12px) 12px calc(var(--safe-bottom) + 12px);
+  background: rgba(3, 4, 12, 0.78);
+  pointer-events: auto;
+  animation: fadeIn 0.18s ease;
+}
+.legal-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(var(--app-h) - var(--safe-top) - var(--safe-bottom) - 24px);
+  padding: 14px;
+}
+.legal-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.legal-top b {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  line-height: 1.25;
+}
+.legal-top .legal-lang {
+  margin-left: 0;
+}
+.legal-x {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 26px;
+  line-height: 1;
+}
+.legal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 4px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  outline: none;
+}
+.legal-doc h1 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.3;
+}
+.legal-doc h2 {
+  margin: 18px 0 6px;
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  color: var(--teal);
+}
+.legal-doc p,
+.legal-doc li {
+  margin: 0 0 8px;
+}
+.legal-doc ul,
+.legal-doc ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.legal-doc a {
+  color: var(--teal);
+  overflow-wrap: anywhere;
+}
+.legal-doc .doc-meta,
+.legal-doc .doc-draft {
+  font-size: 12px;
+  color: var(--muted);
+}
+.legal-doc .doc-draft {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 210, 58, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 58, 0.3);
+  color: var(--gold);
+}
+.legal-doc table {
+  width: 100%;
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.legal-doc th,
+.legal-doc td {
+  padding: 6px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.legal-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.legal-foot a {
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--muted);
+}
+/* 1.8.4: the country select stays hidden unless the age needs it (a class rule would override [hidden]) */
+.acc-field[hidden] {
+  display: none;
+}
+.acc-field.bad select {
+  box-shadow: inset 0 0 0 2px var(--red);
+}

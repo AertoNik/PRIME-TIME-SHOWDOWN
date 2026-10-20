@@ -11,6 +11,8 @@ import { PrimeApiError } from '../net/PrimeApi';
 import type { SyncStatus } from '../net/SyncManager';
 import type { CloudState } from './cloudPill';
 import { esc } from './dom';
+import { lang, tr } from '../i18n/lang';
+import { acceptedVersions, ageFieldsHTML, ageLocked, ageText, bindAgeFields, bindConsent, consentHTML, legalAction, legalLinksHTML, lockAge, openLegalDoc, openMyData, readAge, showLegalAccept } from './legalUI';
 
 // Alpha 1.8.1 — PRIME NETWORK in the interface: the account block of PRIME ID and its dialogs
 // (create an account, sign in, password reset, moving the guest career, two saves, cloud copies,
@@ -78,6 +80,8 @@ type AccountState = Extract<AccountView, { kind: 'account' }>;
 export function syncLine(v: AccountState): string {
   // 1.8.3: the game session comes first — it decides whether this page may play at all
   if (v.gate === 'superseded') return SYNC_TEXT.superseded;
+  // 1.8.4: the account's documents first
+  if (v.gate === 'terms') return tr('Примите документы PRIME ID, чтобы продолжить', 'Accept the PRIME ID documents to continue');
   if (v.gate === 'loading') return 'PRIME CLOUD · загрузка прогресса…';
   if (v.gate === 'signed-out') return SYNC_TEXT['signed-out'];
   if (v.gate === 'offline') return v.unsynced ? 'Нет соединения · изменения ждут отправки' : 'Нет соединения с PRIME CLOUD';
@@ -107,6 +111,7 @@ function tone(v: AccountState): string {
 export function cloudLabel(v: AccountState): CloudState {
   const t = tone(v);
   if (v.gate === 'superseded' || v.status === 'superseded') return { text: 'PRIME ID АКТИВЕН НА ДРУГОМ УСТРОЙСТВЕ', tone: 'bad', kind: 'superseded' };
+  if (v.gate === 'terms') return { text: tr('PRIME CLOUD · ПРИМИТЕ ДОКУМЕНТЫ', 'PRIME CLOUD · ACCEPT THE DOCUMENTS'), tone: 'off', kind: 'issue' };
   if (v.gate === 'loading' || v.status === 'idle') return { text: 'PRIME CLOUD · ЗАГРУЗКА…', tone: 'wait', kind: 'loading' };
   if (v.gate === 'offline' || v.status === 'offline') return { text: 'PRIME CLOUD · НЕТ СОЕДИНЕНИЯ', tone: 'off', kind: 'offline' };
   if (v.gate === 'signed-out' || !v.signedIn) return { text: 'PRIME CLOUD · ВОЙДИТЕ СНОВА', tone: 'off', kind: 'signin' };
@@ -125,74 +130,84 @@ export function accountPanelHTML(g: Game): string {
   rt(g);
   const head = `<div class="pid-acc-head"><span class="pid-acc-logo">PRIME<b>NETWORK</b></span><span class="pid-acc-env">${chip(g)}</span></div>`;
   const btn = (act: string, label: string, cls = 'ghost') => `<button class="btn ${cls} pid-acc-btn" data-acc="${act}">${label}</button>`;
+  // 1.8.4: download / delete the signed-in account (servers that offer it)
+  const dataBtn = r.serverConfig?.accountTools && r.api?.sessionRecord ? btn('data', tr('Мои данные', 'My data')) : '';
   let body = '';
   switch (v.kind) {
     case 'starting':
-      body = `<p class="pid-acc-text">${isLocal(g) ? 'Подключение к локальному серверу аккаунтов…' : 'Подключение к PRIME NETWORK…'}</p>`;
+      body = `<p class="pid-acc-text">${isLocal(g) ? 'Подключение к локальному серверу аккаунтов…' : tr('Подключение к PRIME NETWORK…', 'Connecting to PRIME NETWORK…')}</p>`;
       break;
     case 'server-down': {
       const api = esc(r.config.apiUrl.replace(/^https?:\/\//, ''));
       body = !isLocal(g)
-        ? `<p class="pid-acc-text">Сервер PRIME NETWORK сейчас недоступен. Игра продолжает работать как обычно, прогресс сохраняется на этом устройстве.</p>`
+        ? `<p class="pid-acc-text">${tr('Сервер PRIME NETWORK сейчас недоступен. Игра продолжает работать как обычно, прогресс сохраняется на этом устройстве.', 'The PRIME NETWORK server is unavailable right now. The game keeps working; progress is saved on this device.')}</p>`
         : r.serverProblem === 'blocked'
           ? `<p class="pid-acc-text">Сервер аккаунтов работает (${api}), но не принимает запросы со страницы <b>${esc(location.host)}</b>. Перезапустите <b>npm run backend</b> из папки этой копии игры (он разрешает порты 5173–5180) или откройте игру по адресу http://localhost:5173/. Гостевая игра работает как обычно.</p>`
           : `<p class="pid-acc-text">Локальный сервер аккаунтов не отвечает (${api}). Запустите в отдельной вкладке терминала <b>npm run backend</b> и нажмите «Проверить снова». Гостевая игра работает как обычно.</p>`;
-      body += `<div class="pid-acc-row">${btn('recheck', 'Проверить снова')}</div>`;
+      body += `<div class="pid-acc-row">${btn('recheck', tr('Проверить снова', 'Check again'))}</div>`;
       break;
     }
     case 'guest': {
       const mode = r.serverConfig?.registration ?? 'disabled';
       if (mode === 'invite_only') {
-        body = `<p class="pid-acc-text"><b>CLOSED BETA.</b> Регистрация пока доступна только приглашённым участникам тестирования. Без приглашения можно играть как гость — весь прогресс сохраняется на этом устройстве.</p>
-          <div class="pid-acc-row">${btn('register', 'Есть приглашение — создать аккаунт', '')}${btn('login', 'Войти')}</div>`;
+        body = `<p class="pid-acc-text"><b>CLOSED BETA.</b> ${tr('Регистрация пока доступна только приглашённым участникам тестирования. Без приглашения можно играть как гость — весь прогресс сохраняется на этом устройстве.', 'Registration is open to invited testers only for now. Without an invite you can play as a guest — all progress is saved on this device.')}</p>
+          <div class="pid-acc-row">${btn('register', tr('Есть приглашение — создать аккаунт', 'I have an invite — create account'), '')}${btn('login', tr('Войти', 'Sign in'))}</div>`;
       } else if (mode === 'public') {
-        body = `<p class="pid-acc-text">Сохраните карьеру в аккаунте PRIME ID и продолжайте её ${isLocal(g) ? 'в другом браузере. Аккаунты пока работают только на этом компьютере.' : 'на другом устройстве.'}</p>
-          <div class="pid-acc-row">${btn('register', 'Создать аккаунт', '')}${btn('login', 'Войти')}</div>`;
+        body = `<p class="pid-acc-text">${isLocal(g) ? 'Сохраните карьеру в аккаунте PRIME ID и продолжайте её в другом браузере. Аккаунты пока работают только на этом компьютере.' : tr('Сохраните карьеру в аккаунте PRIME ID и продолжайте её на другом устройстве.', 'Keep your career in a PRIME ID account and continue it on another device.')}</p>
+          <div class="pid-acc-row">${btn('register', tr('Создать аккаунт', 'Create account'), '')}${btn('login', tr('Войти', 'Sign in'))}</div>`;
       } else {
-        body = `<p class="pid-acc-text">Регистрация новых аккаунтов временно закрыта. Вход в существующий аккаунт работает, гостевая игра — как обычно.</p>
-          <div class="pid-acc-row">${btn('login', 'Войти', '')}</div>`;
+        body = `<p class="pid-acc-text">${tr('Регистрация новых аккаунтов временно закрыта. Вход в существующий аккаунт работает, гостевая игра — как обычно.', 'New registrations are closed for now. Signing in to an existing account works; guest play works as usual.')}</p>
+          <div class="pid-acc-row">${btn('login', tr('Войти', 'Sign in'), '')}</div>`;
       }
       break;
     }
     case 'unverified':
       body = mailOn(g)
         ? `<p class="pid-acc-who"><b>${esc(v.nickname)}</b><span>${esc(v.email)}</span></p>
-        <p class="pid-acc-text">Email не подтверждён: откройте ссылку из письма. До этого карьера остаётся гостевой, облачное сохранение недоступно.</p>
-        <div class="pid-acc-row">${btn('verified', 'Я подтвердил', '')}${btn('resend', 'Отправить ещё раз')}</div>
-        <div class="pid-acc-row">${isLocal(g) ? btn('mail', 'Открыть тестовую почту') : ''}${btn('signout', 'Выйти')}</div>`
+        <p class="pid-acc-text">${tr('Email не подтверждён: откройте ссылку из письма. До этого карьера остаётся гостевой, облачное сохранение недоступно.', 'Email not confirmed: open the link from the email. Until then the guest career continues and the cloud save is unavailable.')} ${tr('Не получили письмо? Проверьте папку «Спам».', 'No email? Check your spam folder.')}</p>
+        <div class="pid-acc-row">${btn('verified', tr('Я подтвердил', 'I confirmed'), '')}${btn('resend', tr('Отправить ещё раз', 'Send again'))}</div>
+        <div class="pid-acc-row">${isLocal(g) ? btn('mail', 'Открыть тестовую почту') : ''}${dataBtn}${btn('signout', tr('Выйти', 'Sign out'))}</div>`
         : `<p class="pid-acc-who"><b>${esc(v.nickname)}</b><span>${esc(v.email)}</span></p>
         <p class="pid-acc-text"><b>Аккаунт ожидает проверки.</b> Организатор теста подтвердит его вручную, когда убедится, что этот email ваш. До этого карьера остаётся гостевой, облачное сохранение недоступно.</p>
         <div class="pid-acc-row">${btn('verified', 'Проверить статус', '')}${btn('signout', 'Выйти')}</div>`;
       break;
     case 'not-loaded':
       body = `<p class="pid-acc-who"><b>${esc(v.nickname)}</b><span>${esc(v.email)}</span></p>
-        <p class="pid-acc-text">Вы вошли, но аккаунт ещё не загружен на этом устройстве — сейчас идёт гостевая карьера.</p>
-        <div class="pid-acc-row">${btn('load', 'Загрузить аккаунт', '')}${btn('signout', 'Выйти')}</div>`;
+        <p class="pid-acc-text">${tr('Вы вошли, но аккаунт ещё не загружен на этом устройстве — сейчас идёт гостевая карьера.', 'You are signed in, but the account is not loaded on this device yet — the guest career is playing.')}</p>
+        <div class="pid-acc-row">${btn('load', tr('Загрузить аккаунт', 'Load account'), '')}${btn('signout', tr('Выйти', 'Sign out'))}</div>
+        ${dataBtn ? `<div class="pid-acc-row">${dataBtn}</div>` : ''}`;
       break;
     case 'account': {
       const acts: string[] = [];
-      if (v.gate === 'superseded') acts.push(btn('here', 'Продолжить здесь', ''));
-      else if (v.gate === 'offline') acts.push(btn('retry', 'Повторить', ''));
-      else if (!v.signedIn || v.gate === 'signed-out') acts.push(btn('login', 'Войти снова', ''));
-      else if (v.conflict || v.status === 'conflict' || v.status === 'newer') acts.push(btn('decide', 'Решить', ''));
-      else if (v.status === 'outdated') acts.push(btn('reload', 'Обновить страницу', ''));
-      else acts.push(btn('sync', 'Синхронизировать', ''));
-      acts.push(btn('logout', 'Выйти'));
+      if (v.gate === 'terms') acts.push(btn('terms', tr('Принять документы', 'Accept documents'), ''));
+      else if (v.gate === 'superseded') acts.push(btn('here', tr('Продолжить здесь', 'Continue here'), ''));
+      else if (v.gate === 'offline') acts.push(btn('retry', tr('Повторить', 'Retry'), ''));
+      else if (!v.signedIn || v.gate === 'signed-out') acts.push(btn('login', tr('Войти снова', 'Sign in again'), ''));
+      else if (v.conflict || v.status === 'conflict' || v.status === 'newer') acts.push(btn('decide', tr('Решить', 'Decide'), ''));
+      else if (v.status === 'outdated') acts.push(btn('reload', tr('Обновить страницу', 'Reload page'), ''));
+      else acts.push(btn('sync', tr('Синхронизировать', 'Sync'), ''));
+      acts.push(btn('logout', tr('Выйти', 'Sign out')));
       // 1.8.3: say plainly what the session means — only when the server really enforces it
-      const sess = v.cloud2 && !v.gate ? '<p class="pid-acc-text pid-acc-sess">PRIME CLOUD 2.0 · играть под этим PRIME ID сейчас можно только здесь. Откроете игру на другом устройстве — продолжите там, прогресс загрузится сам.</p>' : '';
+      const sess = v.cloud2 && !v.gate ? `<p class="pid-acc-text pid-acc-sess">${tr('PRIME CLOUD 2.0 · играть под этим PRIME ID сейчас можно только здесь. Откроете игру на другом устройстве — продолжите там, прогресс загрузится сам.', 'PRIME CLOUD 2.0 · this PRIME ID can be played only here right now. Open the game on another device to continue there — progress loads by itself.')}</p>` : '';
       body = `<p class="pid-acc-who"><b>${esc(v.nickname)}</b><span>${esc(v.email)}</span></p>
         <p class="pid-acc-sync" data-tone="${tone(v)}"><i></i>${esc(syncLine(v))}</p>${sess}
-        <div class="pid-acc-row">${acts.join('')}</div>`;
+        <div class="pid-acc-row">${acts.join('')}</div>
+        ${dataBtn && v.signedIn ? `<div class="pid-acc-row">${dataBtn}</div>` : ''}`;
       break;
     }
   }
-  return `<section class="pid-acc" data-kind="${v.kind}">${head}${body}</section>`;
+  // 1.8.4: the documents, the contact and the language — always within reach
+  return `<section class="pid-acc" data-kind="${v.kind}">${head}${body}${v.kind === 'starting' ? '' : legalLinksHTML()}</section>`;
 }
 
 /** PRIME ID: a tap in the account block. */
 export function accountAction(g: Game, act: string): void {
   const r = rt(g);
   g.audio.ui('click');
+  // 1.8.4: documents, language, the account's own data
+  if (legalAction(g, act)) return;
+  if (act === 'data') return openMyData(g);
+  if (act === 'terms') return r.askTerms(true);
   if (act === 'register') openRegister(g);
   else if (act === 'login') openLogin(g);
   else if (act === 'recheck') {
@@ -201,12 +216,12 @@ export function accountAction(g: Game, act: string): void {
   else if (act === 'resend') {
     void r
       .resendVerification()
-      .then(() => g.ui.toast(isLocal(g) ? 'Письмо отправлено ещё раз (тестовая почта)' : 'Письмо отправлено ещё раз'))
+      .then(() => g.ui.toast(isLocal(g) ? 'Письмо отправлено ещё раз (тестовая почта)' : tr('Письмо отправлено ещё раз. Не пришло — проверьте «Спам».', 'Email sent again. Not there? Check your spam folder.')))
       .catch((e) => g.ui.toast(errText(e)));
   } else if (act === 'mail' && LOCAL_MAIL) window.open(LOCAL_MAIL, '_blank', 'noopener');
   else if (act === 'signout') {
     r.signOutOnly();
-    g.ui.toast('Вы вышли из аккаунта');
+    g.ui.toast(tr('Вы вышли из аккаунта', 'Signed out'));
   } else if (act === 'load') void recheckVerified(g);
   else if (act === 'sync') {
     const s = r.sync;
@@ -223,11 +238,11 @@ export function accountAction(g: Game, act: string): void {
 const envNote = (g: Game) => `<div class="acc-env">PRIME NETWORK · ${chip(g)}</div>`;
 
 function eyeButton(): string {
-  return `<button type="button" class="acc-eye" data-eye aria-label="Показать пароль"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
+  return `<button type="button" class="acc-eye" data-eye aria-label="${tr('Показать пароль', 'Show password')}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>`;
 }
 
 /** Wires a form: password eye, «Enter» submits, one request at a time, errors under the fields. */
-function bindForm(root: HTMLElement, submit: (f: Record<string, string>, fail: (msg: string, field?: string) => void) => Promise<void>): void {
+function bindForm(root: HTMLElement, submit: (f: Record<string, string>, fail: (msg: string, field?: string) => void) => Promise<void>, canSubmit?: () => boolean): void {
   const form = root.querySelector('form') as HTMLFormElement;
   const errBox = root.querySelector('.acc-err') as HTMLElement;
   const submitBtn = form.querySelector('[type="submit"]') as HTMLButtonElement;
@@ -237,7 +252,7 @@ function bindForm(root: HTMLElement, submit: (f: Record<string, string>, fail: (
       const input = b.parentElement!.querySelector('input')!;
       const show = input.type === 'password';
       input.type = show ? 'text' : 'password';
-      b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+      b.setAttribute('aria-label', show ? tr('Скрыть пароль', 'Hide password') : tr('Показать пароль', 'Show password'));
       b.classList.toggle('on', show);
     }),
   );
@@ -257,11 +272,12 @@ function bindForm(root: HTMLElement, submit: (f: Record<string, string>, fail: (
     busy = true;
     submitBtn.disabled = true;
     const label = submitBtn.textContent;
-    submitBtn.textContent = 'Подождите…';
+    submitBtn.textContent = tr('Подождите…', 'Please wait…');
     submit(data, fail).finally(() => {
       busy = false;
       if (submitBtn.isConnected) {
-        submitBtn.disabled = false;
+        // 1.8.4: a form with required ticks stays locked until they are ticked again
+        submitBtn.disabled = canSubmit ? !canSubmit() : false;
         submitBtn.textContent = label;
       }
     });
@@ -276,8 +292,8 @@ export function openRegister(g: Game): void {
   const mode = r.serverConfig?.registration ?? 'disabled';
   if (mode === 'disabled') {
     g.ui.modal(
-      `<div class="h1">Регистрация закрыта</div>${envNote(g)}<p class="acc-note">${accountText('registration_closed')}</p>
-       <div class="modal-actions"><button class="btn wide" data-a="login">Войти</button><button class="btn teal wide" data-a="back">Назад</button></div>`,
+      `<div class="h1">${tr('Регистрация закрыта', 'Registration closed')}</div>${envNote(g)}<p class="acc-note">${accountText('registration_closed')}</p>
+       <div class="modal-actions"><button class="btn wide" data-a="login">${tr('Войти', 'Sign in')}</button><button class="btn teal wide" data-a="back">${tr('Назад', 'Back')}</button></div>`,
       (root, close) => {
         root.querySelector('[data-a="back"]')!.addEventListener('click', () => close());
         root.querySelector('[data-a="login"]')!.addEventListener('click', () => openLogin(g));
@@ -285,89 +301,204 @@ export function openRegister(g: Game): void {
     );
     return;
   }
-  const invite = mode === 'invite_only';
+  // 1.8.4: one form — the age is one of its fields (under 13 answered here earlier today: the refusal again)
+  if (ageLocked()) return showAgeRefused(g, 'age_too_young');
+  openRegisterForm(g);
+}
+
+/** PRIME ID is not available for that answer: say why, plainly; the guest game goes on. */
+function showAgeRefused(g: Game, code: string): void {
+  g.ui.modal(
+    `<div class="h1">${tr('PRIME ID недоступен', 'PRIME ID unavailable')}</div>
+     <p class="acc-note">${ageText(code)}</p>
+     <div class="modal-actions">
+       <button class="btn wide" data-a="ok">${tr('Играть как гость', 'Play as a guest')}</button>
+       <button class="btn ghost wide" data-a="parents">${tr('Информация для родителей', 'Information for parents')}</button>
+     </div>`,
+    (root, close) => {
+      root.querySelector('[data-a="ok"]')!.addEventListener('click', () => close());
+      root.querySelector('[data-a="parents"]')!.addEventListener('click', () => openLegalDoc(g, 'parents'));
+    },
+  );
+}
+
+/**
+ * The registration form: nickname, email, password ×2 (+ invite in the closed beta), the age (one
+ * neutral field; the country only if the answer depends on it), two unticked boxes, «Создать аккаунт».
+ */
+function openRegisterForm(g: Game): void {
+  const r = rt(g);
+  const invite = r.serverConfig?.registration === 'invite_only';
   const note = [
-    invite ? '<b>Регистрация пока доступна только приглашённым участникам тестирования.</b> Без кода можно продолжать играть как гость.' : '',
+    invite ? tr('<b>Регистрация пока доступна только приглашённым участникам тестирования.</b> Без кода можно продолжать играть как гость.', '<b>Registration is open to invited testers only for now.</b> Without a code you can keep playing as a guest.') : '',
     !mailOn(g)
       ? 'Тестовый сервер пока не отправляет писем: после регистрации организатор теста проверит, что email ваш, и подтвердит аккаунт вручную.'
       : isLocal(g)
         ? 'Аккаунт создаётся на тестовом сервере этого компьютера; письма приходят в локальную тестовую почту — настоящие письма не отправляются.'
-        : 'После регистрации на ваш email придёт письмо со ссылкой для подтверждения.',
+        : tr('После регистрации на ваш email придёт письмо со ссылкой для подтверждения.', 'After registering you will get an email with a confirmation link.'),
   ]
     .filter(Boolean)
     .join(' ');
+  // 1.8.4: the registration challenge is solved while the player types (about a second on a phone)
+  let ctl = new AbortController();
+  const solve = () => r.solveChallenge(ctl.signal).catch(() => undefined);
+  let pow = solve();
+  let ticked = false;
   g.ui.modal(
-    `<div class="h1">Создать аккаунт</div>
+    `<div class="h1">${tr('Создать аккаунт', 'Create account')}</div>
      ${envNote(g)}
      <p class="acc-note">${note}</p>
      <form class="acc-form" novalidate>
-       <label class="acc-field"><span>Никнейм продюсера</span><input name="nickname" maxlength="16" autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next"><small>3–16 символов: буквы одного алфавита, цифры, «_»</small></label>
+       <label class="acc-field"><span>${tr('Никнейм продюсера', 'Producer nickname')}</span><input name="nickname" maxlength="16" autocomplete="nickname" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next"><small>${tr('3–16 символов: буквы одного алфавита, цифры, «_»', '3–16 characters: letters of one alphabet, digits, «_»')}</small></label>
        <label class="acc-field"><span>Email</span><input name="email" type="email" inputmode="email" maxlength="254" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next"></label>
-       <label class="acc-field"><span>Пароль</span><span class="acc-pw"><input name="password" type="password" maxlength="71" autocomplete="new-password" enterkeyhint="next">${eyeButton()}</span><small>Минимум 8 символов, буквы и цифры</small></label>
-       <label class="acc-field"><span>Повтор пароля</span><span class="acc-pw"><input name="passwordConfirm" type="password" maxlength="71" autocomplete="new-password" enterkeyhint="${invite ? 'next' : 'go'}">${eyeButton()}</span></label>
+       <label class="acc-field"><span>${tr('Пароль', 'Password')}</span><span class="acc-pw"><input name="password" type="password" maxlength="71" autocomplete="new-password" enterkeyhint="next">${eyeButton()}</span><small>${tr('Минимум 8 символов, буквы и цифры', 'At least 8 characters, letters and digits')}</small></label>
+       <label class="acc-field"><span>${tr('Повтор пароля', 'Repeat password')}</span><span class="acc-pw"><input name="passwordConfirm" type="password" maxlength="71" autocomplete="new-password" enterkeyhint="next">${eyeButton()}</span></label>
        ${
          invite
-           ? `<label class="acc-field acc-invite"><span>Код приглашения</span><input name="invite" maxlength="48" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="PT-XXXXX-XXXXX-…"><small>Код из сообщения организатора теста — можно вставить целиком. Нужен только один раз, при создании аккаунта.</small></label>`
+           ? `<label class="acc-field acc-invite"><span>${tr('Код приглашения', 'Invite code')}</span><input name="invite" maxlength="48" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="PT-XXXXX-XXXXX-…"><small>${tr('Код из сообщения организатора теста — можно вставить целиком. Нужен только один раз, при создании аккаунта.', 'The code from the organiser\'s message — paste it whole. Needed only once, to create the account.')}</small></label>`
            : ''
        }
+       ${ageFieldsHTML()}
+       <div class="acc-hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+       ${consentHTML(g)}
        <div class="acc-err" role="alert" aria-live="polite"></div>
        <div class="modal-actions">
-         <button class="btn wide" type="submit">Создать аккаунт</button>
-         <button class="btn ghost wide" type="button" data-a="login">Уже есть аккаунт — войти</button>
-         <button class="btn teal wide" type="button" data-a="back">Назад</button>
+         <button class="btn wide" type="submit" disabled>${tr('Создать аккаунт', 'Create account')}</button>
+         <button class="btn ghost wide" type="button" data-a="login">${tr('Уже есть аккаунт — войти', 'I have an account — sign in')}</button>
+         <button class="btn teal wide" type="button" data-a="back">${tr('Назад', 'Back')}</button>
        </div>
-     </form>
-     <p class="acc-legal">Тестовая версия: пользовательское соглашение и политика конфиденциальности появятся перед публичным запуском. Название студии в игре не меняется.</p>`,
+     </form>`,
     (root, close) => {
-      root.querySelector('[data-a="back"]')!.addEventListener('click', () => close());
-      root.querySelector('[data-a="login"]')!.addEventListener('click', () => openLogin(g));
-      bindForm(root, async (f, fail) => {
-        const input = { nickname: (f.nickname ?? '').trim(), email: (f.email ?? '').trim(), password: f.password ?? '', passwordConfirm: f.passwordConfirm ?? '' };
-        const bad = checkRegistration(input) ?? (invite ? checkInvite(f.invite ?? '') : null);
-        if (bad) return fail(accountText(bad), fieldOf(bad));
-        const code = invite ? normalizeInvite(f.invite ?? '') : null;
-        try {
-          const r = await rt(g).register(code ? { ...input, invite: code } : input);
-          g.audio.ui('confirm');
-          if (r.manual || !mailOn(g)) showPending(g, input.email.toLowerCase());
-          else showCheckMail(g, input.email.toLowerCase(), r.mailSent);
-        } catch (e) {
-          const code = e instanceof PrimeApiError ? e.code : '';
-          fail(errText(e), fieldOf(code));
-        }
+      const form = root.querySelector('form') as HTMLFormElement;
+      const submitBtn = form.querySelector('[type="submit"]') as HTMLButtonElement;
+      const leave = (then: () => void) => {
+        ctl.abort();
+        then();
+      };
+      root.querySelector('[data-a="back"]')!.addEventListener('click', () => leave(close));
+      root.querySelector('[data-a="login"]')!.addEventListener('click', () => leave(() => openLogin(g)));
+      bindAgeFields(g, root);
+      bindConsent(g, root, (all) => {
+        ticked = all;
+        submitBtn.disabled = !all;
       });
+      bindForm(
+        root,
+        async (f, fail) => {
+          const input = { nickname: (f.nickname ?? '').trim(), email: (f.email ?? '').trim(), password: f.password ?? '', passwordConfirm: f.passwordConfirm ?? '' };
+          const bad = checkRegistration(input) ?? (invite ? checkInvite(f.invite ?? '') : null);
+          if (bad) return fail(accountText(bad), fieldOf(bad));
+          const a = readAge(g, root);
+          if (!a.ok) {
+            if (a.code === 'age_invalid') return fail(ageText(a.code), 'age');
+            if (a.code === 'country_required' || a.code === 'country_invalid') {
+              (root.querySelector('.acc-country') as HTMLElement).hidden = false;
+              return fail(ageText(a.code), 'country');
+            }
+            ctl.abort();
+            if (a.code === 'age_too_young') lockAge();
+            return showAgeRefused(g, a.code);
+          }
+          if (!ticked) return fail(accountText('consent_required'));
+          const code = invite ? normalizeInvite(f.invite ?? '') : null;
+          const legal = r.serverConfig?.legal;
+          const usePow = r.serverConfig?.pow === true;
+          try {
+            let solved = await pow;
+            if (!solved && usePow) solved = await (pow = solve());
+            const r = await rt(g).register({
+              ...input,
+              ...(code ? { invite: code } : {}),
+              age: a.age,
+              country: a.country,
+              lang: lang(),
+              accept: acceptedVersions(g, root),
+              privacy: legal?.privacy.v,
+              pow: solved,
+              website: f.website ?? '',
+            });
+            ctl.abort();
+            g.audio.ui('confirm');
+            if (r.manual || !mailOn(g)) showPending(g, input.email.toLowerCase());
+            else showCheckMail(g, input.email.toLowerCase(), r.mailSent, r.retryAfter);
+          } catch (e) {
+            // a used challenge never works twice: the next attempt gets a fresh one (solved meanwhile)
+            ctl = new AbortController();
+            pow = solve();
+            const code = e instanceof PrimeApiError ? e.code : '';
+            if (code === 'country_required') {
+              (root.querySelector('.acc-country') as HTMLElement).hidden = false;
+              return fail(ageText(code), 'country');
+            }
+            if (/^age_|^country_/.test(code)) return showAgeRefused(g, code);
+            if (code === 'legal_outdated') await r.loadServerConfig();
+            fail(errText(e), fieldOf(code));
+          }
+        },
+        () => ticked,
+      );
       (root.querySelector('input[name="nickname"]') as HTMLInputElement).focus({ preventScroll: true });
     },
     false,
   );
 }
 
-function showCheckMail(g: Game, email: string, mailSent: boolean): void {
+/** 1.8.4: «Отправить ещё раз» counts down to the moment the server allows the next letter. */
+function resendTimer(btn: HTMLButtonElement, label: string, seconds: number): void {
+  const until = Date.now() + Math.max(0, seconds) * 1000;
+  const tick = () => {
+    if (!btn.isConnected) return;
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left <= 0) {
+      btn.disabled = false;
+      btn.textContent = label;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = `${tr('Ещё раз через', 'Send again in')} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    setTimeout(tick, 500);
+  };
+  tick();
+}
+
+function showCheckMail(g: Game, email: string, mailSent: boolean, retryAfter = 60): void {
+  const resendLabel = tr('Отправить письмо ещё раз', 'Send the email again');
   g.ui.modal(
-    `<div class="h1">Подтвердите email</div>
+    `<div class="h1">${tr('Подтвердите email', 'Confirm your email')}</div>
      ${envNote(g)}
      <p class="acc-note">${
        isLocal(g)
          ? `${mailSent ? `Письмо со ссылкой отправлено на <b>${esc(email)}</b>.` : `Аккаунт создан, но письмо не отправилось (локальная почта не запущена?). Нажмите «Отправить ещё раз», когда backend работает.`} В локальной версии письма приходят в тестовую почту Mailpit: <a href="${LOCAL_MAIL}" target="_blank" rel="noopener">127.0.0.1:8025</a>. Откройте письмо и нажмите «Подтвердить email».`
          : mailSent
-           ? `Письмо со ссылкой отправлено на <b>${esc(email)}</b>. Откройте его и нажмите «Подтвердить email». Если письма нет несколько минут — проверьте «Спам» или нажмите «Отправить ещё раз».`
-           : `Аккаунт создан, но письмо пока не отправилось. Нажмите «Отправить ещё раз» чуть позже.`
+           ? tr(`Письмо со ссылкой отправлено на <b>${esc(email)}</b>. Откройте его и нажмите «Подтвердить email».`, `An email with a link was sent to <b>${esc(email)}</b>. Open it and press «Confirm email».`)
+           : tr('Аккаунт создан, но письмо пока не отправилось. Нажмите «Отправить ещё раз» чуть позже.', 'The account is created, but the email has not gone out yet. Press «Send again» a little later.')
      }</p>
-     <p class="acc-note muted">Пока email не подтверждён, игра продолжается в гостевом профиле, облачное сохранение недоступно.</p>
+     <p class="acc-note acc-spam">${tr('Не получили письмо? Проверьте папку «Спам».', 'Didn\'t get the email? Check your spam folder.')}</p>
+     <p class="acc-note muted">${tr('Пока email не подтверждён, игра продолжается в гостевом профиле, облачное сохранение недоступно.', 'Until the email is confirmed, the game continues with the guest profile and the cloud save is unavailable.')}</p>
      <div class="acc-err" role="alert" aria-live="polite"></div>
      <div class="modal-actions">
-       <button class="btn wide" data-a="done">Я подтвердил</button>
-       <button class="btn ghost wide" data-a="resend">Отправить письмо ещё раз</button>
-       <button class="btn teal wide" data-a="later">Позже</button>
+       <button class="btn wide" data-a="done">${tr('Я подтвердил', 'I confirmed')}</button>
+       <button class="btn ghost wide" data-a="resend">${resendLabel}</button>
+       <button class="btn teal wide" data-a="later">${tr('Позже', 'Later')}</button>
      </div>`,
     (root, close) => {
       const err = root.querySelector('.acc-err') as HTMLElement;
+      const resend = root.querySelector('[data-a="resend"]') as HTMLButtonElement;
       root.querySelector('[data-a="later"]')!.addEventListener('click', () => close());
-      root.querySelector('[data-a="resend"]')!.addEventListener('click', () => {
+      if (mailSent) resendTimer(resend, resendLabel, retryAfter);
+      resend.addEventListener('click', () => {
+        resend.disabled = true;
         void rt(g)
           .resendVerification()
-          .then(() => (err.textContent = 'Письмо отправлено ещё раз.'))
-          .catch((e) => (err.textContent = errText(e)));
+          .then((wait) => {
+            err.textContent = tr('Письмо отправлено ещё раз.', 'The email was sent again.');
+            resendTimer(resend, resendLabel, wait);
+          })
+          .catch((e) => {
+            err.textContent = errText(e);
+            const wait = e instanceof PrimeApiError ? Number(e.data.retryAfter) : 0;
+            resendTimer(resend, resendLabel, Number.isFinite(wait) && wait > 0 ? Math.min(wait, 3600) : 0);
+          });
       });
       root.querySelector('[data-a="done"]')!.addEventListener('click', () => void recheckVerified(g, err));
     },
@@ -408,12 +539,12 @@ async function recheckVerified(g: Game, err?: HTMLElement): Promise<void> {
         ? 'Аккаунт пока не подтверждён организатором теста. Попробуйте чуть позже.'
         : isLocal(g)
           ? 'Email ещё не подтверждён. Откройте ссылку из письма в тестовой почте.'
-          : 'Email ещё не подтверждён. Откройте ссылку из письма.';
+          : tr('Email ещё не подтверждён. Откройте ссылку из письма (и проверьте «Спам»).', 'The email is not confirmed yet. Open the link from the email (and check the spam folder).');
       if (err) err.textContent = msg;
       else g.ui.toast(msg);
       return;
     }
-    continueLogin(g, plan);
+    proceed(g, plan);
   } catch (e) {
     if (err) err.textContent = errText(e);
     else g.ui.toast(errText(e));
@@ -422,23 +553,25 @@ async function recheckVerified(g: Game, err?: HTMLElement): Promise<void> {
 
 export function openLogin(g: Game): void {
   g.ui.modal(
-    `<div class="h1">Вход в PRIME ID</div>
+    `<div class="h1">${tr('Вход в PRIME ID', 'Sign in to PRIME ID')}</div>
      ${envNote(g)}
      <form class="acc-form" novalidate>
        <label class="acc-field"><span>Email</span><input name="email" type="email" inputmode="email" maxlength="254" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next"></label>
-       <label class="acc-field"><span>Пароль</span><span class="acc-pw"><input name="password" type="password" maxlength="71" autocomplete="current-password" enterkeyhint="go">${eyeButton()}</span></label>
+       <label class="acc-field"><span>${tr('Пароль', 'Password')}</span><span class="acc-pw"><input name="password" type="password" maxlength="71" autocomplete="current-password" enterkeyhint="go">${eyeButton()}</span></label>
        <div class="acc-err" role="alert" aria-live="polite"></div>
        <div class="modal-actions">
-         <button class="btn wide" type="submit">Войти</button>
-         <button class="btn ghost wide" type="button" data-a="forgot">Забыли пароль?</button>
-         <button class="btn ghost wide" type="button" data-a="register">Создать аккаунт</button>
-         <button class="btn teal wide" type="button" data-a="back">Назад</button>
+         <button class="btn wide" type="submit">${tr('Войти', 'Sign in')}</button>
+         <button class="btn ghost wide" type="button" data-a="forgot">${tr('Забыли пароль?', 'Forgot password?')}</button>
+         <button class="btn ghost wide" type="button" data-a="register">${tr('Создать аккаунт', 'Create account')}</button>
+         <button class="btn teal wide" type="button" data-a="back">${tr('Назад', 'Back')}</button>
        </div>
-     </form>`,
+     </form>
+     <p class="acc-legal">${tr('Документы', 'Documents')}: <button type="button" class="acc-doc" data-doc="terms">${tr('Соглашение', 'Terms')}</button> · <button type="button" class="acc-doc" data-doc="privacy">${tr('Конфиденциальность', 'Privacy')}</button></p>`,
     (root, close) => {
       root.querySelector('[data-a="back"]')!.addEventListener('click', () => close());
       root.querySelector('[data-a="register"]')!.addEventListener('click', () => openRegister(g));
       root.querySelector('[data-a="forgot"]')!.addEventListener('click', () => openForgot(g, (root.querySelector('input[name="email"]') as HTMLInputElement).value));
+      root.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => openLegalDoc(g, b.dataset.doc as 'terms' | 'privacy')));
       bindForm(root, async (f, fail) => {
         const email = (f.email ?? '').trim();
         const bad = checkEmail(email);
@@ -447,7 +580,7 @@ export function openLogin(g: Game): void {
         try {
           const plan = await rt(g).login(email, f.password);
           g.audio.ui('confirm');
-          continueLogin(g, plan);
+          proceed(g, plan);
         } catch (e) {
           fail(errText(e, 'login'));
         }
@@ -473,15 +606,15 @@ function openForgot(g: Game, email = ''): void {
     return;
   }
   g.ui.modal(
-    `<div class="h1">Восстановить доступ</div>
+    `<div class="h1">${tr('Восстановить доступ', 'Restore access')}</div>
      ${envNote(g)}
-     <p class="acc-note">Укажите email аккаунта — придёт ссылка для нового пароля${isLocal(g) ? ` (в локальной версии — в тестовую почту <a href="${LOCAL_MAIL}" target="_blank" rel="noopener">127.0.0.1:8025</a>)` : ''}. Ссылка действует 30 минут.</p>
+     <p class="acc-note">${isLocal(g) ? `Укажите email аккаунта — придёт ссылка для нового пароля (в локальной версии — в тестовую почту <a href="${LOCAL_MAIL}" target="_blank" rel="noopener">127.0.0.1:8025</a>). Ссылка действует 30 минут.` : tr('Укажите email аккаунта — придёт ссылка для нового пароля. Ссылка действует 30 минут.', 'Enter the account email — a link for a new password will arrive. The link is valid for 30 minutes.')}</p>
      <form class="acc-form" novalidate>
        <label class="acc-field"><span>Email</span><input name="email" type="email" inputmode="email" maxlength="254" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(email)}" enterkeyhint="send"></label>
        <div class="acc-err" role="alert" aria-live="polite"></div>
        <div class="modal-actions">
-         <button class="btn wide" type="submit">Отправить ссылку</button>
-         <button class="btn teal wide" type="button" data-a="back">Назад ко входу</button>
+         <button class="btn wide" type="submit">${tr('Отправить ссылку', 'Send the link')}</button>
+         <button class="btn teal wide" type="button" data-a="back">${tr('Назад ко входу', 'Back to sign-in')}</button>
        </div>
      </form>`,
     (root) => {
@@ -494,8 +627,12 @@ function openForgot(g: Game, email = ''): void {
           await rt(g).requestPasswordReset(em);
           // the same answer whether or not the address has an account
           g.ui.modal(
-            `<div class="h1">Проверьте почту</div><p class="acc-note">Если аккаунт с адресом <b>${esc(em.toLowerCase())}</b> существует, письмо со ссылкой ${isLocal(g) ? 'уже в тестовой почте' : 'уже отправлено'}. Задайте новый пароль на открывшейся странице и войдите с ним.</p>
-             <div class="modal-actions">${isLocal(g) ? '<button class="btn wide" data-a="mail">Открыть тестовую почту</button>' : ''}<button class="btn teal wide" data-a="login">Ко входу</button></div>`,
+            `<div class="h1">${tr('Проверьте почту', 'Check your email')}</div><p class="acc-note">${
+              isLocal(g)
+                ? `Если аккаунт с адресом <b>${esc(em.toLowerCase())}</b> существует, письмо со ссылкой уже в тестовой почте. Задайте новый пароль на открывшейся странице и войдите с ним.`
+                : tr(`Если аккаунт с адресом <b>${esc(em.toLowerCase())}</b> существует, письмо со ссылкой уже отправлено. Задайте новый пароль на открывшейся странице и войдите с ним. Не пришло — проверьте «Спам».`, `If an account with <b>${esc(em.toLowerCase())}</b> exists, an email with a link is on its way. Set a new password on the page it opens, then sign in. Not there? Check your spam folder.`)
+            }</p>
+             <div class="modal-actions">${isLocal(g) ? '<button class="btn wide" data-a="mail">Открыть тестовую почту</button>' : ''}<button class="btn teal wide" data-a="login">${tr('Ко входу', 'To sign-in')}</button></div>`,
             (r2) => {
               r2.querySelector('[data-a="mail"]')?.addEventListener('click', () => window.open(LOCAL_MAIL, '_blank', 'noopener'));
               r2.querySelector('[data-a="login"]')!.addEventListener('click', () => openLogin(g));
@@ -511,6 +648,18 @@ function openForgot(g: Game, email = ''): void {
 }
 
 // -------------------------------------------------------- after signing in
+/**
+ * 1.8.4: an account that still has documents to accept (made before 1.8.4, or the rules changed)
+ * accepts them first; «Позже» keeps it signed in without loading it (nothing is written meanwhile).
+ */
+function proceed(g: Game, plan: LoginPlan): void {
+  const needs = rt(g).legalNeeds();
+  if (!needs.length) return continueLogin(g, plan);
+  showLegalAccept(g, needs, (accepted) => {
+    if (accepted) continueLogin(g, plan);
+  });
+}
+
 /** What signing in leads to: switch, ask about the guest career, or explain why not. */
 export function continueLogin(g: Game, plan: LoginPlan): void {
   const r = rt(g);
@@ -521,7 +670,7 @@ export function continueLogin(g: Game, plan: LoginPlan): void {
       return;
     case 'resume':
       g.ui.closeModal();
-      g.ui.toast(`С возвращением, ${plan.me.nickname ?? 'продюсер'}!`, true);
+      g.ui.toast(tr(`С возвращением, ${plan.me.nickname ?? 'продюсер'}!`, `Welcome back, ${plan.me.nickname ?? 'producer'}!`), true);
       return;
     case 'switch':
       g.ui.modal(`<div class="h1">Загрузка аккаунта</div><p class="center muted acc-note">${esc(plan.me.nickname ?? '')}: карьера ${plan.from === 'cloud' ? 'загружена из аккаунта' : 'найдена на этом устройстве'}. Перезапуск игры…</p>`, () => {}, false);
@@ -777,6 +926,8 @@ const spinner = '<div class="cloud-spin" aria-hidden="true"><i></i><i></i><i></i
 export function explainGate(g: Game, why: PlayGate, then?: () => void): void {
   const r = rt(g);
   if (why === 'superseded') return showSessionTaken(g);
+  // 1.8.4: the account's documents first (the same window as at the start)
+  if (why === 'terms') return r.askTerms(true);
   if (why === 'loading') {
     g.ui.modal(
       `<div class="cloud-head"><span class="pid-acc-logo">PRIME<b>CLOUD</b></span></div>

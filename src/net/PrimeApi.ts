@@ -31,6 +31,11 @@ export interface Me {
   nickname: string | null;
   created: string;
   save: { revision: number; hash: string; schema: number; updated: string } | null;
+  /**
+   * 1.8.4: what the account still has to accept before PRIME CLOUD continues ('terms', 'consent',
+   * 'age'); [] = nothing (also from a server older than 1.8.4).
+   */
+  legalNeeds: string[];
 }
 
 export interface CloudSave {
@@ -78,6 +83,40 @@ export interface RegisterInput {
   passwordConfirm: string;
   /** 1.8.2: the PRIME NETWORK invite (closed beta). */
   invite?: string;
+  /** 1.8.4: the age in full years and the country (ISO code) the player named — checked by the server. */
+  age?: number;
+  country?: string;
+  lang?: 'ru' | 'en';
+  /** 1.8.4: the versions of the documents the player ticked, and of the privacy notice shown. */
+  accept?: Record<string, number>;
+  privacy?: number;
+  /** 1.8.4: the solved one-time challenge (proof of work). */
+  pow?: { id: string; nonce: string };
+  /** 1.8.4: the hidden field people never fill. */
+  website?: string;
+}
+
+/** 1.8.4: a document of PRIME ID as the server lists it. */
+export interface LegalDoc {
+  v: number;
+  required: boolean;
+}
+export type LegalInfo = Record<'terms' | 'consent' | 'privacy', LegalDoc>;
+
+/** 1.8.4: the age rules the server applies (the game only explains them; the server decides). */
+export interface AgeConfig {
+  min: number;
+  self: number;
+  rules: Record<string, number>;
+  closed: string[];
+}
+
+/** 1.8.4: a registration challenge (proof of work). */
+export interface Challenge {
+  id: string;
+  salt: string;
+  bits: number;
+  expiresAt: number;
 }
 
 /** 1.8.2: what the server says about itself (GET /api/prime/config — public, no secrets). */
@@ -98,6 +137,13 @@ export interface ServerConfig {
   sessions: boolean;
   heartbeatMs: number;
   ttlMs: number;
+  /** 1.8.4: the documents (null: a server older than 1.8.4 — it records nothing). */
+  legal: LegalInfo | null;
+  age: AgeConfig | null;
+  /** 1.8.4: registration needs a solved challenge. */
+  pow: boolean;
+  /** 1.8.4: export, deletion and «send again» with a timer exist on this server. */
+  accountTools: boolean;
 }
 
 /** 1.8.3: the page's game session, sent with every cloud write (the key is random and lives only in memory). */
@@ -118,6 +164,8 @@ export interface ClaimResult {
 export interface RegisterResult {
   mailSent: boolean;
   manual: boolean;
+  /** 1.8.4: seconds until «send again» is allowed. */
+  retryAfter: number;
 }
 
 /** Email as the server stores it (registration lower-cases it; sign-in compares exactly). */
@@ -137,7 +185,7 @@ function toError(e: unknown): PrimeApiError {
   if (status === 409 && code === 'session_superseded') return new PrimeApiError('superseded', code, status, body);
   if (status === 409) return new PrimeApiError('conflict', code || 'conflict', status, body);
   if (status === 426) return new PrimeApiError('outdated', code || 'session_required', status, body);
-  if (status === 429) return new PrimeApiError('rate', 'rate_limited', status, body);
+  if (status === 429) return new PrimeApiError('rate', code || 'rate_limited', status, body);
   if (status >= 500) return new PrimeApiError('server', code || 'server_error', status, body);
   return new PrimeApiError('invalid', code || 'invalid', status, body);
 }
@@ -213,8 +261,39 @@ export class PrimeApi {
   async register(input: RegisterInput): Promise<RegisterResult> {
     const body: Rec = { nickname: input.nickname.trim(), email: normEmail(input.email), password: input.password, passwordConfirm: input.passwordConfirm };
     if (input.invite) body.invite = input.invite.trim();
+    for (const k of ['age', 'country', 'lang', 'accept', 'privacy', 'pow', 'website'] as const) if (input[k] !== undefined) body[k] = input[k];
     const r = await this.call((o) => this.pb.send<Rec>('/api/prime/register', { ...o, method: 'POST', body }));
-    return { mailSent: r.mailSent === true, manual: r.verification === 'manual' };
+    return { mailSent: r.mailSent === true, manual: r.verification === 'manual', retryAfter: int(r.retryAfter) || 60 };
+  }
+
+  /** 1.8.4: a fresh one-time challenge for the next registration attempt. */
+  async challenge(): Promise<Challenge> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/challenge', { ...o, method: 'POST' }));
+    return { id: str(r.id), salt: str(r.salt), bits: int(r.bits), expiresAt: int(r.expiresAt) };
+  }
+
+  /** 1.8.4: «send the email again» for the signed-in account; the seconds until the next one. */
+  async resendMine(): Promise<{ verified: boolean; retryAfter: number }> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/verify/resend', { ...o, method: 'POST' }));
+    return { verified: r.verified === true, retryAfter: int(r.retryAfter) };
+  }
+
+  /** 1.8.4: accept the current documents (and answer the age question); what is still needed afterwards. */
+  async acceptLegal(b: { accept: Record<string, number>; privacy?: number; lang: 'ru' | 'en'; age?: number; country?: string }): Promise<string[]> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/legal/accept', { ...o, method: 'POST', body: b }));
+    const l = (r.legal ?? {}) as Rec;
+    return Array.isArray(l.needs) ? l.needs.filter((x): x is string => typeof x === 'string') : [];
+  }
+
+  /** 1.8.4: everything the server keeps about the signed-in account. */
+  async exportData(): Promise<Rec> {
+    return this.call((o) => this.pb.send<Rec>('/api/prime/account/export', { ...o, method: 'GET' }));
+  }
+
+  /** 1.8.4: delete the signed-in account for good (its password again). */
+  async deleteAccount(password: string): Promise<void> {
+    await this.call((o) => this.pb.send('/api/prime/account/delete', { ...o, method: 'POST', body: { password, confirm: 'DELETE' } }));
+    this.pb.authStore.clear();
   }
 
   /**
@@ -225,6 +304,9 @@ export class PrimeApi {
     const r = await this.call((o) => this.pb.send<Rec>('/api/prime/config', { ...o, method: 'GET' }));
     const m = r.registration === 'invite_only' || r.registration === 'public' ? r.registration : 'disabled';
     const sess = (r.session ?? {}) as Rec;
+    const legal = r.legal && typeof r.legal === 'object' ? (r.legal as Rec) : null;
+    const doc = (d: unknown): LegalDoc => ({ v: int((d as Rec | undefined)?.v), required: (d as Rec | undefined)?.required === true });
+    const age = r.age && typeof r.age === 'object' ? (r.age as Rec) : null;
     return {
       registration: m,
       inviteRequired: m === 'invite_only',
@@ -233,6 +315,17 @@ export class PrimeApi {
       sessions: r.sessions === 1,
       heartbeatMs: Math.min(60000, Math.max(5000, int(sess.heartbeatMs) || 20000)),
       ttlMs: Math.min(300000, Math.max(30000, int(sess.ttlMs) || 75000)),
+      legal: legal ? { terms: doc(legal.terms), consent: doc(legal.consent), privacy: doc(legal.privacy) } : null,
+      age: age
+        ? {
+            min: int(age.min) || 13,
+            self: int(age.self) || 18,
+            rules: Object.fromEntries(Object.entries((age.rules ?? {}) as Rec).filter(([k, v]) => /^[A-Z]{2}$/.test(k) && typeof v === 'number')) as Record<string, number>,
+            closed: Array.isArray(age.closed) ? age.closed.filter((c): c is string => typeof c === 'string') : [],
+          }
+        : null,
+      pow: r.pow === 1,
+      accountTools: r.account === 1,
     };
   }
 
@@ -287,6 +380,7 @@ export class PrimeApi {
       nickname: typeof r.nickname === 'string' ? r.nickname : null,
       created: str(r.created),
       save: s ? { revision: int(s.revision), hash: str(s.hash), schema: int(s.schema), updated: str(s.updated) } : null,
+      legalNeeds: Array.isArray((r.legal as Rec | undefined)?.needs) ? ((r.legal as Rec).needs as unknown[]).filter((x): x is string => typeof x === 'string') : [],
     };
   }
 

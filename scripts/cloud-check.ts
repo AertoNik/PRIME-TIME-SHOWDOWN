@@ -22,7 +22,7 @@ import { cloudCopyOf } from '../src/net/cloudSave';
 import { PrimeApi, PrimeApiError, type Me } from '../src/net/PrimeApi';
 import { SessionManager, type SessionState } from '../src/net/SessionManager';
 import { SyncManager } from '../src/net/SyncManager';
-import { binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
+import { LEGACY_CHECK_ENV, binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, registrationExtras, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { MemoryStorage } from './lib/fixtures';
 import { crypto, fs, os, path, proc, sleep } from './lib/node';
 
@@ -51,9 +51,10 @@ let skew = 0;
 const clock = () => Date.now() + skew;
 
 async function startPb(extra: Record<string, string> = {}): Promise<void> {
-  // open registration and no email ONLY in this temporary database: the sessions are what is checked
+  // open registration ONLY in this temporary database (1.8.4: public needs email — the SMTP port points at
+  // nothing, so letters simply fail; accounts are confirmed by the superuser): the sessions are what is checked
   // here (the invite-only closed beta has its own checks — npm run beta:test)
-  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public', PRIME_SMTP_HOST: '', ...extra } });
+  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public', ...LEGACY_CHECK_ENV, ...extra } });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 300) pbLog.splice(0, pbLog.length - 300);
@@ -144,7 +145,7 @@ class Page {
 }
 
 async function register(nickname: string, email: string): Promise<void> {
-  const r = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname, email, password: PW, passwordConfirm: PW }) });
+  const r = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname, email, password: PW, passwordConfirm: PW, ...(await registrationExtras(API)) }) });
   if (r.status !== 200) throw new Error(`register ${email}: ${r.status} ${await r.text()}`);
 }
 
@@ -591,7 +592,8 @@ async function main(): Promise<void> {
   const lostRestore = await statusOf(ph.api.restore(hist[0].id, (await ph.api.getSave())!.revision, 'op_restore_lost_1', 'p'));
   const archText = cloudText();
   const noSessArchive = await fetch(`${API}/api/prime/save/archive`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: phone.token }, body: JSON.stringify({ data: archText, hash: sha(archText), reason: 'conflict-device' }) });
-  check(`restore and archive need the active session too (a page that lost it: ${lostRestore}, no session at all: ${noSessArchive.status})`, lostRestore === 409 && noSessArchive.status === 426);
+  // (1.8.4: restoring an earlier version is refused for players altogether)
+  check(`archive needs the active session (no session at all: ${noSessArchive.status}); restore is refused for players (${lostRestore})`, lostRestore === 403 && noSessArchive.status === 426);
 
   // ================================================================ switch off
   section('PRIME_SESSIONS=off — аварийный возврат к правилам 1.8.2');

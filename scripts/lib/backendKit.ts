@@ -1,4 +1,5 @@
 import { cp, crypto, fs, net, path, proc, sleep, url } from './node';
+import { solvePow } from '../../src/net/pow';
 
 // Alpha 1.8.1 — the local backend toolkit shared by `npm run backend*` and `npm run backend:test`:
 // where the tools live, how they are installed (pinned versions, SHA-256 checked) and how
@@ -340,3 +341,21 @@ export function snapshot(dataDir: string, outDir: string): SnapshotInfo {
   );
   return { dir: outDir, files, counts, migrations };
 }
+
+/**
+ * 1.8.4: what a registration carries besides nickname / email / password — the age (the country only
+ * when the server's rules need it), the ticked documents (their current versions, from the server) and
+ * a solved one-time challenge. The checks use an adult who was not asked for a country unless told otherwise.
+ */
+export async function registrationExtras(api: string, over: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  const cfg = (await (await fetch(`${api}/api/prime/config`)).json()) as { legal?: Record<string, { v: number; required: boolean }> };
+  const r = await fetch(`${api}/api/prime/challenge`, { method: 'POST' });
+  if (r.status !== 200) throw new Error(`challenge: ${r.status}`);
+  const ch = (await r.json()) as { id: string; salt: string; bits: number };
+  const accept: Record<string, number> = {};
+  for (const [d, info] of Object.entries(cfg.legal ?? {})) if (info.required) accept[d] = info.v;
+  return { age: 30, lang: 'ru', accept, privacy: cfg.legal?.privacy?.v ?? 0, pow: { id: ch.id, nonce: await solvePow(ch.salt, ch.bits) }, ...over };
+}
+
+/** 1.8.4: the old checks register far more often than a person — email limits relaxed (Mailpit only), a light challenge. */
+export const LEGACY_CHECK_ENV: Record<string, string> = { PRIME_MAIL_LIMITS: 'relaxed', PRIME_POW_BITS: '10' };

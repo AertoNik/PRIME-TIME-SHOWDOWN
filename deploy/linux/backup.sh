@@ -2,7 +2,7 @@
 # PRIME TIME: SHOWDOWN — PRIME NETWORK backup (future VPS; also runs on a Mac for the checks).
 #
 # A CONSISTENT copy of the PocketBase data while the server keeps running: SQLite's own online backup
-# (`.backup`) for data.db and auxiliary.db — never a raw copy of a database in the middle of a write —
+# (`.backup`) for data.db — never a raw copy of a database in the middle of a write —
 # plus uploaded files (storage/). Every copy is integrity-checked, gets SHA-256 sums, is packed into
 # one archive, optionally encrypted for an outside storage, and only the newest N are kept.
 #
@@ -43,7 +43,9 @@ trap 'rm -rf "$WORK"' EXIT
 OUT="$WORK/$NAME"
 mkdir -p "$OUT"
 
-for db in data.db auxiliary.db; do
+# 1.8.4: auxiliary.db (PocketBase's request log: visitors' IP addresses, kept 7 days) is NOT copied —
+# a backup must not keep IP addresses for its 14 days; PocketBase starts a fresh log after a restore.
+for db in data.db; do
   [ -f "$DATA_DIR/$db" ] || continue
   sqlite3 "$DATA_DIR/$db" ".backup '$OUT/$db'" || fail "не удалось скопировать $db"
   [ "$(sqlite3 "$OUT/$db" 'PRAGMA integrity_check;')" = "ok" ] || fail "копия $db не прошла проверку целостности"

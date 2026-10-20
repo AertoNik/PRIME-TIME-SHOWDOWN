@@ -1,13 +1,15 @@
 import type { ProfileId } from '../meta/SaveSystem';
 import { AccountService, type LoginPlan } from '../net/AccountService';
-import { AUTH_KEY, emptySyncMeta, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
+import { AUTH_KEY, emptySyncMeta, forgetAccountLocally, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
 import { readCloudText } from '../net/cloudSave';
 import { browserStorage } from '../net/build';
 import type { NetworkConfig } from '../net/config';
 import { PrimeApi, PrimeApiError, type CloudSave, type Me, type RegisterInput, type RegisterResult, type ServerConfig } from '../net/PrimeApi';
+import { solvePow } from '../net/pow';
 import { SessionManager, deviceLabel } from '../net/SessionManager';
 import { SyncManager, type SyncStatus } from '../net/SyncManager';
 import { accountAction, accountPanelHTML, cloudLabel, explainGate, showKeptDevice, showSessionTaken, showSyncDecision, syncLine } from '../ui/accountUI';
+import { showLegalAccept } from '../ui/legalUI';
 import type { CloudState } from '../ui/cloudPill';
 import type { Game } from './Game';
 
@@ -39,8 +41,11 @@ export type AccountView =
   /** The page plays the account. */
   | { kind: 'account'; nickname: string; email: string; status: SyncStatus; unsynced: boolean; syncedAt: number; conflict: string | null; signedIn: boolean; gate: PlayGate | null; cloud2: boolean };
 
-/** 1.8.3: why a match under the PRIME ID cannot start right now (null: it can). */
-export type PlayGate = 'loading' | 'offline' | 'superseded' | 'signed-out';
+/**
+ * 1.8.3: why a match under the PRIME ID cannot start right now (null: it can). 1.8.4: 'terms' — the
+ * account has documents to accept (or the age question to answer) before PRIME CLOUD continues.
+ */
+export type PlayGate = 'loading' | 'offline' | 'superseded' | 'signed-out' | 'terms';
 
 /** 1.8.3.1: before a match the session must have been confirmed at most this long ago… */
 const FRESH_MS = 1000;
@@ -70,6 +75,8 @@ export class AccountRuntime {
   private activated = false;
   private activating: Promise<void> | null = null;
   private lostShown = false;
+  /** 1.8.4: the «accept the documents» window was shown on this page already (asked once, then on a tap). */
+  private termsAsked = false;
 
   constructor(
     readonly g: Game,
@@ -141,6 +148,7 @@ export class AccountRuntime {
   gate(): PlayGate | null {
     if (!this.playing || !this.cloud2) return null;
     if (!this.started) return 'loading';
+    if (this.termsNeeded()) return 'terms';
     const s = this.session;
     // no session: not signed in to this account here — unless the save itself is in trouble (another
     // tab holds it, damaged, newer): the save dialogs of 1.8 handle that
@@ -158,6 +166,76 @@ export class AccountRuntime {
     }
     if (!this.ready) return s.state === 'unconfirmed' ? 'offline' : 'loading';
     return s.canPlay ? null : 'offline';
+  }
+
+  /** 1.8.4: what the signed-in account still has to accept ([] = nothing; a server older than 1.8.4 says nothing). */
+  legalNeeds(): string[] {
+    return this.me?.legalNeeds ?? [];
+  }
+
+  /** 1.8.4: the account this page plays waits for its documents (PRIME CLOUD does not continue until then). */
+  termsNeeded(): boolean {
+    return !!this.playing && this.me?.id === this.playing && this.legalNeeds().length > 0;
+  }
+
+  /** 1.8.4: accept the documents / answer the age question; PRIME CLOUD continues right away. */
+  async acceptLegal(b: { accept: Record<string, number>; privacy?: number; lang: 'ru' | 'en'; age?: number; country?: string }): Promise<string[]> {
+    const needs = await this.api!.acceptLegal(b);
+    if (this.me) this.me = { ...this.me, legalNeeds: needs };
+    this.emit();
+    if (!needs.length && this.playing && this.me?.id === this.playing && this.g.save.writable) {
+      if (this.cloud2) {
+        if (!this.session) this.startSession(this.playing);
+        else void this.activate();
+      } else this.startSync(this.playing);
+    }
+    return needs;
+  }
+
+  /** 1.8.4: show the «documents» window for the account this page plays (once by itself; again on a tap). */
+  askTerms(force = false): void {
+    if (!this.me || !this.legalNeeds().length) return;
+    if (this.termsAsked && !force) return;
+    this.termsAsked = true;
+    showLegalAccept(this.g, this.legalNeeds(), () => this.emit());
+  }
+
+  /** 1.8.4: a fresh registration challenge, solved (the form starts it while the player types). */
+  async solveChallenge(signal?: AbortSignal): Promise<{ id: string; nonce: string } | undefined> {
+    if (!this.serverConfig?.pow) return undefined;
+    const c = await this.api!.challenge();
+    return { id: c.id, nonce: await solvePow(c.salt, c.bits, signal) };
+  }
+
+  /** 1.8.4: everything the server keeps about the signed-in account. */
+  exportData(): Promise<Record<string, unknown>> {
+    return this.api!.exportData();
+  }
+
+  /**
+   * 1.8.4: delete the signed-in account (password again). The server removes it with everything
+   * attached; this device forgets its local copy too; the guest career stays. true = this page played
+   * that account: it writes nothing more and must reload (after the player has read the message).
+   */
+  async deleteAccount(password: string): Promise<boolean> {
+    const id = this.api?.sessionRecord?.id ?? this.me?.id ?? null;
+    await this.api!.deleteAccount(password);
+    this.me = null;
+    if (!id) return false;
+    const playing = this.playing === id;
+    if (playing) {
+      this.sync?.stop();
+      this.session?.stop();
+      this.g.save.suspend();
+    }
+    forgetAccountLocally(this.storage, id);
+    this.emit();
+    return playing;
+  }
+
+  /** 1.8.4: the language changed — PRIME ID draws itself again. */
+  refreshView(): void {
+    this.emit();
   }
 
   /** A finished match must not pay into the account: this page lost the game session. */
@@ -246,6 +324,11 @@ export class AccountRuntime {
   /** 1.8.2: the account's uploads, no game session (a server without sessions). */
   private startSync(uid: string): void {
     if (!this.api) return;
+    if (this.termsNeeded()) {
+      // 1.8.4: (a server without game sessions) — nothing goes up before the documents are accepted
+      this.askTerms();
+      return;
+    }
     this.sync?.stop();
     this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, onReplaced: () => this.reload() });
     this.sync.onChange(() => {
@@ -307,6 +390,12 @@ export class AccountRuntime {
     const sync = this.sync;
     if (!session || !sync) return;
     this.activated = true;
+    // 1.8.4: documents to accept first — no claim, no upload until then (export and deletion stay open)
+    if (this.termsNeeded()) {
+      this.emit();
+      this.askTerms();
+      return;
+    }
     this.emit();
     let st = await session.claim();
     if (st === 'failed') {
@@ -600,9 +689,16 @@ export class AccountRuntime {
     return plan;
   }
 
-  async resendVerification(): Promise<void> {
+  /** «Отправить ещё раз»: the seconds until the next letter may be asked for (1.8.4 servers say; older: 60). */
+  async resendVerification(): Promise<number> {
+    if (this.serverConfig?.accountTools && this.api?.sessionRecord) {
+      const r = await this.api.resendMine();
+      if (r.verified && this.me) this.me = { ...this.me, verified: true };
+      return r.retryAfter || 60;
+    }
     const email = this.me?.email ?? this.api?.sessionRecord?.email;
     if (email) await this.api!.resendVerification(email);
+    return 60;
   }
 
   async requestPasswordReset(email: string): Promise<void> {

@@ -153,3 +153,25 @@ export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
 export function writeSync(st: SaveStorage | null, p: ProfileId, m: SyncMeta): boolean {
   return write(st, profileKeys(p).sync, m);
 }
+
+/**
+ * 1.8.4: the account was deleted on the server — its local copy and bookkeeping go from this device
+ * too (the guest career and other accounts stay as they are).
+ */
+export function forgetAccountLocally(st: SaveStorage | null, userId: string): void {
+  if (!st || !USER_ID_RE.test(userId)) return;
+  const p = userProfile(userId);
+  const k = profileKeys(p);
+  for (const key of [k.save, k.backups, k.damaged, k.meta, k.lock, k.sync]) {
+    try {
+      st.removeItem(key);
+    } catch {
+      /* already gone */
+    }
+  }
+  const s = readAccounts(st);
+  delete s.names[userId];
+  if (s.active === p) s.active = 'guest';
+  if (s.guestBound?.user === userId) s.guestBound = null;
+  writeAccounts(st, s);
+}

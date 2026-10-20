@@ -200,7 +200,7 @@ VITE_PRIME_API_URL=https://api.example.com
 
 Дальше — обычная публикация: скопировать файлы в папку GitHub, Commit, Sync. GitHub Actions соберёт игру с этим файлом. Файл `.env.production` содержит только публичный адрес и **должен** попасть в репозиторий. Если в нём окажется что-то ещё, кроме этих двух строк, — остановитесь.
 
-Убедитесь, что `PRIME_ORIGINS` в настройках сервера — `https://aertonik.github.io`, без пути. Иначе браузер не пустит игру к серверу (CORS).
+Убедитесь, что `PRIME_ORIGINS` в настройках сервера содержит адрес сайта игры без пути (сейчас `https://primetimeshowdown.online,https://aertonik.github.io` — см. [PRIME_CLOUD_DOMAIN.md](PRIME_CLOUD_DOMAIN.md)). Иначе браузер не пустит игру к серверу (CORS).
 
 ## 10. Обновление сервера
 

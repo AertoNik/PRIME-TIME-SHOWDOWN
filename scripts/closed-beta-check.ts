@@ -18,7 +18,7 @@ import { cloudCopyOf } from '../src/net/cloudSave';
 import { PrimeApi } from '../src/net/PrimeApi';
 import { SessionManager } from '../src/net/SessionManager';
 import { SyncManager } from '../src/net/SyncManager';
-import { HOOKS, MIGRATIONS, PB_BIN, ROOT, binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, snapshot, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
+import { HOOKS, LEGACY_CHECK_ENV, MIGRATIONS, PB_BIN, ROOT, binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, registrationExtras, snapshot, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { MemoryStorage, save176 } from './lib/fixtures';
 import { cp, crypto, fs, os, path, proc, sleep } from './lib/node';
 
@@ -58,7 +58,7 @@ const dataDir = path.join(work, 'pb_data');
 
 /** Start PocketBase with a registration mode (undefined = the variable is missing altogether). */
 async function startPb(registration: string | undefined, dir = dataDir, extra: Record<string, string> = {}, args: string[] = []): Promise<void> {
-  const env: Record<string, string> = { PRIME_GAME_URL: 'http://localhost:5173/', ...extra };
+  const env: Record<string, string> = { PRIME_GAME_URL: 'http://localhost:5173/', ...LEGACY_CHECK_ENV, ...extra };
   if (registration !== undefined) env.PRIME_REGISTRATION = registration;
   const saved = proc.env.PRIME_REGISTRATION;
   delete proc.env.PRIME_REGISTRATION; // never inherited from the shell running the check
@@ -92,7 +92,8 @@ async function register(nickname: string, email: string, invite?: string): Promi
   const r = await fetch(`${API}/api/prime/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nickname, email, password: PW, passwordConfirm: PW, ...(invite !== undefined ? { invite } : {}) }),
+    // (1.8.4: plus the age, the documents and a solved challenge — see public-check for those rules)
+    body: JSON.stringify({ nickname, email, password: PW, passwordConfirm: PW, ...(await registrationExtras(API)), ...(invite !== undefined ? { invite } : {}) }),
   });
   const j = (await r.json().catch(() => ({}))) as { code?: string; ok?: boolean };
   return { status: r.status, code: j.ok ? 'ok' : (j.code ?? '') };
@@ -248,7 +249,7 @@ async function main(): Promise<void> {
   const sDel = await statusOf(user.collection('invites').delete(made.ids[5]));
   check(`12 an ordinary user cannot create, change or delete invites (${sCreate}/${sUpd}/${sDel})`, [sCreate, sUpd, sDel].every((s) => s === 403));
   const bad = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"nickname": "x", ' });
-  const big = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: 'Big', email: 'big@beta.test', password: PW, passwordConfirm: PW, invite: 'x'.repeat(20000) }) });
+  const big = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: 'Big', email: 'big@beta.test', password: PW, passwordConfirm: PW, ...(await registrationExtras(API)), invite: 'x'.repeat(20000) }) });
   check(`broken JSON and an oversized request are refused cleanly (${bad.status}/${big.status}), no server error`, bad.status === 400 && big.status === 413);
   await admin.settings.update({ rateLimits: strict });
   const flood: number[] = [];
@@ -295,7 +296,7 @@ async function main(): Promise<void> {
   const mailCount = async () => ((await (await fetch(`${MAIL}/api/v1/messages`)).json()) as { total?: number }).total ?? -1;
   const mailBefore = await mailCount();
   const manCode = invitesCli('create', '1').codes[0];
-  const manRaw = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: 'ManualOne', email: 'manual@beta.test', password: PW, passwordConfirm: PW, invite: manCode }) });
+  const manRaw = await fetch(`${API}/api/prime/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: 'ManualOne', email: 'manual@beta.test', password: PW, passwordConfirm: PW, ...(await registrationExtras(API)), invite: manCode }) });
   const manReg = (await manRaw.json()) as any;
   const noInvite = await register('ManualTwo', 'manual2@beta.test');
   check('registration needs a valid invite as before; the answer says «manual» and no letter is even attempted', manRaw.status === 200 && manReg.ok === true && manReg.mailSent === false && manReg.verification === 'manual' && noInvite.code === 'invite_required');

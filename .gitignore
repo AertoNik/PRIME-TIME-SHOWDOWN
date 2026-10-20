@@ -25,3 +25,5 @@ server-bundle/
 
 # Local pnpm cache
 .pnpm-store/
+# 1.8.4: local project checkpoints (archives without secrets or databases) — never published
+checkpoints/

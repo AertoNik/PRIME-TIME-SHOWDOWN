@@ -14,6 +14,9 @@
 
 const V = require('./validate.js');
 const RULES = require('./save_rules.js');
+const AGE = require('./age_rules.js');
+const LEGAL = require('./legal.js');
+const GUARD = require('./guard.js');
 
 const HISTORY_MAX = 10;
 const OP_RE = /^[A-Za-z0-9_-]{8,64}$/;
@@ -61,7 +64,16 @@ function saveInfo(r) {
  * invite is required), «public». Missing or misspelt → «disabled»: registration stays closed.
  */
 function mode() {
-  return V.registrationMode($os.getenv('PRIME_REGISTRATION'));
+  const m = V.registrationMode($os.getenv('PRIME_REGISTRATION'));
+  // 1.8.4: a public registration needs real email (every new account confirms its address) — a server
+  // without it stays closed instead of opening an unprotected registration (the start log says why)
+  if (m === 'public' && mailMode() === 'off') return 'disabled';
+  return m;
+}
+
+/** 1.8.4: the age rules this server applies (see lib/age_rules.js; set in its environment). */
+function ageRules() {
+  return { rules: AGE.parseRules($os.getenv('PRIME_AGE_RULES')), closed: AGE.parseClosed($os.getenv('PRIME_CLOSED_COUNTRIES')) };
 }
 
 /**
@@ -106,6 +118,15 @@ function config(e) {
     // 1.8.3: 1 = cloud writes need the account's active game session (0 / missing: the 1.8.2 rules)
     sessions: sessionsMode() === 'on' ? 1 : 0,
     session: { heartbeatMs: SESSION_HEARTBEAT_MS, ttlMs: SESSION_TTL_MS },
+    // 1.8.4: documents to accept (versions), the age rules, a proof of work for registration, and the
+    // account's own data tools (export, deletion, «send again» with a timer)
+    legal: LEGAL.publicInfo(),
+    age: (function () {
+      const a = ageRules();
+      return { min: AGE.MIN_AGE, self: AGE.SELF_AGE, rules: a.rules, closed: a.closed };
+    })(),
+    pow: 1,
+    account: 1,
   });
 }
 
@@ -128,8 +149,19 @@ function register(e) {
   const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
   const password = typeof b.password === 'string' ? b.password : '';
   const passwordConfirm = typeof b.passwordConfirm === 'string' ? b.passwordConfirm : '';
+  // 1.8.4: an invisible field people never fill (only form-filling robots do)
+  if (typeof b.website === 'string' && b.website.trim()) return fail(e, 400, 'register_failed');
   const bad = V.checkRegistration({ nickname: nickname, email: email, password: password, passwordConfirm: passwordConfirm });
   if (bad) return fail(e, 400, bad);
+  // 1.8.4: age and country (decided here, whatever the page did), then the required documents
+  const lang = b.lang === 'en' ? 'en' : 'ru';
+  const ar = ageRules();
+  const country = typeof b.country === 'string' ? b.country.trim().toUpperCase() : '';
+  const age = AGE.decide(country, b.age, ar.rules, ar.closed);
+  if (!age.ok) return fail(e, age.code === 'age_invalid' || age.code === 'country_invalid' || age.code === 'country_required' ? 400 : 403, age.code);
+  const docs = LEGAL.requiredDocs();
+  const legalBad = LEGAL.checkAccept(b.accept, docs);
+  if (legalBad) return fail(e, legalBad === 'legal_outdated' ? 409 : 400, legalBad, { legal: LEGAL.publicInfo() });
   // closed beta: a valid invite, checked and used in the very same transaction as the new account
   let inviteHash = '';
   if (m === 'invite_only') {
@@ -139,6 +171,9 @@ function register(e) {
     if (!code) return fail(e, 400, 'invite_invalid');
     inviteHash = $security.sha256(V.inviteHashInput(code));
   }
+  // 1.8.4: one solved, one-time challenge per attempt (spent even if the attempt fails below)
+  const powBad = GUARD.consumeChallenge(e.app, b.pow);
+  if (powBad) return fail(e, 400, powBad);
   const key = V.nicknameKey(nickname);
   let userId = '';
   try {
@@ -168,6 +203,8 @@ function register(e) {
       profile.set('nickname', nickname);
       profile.set('nicknameKey', key);
       tx.save(profile);
+      // 1.8.4: what was accepted, in the same transaction — no account exists without its records
+      LEGAL.record(tx, user.id, docs, 'register', lang, b.privacy, { country: country, band: age.band });
       if (invite) {
         // one more use; with two simultaneous registrations the transactions run one after the
         // other, so the second one sees the code already used and is refused
@@ -198,7 +235,7 @@ function register(e) {
     mailSent = false;
     e.app.logger().warn('prime verification email failed', 'error', String(err).slice(0, 300));
   }
-  return e.json(200, { ok: true, mailSent: mailSent, verification: 'email' });
+  return e.json(200, { ok: true, mailSent: mailSent, verification: 'email', retryAfter: GUARD.MAIL_GAP_S });
 }
 
 // ------------------------------------------------------------------------------ me
@@ -214,6 +251,8 @@ function me(e) {
     nickname: p ? p.getString('nickname') : null,
     save: s ? saveInfo(s) : null,
     schemaMax: RULES.schemaMax,
+    // 1.8.4: what this account still has to accept before PRIME CLOUD continues ([] = nothing)
+    legal: { needs: LEGAL.needs(e.app, u.id) },
   });
 }
 
@@ -221,6 +260,13 @@ function me(e) {
 function requireVerified(e) {
   if (!e.auth || !e.auth.verified()) {
     fail(e, 403, 'not_verified');
+    return false;
+  }
+  // 1.8.4: the current documents (and the age question) come first — reading, exporting and deleting
+  // the account stay open without them
+  const needs = LEGAL.needs(e.app, e.auth.id);
+  if (needs.length) {
+    fail(e, 403, 'terms_required', { needs: needs });
     return false;
   }
   return true;
@@ -449,7 +495,9 @@ function putSave(e) {
       return;
     }
     const info = saveInfo(cur);
-    if (base !== info.revision) {
+    // 1.8.4: the guest career moves only into an account WITHOUT cloud progress (its first save) — never
+    // over an existing one (the game never asks that; a hand-made request gets the same «conflict»)
+    if (base !== info.revision || (reason === 'transfer' && cur)) {
       out = [409, { code: 'conflict', revision: info.revision, hash: info.hash, schema: info.schema, updated: info.updated }];
       return;
     }
@@ -595,6 +643,14 @@ function guardMail(e) {
   }
 }
 
+/** 1.8.4: the email limits (lib/guard.js) — relaxed only for the old checks on this computer (Mailpit). */
+function limitMail(e) {
+  if (mailMode() === 'local' && String($os.getenv('PRIME_MAIL_LIMITS') || '').trim() === 'relaxed') return;
+  const to = [];
+  for (const a of e.message.to || []) if (a && a.address) to.push(String(a.address));
+  GUARD.limitMail(e.app, to);
+}
+
 /**
  * Without email (mailMode «off») PocketBase's own «send me a letter» endpoints (verification,
  * password reset, email change) answer the same 503 for every address: no letter is attempted,
@@ -622,4 +678,6 @@ module.exports = {
   archiveSave: archiveSave,
   restoreSave: restoreSave,
   guardMail: guardMail,
+  limitMail: limitMail,
+  ageRules: ageRules,
 };

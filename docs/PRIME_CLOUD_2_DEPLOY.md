@@ -4,7 +4,7 @@
 
 > Ничего из этого не выполнено автоматически. Сервер Timeweb и GitHub Pages обновляются **только вами**, по шагам ниже, после вашего решения.
 
-Сайт: https://aertonik.github.io/PRIME-TIME-SHOWDOWN/
+Сайт: https://primetimeshowdown.online (прежний адрес https://aertonik.github.io/PRIME-TIME-SHOWDOWN/ перенаправляет сюда; CORS для домена — [PRIME_CLOUD_DOMAIN.md](PRIME_CLOUD_DOMAIN.md))
 Сервер: https://primetime-showdown-beta.duckdns.org
 
 Команды с `$` в начале строки выполняются **на сервере** (по SSH), без самого `$`. Остальные — на Mac, в папке `PRIME TIME Duel`.

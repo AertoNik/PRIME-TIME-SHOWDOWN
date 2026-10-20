@@ -62,10 +62,12 @@ if [ "$(id -u)" = "0" ] && id pocketbase >/dev/null 2>&1; then
   chmod 700 "$DATA_DIR"
 fi
 
+# 1.8.4: the set-aside data holds accounts (also deleted ones) — it must not stay for good
+[ -n "${ASIDE:-}" ] && echo "Когда убедитесь, что всё работает, удалите отложенную копию (в ней персональные данные): sudo rm -rf $ASIDE"
 if [ -z "$SKIP_SERVICE" ]; then
   systemctl start "$SERVICE"
   for _ in $(seq 1 30); do
-    if curl -fsS http://127.0.0.1:8090/api/health >/dev/null 2>&1; then echo "OK: PocketBase запущен на восстановленных данных"; exit 0; fi
+    if curl -fsS http://127.0.0.1:8090/api/health >/dev/null 2>&1; then echo "OK: PocketBase запущен на восстановленных данных (аккаунты, удалённые после этой копии, сервер удалит снова сам — см. journalctl)"; exit 0; fi
     sleep 1
   done
   if journalctl -u "$SERVICE" -n 30 --no-pager 2>/dev/null | grep -q 'message authentication failed'; then

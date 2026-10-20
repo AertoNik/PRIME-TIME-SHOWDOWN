@@ -36,10 +36,6 @@ API_DOMAIN_PLACEHOLDER {
 	# (PRIME_TRUSTED_PROXY_HEADER=X-Forwarded-For lets PocketBase rate-limit per visitor)
 	reverse_proxy 127.0.0.1:8090
 
-	log {
-		output file /var/log/caddy/primetime-access.log {
-			roll_size 10MiB
-			roll_keep 5
-		}
-	}
+	# 1.8.4: no access log here — it would keep visitors' IP addresses without a time limit (Caddy rolls
+	# its files by size only). PocketBase logs every API request itself and keeps it 7 days.
 }

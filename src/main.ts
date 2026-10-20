@@ -13,6 +13,12 @@ import './styles/main.css';
 import { Game } from './game/Game';
 import { installViewport } from './ui/viewport';
 
+// 1.8.4: the game's own domain only over HTTPS. GitHub Pages' «Enforce HTTPS» is the real switch; this
+// covers a page opened by an old http:// link before it is on (the API never accepts http pages anyway).
+if (location.protocol === 'http:' && /(^|\.)primetimeshowdown\.online$/.test(location.hostname)) {
+  location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+}
+
 function showFatal(msg: string): void {
   const d = document.createElement('div');
   d.style.cssText =

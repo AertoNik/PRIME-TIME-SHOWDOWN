@@ -19,7 +19,7 @@ import { canonicalJSON, cloudCopyOf, readCloudText } from '../src/net/cloudSave'
 import { PrimeApi, PrimeApiError } from '../src/net/PrimeApi';
 import { sha256 } from '../src/net/sha256';
 import { SyncManager } from '../src/net/SyncManager';
-import { binariesReady, ensurePortsFree, ownServerStarted, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
+import { LEGACY_CHECK_ENV, binariesReady, ensurePortsFree, ownServerStarted, registrationExtras, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { MemoryStorage, save176 } from './lib/fixtures';
 import { cp, crypto, fs, os, path, proc, sleep } from './lib/node';
 
@@ -69,7 +69,7 @@ const dataDir = path.join(work, 'pb_data');
 async function startPb(dir = dataDir): Promise<void> {
   // the 1.8.1 account flows run with open registration — allowed ONLY in this isolated, temporary database
   // (the invite-only closed beta has its own checks: npm run beta:test)
-  pb = spawnPocketBase({ dir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public', PRIME_SESSIONS: 'off' } });
+  pb = spawnPocketBase({ dir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'public', PRIME_SESSIONS: 'off', ...LEGACY_CHECK_ENV } });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 400) pbLog.splice(0, pbLog.length - 400);
@@ -220,7 +220,7 @@ async function main(): Promise<void> {
   // ======================================================== REGISTRATION (1–9)
   section('Регистрация');
   const d1 = new Device('mac-chrome');
-  const reg = (dev: Device, nickname: string, email: string, password: string, confirm = password) => dev.api.register({ nickname, email, password, passwordConfirm: confirm });
+  const reg = async (dev: Device, nickname: string, email: string, password: string, confirm = password) => dev.api.register({ nickname, email, password, passwordConfirm: confirm, ...((await registrationExtras(API)) as object) });
   const r1 = await reg(d1, 'NightProducer', 'Night@Prime.test', PW_A);
   const aUser = (await admin.collection('users').getFullList({ filter: 'email = "night@prime.test"' }))[0];
   const aProfile = aUser ? (await admin.collection('profiles').getFullList({ filter: `user = "${aUser.id}"` }))[0] : null;
@@ -303,7 +303,8 @@ async function main(): Promise<void> {
   const eUnv = await apiError(d2.api.putSave({ base: 0, text: someText.text, hash: someText.hash, op: 'op_unverified_1', device: 'x', reason: 'transfer' }));
   const eUnvA = await apiError(d2.api.archive(someText.text, someText.hash, 'conflict-device', 'x'));
   const eUnvR = await apiError(d2.api.restore('aaaaaaaaaaaaaaa', 0, 'op_unverified_2', 'x'));
-  check('6/34 an unconfirmed account cannot upload, archive or restore (403 not_verified)', eUnv?.kind === 'unverified' && eUnvA?.kind === 'unverified' && eUnvR?.kind === 'unverified');
+  // (1.8.4: restoring an earlier version is refused for every player — see 26)
+  check('6/34 an unconfirmed account cannot upload or archive (403 not_verified), nor restore (403)', eUnv?.kind === 'unverified' && eUnvA?.kind === 'unverified' && eUnvR?.code === 'restore_disabled');
   check('6 …and nothing was stored for it', (await admin.collection('saves').getFullList({ filter: `owner = "${meB0.id}"` })).length === 0);
   await d2.api.resendVerification('Moon@Prime.test');
   const linkB = await mailLink('moon@prime.test', 'verification', 2); // the resend is delivered in the background
@@ -524,21 +525,18 @@ async function main(): Promise<void> {
   const st25c = await d1.sync!.check();
   check('25 once the cloud is readable again, the waiting change is uploaded', st25c === 'synced' && (await d1.api.getSave())?.hash === d1.copy().hash);
 
-  // 26: restore an earlier version
-  section('Восстановление резервной версии');
+  // 26: 1.8.4 — a player cannot put an earlier version back (rewards / currency would return)
+  section('Восстановление резервной версии (1.8.4: только организатор)');
   const hist = await d1.sync!.history();
   const pick = hist.find((h) => h.reason === 'previous' && h.schema === 12 && readCloudText(h.text).ok);
-  const rev26 = (await d1.api.getSave())!.revision;
-  const ok26 = pick ? await d1.sync!.restore(pick) : false;
-  const c26 = await d1.api.getSave();
-  check('26 an earlier version is restored as a NEW revision (history is not rewritten)', ok26 && c26?.revision === rev26 + 1 && c26.hash === pick?.hash && c26.reason === 'restore');
-  check('26 the version it replaced is kept in the history («before-restore»); the device loaded the restored one', (await d1.api.history()).some((h) => h.reason === 'before-restore' && h.revision === rev26) && d1.copy().hash === pick?.hash);
-  d1.boot();
-  await d1.sync!.start();
+  const before26 = await d1.api.getSave();
+  const e26own = pick ? await apiError(d1.api.restore(pick.id, before26!.revision, 'op_restore_own', 'x')) : null;
+  const after26 = await d1.api.getSave();
+  check('26 restoring an earlier version of one\'s own save is refused (403 restore_disabled); the cloud save is unchanged, the history stays', !!pick && e26own?.code === 'restore_disabled' && after26?.revision === before26?.revision && after26?.hash === before26?.hash && (await d1.api.history()).length === hist.length);
   const bHist = await d2.api.history();
   const foreign = bHist[0] ?? null;
   const e26 = foreign ? await apiError(d1.api.restore(foreign.id, (await d1.api.getSave())!.revision, 'op_steal_restore', 'x')) : null;
-  check('26/31 restoring another account\'s copy is refused like a missing one (404)', !!foreign && e26?.kind === 'notfound');
+  check('26/31 restoring another account\'s copy is refused too', !!foreign && e26?.code === 'restore_disabled');
 
   // 27: interrupted import / transfer
   section('Прерванный импорт и перенос');
@@ -690,7 +688,8 @@ async function main(): Promise<void> {
   for (let i = 0; i < 8; i++) rl.push((await apiError(reg(d4, 'Flood' + i, `flood${i}@prime.test`, PW_X)))?.status ?? 200);
   check(`rate limit: registration floods are cut off with 429 (${rl.join(',')})`, rl.includes(429) && rl.filter((s) => s === 200).length <= 5);
   const lf: number[] = [];
-  for (let i = 0; i < 14; i++) lf.push((await apiError(d4.api.login('night@prime.test', 'WrongPass' + i)))?.status ?? 200);
+  // (1.8.4: guessing also locks the guessed address for 15 minutes — so not an address signed in to below)
+  for (let i = 0; i < 14; i++) lf.push((await apiError(d4.api.login('flood0@prime.test', 'WrongPass' + i)))?.status ?? 200);
   check(`rate limit: password guessing is cut off with 429 (${lf.slice(-4).join(',')})`, lf.includes(429) && lf.every((s) => s === 400 || s === 429));
 
   // a backup of the database, restored into a new folder

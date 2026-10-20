@@ -140,7 +140,7 @@ Source Control → посмотрите список. В нём должны б�
 2. Откройте сайт и обновите страницу. Внизу заставки должно быть **ALPHA 1.8.2 · CLOSED BETA**.
 3. PRIME ID → блок PRIME NETWORK со значком **CLOSED BETA** и кнопкой «Есть приглашение — создать аккаунт». Если там «Сервер PRIME NETWORK сейчас недоступен», проверьте:
    - `healthcheck` на сервере;
-   - что `PRIME_ORIGINS=https://aertonik.github.io`.
+   - что в `PRIME_ORIGINS` есть адрес, с которого открыта игра (с 2026-10 — `https://primetimeshowdown.online`, см. [PRIME_CLOUD_DOMAIN.md](PRIME_CLOUD_DOMAIN.md)).
 
 ### Откат сайта
 

@@ -12,16 +12,16 @@
   <body data-page="reset">
     <main class="card">
       <div class="logo">PRIME<b>ID</b></div>
-      <h1>Новый пароль</h1>
+      <h1 data-t="resetTitle">Новый пароль</h1>
       <form id="form" novalidate>
-        <label><span>Новый пароль</span><input id="pw" type="password" autocomplete="new-password" maxlength="71" required /></label>
-        <label><span>Повтор пароля</span><input id="pw2" type="password" autocomplete="new-password" maxlength="71" required /></label>
-        <p class="hint">Минимум 8 символов, буквы и цифры.</p>
-        <button id="submit" class="btn" type="submit">Сохранить пароль</button>
+        <label><span data-t="pw">Новый пароль</span><input id="pw" type="password" autocomplete="new-password" maxlength="71" required /></label>
+        <label><span data-t="pw2">Повтор пароля</span><input id="pw2" type="password" autocomplete="new-password" maxlength="71" required /></label>
+        <p class="hint" data-t="hint">Минимум 8 символов, буквы и цифры.</p>
+        <button id="submit" class="btn" type="submit" data-t="save">Сохранить пароль</button>
       </form>
       <p id="status" class="status"></p>
-      <a id="back" class="btn ghost" href="#" hidden>Вернуться в игру</a>
-      <p class="small">PRIME TIME: SHOWDOWN · PRIME NETWORK</p>
+      <a id="back" class="btn ghost" href="#" hidden data-t="back">Вернуться в игру</a>
+      <p class="small">PRIME TIME: SHOWDOWN · PRIME NETWORK · <a id="privacy" href="#" hidden data-t="privacy" rel="noopener">Политика конфиденциальности</a></p>
     </main>
     <script src="../auth.js"></script>
   </body>

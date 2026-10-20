@@ -1,3 +1,5 @@
+import { lang } from '../i18n/lang';
+
 // Alpha 1.8.1 — the registration rules as the form checks them before sending (instant hints).
 // The server checks the very same rules again (backend/pb_hooks/lib/validate.js) and stays the
 // authority; `npm run accounts` runs both over the same cases so they cannot drift apart.
@@ -100,8 +102,60 @@ export const ACCOUNT_TEXT: Record<string, string> = {
   network: 'Сервер аккаунтов недоступен. Проверьте, что локальный backend запущен (npm run backend).',
   login_failed: 'Неверный email или пароль.',
   server_error: 'Ошибка сервера. Повторите попытку позже.',
+  // 1.8.4
+  consent_required: 'Отметьте обязательные пункты: соглашение и согласие на обработку данных.',
+  legal_outdated: 'Документы только что обновились. Обновите страницу, чтобы увидеть новую версию.',
+  challenge_invalid: 'Проверка устарела. Нажмите «Создать аккаунт» ещё раз.',
+  register_failed_retry: 'Не удалось создать аккаунт. Повторите попытку.',
+  resend_wait: 'Письмо уже отправлено. Следующее можно запросить чуть позже.',
+  resend_limit: 'На сегодня писем на этот адрес достаточно. Проверьте «Спам» или попробуйте завтра.',
+  mail_failed: 'Не удалось отправить письмо. Попробуйте через несколько минут.',
+  terms_required: 'Сначала примите документы PRIME ID.',
+  busy: 'Сервер сейчас перегружен. Повторите через минуту.',
+};
+
+/** 1.8.4: the same texts in English (PRIME ID can be switched to English). */
+export const ACCOUNT_TEXT_EN: Record<string, string> = {
+  nickname_empty: 'Enter a producer nickname.',
+  nickname_spaces: 'Remove the spaces at the start and end of the nickname.',
+  nickname_short: 'The nickname needs at least 3 characters.',
+  nickname_long: 'The nickname can be at most 16 characters.',
+  nickname_chars: 'Use letters, digits and «_» in the nickname.',
+  nickname_mixed: 'Use either Latin or Cyrillic letters in the nickname, not both.',
+  nickname_reserved: 'This nickname is reserved. Choose another one.',
+  nickname_taken: 'This nickname is already taken.',
+  email_empty: 'Enter your email.',
+  email_invalid: 'Check the email address.',
+  email_taken: 'This email is already registered. Sign in or reset the password.',
+  password_empty: 'Enter a password.',
+  password_short: 'The password needs at least 8 characters.',
+  password_long: 'The password is too long.',
+  password_weak: 'Use letters and digits; the password must not match the email or nickname.',
+  password_mismatch: 'The passwords do not match.',
+  register_failed: 'The account could not be created. Please try again.',
+  invite_required: 'Enter the invite code.',
+  invite_invalid: 'The invite code is wrong. Check that it was copied completely.',
+  invite_used: 'This invite code has already been used.',
+  invite_expired: 'This invite code has expired. Ask for a new one.',
+  registration_closed: 'Registration is temporarily unavailable. Signing in to an existing account works.',
+  mail_unavailable: 'This server does not send email yet: accounts are confirmed by the organiser.',
+  network_remote: 'Could not reach the PRIME NETWORK server. Check the internet and try again — the game keeps working.',
+  rate_limited: 'Too many attempts. Please wait a little and try again.',
+  network: 'The accounts server is unavailable.',
+  login_failed: 'Wrong email or password.',
+  server_error: 'Server error. Please try again later.',
+  consent_required: 'Please tick the required boxes: the terms and the consent to data processing.',
+  legal_outdated: 'The documents were just updated. Reload the page to see the new version.',
+  challenge_invalid: 'The check expired. Press «Create account» again.',
+  register_failed_retry: 'The account could not be created. Please try again.',
+  resend_wait: 'The email was just sent. You can ask for another one a little later.',
+  resend_limit: 'Enough emails to this address for today. Check the spam folder or try tomorrow.',
+  mail_failed: 'The email could not be sent. Please try again in a few minutes.',
+  terms_required: 'Please accept the PRIME ID documents first.',
+  busy: 'The server is busy right now. Please try again in a minute.',
 };
 
 export function accountText(code: string): string {
+  if (lang() === 'en') return ACCOUNT_TEXT_EN[code] ?? ACCOUNT_TEXT_EN.server_error;
   return ACCOUNT_TEXT[code] ?? ACCOUNT_TEXT.server_error;
 }
