@@ -4,6 +4,8 @@ import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, type CosmeticDef, type Cosme
 import { FIGHTERS, FIGHTER_ORDER } from '../config/fighters';
 import type { FighterId } from '../config/types';
 import { careerStages } from './careerStages';
+import { SKU_OF_COSMETIC } from '../config/shop.config';
+import { ownsPaid } from './entitlements';
 import type { SaveData } from './SaveSystem';
 
 /** The save interface the collection needs (SaveSystem, or an in-memory test double). */
@@ -73,7 +75,15 @@ export class Collection {
   }
 
   owns(id: CosmeticId): boolean {
+    // 1.8.8: a PRIME SHOP item is owned only through a confirmed purchase (never via the save)
+    if (COSMETICS[id].paid) return ownsPaid(SKU_OF_COSMETIC[id] ?? '');
     return this.c.owned.includes(id);
+  }
+
+  /** 1.8.8: the PRIME SHOP item worn in a slot — only while it is really owned. */
+  private paidIn(slot: CosmeticSlot): CosmeticId | null {
+    const id = this.store.data.shop?.equip?.[slot];
+    return id && this.owns(id) ? id : null;
   }
 
   /** The fighters who earned a personal item (empty for common items or not yet earned). */
@@ -95,6 +105,8 @@ export class Collection {
   grant(id: CosmeticId, source: string, fighter?: FighterId): boolean {
     const c = this.c;
     const def = COSMETICS[id];
+    // 1.8.8: the game never grants PRIME SHOP items (only a confirmed purchase does)
+    if (def.paid) return false;
     if (def.personal) {
       if (!fighter) return false;
       const list = (c.personal[id] ??= []);
@@ -114,13 +126,15 @@ export class Collection {
     return true;
   }
 
-  /** The producer's common item in a slot. */
+  /** The producer's common item in a slot (1.8.8: a worn PRIME SHOP item comes first). */
   equipped(slot: CosmeticSlot): CosmeticId | null {
-    return this.c.equipped[slot] ?? null;
+    return this.paidIn(slot) ?? this.c.equipped[slot] ?? null;
   }
 
   /** What a fighter actually wears in a slot: its own personal item, otherwise the common one. */
   equippedFor(slot: CosmeticSlot, fighter: FighterId): CosmeticId | null {
+    const paid = this.paidIn(slot);
+    if (paid) return paid;
     const own = this.c.personalEquipped[fighter]?.[slot];
     if (own && this.ownsFor(own, fighter)) return own;
     return this.equipped(slot);
@@ -139,7 +153,7 @@ export class Collection {
   /** Common items: worn by the producer's look. Personal items: worn by that fighter. */
   isEquipped(id: CosmeticId, fighter?: FighterId): boolean {
     const def = COSMETICS[id];
-    if (def.personal) return !!fighter && this.c.personalEquipped[fighter]?.[def.slot] === id;
+    if (def.personal) return !!fighter && !this.paidIn(def.slot) && this.c.personalEquipped[fighter]?.[def.slot] === id;
     return this.equipped(def.slot) === id;
   }
 
@@ -159,7 +173,22 @@ export class Collection {
       return true;
     }
     if (!this.owns(id)) return false;
+    // 1.8.8: a PRIME SHOP item is worn from save.shop.equip (save.cosmetics never names it)
+    if (def.paid) {
+      const sh = (this.store.data.shop ??= { skins: {}, equip: {} });
+      if (on) {
+        sh.equip[def.slot] = id;
+        if (fighter) {
+          const pe = this.c.personalEquipped[fighter];
+          if (pe) delete pe[def.slot];
+        }
+      } else if (sh.equip[def.slot] === id) delete sh.equip[def.slot];
+      this.store.save();
+      return true;
+    }
     const eq = this.c.equipped;
+    // putting on a game item takes a worn PRIME SHOP item off that slot: what you tap is what you see
+    if (on && this.store.data.shop?.equip?.[def.slot]) delete this.store.data.shop.equip[def.slot];
     if (on) {
       eq[def.slot] = id;
       if (fighter) {
@@ -214,7 +243,9 @@ export class Collection {
    * an unearned item of a past or future season never shows. Everything else is visible.
    */
   visible(id: CosmeticId): boolean {
-    return COSMETICS[id].source !== 'season' || this.owns(id);
+    // 1.8.8: PRIME SHOP items appear in MY COLLECTION once owned (the shop presents them before that)
+    const src = COSMETICS[id].source;
+    return (src !== 'season' && src !== 'shop') || this.owns(id);
   }
 
   view(id: CosmeticId, fighter?: FighterId): CosmeticView {
@@ -223,7 +254,7 @@ export class Collection {
       def: COSMETICS[id],
       owned,
       equipped: owned && this.isEquipped(id, fighter),
-      fresh: owned && !this.c.seen.includes(id),
+      fresh: owned && !COSMETICS[id].paid && !this.c.seen.includes(id),
       at: this.acquiredAt(id),
       owners: this.owners(id).slice(),
     };

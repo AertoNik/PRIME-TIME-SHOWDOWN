@@ -100,7 +100,7 @@ export class ProfileScreen implements Screen {
 
   private portrait(id: FighterId, cls = ''): string {
     const f = FIGHTERS[id];
-    return portraitHTML(this.g.portraits[f.look], f.theme.main, f.theme.dark, cls);
+    return portraitHTML(this.g.portraitOf(f.id), f.theme.main, f.theme.dark, cls);
   }
 
   // ------------------------------------------------------------------ render

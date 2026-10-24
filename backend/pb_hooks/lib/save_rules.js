@@ -4,7 +4,7 @@
 // while it is out of date) and restart the backend.
 
 module.exports = {
-  "app": "1.8.4-alpha",
+  "app": "1.8.8-alpha",
   "schemaMax": 12,
   "fighters": {
     "ray": {
@@ -85,6 +85,16 @@ module.exports = {
     "victoryFx",
     "title"
   ],
+  "shopCosmetics": {
+    "frame_prime_broadcast": "broadcastFrame",
+    "dash_prime_phantom": "dashFx",
+    "victory_golden_confetti": "victoryFx",
+    "card_vhs": "cardStyle"
+  },
+  "skins": {
+    "ray_neon_runner": "ray",
+    "bruno_casino_boss": "bruno"
+  },
   "rivals": [
     "dex",
     "tank",

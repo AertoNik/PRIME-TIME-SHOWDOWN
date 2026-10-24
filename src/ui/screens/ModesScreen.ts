@@ -74,7 +74,7 @@ export class ModesScreen implements Screen {
         <div class="h1">Режимы эфира</div>
       </div>
       <div class="fill scroll modes-scroll">
-        <section class="mode-card classic">
+        <section class="mode-card classic featured">
           <div class="mc-head">
             <span class="mc-ico">${MODE_ICONS.classic}</span>
             <span class="mc-titles"><span class="mc-kicker">Основной эфир</span><span class="mc-title">CLASSIC DUEL</span></span>
@@ -84,7 +84,7 @@ export class ModesScreen implements Screen {
             <span><i>Соперник</i>${esc(rival.name)} · ${esc(BEHAVIORS[rival.behavior].label.toLowerCase())}</span>
             <span><i>Награда</i>гонорар, фанаты, репутация</span>
           </div>
-          <button class="btn teal wide mc-cta" data-act="classic">К бою</button>
+          <button class="btn big wide mc-cta classic-cta" data-act="classic"><span class="shine"></span>В бой</button>
         </section>
 
         <section class="mode-card survival">

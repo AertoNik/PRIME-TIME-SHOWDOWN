@@ -308,7 +308,7 @@ export class BattleHUD implements Screen {
     const g = this.g;
     const pf = FIGHTERS[m.cfg.fighter];
     const rv = m.rival;
-    (this.el.querySelector('[data-portrait="0"]') as HTMLElement).innerHTML = portraitHTML(g.portraits[pf.look], pf.theme.main, pf.theme.dark);
+    (this.el.querySelector('[data-portrait="0"]') as HTMLElement).innerHTML = portraitHTML(g.portraitOf(pf.id), pf.theme.main, pf.theme.dark);
     (this.el.querySelector('[data-portrait="1"]') as HTMLElement).innerHTML = portraitHTML(g.portraits[rv.look], rv.theme.main, rv.theme.dark);
     (this.el.querySelector('[data-name="0"]') as HTMLElement).textContent = pf.name;
     (this.el.querySelector('[data-name="1"]') as HTMLElement).textContent = rv.name;

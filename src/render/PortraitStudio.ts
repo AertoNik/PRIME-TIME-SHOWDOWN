@@ -6,8 +6,9 @@ import type { Renderer } from './Renderer';
 /**
  * Renders head-and-shoulders portraits of each fighter with the main WebGL
  * context and copies them into PNG data URLs for the HTML UI.
+ * Alpha 1.8.8: `bust` frames a little wider (hair and upper body) for the PRIME SHOP cards.
  */
-export function renderPortraits(r: Renderer, models: ModelCache, looks: string[]): Record<string, string> {
+export function renderPortraits(r: Renderer, models: ModelCache, looks: string[], bust = false): Record<string, string> {
   const out: Record<string, string> = {};
   const gl = r.renderer;
   const canvas = gl.domElement;
@@ -53,8 +54,13 @@ export function renderPortraits(r: Renderer, models: ModelCache, looks: string[]
     rig.root.updateMatrixWorld(true);
     const d = rig.dims;
     const headY = d.hipY + d.spineY + d.neckY + d.headR * 0.75;
-    cam.position.set(0.35, headY + 0.05, 2.35);
-    cam.lookAt(0, headY - 0.18, 0);
+    if (bust) {
+      cam.position.set(0.5, headY + 0.15, 3.9);
+      cam.lookAt(0, headY - 0.14, 0);
+    } else {
+      cam.position.set(0.35, headY + 0.05, 2.35);
+      cam.lookAt(0, headY - 0.18, 0);
+    }
     cam.updateProjectionMatrix();
 
     gl.setRenderTarget(null);

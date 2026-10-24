@@ -8,10 +8,46 @@ import { countUp, el, esc, portraitHTML } from '../dom';
 import { ICONS } from '../eventArt';
 import { currencyIcon, formatSpan } from './EventsScreen';
 import { UI_ICONS } from '../icons';
-import { MODE_ICONS } from '../modeArt';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
+
+/**
+ * Alpha 1.8.8: the «ТВОЙ PRIME ID» hint next to the profile button — for a player not signed in to
+ * PRIME ID, until they open the profile or close the hint, and on at most 3 launches. Only this small
+ * local note is stored (no save field, no account data).
+ */
+const HINT_KEY = 'primetime-showdown-hint-primeid-v1';
+const HINT_LAUNCHES = 3;
+let hintCounted = false;
+
+function hintLeft(): boolean {
+  try {
+    const v = localStorage.getItem(HINT_KEY) ?? '0';
+    return v !== 'done' && (Number(v) || 0) < HINT_LAUNCHES + (hintCounted ? 1 : 0);
+  } catch {
+    return false;
+  }
+}
+
+function countHint(): void {
+  if (hintCounted) return;
+  hintCounted = true;
+  try {
+    const v = localStorage.getItem(HINT_KEY) ?? '0';
+    if (v !== 'done') localStorage.setItem(HINT_KEY, String((Number(v) || 0) + 1));
+  } catch {
+    /* storage unavailable: the hint simply shows this time */
+  }
+}
+
+function retireHint(): void {
+  try {
+    localStorage.setItem(HINT_KEY, 'done');
+  } catch {
+    /* this page only */
+  }
+}
 
 export class MenuScreen implements Screen {
   readonly el: HTMLElement;
@@ -26,9 +62,17 @@ export class MenuScreen implements Screen {
       const t = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
       if (!t) return;
       const act = t.dataset.act;
-      this.g.audio.ui(act === 'fight' ? 'confirm' : 'click');
-      if (act === 'fight') this.g.goto('prep', { mode: { kind: 'classic' } });
-      else if (act === 'modes') this.g.goto('modes');
+      if (act === 'hint-close') {
+        // 1.8.8: «×» on the PRIME ID hint — it does not come back
+        retireHint();
+        this.el.querySelector('.pid-hint')?.remove();
+        return;
+      }
+      this.g.audio.ui(act === 'modes' ? 'confirm' : 'click');
+      if (act === 'profile') retireHint();
+      // 1.8.8: one way into the fights — «В БОЙ!» opens the modes (CLASSIC DUEL first)
+      if (act === 'modes') this.g.goto('modes');
+      else if (act === 'shop') this.g.goto('shop');
       else if (act === 'roster') this.g.goto('roster');
       else if (act === 'career') this.g.goto('career');
       else if (act === 'settings') this.g.openSettings();
@@ -140,16 +184,36 @@ export class MenuScreen implements Screen {
     const bossP = s.modes.boss.vale;
     const fresh = sv.runs === 0 && CHALLENGES.every((c) => !s.modes.challenges[c.id]?.attempts);
     const bossNew = !bossP?.attempts;
-    const modesEntry = `<button class="modes-entry" data-act="modes">
-        <span class="me-ico">${MODE_ICONS.challenge}</span>
-        <span class="me-text"><b>Режимы эфира</b><small>${
-          fresh ? 'Survival · Challenge · Boss Fight' : `Волны ${sv.bestWave}/${SURVIVAL.waves.length} · испытания ${chDone}/${CHALLENGES.length} · босс ${bossP?.wins ? '✓' : '—'}`
-        }</small></span>
-        ${fresh || bossNew ? `<span class="me-new">${fresh ? 'NEW' : 'BOSS'}</span>` : ''}<span class="ee-go">${UI_ICONS.next}</span>
+    // Alpha 1.8.8: «В БОЙ!» and the modes are one entry; the line under it keeps the modes at a glance
+    const modesLine = fresh ? 'Classic · Survival · Challenge · Boss' : `Волны ${sv.bestWave}/${SURVIVAL.waves.length} · испытания ${chDone}/${CHALLENGES.length} · босс ${bossP?.wins ? '✓' : '—'}`;
+    const fightEntry = `<button class="btn big wide fight-cta" data-act="modes" aria-label="В бой! Выбрать режим: ${esc(modesLine)}">
+        <span class="shine"></span>
+        <span class="fc-main">В бой!</span>
+        <span class="fc-sub">Выбрать режим</span>
+        ${fresh || bossNew ? `<span class="me-new fc-badge">${fresh ? 'NEW' : 'BOSS'}</span>` : ''}
       </button>`;
+    // 1.8.8 stage 2: the real PRIME SHOP — purple and gold, a step below the orange «В БОЙ!»
+    const shopEntry = `<button class="shop-entry" data-act="shop" aria-label="PRIME SHOP — магазин: скины, эффекты и бесплатная примерка">
+        <span class="se-glint" aria-hidden="true"></span>
+        <span class="se-ico">${UI_ICONS.shop}</span>
+        <span class="se-text"><b>PRIME <em>SHOP</em></b><small>Скины · эффекты · примерка</small></span>
+        <span class="se-go">${UI_ICONS.next}</span>
+      </button>`;
+    // 1.8.8: the PRIME ID hint (not signed in, not during the first-run choice, not retired)
+    const signedIn = !!g.account?.api?.sessionRecord;
+    const showHint = !signedIn && s.tutorial !== 'pending' && hintLeft();
+    if (showHint) countHint();
+    const hint = showHint
+      ? `<div class="pid-hint" data-act="profile" role="note">
+          <span class="ph-arrow" aria-hidden="true"></span>
+          <b>Твой PRIME ID</b>
+          <span>${g.account ? 'Профиль продюсера и вход в аккаунт' : 'Профиль продюсера и статистика'}</span>
+          <button class="ph-x" data-act="hint-close" aria-label="Закрыть подсказку">×</button>
+        </div>`
+      : '';
     this.el.innerHTML = `
       <div class="topbar" style="padding-right:62px">
-        <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge">${lvl.level}</span><span class="lvl-id">ID</span></button>
+        <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge">${lvl.level}</span><span class="lvl-id">ID</span></button>${hint}
         <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
         <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
       </div>
@@ -160,7 +224,7 @@ export class MenuScreen implements Screen {
       </div>
       <div class="fill pass"></div>
       <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">
-        ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
+        ${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}
         <div class="meta">
           <div class="name">${esc(f.name)}</div>
           ${title ? `<div class="plate-title">${ICONS.crown}<span>${esc(title)}</span></div>` : ''}
@@ -181,8 +245,8 @@ export class MenuScreen implements Screen {
       ${entry ? `<div class="menu-event">${entry}</div>` : ''}
       <div class="menu-actions">
         <div class="menu-play">
-          <button class="btn big wide" data-act="fight"><span class="shine"></span>В БОЙ</button>
-          ${modesEntry}
+          ${fightEntry}
+          ${shopEntry}
         </div>
         <div class="menu-nav">
           <button class="btn ghost" data-act="roster">${UI_ICONS.users.replace('<svg', '<svg width="18" height="18"')} Бойцы</button>

@@ -124,7 +124,7 @@ export class EventsScreen implements Screen {
         g.save.save();
         g.applyCosmetics();
         const f = FIGHTERS[id];
-        g.showcase.show(f.look, f.theme.accent);
+        g.showcase.show(g.fighterLook(f.id), f.theme.accent);
         g.showcase.cheer();
         this.render();
         this.bumpWallet();
@@ -188,7 +188,7 @@ export class EventsScreen implements Screen {
     g.ui.modal(
       `<div class="reward-pop rarity-legendary star-pop">
          <div class="rp-rays"></div>
-         <div class="rp-portrait">${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}</div>
+         <div class="rp-portrait">${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}</div>
          <div class="label rp-kind">Новый боец · сезонная звезда</div>
          <div class="h1 rp-name">${esc(f.name)}</div>
          <div class="rp-sub">${esc(f.nickname)}</div>
@@ -236,7 +236,7 @@ export class EventsScreen implements Screen {
         ? `<div class="es-own">${owned ? 'В вашем составе навсегда · фирменная карта ' + esc(CARDS_NAME(f.signature)) : ''}</div>`
         : `<div class="es-prog"><div class="progress gold"><i style="transform:scaleX(${Math.min(1, tokens / cost)})"></i></div><span>${Math.min(tokens, cost)}/${cost}<span class="eq-coin">${icon}</span></span></div>`;
     return `<div class="ev-star ${compact ? 'compact' : ''} ${owned ? 'owned' : ''} ${can && !owned ? 'ready' : ''}">
-        <button class="es-art" data-act="star" data-f="${id}" aria-label="${esc(f.name)}">${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark, 'es-portrait')}<span class="es-moon">${ICONS.moon}</span></button>
+        <button class="es-art" data-act="star" data-f="${id}" aria-label="${esc(f.name)}">${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark, 'es-portrait')}<span class="es-moon">${ICONS.moon}</span></button>
         <div class="es-main">
           <div class="es-kind">${compact ? 'Главная звезда сезона' : 'Эксклюзивный сезонный боец'}</div>
           <div class="es-name">${esc(f.name)}</div>

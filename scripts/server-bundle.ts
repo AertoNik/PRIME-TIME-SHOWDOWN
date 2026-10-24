@@ -33,6 +33,13 @@ if (realEnv.length) fail(`в deploy/linux лежит настоящий файл
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const name = `prime-server-${APP_VERSION}.tar.gz`;
 const file = path.join(OUT_DIR, name);
+// 1.8.8: an archive of this version already exists — it may be exactly what a live server runs. Never
+// replaced silently (raise the version first, or pass --replace knowingly)
+if (fs.existsSync(file) && !proc.argv.includes('--replace')) {
+  log(`ОШИБКА: архив server-bundle/${name} уже есть (возможно, именно он работает на сервере) — он не перезаписан.`);
+  log('Сначала поднимите версию (src/config/version.ts и package.json) или, если замена нужна осознанно: npm run server:bundle -- --replace');
+  proc.exit(1);
+}
 fs.rmSync(file, { force: true });
 
 const tar = cp.spawnSync(

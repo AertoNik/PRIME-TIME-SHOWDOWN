@@ -7,6 +7,7 @@ import { COSMETICS } from '../../config/cosmetics.config';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
 import { arenaAvailable, availableArenas } from '../../meta/ArenaSelection';
+import { inRoster } from '../../meta/roster';
 import { formatChallengeValue } from '../../meta/GameModes';
 import { ARENA_ART } from '../arenaArt';
 import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
@@ -47,7 +48,7 @@ export class PrepScreen implements Screen {
     this.focus = this.deck[0] ?? null;
     this.diff = this.g.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
     const f = FIGHTERS[s.selected];
-    this.g.showcase.show(f.look, f.theme.accent);
+    this.g.showcase.show(this.g.fighterLook(f.id), f.theme.accent);
     this.render(false);
   }
 
@@ -319,7 +320,7 @@ export class PrepScreen implements Screen {
       // access: Classic Duel wins with the selected fighter
       const sel = g.save.data.selected;
       const acc = g.modes.bossAccess(def.id, sel);
-      const roster = FIGHTER_ORDER.filter((id) => g.save.data.fighters[id].unlocked)
+      const roster = FIGHTER_ORDER.filter((id) => inRoster(g.save.data, id))
         .map((id) => {
           const a = g.modes.bossAccess(def.id, id);
           return `<span class="ba-f ${a.open ? 'open' : ''} ${id === sel ? 'sel' : ''}">${esc(FIGHTERS[id].name)} <b>${a.open ? '✓' : `${a.wins}/${a.need}`}</b></span>`;
@@ -480,7 +481,7 @@ export class PrepScreen implements Screen {
       <div class="fill scroll" style="padding-bottom:10px">
         <div class="matchup panel">
           <div class="mside a" data-act="roster" style="cursor:pointer">
-            ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
+            ${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}
             <div class="mname">${esc(f.name)}</div>
             <button class="chip teal" aria-label="Сменить бойца">⇄ Сменить</button>
           </div>

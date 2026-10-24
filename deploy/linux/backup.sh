@@ -5,6 +5,9 @@
 # (`.backup`) for data.db — never a raw copy of a database in the middle of a write —
 # plus uploaded files (storage/). Every copy is integrity-checked, gets SHA-256 sums, is packed into
 # one archive, optionally encrypted for an outside storage, and only the newest N are kept.
+# 1.8.8: also the invoice ledger (prime-ledger/ next to pb_data: the highest invoice number ever issued, every
+# order, every verified payment and refund) and the deletions note — so a server rebuilt from an outside copy
+# never hands out an old invoice number again; restore.sh MERGES them, never rolls them back.
 #
 # Run by hand:   sudo /opt/primetime/deploy/backup.sh
 # Daily:         prime-backup.timer (see docs/PRIME_CLOUD_BACKUP.md)
@@ -19,6 +22,8 @@
 #   PRIME_BACKUP_UPLOAD_CMD      (empty)       a command run with the ENCRYPTED copy's path as $1 — e.g. an
 #                                              rclone copy to an outside storage chosen later. Empty = no
 #                                              upload; without an age key nothing is ever uploaded.
+#   PRIME_LEDGER_DIR             <data dir>/../prime-ledger      the invoice ledger (1.8.8)
+#   PRIME_DELETIONS_LOG          <data dir>/../prime-deletions.log
 set -euo pipefail
 
 DATA_DIR="${PRIME_DATA_DIR:-/var/lib/primetime/pb_data}"
@@ -26,6 +31,8 @@ BACKUP_DIR="${PRIME_BACKUP_DIR:-/var/backups/primetime}"
 KEEP="${PRIME_BACKUP_KEEP:-14}"
 AGE_RECIPIENT="${PRIME_BACKUP_AGE_RECIPIENT:-}"
 UPLOAD_CMD="${PRIME_BACKUP_UPLOAD_CMD:-}"
+LEDGER_DIR="${PRIME_LEDGER_DIR:-$(dirname "$DATA_DIR")/prime-ledger}"
+DELETIONS="${PRIME_DELETIONS_LOG:-$(dirname "$DATA_DIR")/prime-deletions.log}"
 
 umask 077
 fail() { echo "ОШИБКА: $*" >&2; exit 1; }
@@ -51,8 +58,14 @@ for db in data.db; do
   [ "$(sqlite3 "$OUT/$db" 'PRAGMA integrity_check;')" = "ok" ] || fail "копия $db не прошла проверку целостности"
 done
 if [ -d "$DATA_DIR/storage" ]; then cp -a "$DATA_DIR/storage" "$OUT/storage"; fi
+# 1.8.8: the invoice ledger and the deletions note (outside the database — kept with it in the archive)
+if [ -d "$LEDGER_DIR" ]; then cp -a "$LEDGER_DIR" "$OUT/prime-ledger"; fi
+if [ -f "$DELETIONS" ]; then cp -a "$DELETIONS" "$OUT/prime-deletions.log"; fi
 (cd "$OUT" && sum ./*.db > SHA256SUMS)
 COUNTS="$(sqlite3 "$OUT/data.db" "select 'аккаунтов '||(select count(*) from users)||', сохранений '||(select count(*) from saves);" 2>/dev/null || echo 'таблицы PRIME ещё не созданы')"
+# (1.8.8: orders and rights too, once the PRIME SHOP tables exist)
+SHOP="$(sqlite3 "$OUT/data.db" "select ', заказов '||(select count(*) from shop_orders)||', прав на покупки '||(select count(*) from shop_entitlements where status='active');" 2>/dev/null || true)"
+COUNTS="$COUNTS$SHOP"
 echo "$COUNTS" > "$OUT/COUNTS"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$OUT/CREATED_UTC"
 

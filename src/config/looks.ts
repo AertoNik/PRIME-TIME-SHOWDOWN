@@ -1,14 +1,23 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit';
 export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
-export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker';
+export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker'
+  // Alpha 1.8.8: PRIME SHOP skins
+  | 'facepaint' | 'neon_strips' | 'rings' | 'lowshades' | 'goatee';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
   id: string;
+  /**
+   * Alpha 1.8.8: a PRIME SHOP skin — another look of an EXISTING fighter (that fighter's look id).
+   * The same skeleton (body), weapon and animations; only clothes, hair, face and decoration differ.
+   */
+  base?: string;
+  /** Alpha 1.8.8: skin decoration on the weapon (never moves the muzzle). */
+  weaponDeco?: 'neon' | 'gold';
   body: BodyType;
   skin: number;
   hair: { style: HairStyle; color: number; color2: number };
@@ -299,6 +308,60 @@ export const LOOKS: Record<string, LookDef> = {
   // Alpha 1.3.1 boss: the show's legendary champion. Broad athletic build, long
   // black showman coat with gold lapels and epaulettes, championship belt,
   // slicked-back hair with a gold streak, the PRIME BREAKER heavy rifle (Alpha 1.3.3).
+  // ------------------------------------------------ Alpha 1.8.8: PRIME SHOP skins
+  // RAY — NEON RUNNER: a futuristic street runner of the alternative 2000s. Same lean body, the same
+  // twin blasters; a techwear runner jacket in black and electric blue with glowing cyan piping, a
+  // sharp undercut crest lit at the tips, a visor, a cyan face stripe, neon strips on arms and shins.
+  ray_neon_runner: {
+    id: 'ray_neon_runner',
+    base: 'ray',
+    body: 'lean',
+    skin: 0xf1c29c,
+    hair: { style: 'crest', color: 0x2f4fc4, color2: 0x36f6ff },
+    top: { style: 'runner', main: 0x10142b, accent: 0x2672ff, trim: 0x36f6ff, inner: 0x090c1a },
+    pants: { style: 'jogger', main: 0x131a31, accent: 0x36f6ff },
+    shoes: { main: 0x171e3a, accent: 0x2672ff, sole: 0x36f6ff },
+    gloves: 0x0c0f1e,
+    fingerless: true,
+    eyes: 0x1d5c8c,
+    brow: 'sly',
+    mouth: 'smile',
+    accessories: ['visor', 'facepaint', 'neon_strips', 'wristbands'],
+    weapon: 'twin_blasters',
+    weaponColor: 0x1b2444,
+    weaponDark: 0x0a0e1e,
+    weaponDeco: 'neon',
+    glow: 0x2f8bff,
+    rim: 0x8fdcff,
+    face: { cheekbones: 0.3, jaw: 0.15, eyeHeight: 1.04, archedBrows: false, grin: false, browFlash: false },
+  },
+  // BRUNO — CASINO BOSS: the boss of a retro-futuristic casino. The same heavy body and BOOM CANNON;
+  // a double-breasted black suit with gold-edged peak lapels, a bordeaux shirt and a black tie, a
+  // glossy pompadour with silver temples, a groomed goatee, gold-rimmed glasses low on the nose,
+  // gold rings and a gold-and-chrome cannon.
+  bruno_casino_boss: {
+    id: 'bruno_casino_boss',
+    base: 'bruno',
+    body: 'heavy',
+    skin: 0xc68a60,
+    hair: { style: 'pompadour', color: 0x15100c, color2: 0x9a8e84 },
+    top: { style: 'suit', main: 0x131317, accent: 0xd8a63c, trim: 0xf3d77e, inner: 0x6c1124 },
+    pants: { style: 'tailored', main: 0x16161b, accent: 0x6c1124 },
+    shoes: { main: 0x0f0f13, accent: 0xd8a63c, sole: 0x09090b },
+    gloves: 0x111114,
+    fingerless: true,
+    eyes: 0x2a1a10,
+    brow: 'stern',
+    mouth: 'smirk',
+    accessories: ['goatee', 'lowshades', 'rings', 'chain'],
+    weapon: 'boom_cannon',
+    weaponColor: 0x1b1b21,
+    weaponDark: 0x0c0c10,
+    weaponDeco: 'gold',
+    glow: 0xffc23a,
+    rim: 0xffdc8f,
+    face: { cheekbones: 0.15, jaw: 0.45, eyeHeight: 0.96, archedBrows: true, grin: false, browFlash: false },
+  },
   vale: {
     id: 'vale',
     body: 'athletic',

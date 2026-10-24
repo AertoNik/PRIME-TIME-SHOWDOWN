@@ -76,8 +76,17 @@ for d in pb_hooks pb_migrations pb_public; do
   mv "$APP/$d.new" "$APP/$d"
 done
 install -m 755 "$BUNDLE/deploy/linux/backup.sh" "$BUNDLE/deploy/linux/restore.sh" "$BUNDLE/deploy/linux/healthcheck.sh" "$BUNDLE/deploy/linux/invites.sh" "$BUNDLE/deploy/linux/update.sh" "$APP/deploy/"
+# 1.8.8: PRIME SHOP orders and the backup check
+install -m 755 "$BUNDLE/deploy/linux/prime-shop.sh" "$BUNDLE/deploy/linux/backup-check.sh" "$APP/deploy/"
 mkdir -p "$APP/docs" && cp "$BUNDLE"/docs/PRIME_CLOUD_*.md "$APP/docs/" 2>/dev/null || true
 chown -R root:root "$APP"
+# 1.8.8: owned by root, readable by the pocketbase group (as update.sh) — whatever modes the unpacked bundle had
+chgrp pocketbase "$APP" "$APP/bin" "$APP/bin/pocketbase"
+chmod 750 "$APP" "$APP/bin" "$APP/bin/pocketbase"
+for d in pb_hooks pb_migrations pb_public; do
+  chown -R root:pocketbase "$APP/$d"
+  chmod -R g+rX "$APP/$d"
+done
 
 say "Настройки сервера $ETC/pocketbase.env"
 if [ ! -f "$ETC/pocketbase.env" ]; then

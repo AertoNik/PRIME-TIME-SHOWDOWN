@@ -22,6 +22,8 @@ Group=pocketbase
 WorkingDirectory=/opt/primetime
 # server settings and secrets (registration mode, API address, SMTP, encryption key) — never in git
 EnvironmentFile=/etc/primetime/pocketbase.env
+# 1.8.8 stage 4: the Robokassa settings and passwords, kept apart (optional: «-» = no file, no payments)
+EnvironmentFile=-/etc/primetime/robokassa.env
 ExecStart=/opt/primetime/bin/pocketbase serve \
   --http=127.0.0.1:8090 \
   --dir=/var/lib/primetime/pb_data \

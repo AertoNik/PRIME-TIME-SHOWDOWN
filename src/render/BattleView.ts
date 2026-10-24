@@ -24,6 +24,7 @@ import { clamp01, clampRoundedRect, damp, lerp, Rng, type ClampResult } from '..
 import type { Arena } from './Arena';
 import type { CameraRig } from './CameraRig';
 import { CardVisuals } from './CardVisuals';
+import { dashBurst, dashColor, victoryCelebration, type DashFx, type VictoryFx } from './cosmeticFx';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache } from './ModelCache';
 import { NightFX } from './NightFX';
@@ -37,12 +38,9 @@ export const TEAM_COLORS: [Color, Color] = [new Color(0x2ad8ff), new Color(0xff3
 export interface BattleStyle {
   combo: number[];
   confetti: number[];
-  dashFx: 'phantom' | null;
-  victoryFx: 'pumpkin' | null;
+  dashFx: DashFx | null;
+  victoryFx: VictoryFx | null;
 }
-
-const PHANTOM = new Color(0xa855ff);
-const PHANTOM_SPARK = new Color(0x9dff5c);
 
 export interface TimeFx {
   hitstop: number;
@@ -75,7 +73,9 @@ interface Slot {
   teamRing: Mesh;
   shadow: Mesh;
   accent: Color;
-  /** DASH trail/afterimage colour (accent, or PURPLE PHANTOM for the player). */
+  /** The player's dash cosmetic (PURPLE PHANTOM / PHANTOM DASH), null for the accent trail. */
+  dashFx: DashFx | null;
+  /** DASH trail/afterimage colour (accent, or the dash cosmetic's colour for the player). */
   dashColor: Color;
   pos: Vector3;
   stunArcT: number;
@@ -118,6 +118,8 @@ export class BattleView {
   /** Alpha 1.6.1 SECOND TAKE: the replay ghosts by stage-object id (one per side at most). */
   private echoes = new Map<number, { model: CachedFighter; side: Side; x: number; z: number; yaw: number; age: number; gone: number }>();
   private match: Match | null = null;
+  /** Alpha 1.8.8: the look each side is shown in (a PRIME SHOP skin of the player's fighter). */
+  private looks: string[] = [];
   private t = 0;
   private finishTimer = -1;
   /** Side whose DIRECTOR'S CUT line is on screen (-1 = none). */
@@ -175,13 +177,15 @@ export class BattleView {
   }
 
   // ---------------------------------------------------------------- setup
-  setup(match: Match): void {
+  /** `looks`: the look per side when it differs from the fighter's own (a worn PRIME SHOP skin). */
+  setup(match: Match, looks: readonly (string | null)[] = []): void {
     this.teardown();
     this.match = match;
+    this.looks = match.fighters.map((f, i) => looks[i] ?? f.look);
     this.arena.resetProps();
     this.finishTimer = -1;
     for (const f of match.fighters) {
-      const model = this.models.get(f.look);
+      const model = this.models.get(this.looks[f.side]);
       this.root.add(model.rig.root);
       model.anim.reset(f.facing);
       model.rig.root.visible = true;
@@ -221,7 +225,8 @@ export class BattleView {
         teamRing,
         shadow,
         accent,
-        dashColor: f.side === 0 && this.style.dashFx === 'phantom' ? PHANTOM.clone() : accent,
+        dashFx: f.side === 0 ? this.style.dashFx : null,
+        dashColor: (f.side === 0 && dashColor(this.style.dashFx)?.clone()) || accent,
         pos: new Vector3(f.x, 0, f.z),
         stunArcT: 0,
         emberT: 0,
@@ -1101,22 +1106,10 @@ export class BattleView {
         const l = Math.hypot(dx, dz) || 1;
         s.model.anim.dash(dx / l, dz / l);
         const dc = s.dashColor;
-        const phantom = dc !== s.accent;
+        const phantom = s.dashFx !== null;
         s.trailT = phantom ? 0.42 : 0.32;
-        this.vfx.dust(e.fromX, e.fromZ, 8, dx / l, dz / l);
-        this.vfx.ring(e.fromX, e.fromZ, dc, 0.4, 2.2, 0.3, 2);
-        for (let i = 0; i < 10; i++) {
-          const t = i / 10;
-          this.vfx.sparks.spawn(e.fromX + dx * t, rng.range(0.4, 1.8), e.fromZ + dz * t, (dx / l) * 2, 0, (dz / l) * 2, 0.22 + t * 0.15, 0.2, 0.02, phantom && i % 3 === 0 ? PHANTOM_SPARK : dc, 2, 4, 0);
-        }
-        if (phantom) {
-          // PURPLE PHANTOM: fading ghost silhouettes along the dash path
-          for (let i = 1; i <= 3; i++) {
-            const t = i / 4;
-            this.vfx.glow(e.fromX + dx * t, 1.1, e.fromZ + dz * t, PHANTOM, 1.4, 0.6, 0.35 + i * 0.06, 1.8);
-          }
-          this.vfx.burst(e.fromX, 1.0, e.fromZ, PHANTOM_SPARK, 10, 3, 0.14, 0.4, 2.2, -1, 1);
-        }
+        // dust, ring and sparks, plus the dash cosmetic (PURPLE PHANTOM / PHANTOM DASH) — cosmeticFx.ts
+        dashBurst(this.vfx, rng, s.dashFx, dc, e.fromX, e.fromZ, e.toX, e.toZ);
         if (e.style === 'blink') {
           this.vfx.burst(e.fromX, 1.1, e.fromZ, dc, 20, 4, 0.2, 0.35, 2.6);
           this.vfx.burst(e.toX, 1.1, e.toZ, dc, 20, 4, 0.2, 0.35, 2.6);
@@ -1199,7 +1192,7 @@ export class BattleView {
         break;
       }
       case 'decoy': {
-        const look = m.fighters[e.side].look;
+        const look = this.looks[e.side];
         // Alpha 1.6: a HOLO DECOY uses its own twin, so it can stand next to a PHANTOM STEP decoy
         const kind = m.decoys.find((x) => x.id === e.id)?.kind ?? 'phantom';
         const holo = this.models.getHolo(look, kind === 'holo' ? 1 : 0);
@@ -1306,17 +1299,11 @@ export class BattleView {
           if (w.victoryDelay < 0) w.victoryDelay = m.fighters[1 - m.winner].ko ? 0.9 : 0.2;
           this.cam.finishFocus.copy(w.pos);
           if (m.winner === 0) {
-            const pumpkin = this.style.victoryFx === 'pumpkin';
+            const fx = this.style.victoryFx;
             setTimeout(() => {
               if (this.match !== m) return;
-              this.vfx.confetti(w.pos.x, 3, w.pos.z, pumpkin ? 110 : 160, pumpkin ? [0xff8a1f, 0xb45cff, 0xa8ff60, 0xffd27a] : this.style.confetti);
-              if (pumpkin) {
-                // PUMPKIN VICTORY
-                this.vfx.pumpkins(w.pos.x, 1.6, w.pos.z, 14);
-                setTimeout(() => this.match === m && this.vfx.pumpkins(w.pos.x, 1.6, w.pos.z, 8), 700);
-                this.vfx.ring(w.pos.x, w.pos.z, _c.set(0xff8a1f), 1, 6, 0.8, 2.6);
-                this.vfx.rays(w.pos.x, 1.4, w.pos.z, _c.set(0xb45cff), 1, 5, 0.8, 1.8);
-              }
+              // PUMPKIN VICTORY / GOLDEN CONFETTI / the season's confetti — cosmeticFx.ts
+              victoryCelebration(this.vfx, fx, w.pos.x, w.pos.z, this.style.confetti, () => this.match === m);
             }, 900);
           }
         } else if (e.phase === 'outro') {
@@ -1367,7 +1354,7 @@ export class BattleView {
         const s = this.slots[e.side];
         const f = m.fighters[e.side];
         if (this.ghost) this.root.remove(this.ghost.model.rig.root);
-        const g = this.models.getGhost(f.look);
+        const g = this.models.getGhost(this.looks[f.side]);
         g.anim.reset(f.facing);
         g.rig.root.position.set(e.x, 0, e.z);
         this.root.add(g.rig.root);
@@ -1501,7 +1488,7 @@ export class BattleView {
         const col = _c.set(0xff7ad9);
         // a tape-rewind ghost stays where the fighter was, a scanline trail runs to where it goes
         if (this.ghost) this.root.remove(this.ghost.model.rig.root);
-        const g = this.models.getGhost(f.look);
+        const g = this.models.getGhost(this.looks[f.side]);
         g.anim.reset(f.facing);
         g.rig.root.position.set(e.fromX, 0, e.fromZ);
         this.root.add(g.rig.root);
@@ -1562,7 +1549,7 @@ export class BattleView {
         this.root.remove(old.model.rig.root);
         this.echoes.delete(id);
       }
-      const ghost = this.models.getHolo(f.look, 2);
+      const ghost = this.models.getHolo(this.looks[f.side], 2);
       const yaw = o ? Math.atan2(o.dirX, o.dirZ) : f.facing;
       ghost.anim.reset(yaw);
       ghost.rig.root.position.set(e.x, 0, e.z);

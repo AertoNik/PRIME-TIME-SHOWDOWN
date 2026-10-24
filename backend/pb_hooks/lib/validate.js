@@ -160,8 +160,12 @@ function makeChecker() {
 /**
  * Check one save object (already JSON-parsed). Returns [] when the server may store it,
  * otherwise a short list of problems (for the logs and the developer — never shown to players).
+ * ctx.paidFighters (1.8.8 stage 4): seasonal stars this account opened through a PRIME SHOP purchase — the
+ * purchase lives in the server's registry, never in the save, so such a fighter may be «selected» without
+ * being opened in the save.
  */
-function validateSave(s) {
+function validateSave(s, ctx) {
+  const paid = ctx && Array.isArray(ctx.paidFighters) ? ctx.paidFighters : [];
   const c = makeChecker();
   const { fail, num, optNum, bool, str, oneOf, idList } = c;
   if (!isObj(s)) return ['save: not an object'];
@@ -223,7 +227,7 @@ function validateSave(s) {
     }
   }
   if (typeof s.selected !== 'string' || fighterIds.indexOf(s.selected) < 0) fail('selected', 'unknown fighter');
-  else if (isObj(s.fighters) && isObj(s.fighters[s.selected]) && s.fighters[s.selected].unlocked !== true) fail('selected', 'not signed');
+  else if (isObj(s.fighters) && isObj(s.fighters[s.selected]) && s.fighters[s.selected].unlocked !== true && !(R.fighters[s.selected].seasonal && paid.indexOf(s.selected) >= 0)) fail('selected', 'not signed');
   oneOf(s.difficulty, R.difficulties, 'difficulty');
   if (s.goals !== undefined) {
     if (!isObj(s.goals)) fail('goals', 'not an object');
@@ -377,8 +381,29 @@ function validateSave(s) {
     }
   }
 
+  // Alpha 1.8.8 — PRIME SHOP: only the wardrobe choices (which owned skin / shop item is worn).
+  // Ownership of paid items is never in a save (the server's purchase records will hold it), so a
+  // choice here grants nothing — the game honours it only for an item the account really owns.
+  if (s.shop !== undefined) {
+    const sh = s.shop;
+    if (!isObj(sh)) fail('shop', 'not an object');
+    else {
+      for (const k of Object.keys(sh)) if (k !== 'skins' && k !== 'equip') fail('shop', 'unknown field');
+      const skins = R.skins || {};
+      const items = R.shopCosmetics || {};
+      if (sh.skins !== undefined) {
+        if (!isObj(sh.skins) || Object.keys(sh.skins).length > 32) fail('shop.skins', 'bad map');
+        else for (const f of Object.keys(sh.skins)) if (typeof sh.skins[f] !== 'string' || skins[sh.skins[f]] !== f) fail('shop.skins', 'unknown skin');
+      }
+      if (sh.equip !== undefined) {
+        if (!isObj(sh.equip) || Object.keys(sh.equip).length > 16) fail('shop.equip', 'bad map');
+        else for (const slot of Object.keys(sh.equip)) if (typeof sh.equip[slot] !== 'string' || items[sh.equip[slot]] !== slot) fail('shop.equip', 'unknown item');
+      }
+    }
+  }
+
   // forward compatibility: a few unknown top-level fields (a newer minor's additions) are kept
-  const known = ['version', 'orgName', 'money', 'reputation', 'matches', 'wins', 'losses', 'draws', 'bestRating', 'totalEarned', 'fansEarned', 'bestCombosInMatch', 'bestPerfectsInMatch', 'proWins', 'championWins', 'fighters', 'selected', 'difficulty', 'goals', 'settings', 'nextRival', 'lastRival', 'seed', 'hintsSeen', 'events', 'cosmetics', 'modes', 'arena', 'careerClaimed', 'cards', 'tutorial', 'streak'];
+  const known = ['version', 'orgName', 'money', 'reputation', 'matches', 'wins', 'losses', 'draws', 'bestRating', 'totalEarned', 'fansEarned', 'bestCombosInMatch', 'bestPerfectsInMatch', 'proWins', 'championWins', 'fighters', 'selected', 'difficulty', 'goals', 'settings', 'nextRival', 'lastRival', 'seed', 'hintsSeen', 'events', 'cosmetics', 'modes', 'arena', 'careerClaimed', 'cards', 'tutorial', 'streak', 'shop'];
   let unknown = 0;
   for (const k of Object.keys(s)) if (known.indexOf(k) < 0) unknown++;
   if (unknown > MAX_UNKNOWN_TOP_FIELDS) fail('save', 'too many unknown fields');
@@ -386,7 +411,7 @@ function validateSave(s) {
 }
 
 /** Parse + check a save text as uploaded. { ok, save, schema } or { ok: false, code, problems }. */
-function checkSaveText(text) {
+function checkSaveText(text, ctx) {
   if (typeof text !== 'string' || !text) return { ok: false, code: 'invalid_data', problems: ['data: missing'] };
   if (utf8Length(text) > MAX_SAVE_BYTES) return { ok: false, code: 'too_large', problems: ['data: larger than 512 KB'] };
   let obj;
@@ -397,7 +422,7 @@ function checkSaveText(text) {
   }
   if (!isObj(obj)) return { ok: false, code: 'invalid_data', problems: ['data: not an object'] };
   if (typeof obj.version === 'number' && obj.version > R.schemaMax) return { ok: false, code: 'schema_unsupported', problems: ['version ' + obj.version + ' > ' + R.schemaMax] };
-  const problems = validateSave(obj);
+  const problems = validateSave(obj, ctx);
   if (problems.length) return { ok: false, code: 'invalid_data', problems };
   return { ok: true, save: obj, schema: obj.version };
 }

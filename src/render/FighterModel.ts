@@ -810,6 +810,59 @@ export function getRigGeometry(lookId: string): RigGeometry {
         T.add(tor(0.026, 0.007, Math.PI * 2, 14), top.trim, { p: [0, h * 0.86, zf(h * 0.86) + 0.042] });
         break;
       }
+      case 'runner': {
+        // Alpha 1.8.8 (RAY — NEON RUNNER): a cropped techwear runner jacket — a dark shell, an
+        // electric-blue yoke and asymmetric chest panel, glowing cyan piping, a split high collar,
+        // an LED chevron on the chest and reflective stripes across the back
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(torsoShell(d, h * 0.7, h * 0.93, 0.012), top.accent);
+        T.add(torsoShell(d, h * 0.16, h * 0.7, 0.014, Math.PI * 1.7, Math.PI * 0.36), top.accent);
+        T.add(torsoShell(d, -0.02, 0.06, -0.008), top.inner);
+        TG.add(torsoRing(d, h * 0.7, 0.022, 0.009), top.trim, {}, GLOW);
+        TG.add(torsoRing(d, h * 0.07, 0.02, 0.008), top.trim, {}, GLOW * 0.8);
+        // zip with a glowing line
+        T.add(rbox(0.026, h * 0.74, 0.03, 0.01), 0x0b0e1c, { p: [0.03, h * 0.44, zf(h * 0.44) + 0.006] });
+        TG.add(rbox(0.008, h * 0.7, 0.012, 0.003), top.trim, { p: [0.03, h * 0.44, zf(h * 0.44) + 0.024] }, GLOW);
+        // split high collar
+        const collar = tor(0.19, 0.05, Math.PI * 1.5, 22);
+        collar.rotateX(Math.PI / 2);
+        collar.rotateY(Math.PI * 1.25);
+        T.add(collar, top.main, { p: [0, h * 0.95, -0.01], s: [1, 1.9, 0.94] });
+        // LED chevron on the left chest
+        for (const k of [1, -1]) TG.add(rbox(0.062, 0.016, 0.012, 0.005), top.trim, { p: [0.155 + k * 0.022, h * 0.6, zf(h * 0.6) + 0.012], r: [0, 0.3, k * 0.62] }, GLOW);
+        // reflective stripes across the back
+        for (const y of [0.42, 0.52]) T.add(rbox(0.34, 0.03, 0.03, 0.012), top.accent, { p: [0, h * y, -zf(h * y) - 0.006] });
+        // shoulder caps in electric blue
+        for (const ss of [1, -1]) T.add(sph(0.11, 14, 10), top.accent, { p: [ss * d.shoulderX * 0.92, d.shoulderY + 0.03, 0], s: [1.2, 0.45, 1.05], r: [0, 0, -ss * 0.2] });
+        break;
+      }
+      case 'suit': {
+        // Alpha 1.8.8 (BRUNO — CASINO BOSS): a heavy double-breasted black suit — wide peak lapels edged
+        // in gold, a bordeaux shirt with a black tie and a gold clip, two rows of gold buttons, a
+        // bordeaux pocket square, padded shoulders and a small glowing gold lapel pin
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(rbox(0.21, h * 0.36, 0.03, 0.02), top.inner, { p: [0, h * 0.77, zf(h * 0.77) - 0.004] });
+        T.add(rbox(0.055, h * 0.34, 0.026, 0.012), 0x0d0d10, { p: [0, h * 0.72, zf(h * 0.72) + 0.012] });
+        T.add(sph(0.034, 10, 8), 0x0d0d10, { p: [0, h * 0.88, zf(h * 0.88) + 0.012], s: [1.3, 0.8, 0.6] });
+        T.add(rbox(0.075, 0.016, 0.02, 0.006), top.trim, { p: [0, h * 0.66, zf(h * 0.66) + 0.028] });
+        for (const ss of [1, -1]) {
+          const lr: V3 = [0, ss * 0.32, -ss * 0.34];
+          T.add(rbox(0.1, h * 0.58, 0.03, 0.014), shade(top.main, 1.2), { p: [ss * 0.13, h * 0.62, zf(h * 0.62) + 0.006], r: lr });
+          T.add(rbox(0.016, h * 0.56, 0.032, 0.006), top.accent, { p: [ss * 0.085, h * 0.62, zf(h * 0.62) + 0.014], r: lr });
+          for (let i = 0; i < 3; i++) {
+            const y = h * (0.14 + i * 0.11);
+            T.add(sph(0.026, 10, 8), top.accent, { p: [ss * 0.085, y, zf(y) + 0.008] });
+          }
+          // padded shoulders
+          T.add(sph(0.14, 14, 10), top.main, { p: [ss * d.shoulderX * 0.95, d.shoulderY + 0.03, 0], s: [1.25, 0.5, 1.1], r: [0, 0, -ss * 0.18] });
+        }
+        T.add(rbox(0.075, 0.042, 0.03, 0.01), top.inner, { p: [0.19, h * 0.67, zf(h * 0.67) + 0.004], r: [0, 0.32, 0.12] });
+        T.add(torsoRing(d, 0.03, 0.012, 0.03), top.accent);
+        TG.add(sph(0.022, 10, 8), look.glow, { p: [-0.17, h * 0.74, zf(h * 0.74) + 0.03] }, GLOW * 0.6);
+        break;
+      }
       case 'pads': {
         // sleeveless jersey with a hazard-stripe badge (shoulder pads below)
         T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
@@ -957,6 +1010,13 @@ export function getRigGeometry(lookId: string): RigGeometry {
         [0.022, top.accent],
         [-0.022, top.trim],
       ] as [number, number][]) U.add(rbox(0.02, d.upperArm * 0.8, 0.026, 0.008), c, { p: [s * ar * 1.2, -d.upperArm * 0.5, off] });
+    } else if (top.style === 'runner') {
+      // Alpha 1.8.8: an electric-blue sleeve panel with a glowing cyan line down the outside
+      U.add(rbox(0.05, d.upperArm * 0.72, 0.06, 0.016), top.accent, { p: [s * ar * 1.12, -d.upperArm * 0.5, 0] });
+      B.g(side === 'L' ? 'upperArmL' : 'upperArmR').add(rbox(0.012, d.upperArm * 0.7, 0.014, 0.004), top.trim, { p: [s * ar * 1.24, -d.upperArm * 0.5, 0] }, GLOW * 0.9);
+    } else if (top.style === 'suit') {
+      // Alpha 1.8.8: a fine gold seam on the black sleeve
+      U.add(rbox(0.012, d.upperArm * 0.7, 0.02, 0.005), top.accent, { p: [s * ar * 1.22, -d.upperArm * 0.5, 0] });
     } else if (top.style === 'moto') {
       // a coral band above the elbow
       const ring = tor(ar * 1.24, 0.026);
@@ -979,6 +1039,16 @@ export function getRigGeometry(lookId: string): RigGeometry {
     if (top.style === 'coat') {
       // wide turned-back gold cuff
       F.add(cyl(ar * 1.32, ar * 1.22, 0.1, 16), top.accent, { p: [0, -d.foreArm * 0.78, 0] });
+    }
+    if (top.style === 'runner') {
+      // Alpha 1.8.8: a blue cuff block and the glowing line carried on down the forearm
+      F.add(cyl(ar * 1.22, ar * 1.16, 0.09, 16), top.accent, { p: [0, -d.foreArm * 0.74, 0] });
+      FG.add(rbox(0.012, d.foreArm * 0.5, 0.014, 0.004), top.trim, { p: [s * ar * 1.16, -d.foreArm * 0.4, 0] }, GLOW * 0.9);
+    }
+    if (top.style === 'suit') {
+      // Alpha 1.8.8: the bordeaux shirt cuff showing under the sleeve, a gold cufflink
+      F.add(cyl(ar * 1.16, ar * 1.12, 0.07, 16), top.inner, { p: [0, -d.foreArm * 0.86, 0] });
+      F.add(sph(0.024, 8, 6), top.accent, { p: [s * ar * 1.18, -d.foreArm * 0.86, 0] });
     }
     if (top.style === 'tailcoat') {
       // Alpha 1.7: a turned-back bordeaux cuff with a metal band, a thin crimson line down the forearm
@@ -1008,6 +1078,11 @@ export function getRigGeometry(lookId: string): RigGeometry {
     F.add(sph(hr * 0.42, 10, 8), look.fingerless ? skin : look.gloves, { p: [-s * hr * 0.75, hy - hr * 0.2, hr * 0.45] });
     // knuckle strap
     F.add(rbox(hr * 1.6, hr * 0.28, hr * 1.1, hr * 0.12), shade(look.gloves, 0.7), { p: [0, hy - hr * 0.3, hr * 0.05] });
+    if (look.accessories.includes('rings')) {
+      // Alpha 1.8.8 (CASINO BOSS): two gold rings on the fingers, a small ruby glinting on one
+      for (const dx of [-0.32, 0.3]) F.add(rbox(hr * 0.42, hr * 0.24, hr * 1.36, hr * 0.1), 0xf1c64e, { p: [dx * hr, hy - hr * 0.6, hr * 0.12] });
+      B.g(side === 'L' ? 'foreArmL' : 'foreArmR').add(sph(hr * 0.13, 8, 6), 0xff2a44, { p: [0.3 * hr, hy - hr * 0.6, hr * 0.8] }, GLOW * 0.5);
+    }
   }
 
   // ----------------------------------------------------------------- head
@@ -1224,6 +1299,52 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const s of [1, -1]) H.add(rbox(0.045, 0.12, 0.06, 0.02), hc, { p: [s * R * 0.93, cy - 0.02, 0.07] });
         break;
       }
+      case 'crest': {
+        // Alpha 1.8.8 (NEON RUNNER): an undercut with a tall swept crest — a full cap to the hairline,
+        // darker clipped sides with two glowing shaved lines, and six tall fins from the brow to the
+        // crown leaning forward, the front ones tallest, each tipped with cyan
+        H.add(new SphereGeometry(R * 1.045, 26, 14, 0, Math.PI * 2, 0, 1.24), hc, { p: [0, cy + 0.01, -0.02], r: [-0.3, 0, 0] });
+        H.add(new SphereGeometry(R * 1.02, 22, 12, Math.PI, Math.PI, 0.45, 1.4), shade(hc, 0.72), { p: [0, cy, 0.0] });
+        // the crest: tall pointed fins along the middle, swept forward, the front ones tallest; two
+        // shorter fins either side widen it so it reads from the front
+        const fin = (x: number, a: number, h: number, w: number, lean: number, roll: number) => {
+          const th = -a + lean;
+          const base: V3 = [x, cy + Math.cos(a) * R, -Math.sin(a) * R];
+          const up = (k: number): V3 => [base[0] + Math.sin(-roll) * k, base[1] + Math.cos(th) * Math.cos(roll) * k, base[2] + Math.sin(th) * k];
+          H.add(cone(w, h, 10), hc, { p: up(h * 0.34), r: [th, 0, roll], s: [0.62, 1, 1] });
+          HG.add(cone(w * 0.42, h * 0.3, 8), h2, { p: up(h * 0.74), r: [th, 0, roll], s: [0.62, 1, 1] }, GLOW * 0.85);
+        };
+        for (let i = 0; i < 5; i++) {
+          const t = i / 4;
+          fin(0, -0.5 + t * 1.25, 0.56 - t * 0.2, 0.15 - t * 0.02, 0.38, 0);
+        }
+        for (const ss of [1, -1]) fin(ss * 0.15, -0.25, 0.36, 0.12, 0.3, -ss * 0.42);
+        // shaved lines above the ears and short sideburns
+        for (const ss of [1, -1]) {
+          // a level arc on the clipped side, from just behind the temple round towards the back
+          const line = tor(R * 1.0, 0.011, 1.0, 14);
+          line.rotateX(ss > 0 ? -Math.PI / 2 : Math.PI / 2);
+          if (ss < 0) line.rotateY(Math.PI);
+          line.rotateY(ss * -0.25);
+          HG.add(line, h2, { p: [0, cy + R * 0.32, -0.02] }, GLOW * 0.7);
+          H.add(rbox(0.045, 0.11, 0.06, 0.02), hc, { p: [ss * R * 0.94, cy - 0.02, 0.08] });
+        }
+        break;
+      }
+      case 'pompadour': {
+        // Alpha 1.8.8 (CASINO BOSS): a glossy pompadour — volume swept up and back from the brow, a
+        // sheen on top, neat tapered sides going silver at the temples
+        H.add(new SphereGeometry(R * 1.03, 26, 14, 0, Math.PI * 2, 0, 1.2), hc, { p: [0, cy + 0.01, -0.03], r: [-0.3, 0, 0] });
+        H.add(new SphereGeometry(R * 1.025, 22, 12, Math.PI, Math.PI, 0.5, 1.4), hc, { p: [0, cy, 0.0] });
+        H.add(sph(0.3, 18, 12), hc, { p: [0, cy + R * 0.92, R * 0.3], s: [1.08, 0.62, 1.05], r: [0.45, 0, 0] });
+        H.add(sph(0.27, 18, 12), shade(hc, 1.45), { p: [0, cy + R * 1.04, -R * 0.06], s: [1.0, 0.55, 1.35], r: [-0.15, 0, 0] });
+        H.add(sph(0.2, 14, 10), hc, { p: [0, cy - R * 0.08, -R * 0.78], s: [1.45, 0.92, 0.7] });
+        for (const ss of [1, -1]) {
+          H.add(sph(0.12, 12, 10), h2, { p: [ss * R * 0.86, cy + R * 0.3, 0.02], s: [0.5, 0.95, 1.15] });
+          H.add(rbox(0.05, 0.12, 0.07, 0.02), h2, { p: [ss * R * 0.93, cy - 0.02, 0.08] });
+        }
+        break;
+      }
       case 'curtain': {
         // Alpha 1.5 (Kai): late-90s curtains — a middle part, two swept lobes over the temples
         // with copper frosted tips, volume on top, short tapered sides
@@ -1325,6 +1446,35 @@ export function getRigGeometry(lookId: string): RigGeometry {
     }
     if (look.accessories.includes('earring')) {
       H.add(tor(0.035, 0.01), 0xffd76a, { p: [-R * 1.0, cy - 0.12, 0.02], r: [0, Math.PI / 2, 0] });
+    }
+    if (look.accessories.includes('facepaint')) {
+      // Alpha 1.8.8 (NEON RUNNER): two short cyan stripes on the cheekbone under one eye
+      for (const [dy, w] of [
+        [-0.115, 0.085],
+        [-0.15, 0.06],
+      ] as [number, number][]) {
+        const x = 0.215;
+        HG.add(rbox(w, 0.018, 0.016, 0.006), look.top.trim, { p: [x, cy + dy, faceZ(x, dy) + 0.012], r: [0, 0.55, -0.2] }, GLOW * 0.75);
+      }
+    }
+    if (look.accessories.includes('goatee')) {
+      // Alpha 1.8.8 (CASINO BOSS): a groomed goatee and a short moustache
+      const bc = look.hair.color;
+      H.add(sph(0.075, 14, 10), bc, { p: [0, cy - hy * 0.8, faceZ(0, -hy * 0.8) - 0.03], s: [1.15, 1.2, 0.75] });
+      H.add(rbox(0.2, 0.034, 0.05, 0.016), bc, { p: [0, cy - 0.15, faceZ(0, -0.15) + 0.006] });
+    }
+    if (look.accessories.includes('lowshades')) {
+      // Alpha 1.8.8 (CASINO BOSS): gold-rimmed tinted glasses low on the nose — he looks over them
+      const gy = -0.125;
+      for (const ss of [1, -1]) {
+        const x = ss * 0.115;
+        const z = faceZ(x, gy) + 0.03;
+        const yaw = Math.asin(x / R) * 0.8;
+        H.add(rbox(0.13, 0.068, 0.018, 0.024), 0xf1c64e, { p: [x, cy + gy, z], r: [0, yaw, 0] });
+        H.add(rbox(0.112, 0.052, 0.022, 0.02), 0x3a0f1c, { p: [x, cy + gy, z + 0.004], r: [0, yaw, 0] });
+        H.add(rbox(0.012, 0.012, R * 0.86, 0.004), 0xf1c64e, { p: [ss * R * 0.9, cy + gy + 0.02, z - R * 0.42], r: [0, -ss * 0.08, 0] });
+      }
+      H.add(rbox(0.06, 0.014, 0.014, 0.005), 0xf1c64e, { p: [0, cy + gy + 0.012, faceZ(0, gy) + 0.05] });
     }
   }
 
@@ -1671,6 +1821,36 @@ export function getRigGeometry(lookId: string): RigGeometry {
     const cuffRing = tor(d.armR * 1.25, 0.022, Math.PI * 2, 22);
     cuffRing.rotateX(Math.PI / 2);
     FG.add(cuffRing, gl, { p: [0, -d.foreArm * 0.8, 0] }, GLOW);
+  }
+
+  // Alpha 1.8.8 (NEON RUNNER): thin neon strips down the front of the shins
+  if (look.accessories.includes('neon_strips')) {
+    for (const bone of ['shinL', 'shinR'] as const) {
+      B.g(bone).add(rbox(0.014, d.shin * 0.42, 0.014, 0.004), look.top.trim, { p: [0, -d.shin * 0.42, d.legR * 0.98 + 0.006] }, GLOW * 0.8);
+    }
+  }
+  // Alpha 1.8.8: PRIME SHOP skins dress the weapon up. Decoration only, added after the weapon: the
+  // muzzle points above stay exactly the base weapon's (shots start where they always did).
+  if (look.weaponDeco === 'neon' && look.weapon === 'twin_blasters') {
+    for (const bone of ['weaponR', 'weaponL'] as const) {
+      const W = B.t(bone);
+      const WG = B.g(bone);
+      for (const ss of [1, -1]) WG.add(rbox(0.01, 0.022, 0.26, 0.004), look.top.trim, { p: [ss * 0.069, 0.13, 0.14] }, GLOW);
+      W.add(rbox(0.03, 0.06, 0.17, 0.012), look.top.accent, { p: [0, 0.225, 0.1], r: [-0.22, 0, 0] });
+      WG.add(tor(0.06, 0.009, Math.PI * 2, 16), look.top.trim, { p: [0, 0.11, 0.39] }, GLOW * 0.9);
+    }
+  }
+  if (look.weaponDeco === 'gold' && look.weapon === 'boom_cannon') {
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    const gold = look.top.accent;
+    for (const z of [0.52, 0.66]) W.add(tor(0.142, 0.02, Math.PI * 2, 22), gold, { p: [0, 0.15, z] });
+    W.add(tor(0.136, 0.024, Math.PI * 2, 22), gold, { p: [0, 0.15, 0.71] });
+    W.add(rbox(0.3, 0.02, 0.62, 0.008), gold, { p: [0, 0.272, 0.22] });
+    for (const ss of [1, -1]) {
+      W.add(rbox(0.016, 0.07, 0.5, 0.008), 0xd7dce6, { p: [ss * 0.153, 0.02, 0.28] });
+      WG.add(sph(0.034, 12, 10), 0xff2a44, { p: [ss * 0.158, 0.02, 0.48], s: [0.5, 1, 1] }, GLOW * 0.7);
+    }
   }
 
   // Alpha 1.6.5 — the robot's face lives on its visor: amber eye slots (they blink like eyes),

@@ -45,7 +45,12 @@ const DT = 1 / 60;
   check('save: done / skipped / veteran / pending all survive a reload', true);
   check('save: a junk flag on an empty career falls back to pending', sanitize({ version: 11, tutorial: 'maybe' }).tutorial === 'pending');
   const game = readFileSync('src/game/Game.ts', 'utf8');
-  check('flow: after the first tap only a pending career goes to FIRST BROADCAST, everyone else to the menu', /if \(this\.save\.data\.tutorial === 'pending'\) \{\s*this\.startTutorial\(\);\s*return;\s*\}\s*this\.goto\('menu'\);/.test(game));
+  // 1.8.8: the first tap OFFERS FIRST BROADCAST to a pending career («ПРОЙТИ ОБУЧЕНИЕ» / «ПРОПУСТИТЬ»)
+  check('flow: after the first tap only a pending career is offered FIRST BROADCAST, everyone else goes to the menu', /if \(this\.save\.data\.tutorial === 'pending'\) \{\s*this\.offerTutorial\(\);\s*return;\s*\}\s*this\.goto\('menu'\);/.test(game));
+  const offer = game.slice(game.indexOf('private offerTutorial'), game.indexOf('endTutorial(how'));
+  check('flow: «ПРОЙТИ ОБУЧЕНИЕ» starts the existing FIRST BROADCAST; «ПРОПУСТИТЬ» writes «skipped» at once (never over a finished run) and saves', /showTutorialChoice\(\s*this,\s*\(\) => this\.startTutorial\(\),/.test(offer) && /if \(s\.tutorial === 'pending'\) s\.tutorial = 'skipped';\s*this\.save\.save\(\);\s*this\.goto\('menu'\);/.test(offer));
+  const choice = readFileSync('src/ui/firstRun.ts', 'utf8');
+  check('the choice window: «Первый эфир», both buttons, no browser alert/confirm, not closable by a stray tap', /Первый эфир/.test(choice) && /data-a="play">[\s\S]{0,40}Пройти обучение</.test(choice) && /data-a="skip">Пропустить</.test(choice) && !/\b(alert|confirm)\(/.test(choice) && /\},\s*false,\s*\);\s*\}\s*$/.test(choice));
   check('flow: finishing or skipping saves it (a skip never undoes a finished run)', /if \(how === 'done' \|\| s\.tutorial === 'pending'\) s\.tutorial = how;\s*this\.save\.save\(\);\s*this\.goto\('menu'\);/.test(game));
   check('flow: Settings → «Пройти обучение» replays it', /data-a="tutorial">Пройти обучение</.test(game) && /a === 'tutorial'\) \{[\s\S]{0,200}this\.startTutorial\(\);/.test(game));
   check('flow: the pause menu offers «Пропустить обучение» instead of a forfeit', /data-a="skip">Пропустить обучение</.test(game));

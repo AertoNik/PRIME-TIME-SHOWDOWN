@@ -4,6 +4,7 @@ import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
+import { inRoster } from '../../meta/roster';
 import type { StageView } from '../../meta/careerStages';
 import { REWARD_ART } from '../eventArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
@@ -29,7 +30,7 @@ export class CareerScreen implements Screen {
     this.editing = false;
     const s = this.g.save.data;
     const f = FIGHTERS[s.selected];
-    this.g.showcase.show(f.look, f.theme.accent);
+    this.g.showcase.show(this.g.fighterLook(f.id), f.theme.accent);
     this.render(false);
   }
 
@@ -117,17 +118,18 @@ export class CareerScreen implements Screen {
       const f = FIGHTERS[id];
       const fp = s.fighters[id];
       const c = g.career.canSign(id);
-      const offer = f.seasonal && !fp.unlocked ? g.events.fighterOffer(id) : null;
+      const open = inRoster(s, id);
+      const offer = f.seasonal && !open ? g.events.fighterOffer(id) : null;
       let right = '';
-      let note = fp.unlocked ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать');
-      if (fp.unlocked) right = `<span class="chip teal">В составе</span>`;
+      let note = open ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать');
+      if (open) right = `<span class="chip teal">В составе</span>`;
       else if (offer) {
         right = `<button class="btn ${g.events.tokens(offer.event) >= offer.cost ? '' : 'ghost'}" data-act="season">${offer.cost}<span class="eq-coin">${currencyIcon(offer.event)}</span></button>`;
         note = `Сезонная звезда · ${esc(offer.event.title)}`;
       } else if (c.ok) right = `<button class="btn" data-act="contract" data-f="${id}"><span class="shine"></span>$${f.contract!.cost}</button>`;
       else right = `<button class="btn ghost" data-act="contract" data-f="${id}">$${f.contract!.cost}</button>`;
       return `<div class="contract">
-        ${portraitHTML(g.portraits[f.look], f.theme.main, f.theme.dark)}
+        ${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}
         <div class="cm">
           <div class="gt" style="font-family:var(--font-display);font-weight:800;font-size:13px">${esc(f.name)} <span style="color:${f.theme.accent};font-size:10.5px;white-space:nowrap">«${esc(f.nickname)}»</span></div>
           <div class="gd" style="font-size:11.5px;color:var(--muted)">${note}</div>

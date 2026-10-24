@@ -21,8 +21,11 @@ import { cp, crypto, fs, path, proc } from './lib/node';
 
 const DIRS = ['src', 'public', 'scripts', 'docs', 'backend/pb_hooks', 'backend/pb_migrations', 'backend/pb_public', 'deploy/linux'];
 const FILES = ['index.html', 'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts', 'README.md', '.gitignore', '.env.example', 'backend/package.json', 'backend/versions.json', 'backend/.gitignore'];
-/** Never copied, even inside the folders above. */
-const SKIP = (rel: string) => /(^|\/)(\.DS_Store|\._[^/]*)$/.test(rel) || /\.env$/.test(rel) || /\.(db|db-wal|db-shm|zip|age)$/.test(rel) || /\.tar\.gz$/.test(rel);
+/**
+ * Never copied, even inside the folders above. 1.8.8: docs/legal-drafts — legal texts the owner has
+ * not approved yet stay private (the public repository shows only published documents).
+ */
+const SKIP = (rel: string) => /(^|\/)(\.DS_Store|\._[^/]*)$/.test(rel) || /\.env$/.test(rel) || /\.(db|db-wal|db-shm|zip|age)$/.test(rel) || /\.tar\.gz$/.test(rel) || rel.startsWith('docs/legal-drafts/');
 /** What git must never be about to commit in the publish folder. */
 const PRIVATE = /(^|\/)(pb_data|bin|backups|backups-private|server-bundle|node_modules|dist|\.pnpm-store|\.run|test-data)\/|\.(db|db-wal|db-shm|zip|age)$|\.tar\.gz$|(^|\/)\.env(\.(?!example$|production$)[^/]*)?$/;
 // (settings lines are matched only at the start of a line: the checks mention these names in regexes)

@@ -1,3 +1,6 @@
+import { entitlementsKnown, setEntitlements } from '../meta/entitlements';
+import { isTestPay } from '../meta/Payments';
+import { inRoster } from '../meta/roster';
 import type { ProfileId } from '../meta/SaveSystem';
 import { AccountService, type LoginPlan } from '../net/AccountService';
 import { AUTH_KEY, emptySyncMeta, forgetAccountLocally, readAccounts, readSync, rememberName, userIdOf, writeSync } from '../net/accountStore';
@@ -77,6 +80,9 @@ export class AccountRuntime {
   private lostShown = false;
   /** 1.8.4: the «accept the documents» window was shown on this page already (asked once, then on a tap). */
   private termsAsked = false;
+  /** 1.8.8 stage 4: whose PRIME SHOP rights are in entitlements.ts (undefined: not decided yet). */
+  private rightsOwner: string | null | undefined = undefined;
+  private rightsSeq = 0;
 
   constructor(
     readonly g: Game,
@@ -106,7 +112,73 @@ export class AccountRuntime {
   }
 
   private emit(): void {
+    // 1.8.8 stage 4: the paid items follow the signed-in PRIME ID (cheap unless the account changed)
+    this.refreshRights(false);
     for (const fn of this.listeners) fn();
+  }
+
+  // ------------------------------------------------------- 1.8.8 stage 4: PRIME SHOP rights
+  /**
+   * Whose PRIME SHOP rights this page may use: the signed-in PRIME ID — while it plays its own career or the
+   * guest career on this device; never while another account's career is loaded.
+   */
+  private rightsFor(): string | null {
+    const uid = this.api?.userId ?? null;
+    if (!uid) return null;
+    const playing = this.playing;
+    return !playing || playing === uid ? uid : null;
+  }
+
+  /**
+   * Keep entitlements.ts in step with the signed-in PRIME ID. Another account (or none) → the list is emptied
+   * AT ONCE (never another account's items, not even for a moment), then read from the server. `force`: read
+   * again now (the shop opens, a purchase was confirmed). Never kept on the device: offline, paid items wait
+   * for PRIME NETWORK instead of trusting a copy anybody could edit.
+   */
+  refreshRights(force: boolean): void {
+    const owner = this.rightsFor();
+    const changed = owner !== this.rightsOwner;
+    if (changed) {
+      this.rightsOwner = owner;
+      this.rightsSeq++;
+      // nobody signed in: known to own nothing; an account: unknown until the server answers
+      setEntitlements([], owner === null);
+      if (owner === null) this.afterRights();
+    }
+    if (!owner || !this.api || !this.serverConfig?.shopPayments || (!changed && !force)) return;
+    const seq = ++this.rightsSeq;
+    this.api
+      .purchases()
+      .then((r) => {
+        if (seq !== this.rightsSeq || this.rightsOwner !== owner) return;
+        // (rights of Robokassa's test mode — staging, the demonstration — are shown as test purchases)
+        setEntitlements(r.owned, true, isTestPay(r.env) ? 'test' : 'purchase');
+        this.afterRights();
+        this.emit();
+      })
+      .catch(() => {
+        /* offline / signed out: the next account event or the shop asks again */
+      });
+  }
+
+  /** The server's answer about one order brings the account's rights along (PRIME CHECKOUT): use them now. */
+  applyRights(owned: readonly string[]): void {
+    const owner = this.rightsFor();
+    if (!owner || owner !== this.rightsOwner) return;
+    this.rightsSeq++;
+    setEntitlements(owned, true, isTestPay(this.serverConfig?.shop?.env) ? 'test' : 'purchase');
+    this.afterRights();
+    this.emit();
+  }
+
+  /**
+   * A fighter selected through a purchase that is not there any more (refunded, another account): back to
+   * Ray — only once the list is the server's answer (an unanswered list corrects nothing).
+   */
+  private afterRights(): void {
+    const s = this.g.save.data;
+    if (!entitlementsKnown() || !this.g.save.writable || inRoster(s, s.selected)) return;
+    this.g.career.select('ray');
   }
 
   nickname(id: string | null = this.playing): string {
@@ -408,7 +480,9 @@ export class AccountRuntime {
       this.emit();
       return;
     }
-    if (session.previous) this.g.ui.toast(`PRIME ID продолжен здесь · ${session.previous.label || 'другое устройство'} больше не играет`, true);
+    // (back from Robokassa's page the «previous» session is this very browser before it left to pay: no news)
+    const selfAfterPayment = this.g.backFromPayment && session.previous?.label === deviceLabel();
+    if (session.previous && !selfAfterPayment) this.g.ui.toast(`PRIME ID продолжен здесь · ${session.previous.label || 'другое устройство'} больше не играет`, true);
     const res = await sync.reconcile();
     if (res === 'reload') return; // the cloud version is in — the page reloads to read it
     if (res === 'failed') {
@@ -537,6 +611,8 @@ export class AccountRuntime {
     } catch {
       this.serverConfig = null;
     }
+    // 1.8.8: the catalog shows the server's prices and «В ПРОДАЖЕ» only when this server really sells
+    this.g.shop.setServer(this.serverConfig?.shop ?? null);
   }
 
   async recheckServer(): Promise<boolean> {

@@ -21,10 +21,15 @@ export type CosmeticId =
   | 'title_prime_legend'
   // Alpha 1.5: producer career rewards
   | 'title_prime_star'
-  | 'frame_legendary';
+  | 'frame_legendary'
+  // Alpha 1.8.8: PRIME SHOP items (paid — owned only through a confirmed purchase, see `paid`)
+  | 'frame_prime_broadcast'
+  | 'dash_prime_phantom'
+  | 'victory_golden_confetti'
+  | 'card_vhs';
 
-/** Where an item comes from — the collection's categories. */
-export type CosmeticSource = 'season' | 'boss' | 'career';
+/** Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP). */
+export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop';
 
 export interface CosmeticDef {
   id: CosmeticId;
@@ -49,6 +54,13 @@ export interface CosmeticDef {
    * has not earned it cannot wear it). Common producer items leave this unset.
    */
   personal?: boolean;
+  /**
+   * Alpha 1.8.8: a PRIME SHOP item. Never granted by the game and never stored in
+   * save.cosmetics (the server refuses it there): ownership comes only from confirmed purchases
+   * (src/meta/Shop.ts — the PRIME NETWORK server will be the source of truth), the player's choice
+   * to wear it lives apart in save.shop.equip.
+   */
+  paid?: boolean;
 }
 
 export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
@@ -146,6 +158,63 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     sourceLabel: 'Карьера продюсера',
     howTo: 'Карьерный этап PRIME TIME STAR',
   },
+  // ------------------------------------------------ Alpha 1.8.8: PRIME SHOP (paid, see `paid`)
+  frame_prime_broadcast: {
+    id: 'frame_prime_broadcast',
+    slot: 'broadcastFrame',
+    name: 'PRIME BROADCAST',
+    desc: 'Премиальная рамка трансляции PRIME NETWORK: фиолетово-бирюзовые неоновые линии, угловые метки и плашка ON AIR.',
+    where: 'Рамка трансляции в бою',
+    art: 'frame',
+    rarity: 'epic',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  dash_prime_phantom: {
+    id: 'dash_prime_phantom',
+    slot: 'dashFx',
+    name: 'PHANTOM DASH',
+    desc: 'Рывок оставляет фиолетовый голографический след с бирюзовым послесвечением и мягко тающими частицами.',
+    where: 'Рывок DASH в бою',
+    art: 'phantom',
+    rarity: 'epic',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  victory_golden_confetti: {
+    id: 'victory_golden_confetti',
+    slot: 'victoryFx',
+    name: 'GOLDEN CONFETTI',
+    desc: 'Победу бойца встречает торжественный залп золотого конфетти и золотое кольцо света.',
+    where: 'Победа в бою',
+    art: 'victory',
+    rarity: 'legendary',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  card_vhs: {
+    id: 'card_vhs',
+    slot: 'cardStyle',
+    name: 'VHS CARD FRAME',
+    desc: 'Рамки карт в стиле VHS-кассет: этикетка, полосы трекинга и розово-бирюзовый неон. Читаемость карт сохранена.',
+    where: 'Карты в бою и в колоде',
+    art: 'card',
+    rarity: 'rare',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
   frame_legendary: {
     id: 'frame_legendary',
     slot: 'broadcastFrame',
@@ -180,10 +249,20 @@ export const COSMETIC_ORDER: CosmeticId[] = [
   'frame_spooky',
   'dash_phantom',
   'card_pumpkin',
+  // Alpha 1.8.8: PRIME SHOP — shown in MY COLLECTION only once really owned
+  'frame_prime_broadcast',
+  'dash_prime_phantom',
+  'victory_golden_confetti',
+  'card_vhs',
 ];
 
 export const COSMETIC_SLOTS: CosmeticSlot[] = ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'];
 
 export function isCosmeticId(id: unknown): id is CosmeticId {
   return typeof id === 'string' && id in COSMETICS;
+}
+
+/** Alpha 1.8.8: an item the game itself grants and saves (everything but the PRIME SHOP items). */
+export function isGameCosmeticId(id: unknown): id is CosmeticId {
+  return isCosmeticId(id) && !COSMETICS[id].paid;
 }

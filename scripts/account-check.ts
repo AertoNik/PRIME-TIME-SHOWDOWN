@@ -77,6 +77,24 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8') as strin
   // last `npm run build` (or `npm run build -- --mode beta`) left in dist/
   const guest = buildInto('production');
   check(`the normal build (npm run build — what GitHub Pages makes without .env.production): no PocketBase SDK file, no server address, no account requests (${guest.jsCount} js)`, guest.ok && !guest.files.some((f) => f.includes('pocketbase')) && !guest.js.includes('127.0.0.1:8090') && !guest.js.includes('/api/prime/') && !guest.js.includes('primetime-showdown-auth-v1') && /src="\.\/assets\//.test(guest.html), guest.error);
+  // Alpha 1.8.8: technical SEO of the built page (what search robots get without running the game)
+  {
+    const h = guest.html;
+    const one = (re: RegExp) => (h.match(re) ?? []).length === 1;
+    const SITE = 'https://primetimeshowdown.online/';
+    const ld = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(h)?.[1] ?? '';
+    let game: Record<string, unknown> = {};
+    try {
+      game = JSON.parse(ld) as Record<string, unknown>;
+    } catch {
+      game = {};
+    }
+    check('SEO: one title (PRIME TIME: SHOWDOWN (Прайм Тайм Шоудаун) — Официальная браузерная 3D-игра), one description, one canonical = the official domain', one(/<title>/g) && /<title>PRIME TIME: SHOWDOWN \(Прайм Тайм Шоудаун\) — Официальная браузерная 3D-игра<\/title>/.test(h) && one(/<meta name="description"/g) && /name="description" content="PRIME TIME: SHOWDOWN \(Прайм Тайм Шоудаун\)[^"]{60,}"/.test(h) && one(/rel="canonical"/g) && h.includes(`<link rel="canonical" href="${SITE}" />`));
+    check('SEO: Open Graph title / description / url / type=website; UTF-8, lang="ru", no noindex', ['og:title', 'og:description', 'og:url', 'og:type'].every((p) => one(new RegExp(`property="${p}"`, 'g'))) && h.includes(`property="og:url" content="${SITE}"`) && h.includes('property="og:type" content="website"') && /<meta charset="UTF-8"/.test(h) && /<html lang="ru">/.test(h) && !/noindex/i.test(h) && !/og:image/.test(h));
+    check('SEO: VideoGame JSON-LD is valid JSON with only real facts (name, Russian name, url, genre, browser, free) — no ratings, dates or company', game['@type'] === 'VideoGame' && game.name === 'PRIME TIME: SHOWDOWN' && JSON.stringify(game.alternateName).includes('Прайм Тайм Шоудаун') && game.url === SITE && game.isAccessibleForFree === true && typeof game.genre === 'string' && typeof game.gamePlatform === 'string' && !/aggregateRating|ratingValue|datePublished|award|interactionStatistic|downloadCount|publisher|author/.test(ld));
+    check('SEO: robots.txt (allow all, sitemap on the official domain) and sitemap.xml (only the main page) are at the site root', /User-agent: \*\s+Allow: \/\s+Sitemap: https:\/\/primetimeshowdown\.online\/sitemap\.xml/.test(guest.root['robots.txt'] ?? '') && /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/.test(guest.root['sitemap.xml'] ?? '') && (guest.root['sitemap.xml'] ?? '').match(/<loc>/g)?.length === 1 && (guest.root['sitemap.xml'] ?? '').includes(`<loc>${SITE}</loc>`));
+    check('SEO: the page still starts the game the same way (one module script, CSP unchanged); text for no-JS visitors only inside <noscript>', (h.match(/<script type="module"/g) ?? []).length === 1 && /<noscript>[\s\S]*Прайм Тайм Шоудаун[\s\S]*<\/noscript>/.test(h));
+  }
   const betaEnvFile = path.join(ROOT, '.env.beta');
   if (fs.existsSync(betaEnvFile)) {
     const betaEnv = read('.env.beta');
@@ -89,15 +107,18 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8') as strin
 }
 
 /** `vite build --mode <mode>` into a temporary folder (deleted afterwards): the bundle text to inspect. */
-function buildInto(mode: string): { ok: boolean; files: string[]; js: string; html: string; jsCount: number; error: string } {
+function buildInto(mode: string): { ok: boolean; files: string[]; js: string; html: string; jsCount: number; error: string; root: Record<string, string> } {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), `prime-build-${mode}-`));
   try {
     const r = cp.spawnSync(proc.execPath, [path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--mode', mode, '--outDir', out, '--emptyOutDir', '--logLevel', 'error'], { cwd: ROOT, encoding: 'utf8' });
-    if (r.status !== 0) return { ok: false, files: [], js: '', html: '', jsCount: 0, error: String(r.stderr || r.stdout).slice(-300) };
+    if (r.status !== 0) return { ok: false, files: [], js: '', html: '', jsCount: 0, error: String(r.stderr || r.stdout).slice(-300), root: {} };
     const assets = path.join(out, 'assets');
     const files = fs.readdirSync(assets) as string[];
     const jsFiles = files.filter((f) => f.endsWith('.js'));
-    return { ok: true, files, js: jsFiles.map((f) => fs.readFileSync(path.join(assets, f), 'utf8') as string).join('\n'), html: fs.readFileSync(path.join(out, 'index.html'), 'utf8'), jsCount: jsFiles.length, error: '' };
+    // 1.8.8: the files search robots read at the site root
+    const root: Record<string, string> = {};
+    for (const f of ['robots.txt', 'sitemap.xml']) if (fs.existsSync(path.join(out, f))) root[f] = fs.readFileSync(path.join(out, f), 'utf8') as string;
+    return { ok: true, files, js: jsFiles.map((f) => fs.readFileSync(path.join(assets, f), 'utf8') as string).join('\n'), html: fs.readFileSync(path.join(out, 'index.html'), 'utf8'), jsCount: jsFiles.length, error: '', root };
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }
@@ -363,7 +384,8 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   const html = read('index.html');
   const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] ?? '';
   const scriptSrc = /script-src ([^;]+)/.exec(csp)?.[1] ?? '';
-  check('index.html has a Content Security Policy: scripts only from the game (no inline, no eval), no plugins, no foreign forms', scriptSrc.trim() === "'self'" && /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action 'none'/.test(csp) && /connect-src 'self' https:/.test(csp));
+  // (1.8.8 stage 4: the one form the page may send is the purchase, to Robokassa's own payment page)
+  check('index.html has a Content Security Policy: scripts only from the game (no inline, no eval), no plugins, forms only to Robokassa\'s payment page', scriptSrc.trim() === "'self'" && /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action https:\/\/auth\.robokassa\.ru(;|$)/.test(csp) && /connect-src 'self' https:/.test(csp));
   for (const page of ['backend/pb_public/auth/verify/index.html', 'backend/pb_public/auth/reset/index.html']) {
     const h = read(page);
     check(`${page.split('/').slice(-2).join('/')}: strict CSP (default-src 'none', script-src 'self'), no inline script`, /default-src 'none'; script-src 'self'/.test(h) && !/<script>[^<]/.test(h) && /<script src="\.\.\/auth\.js"><\/script>/.test(h));
@@ -377,7 +399,7 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   check('Caddy: HTTPS reverse proxy to 127.0.0.1:8090; the dashboard and superuser endpoints answer 404 from the internet; body limit', /reverse_proxy 127\.0\.0\.1:8090/.test(caddy) && /@admin path \/_ \/_\/\* \/api\/collections\/_superusers\/\*/.test(caddy) && /respond @admin 404/.test(caddy) && /max_size 1MB/.test(caddy) && /Strict-Transport-Security/.test(caddy));
   const envEx = read('deploy/linux/pocketbase.env.example');
   check('server env template: closed beta by default, empty secrets, no real addresses', /^PRIME_REGISTRATION=invite_only$/m.test(envEx) && /^PB_ENCRYPTION_KEY=$/m.test(envEx) && /^PRIME_SMTP_PASSWORD=$/m.test(envEx) && /^PRIME_MAIL_MODE=$/m.test(envEx) && /^PRIME_ORIGINS=https:\/\/primetimeshowdown\.online,https:\/\/aertonik\.github\.io$/m.test(envEx) && !/^PRIME_ORIGINS=.*(\*|http:\/\/| )/m.test(envEx));
-  const testers = ['scripts/backend-check.ts', 'scripts/closed-beta-check.ts'].map(read);
+  const testers = ['scripts/backend-check.ts', 'scripts/closed-beta-check.ts', 'scripts/checkout-check.ts', 'scripts/payments-check.ts'].map(read);
   check('the server checks never use 18090 (the documented SSH tunnel to the real server) and refuse to start when their ports are taken — their requests can never reach the real server', testers.every((t) => /await ensurePortsFree\(\[PORTS\.api, PORTS\.smtp, PORTS\.mailUi\]\)/.test(t) && /ownServerStarted\(pb, pbLog\)/.test(t) && !/api: 18090/.test(t)) && /ssh -N -L 18090:127\.0\.0\.1:8090/.test(read('docs/PRIME_CLOUD_DEPLOY.md')));
   const invSh = read('deploy/linux/invites.sh');
   check('invites.sh reads the server settings line by line like systemd (never runs them as shell code) and opens the base like the service', !/(^|[;&|]\s*)(\.|source)\s+\/etc\/primetime/m.test(invSh) && /done < "\$ENV_FILE"/.test(invSh) && /runuser -u pocketbase --/.test(invSh) && /--encryptionEnv=PB_ENCRYPTION_KEY/.test(invSh) && /--automigrate=false/.test(invSh) && /^PRIME_SENDER_NAME="[^"]+"$/m.test(envEx));

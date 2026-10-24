@@ -17,6 +17,11 @@ import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
+import { devShopGrant, Shop } from '../meta/Shop';
+import { clearPending, loadPending, resumeDecision, sessionStore } from '../meta/Checkout';
+import { inRoster } from '../meta/roster';
+import { loadReturn, mergeReturn, readReturnQuery, saveReturn, stripReturnQuery } from '../meta/Payments';
+import { checkoutAccount } from '../ui/checkoutUI';
 import { Arena } from '../render/Arena';
 import { BattleView, type TimeFx } from '../render/BattleView';
 import { CameraRig } from '../render/CameraRig';
@@ -35,17 +40,19 @@ import { PrepScreen } from '../ui/screens/PrepScreen';
 import { ProfileScreen } from '../ui/screens/ProfileScreen';
 import { ResultsScreen } from '../ui/screens/ResultsScreen';
 import { RosterScreen } from '../ui/screens/RosterScreen';
+import { ShopScreen } from '../ui/screens/ShopScreen';
 import { SurvivalScreen } from '../ui/screens/SurvivalScreen';
 import { TitleScreen } from '../ui/screens/TitleScreen';
 import { UIManager } from '../ui/UI';
 import { openSaveTools, saveNeedsAttention, showOtherTab, showSaveProblem } from '../ui/saveCare';
 import { ThemeManager } from './ThemeManager';
 import { FirstBroadcast, TUTORIAL } from './FirstBroadcast';
+import { showTutorialChoice } from '../ui/firstRun';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 import { ACCOUNTS_BUILD, buildBootProfile, networkConfig } from '../net/build';
 import { AccountRuntime } from './AccountRuntime';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'battle' | 'results' | 'survival';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -125,6 +132,10 @@ export class Game {
   readonly collection: Collection;
   /** Survival marathon and Prime Challenge rules (Alpha 1.3). */
   readonly modes: GameModes;
+  /** Alpha 1.8.8 — PRIME SHOP: item states, the wardrobe of skins, the (closed) purchase request. */
+  readonly shop: Shop;
+  /** Alpha 1.8.8: the fitting room's zoom (PRIME SHOP only; 1 = the usual framing). */
+  showcaseZoom = 1;
   /** A Survival attempt closed at launch because the game was shut mid-run (shown once in the menu). */
   private abandoned: SurvivalSummary | null = null;
   themes!: ThemeManager;
@@ -165,6 +176,11 @@ export class Game {
     this.events = new EventManager(this.save, devEventOverrides());
     this.collection = this.events.collection;
     this.modes = new GameModes(this.save, this.career, this.events);
+    this.shop = new Shop(this.save, this.events, this.collection);
+    // development builds only: ?shopgrant=all lends the paid items to this page (in memory, never saved)
+    if (import.meta.env.DEV) devShopGrant(new URLSearchParams(location.search).get('shopgrant'));
+    // 1.8.8 stage 4: back from Robokassa — noted for after the title screen, the address cleaned
+    this.notePayReturn();
     // A marathon interrupted by closing the game ends with the waves it really cleared — only by the
     // tab in charge of a readable save (Alpha 1.8: a second tab must not close the first tab's run)
     this.abandoned = this.save.writable ? this.modes.closeAbandoned() : null;
@@ -188,6 +204,9 @@ export class Game {
     void this.account?.init();
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
+    // 1.8.8 stage 4: back from Robokassa — the title says which purchase the tap will check
+    const payNote = loadReturn(sessionStore());
+    if (payNote) this.title.setNote(payNote.result === 'fail' ? `PRIME SHOP · заказ №${payNote.inv}: оплата не завершена — нажмите, чтобы продолжить` : `PRIME SHOP · заказ №${payNote.inv}: нажмите, чтобы проверить покупку`);
     this.ui.show('title');
     window.addEventListener('keydown', (e) => this.onKey(e));
     // iOS Safari only unlocks audio inside certain gestures: retry on any tap.
@@ -274,12 +293,13 @@ export class Game {
     this.ui.register('collection', new CollectionScreen(this));
     this.ui.register('modes', new ModesScreen(this));
     this.ui.register('profile', new ProfileScreen(this));
+    this.ui.register('shop', new ShopScreen(this));
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
     this.ui.register('survival', new SurvivalScreen(this));
 
     const f = FIGHTERS[this.save.data.selected];
-    this.showcase.show(f.look, f.theme.accent);
+    this.showcase.show(this.fighterLook(f.id), f.theme.accent);
     this.cam.showcaseShift = 0.05;
     this.cam.showcaseDist = 9.5;
     // Warm up shaders with one render so the first menu frame doesn't hitch.
@@ -338,9 +358,10 @@ export class Game {
       showSaveProblem(this);
       return;
     }
-    // Alpha 1.6.5: a brand-new player starts with FIRST BROADCAST (older careers never do — SaveSystem)
+    // Alpha 1.6.5: a brand-new player gets FIRST BROADCAST (older careers never do — SaveSystem);
+    // 1.8.8: offered, not forced — «ПРОЙТИ ОБУЧЕНИЕ» or «ПРОПУСТИТЬ», both remembered in the save
     if (this.save.data.tutorial === 'pending') {
-      this.startTutorial();
+      this.offerTutorial();
       return;
     }
     this.goto('menu');
@@ -348,6 +369,41 @@ export class Game {
       const s = this.abandoned;
       this.abandoned = null;
       this.ui.get<SurvivalScreen>('survival').noticeAbandoned(s);
+      return;
+    }
+    // 1.8.8 stage 4: back from Robokassa (or the tab came back after leaving for it) — the order's screen:
+    // the shop asks PRIME NETWORK what really happened (the address alone proves nothing)
+    if (loadReturn(sessionStore())) {
+      this.goto('shop', { payReturn: true, from: 'menu' });
+      return;
+    }
+    // 1.8.8 stage 3: back from PRIME ID (signing in reloaded the page) — straight to the item the player
+    // was buying; a stale note, or one the sign-in did not finish, is simply dropped
+    const note = loadPending(sessionStore());
+    if (!note) return;
+    if (resumeDecision(note, checkoutAccount(this)) === 'wait') clearPending(sessionStore());
+    else this.goto('shop', { resume: true, from: note.from });
+  }
+
+  /**
+   * 1.8.8 stage 4: the server's SuccessURL / FailURL bring the player back with ?prime_pay=success|fail&inv=N.
+   * The game notes which order to check (sessionStorage, this tab) and cleans the address, so a reload does
+   * not repeat it. Nothing is granted here: the shop asks the server about the order after the title screen.
+   */
+  /** 1.8.8: this page load is the way back from Robokassa's page (the same browser left for the payment). */
+  backFromPayment = false;
+
+  private notePayReturn(): void {
+    const q = readReturnQuery(location.search);
+    if (!q) return;
+    this.backFromPayment = true;
+    const store = sessionStore();
+    const note = mergeReturn(loadReturn(store), q);
+    if (note) saveReturn(store, note);
+    try {
+      history.replaceState(history.state, '', stripReturnQuery(location.href));
+    } catch {
+      /* the address keeps the parameters: harmless, the note is used once */
     }
   }
 
@@ -360,7 +416,8 @@ export class Game {
     // the selected fighter may have changed: show what that fighter wears
     this.applyCosmetics();
     const f = FIGHTERS[this.save.data.selected];
-    this.showcase.show(f.look, f.theme.accent);
+    this.showcase.show(this.fighterLook(f.id), f.theme.accent);
+    this.showcaseZoom = 1;
     this.cam.setMode('showcase', 1.0);
     this.cam.showcaseShift = name === 'roster' ? 0.205 : name === 'menu' ? 0.06 : 0.26;
     this.cam.showcaseDist = name === 'roster' ? 16 : name === 'menu' ? 9.6 : 10;
@@ -376,29 +433,58 @@ export class Game {
     this.account?.onScreen();
   }
 
+  /** The look a fighter is shown in: the worn PRIME SHOP skin (if owned) or the fighter's own (1.8.8). */
+  fighterLook(id: FighterId): string {
+    return this.shop.lookFor(id);
+  }
+
+  /**
+   * A fighter's portrait in the look it is worn in (1.8.8). A skin's portrait is drawn the first time
+   * it is needed, so the boot does not build models nobody wears.
+   */
+  portraitOf(id: FighterId): string | undefined {
+    return this.portraitFor(this.fighterLook(id));
+  }
+
+  /** A look's portrait, drawn on first use (PRIME SHOP skins); `bust`: the wider PRIME SHOP card framing. */
+  portraitFor(look: string, bust = false): string | undefined {
+    const key = bust ? look + '#bust' : look;
+    if (!this.portraits[key] && this.renderer) {
+      const url = renderPortraits(this.renderer, this.models, [look], bust)[look];
+      if (url) this.portraits[key] = url;
+    }
+    return this.portraits[key];
+  }
+
   /**
    * Fit the 3D fighter into the free gap of the menu/roster layout, so it is
    * neither hidden behind panels on short phones nor tiny on tall ones.
+   * Alpha 1.8.8: also the PRIME SHOP fitting room, with its zoom (closer: the chest and face move
+   * to the middle of the gap).
    */
-  private frameShowcase(): void {
-    const sel = this.screen === 'menu' ? '.menu .fill.pass' : this.screen === 'roster' ? '.roster .drag-zone' : null;
+  frameShowcase(): void {
+    const shop = this.screen === 'shop';
+    const sel = this.screen === 'menu' ? '.menu .fill.pass' : this.screen === 'roster' ? '.roster .drag-zone' : shop ? '.shop .fit-gap' : null;
     const gap = sel ? (this.ui.root.querySelector(sel) as HTMLElement | null) : null;
     const h = this.renderer.size.h;
-    if (!gap || h < 100) return;
+    if (!gap || h < 100 || !gap.offsetHeight) return;
     // offsetTop is relative to the screen (= frame) and ignores the slide-in transform.
-    const top = gap.offsetTop;
+    let top = gap.offsetTop;
+    for (let p = gap.offsetParent as HTMLElement | null; shop && p && !p.classList.contains('shop'); p = p.offsetParent as HTMLElement | null) top += p.offsetTop;
     const gh = gap.offsetHeight;
     const CHAR_H = 2.35; // world units, feet to hair
     const LOOK_H = this.cam.showcaseHeight;
     const K = 1.58; // px per world unit = K * h / distance (fov 34)
-    const fill = this.screen === 'roster' ? 0.86 : 0.9;
-    const charPx = Math.min(h * 0.46, Math.max(gh * fill, h * 0.2));
-    const dist = Math.min(18, Math.max(6.5, (K * h * CHAR_H) / charPx));
+    const fill = this.screen === 'roster' ? 0.86 : shop ? 0.78 : 0.9;
+    const zoom = shop ? this.showcaseZoom : 1;
+    const charPx = Math.min(h * 0.46, Math.max(gh * fill, h * 0.2)) * zoom;
+    const dist = Math.min(18, Math.max(zoom > 1 ? 3.4 : 6.5, (K * h * CHAR_H) / charPx));
     const ppu = (K * h) / dist;
-    const feetY = top + (gh + CHAR_H * ppu) / 2;
+    const anchor = CHAR_H * (0.5 + 0.38 * Math.min(1, Math.max(0, (zoom - 1) / 0.85)));
+    const feetY = top + gh / 2 + anchor * ppu;
     const lookY = feetY - LOOK_H * ppu;
     this.cam.showcaseDist = dist;
-    this.cam.showcaseShift = Math.max(-0.2, Math.min(0.4, 0.5 - lookY / h));
+    this.cam.showcaseShift = shop ? Math.max(-0.6, Math.min(0.7, 0.5 - lookY / h)) : Math.max(-0.2, Math.min(0.4, 0.5 - lookY / h));
   }
 
   private endBattleView(): void {
@@ -508,7 +594,7 @@ export class Game {
   /** Re-fit the camera to the HUD after layout changes (rotation, address bar, window resize). */
   private updateLayoutFraming(): void {
     if (!this.hud) return;
-    if (this.screen === 'menu' || this.screen === 'roster') this.frameShowcase();
+    if (this.screen === 'menu' || this.screen === 'roster' || this.screen === 'shop') this.frameShowcase();
     const ins = this.hud.measureInsets();
     if (ins) {
       this.cam.hudTop = ins.top;
@@ -562,7 +648,8 @@ export class Game {
   startMatch(): void {
     if (this.accountHolds(() => this.startMatch())) return;
     const s = this.save.data;
-    const fighter = s.selected;
+    // 1.8.8: a fighter selected through a purchase that is not confirmed here (offline, refunded) → Ray
+    const fighter = inRoster(s, s.selected) ? s.selected : 'ray';
     const difficulty = this.career.difficultyUnlocked(s.difficulty) ? s.difficulty : 'rookie';
     this.launch({ fighter, deck: s.fighters[fighter].deck.slice(), rival: s.nextRival, difficulty }, { kind: 'classic' });
   }
@@ -572,7 +659,7 @@ export class Game {
     if (this.accountHolds(() => this.startSurvival())) return;
     const s = this.save.data;
     const fighter = s.selected;
-    if (!s.fighters[fighter].unlocked) return;
+    if (!inRoster(s, fighter)) return;
     // safety: an unfinished attempt is closed (and paid) before a new one starts
     const left = this.modes.closeAbandoned();
     if (left) this.ui.toast(`Прошлый марафон закрыт: волн пройдено ${left.cleared}/${SURVIVAL.waves.length}`);
@@ -602,7 +689,7 @@ export class Game {
     if (!def) return;
     const s = this.save.data;
     const fighter = s.selected;
-    if (!s.fighters[fighter].unlocked) return;
+    if (!inRoster(s, fighter)) return;
     const diff = this.career.difficultyUnlocked(difficulty) ? difficulty : 'rookie';
     this.launch({ fighter, deck: s.fighters[fighter].deck.slice(), rival: def.rival, difficulty: diff, mods: this.modes.challengeMods(def) }, { kind: 'challenge', id });
     this.arena.setScreen({ headline: def.title });
@@ -615,7 +702,7 @@ export class Game {
     if (!def) return;
     const s = this.save.data;
     const fighter = s.selected;
-    if (!s.fighters[fighter].unlocked) return;
+    if (!inRoster(s, fighter)) return;
     // the champion only takes challengers with a Classic Duel record (or who already beat him)
     const access = this.modes.bossAccess(def.id, fighter);
     if (!access.open) {
@@ -641,10 +728,29 @@ export class Game {
   startTutorial(): void {
     this.tutorial?.close();
     const s = this.save.data;
-    const fighter = s.fighters[s.selected]?.unlocked ? s.selected : 'ray';
+    const fighter = inRoster(s, s.selected) ? s.selected : 'ray';
     this.tutorial = new FirstBroadcast(this);
     this.launch({ fighter, deck: TUTORIAL.deck.slice(), rival: 'bot', difficulty: 'rookie', mods: TUTORIAL.mods }, { kind: 'tutorial' });
     this.arena.setScreen({ headline: 'FIRST BROADCAST' });
+  }
+
+  /**
+   * Alpha 1.8.8 — «ПЕРВЫЙ ЭФИР»: the menu, with the choice over it. «ПРОЙТИ ОБУЧЕНИЕ» starts the
+   * existing FIRST BROADCAST; «ПРОПУСТИТЬ» writes 'skipped' at once (the next visit goes straight
+   * to the menu). Closing the page before choosing leaves it 'pending': the choice comes again.
+   */
+  private offerTutorial(): void {
+    this.goto('menu');
+    showTutorialChoice(
+      this,
+      () => this.startTutorial(),
+      () => {
+        const s = this.save.data;
+        if (s.tutorial === 'pending') s.tutorial = 'skipped';
+        this.save.save();
+        this.goto('menu');
+      },
+    );
   }
 
   /** FIRST BROADCAST ended: remember it (a skip never undoes a finished run), back to the menu. */
@@ -704,7 +810,8 @@ export class Game {
     this.timeFx.slowmo = 0;
     this.timeFx.slowScale = 1;
     this.showcase.hide();
-    this.battleView.setup(match);
+    // 1.8.8: the player's fighter in its worn PRIME SHOP skin (looks only — the fight is the same)
+    this.battleView.setup(match, [this.fighterLook(fighter), null]);
     // TV caption of the set: when it changes, and on every new set except between Survival waves
     const showStage = mode.kind !== 'tutorial' && (switched || (stage !== 'original' && !(mode.kind === 'survival' && mode.wave.index > 0)));
     this.hud.setup(match, mode, { stage: showStage, halloween: this.themes.id === 'champion_halloween' });

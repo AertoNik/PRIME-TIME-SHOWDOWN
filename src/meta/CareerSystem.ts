@@ -6,6 +6,7 @@ import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import type { MatchResultData } from '../combat/types';
 import { careerStages, currentStage, type StageView } from './careerStages';
 import { Collection } from './Collection';
+import { inRoster } from './roster';
 import type { SaveData, SaveSystem } from './SaveSystem';
 
 export interface RewardLine {
@@ -187,7 +188,8 @@ export class CareerSystem {
   }
 
   select(id: FighterId): boolean {
-    if (!this.s.fighters[id].unlocked) return false;
+    // 1.8.8: a fighter opened by a PRIME SHOP purchase may be selected too (the purchase is not in the save)
+    if (!inRoster(this.s, id)) return false;
     this.s.selected = id;
     this.store.save();
     return true;

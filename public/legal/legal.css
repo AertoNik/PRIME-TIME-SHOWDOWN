@@ -81,3 +81,29 @@ a {
 .todo {
   color: var(--gold);
 }
+/* 1.8.8: the seller's details at the foot of the PRIME SHOP documents; tables of the catalog and the seller page */
+.doc-foot {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 14px 16px 28px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+.doc-table th,
+.doc-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.doc-table th {
+  color: var(--muted);
+  font-weight: 600;
+}

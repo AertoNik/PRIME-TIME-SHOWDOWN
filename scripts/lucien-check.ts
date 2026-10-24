@@ -17,11 +17,14 @@ import { Match } from '../src/combat/Match';
 import type { MatchEvent } from '../src/combat/types';
 import { CareerSystem } from '../src/meta/CareerSystem';
 import { EventManager } from '../src/meta/EventManager';
+import { setEntitlements } from '../src/meta/entitlements';
+import { inRoster } from '../src/meta/roster';
 import { defaultSave, sanitize, validDeck, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
 import { defaultInput } from '../src/render/FighterAnimator';
 import { ModelCache } from '../src/render/ModelCache';
 import { Vector3 } from 'three';
 import { runMatch, type Mode } from './bots';
+import { fs } from './lib/node';
 
 class MemSave {
   data: SaveData = defaultSave();
@@ -73,8 +76,13 @@ const AUTO = { mode: 'auto' as const, forcedEventId: 'none' };
   const old = { version: 11, money: 2600, reputation: 300, matches: 30, wins: 20, selected: 'kai', fighters: { ray: { unlocked: true, wins: 12, matches: 18 }, kai: { unlocked: true, wins: 8, matches: 12, deck: ['dash', 'shield', 'overdrive', 'bank_shot'] } }, events: { 'halloween-2026': { tokens: 140, earned: 140, quests: { first_night: { p: 3, claimed: true } } } } };
   const s = sanitize(JSON.parse(JSON.stringify(old)));
   check('save: a 1.6.6 career loads untouched — Lucien locked, everything else kept', !s.fighters.lucien.unlocked && s.selected === 'kai' && s.money === 2600 && s.fighters.ray.wins === 12 && s.fighters.kai.deck.includes('bank_shot') && s.events['halloween-2026'].tokens === 140 && s.events['halloween-2026'].fighters.length === 0);
+  // 1.8.8 stage 4: the save may keep a seasonal star «selected» (a PRIME SHOP purchase opens him without being
+  // written into the save) — but a locked Lucien is never PLAYED: the game plays Ray unless the server's
+  // confirmed purchase opens him, and the server refuses such a cloud save without one (validate.js)
   const sneaky = sanitize({ ...old, selected: 'lucien' });
-  check('save: a locked Lucien can never be the selected fighter', sneaky.selected !== 'lucien');
+  setEntitlements([]);
+  const src = (p: string) => fs.readFileSync(p, 'utf8') as string;
+  check('save: a locked Lucien is never played — the game plays Ray unless a purchase confirmed by the server opens him', !sneaky.fighters.lucien.unlocked && !inRoster(sneaky, 'lucien') && /const fighter = inRoster\(s, s\.selected\) \? s\.selected : 'ray';/.test(src('src/game/Game.ts')) && /paid\.indexOf\(s\.selected\) >= 0/.test(src('backend/pb_hooks/lib/validate.js')));
   // an owner: the fighter, his deck, his record and the purchase all round-trip
   const own = sanitize(
     JSON.parse(

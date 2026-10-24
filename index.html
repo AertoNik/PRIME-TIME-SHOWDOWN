@@ -5,21 +5,52 @@
     <!-- 1.8.2: Content Security Policy — scripts only from the game itself (no inline or injected
          scripts), data:/blob: only for images, fonts and audio the game makes itself, network: the
          game's own files plus an https accounts API (the local test API / Vite on 127.0.0.1 in dev). -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action https://auth.robokassa.ru" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#070816" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="PRIME TIME: SHOWDOWN — стилизованная 3D-дуэль тактических карт и карьера продюсера ТВ-шоу боёв." />
+    <!-- Alpha 1.8.8: search engines — one title, one description, one canonical address -->
+    <title>PRIME TIME: SHOWDOWN (Прайм Тайм Шоудаун) — Официальная браузерная 3D-игра</title>
+    <meta name="description" content="PRIME TIME: SHOWDOWN (Прайм Тайм Шоудаун) — браузерная 3D-игра о тактических дуэлях на картах-командах и карьере продюсера боевого телешоу. Управляй тактикой, собирай комбо и создавай зрелищные эфиры." />
+    <link rel="canonical" href="https://primetimeshowdown.online/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PRIME TIME: SHOWDOWN" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:url" content="https://primetimeshowdown.online/" />
+    <meta property="og:title" content="PRIME TIME: SHOWDOWN (Прайм Тайм Шоудаун) — Официальная браузерная 3D-игра" />
+    <meta property="og:description" content="Браузерная 3D-игра о тактических дуэлях на картах-командах и карьере продюсера боевого телешоу. Управляй тактикой, собирай комбо и создавай зрелищные эфиры." />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-    <title>PRIME TIME: SHOWDOWN</title>
+    <!-- Schema.org: only facts about the game (no ratings, dates or company data). A data block, not a
+         script: the Content Security Policy above does not run it and search robots read it without JS. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "PRIME TIME: SHOWDOWN",
+        "alternateName": ["Прайм Тайм Шоудаун", "PRIME TIME SHOWDOWN"],
+        "url": "https://primetimeshowdown.online/",
+        "description": "Браузерная 3D-игра о тактических дуэлях на картах-командах и карьере продюсера боевого телешоу: управляй тактикой бойца, собирай комбо и создавай зрелищные эфиры.",
+        "genre": "Тактическая аренная игра с картами-командами",
+        "gamePlatform": "Веб-браузер",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Любая система с современным веб-браузером",
+        "playMode": "SinglePlayer",
+        "inLanguage": "ru",
+        "isAccessibleForFree": true
+      }
+    </script>
     <style>
       html, body { margin: 0; height: 100%; background: #05060f; }
       #boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #22f0e0;
         font: 900 14px/1 system-ui, sans-serif; letter-spacing: .2em; }
       #boot::after { content: 'PRIME TIME · LOADING'; animation: b 1s ease-in-out infinite alternate; }
       @keyframes b { from { opacity: .3 } }
+      .nojs { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; justify-content: center;
+        padding: 24px; background: #05060f; color: #eef2ff; font: 15px/1.5 system-ui, sans-serif; text-align: center; }
+      .nojs h1 { margin: 0 0 10px; font-size: 22px; color: #22f0e0; }
+      .nojs a { color: #22f0e0; }
     </style>
   </head>
   <body>
@@ -30,6 +61,14 @@
       </div>
     </div>
     <div id="boot"></div>
+    <noscript>
+      <div class="nojs">
+        <h1>PRIME TIME: SHOWDOWN (Прайм Тайм Шоудаун)</h1>
+        <p>Браузерная 3D-игра о тактических дуэлях на картах-командах и карьере продюсера боевого телешоу. Чтобы играть, включите JavaScript в браузере.</p>
+        <p><a href="./legal/ru/shop.html">PRIME SHOP: каталог и условия</a> · <a href="./legal/ru/offer.html">Публичная оферта</a> · <a href="./legal/ru/refunds.html">Возврат и поддержка</a> · <a href="./legal/ru/seller.html">Информация о продавце</a></p>
+        <p><a href="./legal/ru/terms.html">Пользовательское соглашение</a> · <a href="./legal/ru/privacy.html">Политика конфиденциальности</a></p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,4 +1,5 @@
 import { FIGHTERS, RIVALS, rivalFighterDef } from '../config/fighters';
+import { LOOKS } from '../config/looks';
 import type { FighterDef } from '../config/types';
 import { FighterAnimator } from './FighterAnimator';
 import { createFighterRig, type FighterRig } from './FighterModel';
@@ -8,8 +9,12 @@ export interface CachedFighter {
   anim: FighterAnimator;
 }
 
-/** Archetype definition for a look id (player fighters and rivals). */
+/**
+ * Archetype definition for a look id (player fighters and rivals). Alpha 1.8.8: a PRIME SHOP skin
+ * (looks.ts `base`) animates exactly like its own fighter.
+ */
 export function defForLook(look: string): FighterDef {
+  look = LOOKS[look]?.base ?? look;
   if (look in FIGHTERS) return FIGHTERS[look as keyof typeof FIGHTERS];
   const rival = Object.values(RIVALS).find((r) => r.look === look);
   return rival ? rivalFighterDef(rival) : FIGHTERS.ray;

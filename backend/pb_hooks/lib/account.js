@@ -129,9 +129,13 @@ function exportData(e) {
         o.country = r.getString('country');
         o.ageGroup = r.getString('ageBand');
       }
+      // 1.8.8 stage 3: which exact text of the PRIME SHOP offer was accepted
+      if (r.getString('docHash')) o.textSha256 = r.getString('docHash');
       return o;
     }),
     invite: inv ? { usedToRegister: true } : null,
+    // 1.8.8 stage 4: PRIME SHOP — the account's orders (no card data is ever kept) and its rights
+    purchases: require(`${__hooks}/lib/payments.js`).exportOf(app, u.id),
     notIncluded:
       'Пароль хранится только в виде хэша и не выгружается. Технические журналы сервера (IP-адрес, браузер, время запросов) хранятся ограниченное время и выдаются по запросу на primetimeshowdown.official@gmail.com. / The password is stored only as a hash and is not exported. Server logs (IP address, browser, request times) are kept for a limited time and are provided on request.',
   });

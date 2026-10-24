@@ -6,7 +6,7 @@
 //   npm run backend:stop      stop a backend started in another terminal
 //   npm run backend:status    is it running?
 //   npm run backend:backup    consistent copy of backend/pb_data into backend/backups (also while running)
-//   npm run backend:rules     regenerate backend/pb_hooks/lib/save_rules.js from src/config
+//   npm run backend:rules     regenerate backend/pb_hooks/lib/save_rules.js and shop_rules.js from src/config
 //   npm run invites -- …      PRIME NETWORK invites: create [N] [--days 14] [--uses 1] [--note "…"] | list [all] | stats | revoke <id|code>
 //   npm run backend:migrate-check -- <backup folder or .zip>
 //                             apply the current migrations to a THROWAWAY copy of a backup and prove that
@@ -18,6 +18,9 @@ import { ARENA_ORDER } from '../src/config/arenas.config';
 import { CAREER_STAGES, GOALS } from '../src/config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../src/config/cards';
 import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS } from '../src/config/cosmetics.config';
+import { EVENTS } from '../src/config/events.config';
+import { DEMO_OFFER, SHOP_OFFERS, TEST_OFFER } from '../src/config/offer.config';
+import { SHOP_ITEMS, SHOP_PRICES_APPROVED_ON, SHOP_PRICES_RUB, SHOP_PRICE_STATUS, SHOP_SALES_OPEN, SHOP_TEST_PRICES_RUB, SKINS, approvedPriceRub, receiptNameOf, rubToKop } from '../src/config/shop.config';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../src/config/fighters';
 import { PERK_ORDER, SURVIVAL } from '../src/config/modes.config';
 import { APP_VERSION } from '../src/config/version';
@@ -64,8 +67,14 @@ export function rulesSource(): string {
     const f = FIGHTERS[id];
     fighters[id] = { signature: f.signature, seasonal: !!f.seasonal, starter: f.contract === null && !f.seasonal };
   }
+  // 1.8.8: PRIME SHOP items are never owned through a save — they are left out of `cosmetics`, so a
+  // save that lists one in cosmetics.owned is refused; `shopCosmetics` / `skins` only check the
+  // wardrobe choices in save.shop (ownership will come from the server's purchase records)
   const cosmetics: Record<string, string> = {};
-  for (const id of COSMETIC_ORDER) cosmetics[id] = COSMETICS[id].slot;
+  const shopCosmetics: Record<string, string> = {};
+  for (const id of COSMETIC_ORDER) (COSMETICS[id].paid ? shopCosmetics : cosmetics)[id] = COSMETICS[id].slot;
+  const skins: Record<string, string> = {};
+  for (const sk of Object.values(SKINS)) skins[sk.id] = sk.fighter;
   const rules = {
     app: APP_VERSION,
     schemaMax: VERSION,
@@ -74,6 +83,8 @@ export function rulesSource(): string {
     shopCards: NEW_CARDS,
     cosmetics,
     cosmeticSlots: COSMETIC_SLOTS,
+    shopCosmetics,
+    skins,
     rivals: RIVAL_ORDER,
     goals: GOALS.map((g) => g.id),
     stages: CAREER_STAGES.map((s) => s.id),
@@ -94,11 +105,58 @@ export function rulesSource(): string {
   ].join('\n');
 }
 
+/**
+ * 1.8.8 stage 3 — what the server needs for PRIME CHECKOUT (lib/checkout.js): the catalog by sku, the
+ * APPROVED prices (null = not approved — never sold), the release's sales flag (the server has its own
+ * switch too), the published offer revisions and the seasons of the seasonal stars. The browser never
+ * tells the server a price: this file is the price list the server trusts.
+ */
+export function shopRulesSource(): string {
+  const catalog: Record<string, { kind: 'skin' | 'cosmetic' | 'fighter'; item: string; fighter?: string }> = {};
+  const seasons: Record<string, { event: string; start: string; end: string }> = {};
+  for (const it of SHOP_ITEMS) {
+    if (it.skin) catalog[it.sku] = { kind: 'skin', item: it.skin, fighter: SKINS[it.skin].fighter };
+    else if (it.cosmetic) catalog[it.sku] = { kind: 'cosmetic', item: it.cosmetic };
+    else if (it.fighter) {
+      catalog[it.sku] = { kind: 'fighter', item: it.fighter };
+      const ev = EVENTS.find((e) => e.fighters?.some((f) => f.fighter === it.fighter));
+      if (ev?.start && ev.end) seasons[it.sku] = { event: ev.id, start: ev.start, end: ev.end };
+    }
+  }
+  // 1.8.8 stage 4: the names an order keeps, and the STAGING-only block a server in Robokassa's test mode
+  // uses instead of the real prices / offer (lib/payments.js). The server turns roubles into whole
+  // kopecks itself (exactly, never a fraction) — one price list, no second table.
+  for (const s of Object.keys(SHOP_PRICES_RUB) as (keyof typeof SHOP_PRICES_RUB)[]) {
+    if (rubToKop(SHOP_PRICES_RUB[s]) === null) throw new Error(`SHOP_PRICES_RUB.${s}: not a whole number of kopecks`);
+    if (rubToKop(SHOP_TEST_PRICES_RUB[s]) === null) throw new Error(`SHOP_TEST_PRICES_RUB.${s}: not a whole number of kopecks`);
+  }
+  const titles = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, i.name]));
+  // what the buyer pays for (Robokassa's Description, the НПД receipt): cosmetics vs a playable character
+  const receiptNames = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, receiptNameOf(i)]));
+  // only APPROVED prices reach the server, item by item: a proposed price is never charged (SHOP_PRICE_STATUS)
+  const prices = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, approvedPriceRub(i.sku)]));
+  const test = { note: 'staging only: Robokassa test mode (IsTest=1), no money moves', prices: SHOP_TEST_PRICES_RUB, offer: TEST_OFFER };
+  // 1.8.8 final: the official site's demonstration (PRIME_PAY_MODE=demo) — the approved prices, its own terms
+  const demo = { note: 'demonstration only: Robokassa test mode (IsTest=1), no money moves, cosmetics only', offer: DEMO_OFFER };
+  const rules = { app: APP_VERSION, catalog, titles, receiptNames, priceStatus: SHOP_PRICE_STATUS, pricesApprovedOn: SHOP_PRICES_APPROVED_ON, prices, salesOpen: SHOP_SALES_OPEN, offers: SHOP_OFFERS, seasons, test, demo };
+  return [
+    '// GENERATED by `npm run backend:rules` from src/config (shop.config.ts, offer.config.ts, events.config.ts) —',
+    '// do not edit by hand. PRIME CHECKOUT (lib/checkout.js) and PRIME PAYMENTS (lib/payments.js) trust only',
+    '// these prices and offer revisions; `npm run checkout` fails while this file is out of date.',
+    '',
+    `module.exports = ${JSON.stringify(rules, null, 2)};`,
+    '',
+  ].join('\n');
+}
+
 const RULES_FILE = path.join(BACKEND, 'pb_hooks', 'lib', 'save_rules.js');
+const SHOP_RULES_FILE = path.join(BACKEND, 'pb_hooks', 'lib', 'shop_rules.js');
 
 function writeRules(): void {
   fs.writeFileSync(RULES_FILE, rulesSource());
   log('backend/pb_hooks/lib/save_rules.js обновлён');
+  fs.writeFileSync(SHOP_RULES_FILE, shopRulesSource());
+  log('backend/pb_hooks/lib/shop_rules.js обновлён');
 }
 
 function readRun(): { pb: number; mailpit: number; dir: string; at: number } | null {

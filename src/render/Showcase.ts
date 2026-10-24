@@ -28,6 +28,10 @@ export class Showcase {
   private glowMat: MeshBasicMaterial;
   private cheerT = -1;
   private t = 0;
+  /** Alpha 1.8.8 — the fitting room's dash preview: time into the move (-1: standing). */
+  private slideT = -1;
+  private slideFrom = 0;
+  private slideTo = 0;
 
   constructor(models: ModelCache) {
     this.models = models;
@@ -64,6 +68,7 @@ export class Showcase {
     this.current.anim.reset(this.yaw);
     rig.root.position.set(0, 0.22, 0);
     this.cheerT = -1;
+    this.slideT = -1;
   }
 
   hide(): void {
@@ -81,6 +86,19 @@ export class Showcase {
 
   resetYaw(): void {
     this.yawVel = 0;
+  }
+
+  /**
+   * Alpha 1.8.8 (PRIME SHOP fitting room): a dash across the pedestal from `fromX` to `toX`, a short
+   * hold, then a glide back to the middle — so the DASH cosmetics can be previewed without a match.
+   */
+  demoDash(fromX: number, toX: number): void {
+    if (!this.current) return;
+    this.slideFrom = fromX;
+    this.slideTo = toX;
+    this.slideT = 0;
+    this.current.rig.root.position.x = fromX;
+    this.current.anim.dash(Math.sign(toX - fromX) || 1, 0);
   }
 
   cheer(): void {
@@ -106,6 +124,19 @@ export class Showcase {
     this.input.x = 0;
     this.input.z = 0;
     this.current.anim.update(dt, this.input);
-    this.current.rig.root.position.y = 0.22;
+    const root = this.current.rig.root;
+    root.position.y = 0.22;
+    if (this.slideT >= 0) {
+      // 0.18 s across, a beat at the far side, then back to the middle
+      this.slideT += dt;
+      const t = this.slideT;
+      if (t < 0.18) root.position.x = this.slideFrom + (this.slideTo - this.slideFrom) * (1 - Math.pow(1 - t / 0.18, 3));
+      else if (t < 0.75) root.position.x = this.slideTo;
+      else root.position.x = damp(root.position.x, 0, 5, dt);
+      if (t > 1.8) {
+        root.position.x = 0;
+        this.slideT = -1;
+      }
+    }
   }
 }

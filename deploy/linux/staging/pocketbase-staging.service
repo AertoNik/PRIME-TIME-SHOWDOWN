@@ -1,0 +1,66 @@
+# PRIME TIME: SHOWDOWN — a SEPARATE staging PRIME NETWORK for Robokassa's TEST mode (1.8.8 stage 4).
+# A TEMPLATE: nothing installs it by itself. Steps: docs/ROBOKASSA_SETUP.md, «Тестовый сервер (staging)».
+#
+# Its own program copy, its own database, its own settings, its own port — nothing shared with production:
+#   code      /opt/primetime-staging        (hooks, migrations, pages of the release being tested)
+#   database  /var/lib/primetime-staging    (made-up test PRIME IDs only — never a copy of real accounts)
+#   settings  /etc/primetime-staging/pocketbase.env + robokassa.env (TEST passwords only)
+#   port      127.0.0.1:8091                (Caddy serves it on the staging domain)
+#
+#   sudo systemctl status pocketbase-staging
+#   sudo journalctl -u pocketbase-staging -n 100
+
+[Unit]
+Description=PRIME TIME: SHOWDOWN — STAGING PRIME NETWORK (Robokassa test mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pocketbase
+Group=pocketbase
+WorkingDirectory=/opt/primetime-staging
+EnvironmentFile=/etc/primetime-staging/pocketbase.env
+EnvironmentFile=-/etc/primetime-staging/robokassa.env
+ExecStart=/opt/primetime-staging/bin/pocketbase serve \
+  --http=127.0.0.1:8091 \
+  --dir=/var/lib/primetime-staging/pb_data \
+  --hooksDir=/opt/primetime-staging/pb_hooks \
+  --migrationsDir=/opt/primetime-staging/pb_migrations \
+  --publicDir=/opt/primetime-staging/pb_public \
+  --automigrate=false \
+  --hooksWatch=false \
+  --origins=${PRIME_ORIGINS} \
+  --encryptionEnv=PB_ENCRYPTION_KEY
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=4096
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+# only its own data folder — production's /var/lib/primetime is not even writable from here
+ReadWritePaths=/var/lib/primetime-staging
+UMask=0077
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

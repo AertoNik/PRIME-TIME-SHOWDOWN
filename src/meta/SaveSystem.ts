@@ -2,7 +2,8 @@ import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config
 import { CAREER_STAGES, CAREER_START, GOALS, LEVEL_THRESHOLDS, type GoalId, type StageId } from '../config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
-import { COSMETICS, COSMETIC_SLOTS, isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { COSMETICS, COSMETIC_SLOTS, isGameCosmeticId as isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { isSkinId, SKINS, type SkinId } from '../config/shop.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { APP_VERSION } from '../config/version';
@@ -228,6 +229,20 @@ export interface SaveData {
   tutorial: TutorialState;
   /** v12 (1.8): the producer's win streak (fighters keep their own in FighterProgress). */
   streak: StreakState;
+  /** 1.8.8 (PRIME SHOP): what the player chose to WEAR among PRIME SHOP items — never ownership. */
+  shop: ShopState;
+}
+
+/**
+ * Alpha 1.8.8 — the wardrobe choices for PRIME SHOP items. Ownership is NOT here (paid items are
+ * owned only through confirmed purchases — src/meta/entitlements.ts); a choice of an item the
+ * player does not own is simply not shown. No save version bump: an older game drops the field.
+ */
+export interface ShopState {
+  /** fighter → its skin (absent: the standard look). */
+  skins: Partial<Record<FighterId, SkinId>>;
+  /** slot → the PRIME SHOP item worn there (absent: the game's own item, if any). */
+  equip: Partial<Record<CosmeticSlot, CosmeticId>>;
 }
 
 /**
@@ -318,7 +333,25 @@ export function defaultSave(): SaveData {
     cards: { owned: [] },
     tutorial: 'pending',
     streak: { current: 0, best: 0, since: Date.now() },
+    shop: { skins: {}, equip: {} },
   };
+}
+
+/** 1.8.8: only known skins of the right fighter and PRIME SHOP items in their own slot survive. */
+function sanitizeShop(raw: unknown): ShopState {
+  const out: ShopState = { skins: {}, equip: {} };
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as { skins?: unknown; equip?: unknown };
+  if (r.skins && typeof r.skins === 'object') {
+    for (const [f, id] of Object.entries(r.skins as Record<string, unknown>)) if (isSkinId(id) && SKINS[id].fighter === f) out.skins[f as FighterId] = id;
+  }
+  if (r.equip && typeof r.equip === 'object') {
+    for (const slot of COSMETIC_SLOTS) {
+      const id = (r.equip as Record<string, unknown>)[slot];
+      if (typeof id === 'string' && id in COSMETICS && COSMETICS[id as CosmeticId].paid && COSMETICS[id as CosmeticId].slot === slot) out.equip[slot] = id as CosmeticId;
+    }
+  }
+  return out;
 }
 
 export function emptySurvival(): SurvivalRecords {
@@ -645,7 +678,9 @@ export function sanitize(raw: unknown): SaveData {
       // (decks are checked below, once the bought cards are known)
     }
   }
-  if (typeof r.selected === 'string' && FIGHTER_ORDER.includes(r.selected as FighterId) && d.fighters[r.selected as FighterId].unlocked) {
+  // 1.8.8: a seasonal star may stay selected without being opened in the save — opened by a PRIME SHOP
+  // purchase (the server's rights, never the save); the game falls back to Ray while that is not confirmed
+  if (typeof r.selected === 'string' && FIGHTER_ORDER.includes(r.selected as FighterId) && (d.fighters[r.selected as FighterId].unlocked || !!FIGHTERS[r.selected as FighterId].seasonal)) {
     d.selected = r.selected as FighterId;
   }
   if (r.difficulty === 'rookie' || r.difficulty === 'pro' || r.difficulty === 'champion') d.difficulty = r.difficulty;
@@ -681,6 +716,8 @@ export function sanitize(raw: unknown): SaveData {
   d.modes = sanitizeModes(r.modes, d.cards.owned);
   // (cosmetics after the mode records: the v9 migration reads who beat the champion)
   d.cosmetics = sanitizeCosmetics(r.cosmetics, d.modes);
+  // 1.8.8: PRIME SHOP wardrobe choices (absent before -> standard looks, the game's own items)
+  d.shop = sanitizeShop(r.shop);
   // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)
   if (Array.isArray(r.careerClaimed)) {
     const ids = new Set(CAREER_STAGES.map((st) => st.id));

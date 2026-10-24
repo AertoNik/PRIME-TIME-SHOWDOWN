@@ -1,0 +1,21 @@
+# PRIME TIME: SHOWDOWN — HTTPS for the STAGING API (append to /etc/caddy/Caddyfile, then
+# `sudo systemctl reload caddy`). STAGING_DOMAIN_PLACEHOLDER = the staging domain (its DNS A record → this server).
+# Robokassa's test ResultURL / SuccessURL / FailURL point here while the shop is being tested.
+
+STAGING_DOMAIN_PLACEHOLDER {
+	encode zstd gzip
+	request_body {
+		max_size 1MB
+	}
+	@admin path /_ /_/* /api/collections/_superusers/* /api/settings /api/settings/* /api/backups /api/backups/* /api/logs /api/logs/* /api/crons /api/crons/* /api/collections /api/collections/import /api/collections/meta/*
+	respond @admin 404
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8091
+}

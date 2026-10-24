@@ -26,6 +26,18 @@
 //   POST /api/prime/legal/accept    accept the current documents / answer the age question
 //   GET  /api/prime/account/export  everything the server keeps about the signed-in account (JSON)
 //   POST /api/prime/account/delete  delete the signed-in account (password again)
+//   1.8.8 stage 3 «PRIME CHECKOUT» (lib/checkout.js, lib/shop_rules.js):
+//   GET  /api/prime/shop/offer      the PRIME SHOP offer revision in force (null until one is published)
+//   GET  /api/prime/shop/status     the account and the shop: documents, offer accepted?, sales, payments
+//   POST /api/prime/shop/offer/accept  accept the current offer revision (a consents row written here)
+//   POST /api/prime/shop/checkout   the server's own checks before an order; stage 4: then the order and the
+//                                   Robokassa payment page (only when payments are configured)
+//   1.8.8 stage 4 «PRIME PAYMENTS × ROBOKASSA» (lib/payments.js, lib/robokassa.js):
+//   GET  /api/prime/shop/orders/{inv}       the signed-in account's own order (its state, delivered or not)
+//   GET  /api/prime/shop/purchases          the items this PRIME ID owns and its latest orders
+//   POST|GET /api/prime/pay/robokassa/result    Robokassa's ResultURL: signature, order, amount → delivery, «OK{InvId}»
+//   GET|POST /api/prime/pay/robokassa/success   SuccessURL: back to the game (proves nothing)
+//   GET|POST /api/prime/pay/robokassa/fail      FailURL: back to the game (proves nothing)
 //
 // Reading the save and the history uses the generic records API, limited by the collection rules to
 // the owner (see pb_migrations).
@@ -63,6 +75,34 @@ routerAdd('GET', '/api/prime/account/export', (e) => require(`${__hooks}/lib/acc
 
 routerAdd('POST', '/api/prime/account/delete', (e) => require(`${__hooks}/lib/account.js`).deleteAccount(e), $apis.requireAuth('users'), $apis.bodyLimit(4 * 1024));
 
+// 1.8.8 stage 3 «PRIME CHECKOUT»: the offer, the consent to it and the server's own checks before an order
+// (no order, no payment and no item is ever created here in stage 3 — see lib/checkout.js)
+routerAdd('GET', '/api/prime/shop/offer', (e) => require(`${__hooks}/lib/checkout.js`).offer(e));
+
+routerAdd('GET', '/api/prime/shop/status', (e) => require(`${__hooks}/lib/checkout.js`).status(e), $apis.requireAuth('users'));
+
+routerAdd('POST', '/api/prime/shop/offer/accept', (e) => require(`${__hooks}/lib/checkout.js`).acceptOffer(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+
+routerAdd('POST', '/api/prime/shop/checkout', (e) => require(`${__hooks}/lib/checkout.js`).checkout(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+
+// 1.8.8 stage 4 «PRIME PAYMENTS × ROBOKASSA»: the player's orders and rights; Robokassa's notification and the
+// two return pages (no session there: Robokassa's server and a redirected browser — the signature decides)
+routerAdd('GET', '/api/prime/shop/orders/{inv}', (e) => require(`${__hooks}/lib/payments.js`).orderStatus(e), $apis.requireAuth('users'));
+
+routerAdd('GET', '/api/prime/shop/purchases', (e) => require(`${__hooks}/lib/payments.js`).purchases(e), $apis.requireAuth('users'));
+
+routerAdd('POST', '/api/prime/pay/robokassa/result', (e) => require(`${__hooks}/lib/payments.js`).result(e), $apis.bodyLimit(16 * 1024));
+
+routerAdd('GET', '/api/prime/pay/robokassa/result', (e) => require(`${__hooks}/lib/payments.js`).result(e));
+
+routerAdd('GET', '/api/prime/pay/robokassa/success', (e) => require(`${__hooks}/lib/payments.js`).back(e, 'success'));
+
+routerAdd('POST', '/api/prime/pay/robokassa/success', (e) => require(`${__hooks}/lib/payments.js`).back(e, 'success'), $apis.bodyLimit(16 * 1024));
+
+routerAdd('GET', '/api/prime/pay/robokassa/fail', (e) => require(`${__hooks}/lib/payments.js`).back(e, 'fail'));
+
+routerAdd('POST', '/api/prime/pay/robokassa/fail', (e) => require(`${__hooks}/lib/payments.js`).back(e, 'fail'), $apis.bodyLimit(16 * 1024));
+
 // 1.8.2: a server without email (no PRIME_MAIL_MODE=smtp, no local catcher) answers PocketBase's own
 // verification / password-reset / email-change requests with 503 «mail_unavailable» — for every address
 routerUse((e) => {
@@ -96,6 +136,13 @@ onRecordAfterDeleteSuccess((e) => {
   e.next();
 }, 'users');
 
+// 1.8.8 stage 4: a deleted PRIME ID (any way) closes its open orders and leaves every order without the link to
+// the person (the financial record stays); its rights go with it (cascade) — see lib/payments.js
+onRecordDelete((e) => {
+  require(`${__hooks}/lib/payments.js`).detachAccount(e.app, e.record.id);
+  e.next();
+}, 'users');
+
 // 1.8.4: at every start of the server — accounts deleted earlier but back from a restored backup go
 // again; and the journal says plainly what this server's registration really is. (The JS hooks have no
 // «serve» event: the bootstrap of `pocketbase serve` is used; console commands skip this.)
@@ -113,11 +160,35 @@ onBootstrap((e) => {
   // (console: these lines reach the service journal — `journalctl -u pocketbase`)
   if (asked === 'public' && prime.mode() !== 'public') console.log('PRIME WARNING: PRIME_REGISTRATION=public needs email (PRIME_MAIL_MODE=smtp) — registration stays CLOSED');
   console.log('PRIME: registration ' + prime.mode() + ', email ' + prime.mailMode() + ', proof of work ' + guard.powBits() + ' bits');
+  // 1.8.8 stage 4: what this server takes (never a secret value) — and a payment recorded before a restart
+  // but not delivered yet is delivered now
+  try {
+    const pay = require(`${__hooks}/lib/payments.js`);
+    const c = pay.publicConfig();
+    console.log('PRIME: server role ' + c.role + ', payments ' + (c.ready ? c.env + ' (Robokassa, ' + c.algorithm + ')' : 'off' + (c.problem && c.problem !== 'off' ? ' — ' + c.problem : '')) + ', rights counted: ' + c.counted);
+    // 1.8.8: where invoice numbers are reserved, and where the payment pages send players back
+    console.log('PRIME: invoice ledger ' + c.ledger + '; game address ' + c.gameUrl);
+    // 1.8.8 final: the demonstration (Robokassa's test mode, its own demo rights) and the relay of staging's invoices
+    if (c.ready && c.env === 'demo') console.log('PRIME: DEMONSTRATION payments (Robokassa TEST mode, no money moves, demo rights counted) until ' + c.demoUntil);
+    if (c.relay !== 'off') console.log('PRIME: test-range Robokassa notifications and returns are passed on to ' + c.relay);
+    if (/^(INVALID|missing)/.test(c.gameUrl) && c.ready) console.log('PRIME WARNING: PRIME_GAME_URL is ' + c.gameUrl + ' — after paying, players see the return page instead of the game');
+    pay.maintain(e.app);
+    // a restored older pb_data: payments and refunds it lost come back from the ledger
+    pay.recover(e.app);
+  } catch (err) {
+    console.log('PRIME WARNING: payments check failed: ' + String(err).slice(0, 200));
+  }
 });
 
 // 1.8.4: hourly cleanup — counters, spent challenges, never-confirmed 1.8.4 registrations (lib/guard.js)
 cronAdd('prime_cleanup', '23 * * * *', () => {
   require(`${__hooks}/lib/guard.js`).cleanup($app);
+});
+
+// 1.8.8 stage 4: every five minutes — deliver paid orders, close expired ones, ask Robokassa about silent live
+// orders (OpStateExt), follow refunds (lib/payments.js)
+cronAdd('prime_payments', '*/5 * * * *', () => {
+  require(`${__hooks}/lib/payments.js`).maintain($app);
 });
 
 // 1.8.2: the server's settings (API address, email, reverse proxy) from its environment, at every start
@@ -145,6 +216,17 @@ $app.rootCmd.addCommand(
     run: (cmd, args) => {
       require(`${__hooks}/lib/guard.js`).cleanup($app);
       console.log('OK: cleanup done');
+    },
+  }),
+);
+
+// 1.8.8 stage 4: `pocketbase prime-shop …` — orders, reviews and refunds by the administrator (lib/payments.js)
+$app.rootCmd.addCommand(
+  new Command({
+    use: 'prime-shop',
+    short: 'PRIME SHOP orders: status | selftest | orders [N] | order <InvId> | reconcile [InvId] | deliver | cancel | review | refund | refund-done | refund-failed | refund-check',
+    run: (cmd, args) => {
+      require(`${__hooks}/lib/payments.js`).cli($app, args);
     },
   }),
 );

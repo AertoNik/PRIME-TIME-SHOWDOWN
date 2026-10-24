@@ -1,5 +1,6 @@
 import { CARDS, PASSIVES } from '../../config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
+import { inRoster } from '../../meta/roster';
 import type { FighterId } from '../../config/types';
 import { formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
@@ -122,15 +123,17 @@ export class RosterScreen implements Screen {
     const id = this.viewing;
     const f = FIGHTERS[id];
     const fp = s.fighters[id];
-    g.showcase.show(f.look, f.theme.accent);
+    // 1.8.8: signed / opened for tokens (the save) or opened by a confirmed PRIME SHOP purchase
+    const open = inRoster(s, id);
+    g.showcase.show(g.fighterLook(f.id), f.theme.accent);
     const sig = CARDS[f.signature];
     const pas = PASSIVES[f.passive];
     const order = this.order;
     const tabs = order.map((fid, i) => {
       const ff = FIGHTERS[fid];
-      const locked = !s.fighters[fid].unlocked;
+      const locked = !inRoster(s, fid);
       return `<button class="roster-tab ${fid === id ? 'active' : ''} ${locked ? 'locked' : ''} ${ff.seasonal ? 'seasonal' : ''}" data-act="tab" data-i="${i}">
-        ${portraitHTML(g.portraits[ff.look], ff.theme.main, ff.theme.dark)}
+        ${portraitHTML(g.portraitOf(ff.id), ff.theme.main, ff.theme.dark)}
         ${locked ? `<span class="lock">${UI_ICONS.lock}</span>` : ''}
       </button>`;
     }).join('');
@@ -142,8 +145,8 @@ export class RosterScreen implements Screen {
     ).join('');
 
     let action = '';
-    const offer = f.seasonal && !fp.unlocked ? g.events.fighterOffer(id) : null;
-    if (fp.unlocked) {
+    const offer = f.seasonal && !open ? g.events.fighterOffer(id) : null;
+    if (open) {
       action =
         s.selected === id
           ? `<button class="btn ghost wide disabled">${UI_ICONS.check.replace('<svg', '<svg width="16" height="16"')} Выбран для эфира</button>`
@@ -195,7 +198,7 @@ export class RosterScreen implements Screen {
             <div class="fnick" style="color:${f.theme.accent}">«${esc(f.nickname)}»</div>
           </div>
           <div style="text-align:right">
-            <span class="chip ${s.selected === id ? 'gold' : fp.unlocked ? 'teal' : f.seasonal ? 'season' : 'orange'}">${s.selected === id ? '★ Выбран' : fp.unlocked ? 'В составе' : f.seasonal ? 'Сезонная звезда' : 'Свободный агент'}</span>
+            <span class="chip ${s.selected === id && open ? 'gold' : open ? 'teal' : f.seasonal ? 'season' : 'orange'}">${s.selected === id && open ? '★ Выбран' : open ? 'В составе' : f.seasonal ? 'Сезонная звезда' : 'Свободный агент'}</span>
             <div class="label" style="margin-top:6px">${esc(f.style)}</div>
           </div>
         </div>

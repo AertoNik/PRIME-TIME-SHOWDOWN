@@ -3,6 +3,7 @@ import { themeById, type ThemeDef, type ThemeId } from '../config/themes.config'
 import type { AudioSystem } from '../audio/AudioSystem';
 import type { Arena } from '../render/Arena';
 import type { BattleView } from '../render/BattleView';
+import { DASH_FX, VICTORY_FX } from '../render/cosmeticFx';
 import type { Renderer } from '../render/Renderer';
 import { BAT_SVG, cobwebSVG, frostCornerSVG } from '../ui/eventArt';
 
@@ -85,16 +86,18 @@ export class ThemeManager {
     const root = document.documentElement;
     const card = equipped.cardStyle;
     if (card === 'card_pumpkin') root.dataset.cardStyle = 'pumpkin';
+    else if (card === 'card_vhs') root.dataset.cardStyle = 'vhs';
     else delete root.dataset.cardStyle;
     if (equipped.broadcastFrame === 'frame_spooky') root.dataset.frame = 'spooky';
     else if (equipped.broadcastFrame === 'frame_legendary') root.dataset.frame = 'legendary';
+    else if (equipped.broadcastFrame === 'frame_prime_broadcast') root.dataset.frame = 'prime';
     else delete root.dataset.frame;
     if (equipped.title === 'title_halloween_champion') root.dataset.title = 'halloween-champion';
     else if (equipped.title === 'title_prime_legend') root.dataset.title = 'prime-legend';
     else if (equipped.title === 'title_prime_star') root.dataset.title = 'prime-star';
     else delete root.dataset.title;
-    this.battle.style.dashFx = equipped.dashFx === 'dash_phantom' ? 'phantom' : null;
-    this.battle.style.victoryFx = equipped.victoryFx === 'victory_pumpkin' ? 'pumpkin' : null;
+    this.battle.style.dashFx = (equipped.dashFx && DASH_FX[equipped.dashFx]) || null;
+    this.battle.style.victoryFx = (equipped.victoryFx && VICTORY_FX[equipped.victoryFx]) || null;
   }
 
   /** Title text for the menu nameplate, if a title cosmetic is equipped. */

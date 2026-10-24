@@ -278,4 +278,6 @@ export const UI_ICONS = {
   career: S(`<rect x="8" y="36" width="10" height="20" rx="2" fill="#fff"/><rect x="27" y="24" width="10" height="32" rx="2" fill="#fff"/><rect x="46" y="10" width="10" height="46" rx="2" fill="#22f0e0"/>`),
   bolt: S(`<path d="M36 2 L12 36 L28 36 L22 62 L52 24 L35 24 L44 2 Z" fill="currentColor"/>`),
   film: S(`<rect x="6" y="14" width="40" height="36" rx="6" fill="#fff"/><path d="M46 26 L60 18 V46 L46 38 Z" fill="#fff"/>`),
+  // Alpha 1.8.8: PRIME SHOP — a shopping bag with a star
+  shop: S(`<path d="M12 22 H52 L48 58 H16 Z" fill="currentColor"/><path d="M23 26 V18 C23 8 41 8 41 18 V26" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M32 30 L35 37 L42.5 37.6 L36.8 42.4 L38.6 49.6 L32 45.6 L25.4 49.6 L27.2 42.4 L21.5 37.6 L29 37 Z" fill="#0b0f2e"/>`),
 };

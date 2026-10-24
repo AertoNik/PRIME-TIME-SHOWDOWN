@@ -1,0 +1,18 @@
+{
+  "note": "Fingerprints of every look before Alpha 1.8.8 PRIME SHOP skins (scripts/lib/rigPrint.ts). Do not regenerate unless a standard model is changed on purpose.",
+  "looks": {
+    "bot": "5bb53855f44b637ca67f40f0",
+    "bruno": "46b14bf0e5d2b94a6fd0843b",
+    "crash": "363e73df231dd795805b97a1",
+    "dex": "4c553516f3fc0fc8d9e3f92b",
+    "kai": "f7df1dee23b27e9c2d977b5f",
+    "lucien": "5a66cab52cfd98ee6ec54db6",
+    "nika": "0244597573f6ca781629797c",
+    "ray": "408259a1b7ef3f580a6f4729",
+    "rina": "e1c7202cccef72df35411d4c",
+    "tank": "fb3bf25763a0395034fa66ed",
+    "vale": "99dad1b5f0a2401cfac35538",
+    "vega": "00112a0db061e0a2e196542c",
+    "zoe": "3ebd3dd9a08924a0ac534308"
+  }
+}

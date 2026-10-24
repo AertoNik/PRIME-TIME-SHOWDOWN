@@ -5,6 +5,7 @@ import { DIFFICULTY_ORDER, FIGHTERS } from '../config/fighters';
 import type { Difficulty, FighterId } from '../config/types';
 import type { MatchResultData } from '../combat/types';
 import { Collection } from './Collection';
+import { inRoster } from './roster';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
 
 /**
@@ -311,9 +312,22 @@ export class EventManager {
     return item ? { cost: item.cost, event: e } : null;
   }
 
+  /**
+   * Alpha 1.8.8: the season whose exchange opens the star `id` and where we are in its calendar
+   * (PRIME SHOP reads it — one calendar for the event and the shop).
+   */
+  fighterSeason(id: FighterId): { event: EventDef; phase: 'before' | 'running' | 'after' } | null {
+    const e = this.registry.find((x) => x.fighters?.some((f) => f.fighter === id));
+    if (!e) return null;
+    const now = this.now();
+    const phase = this.isRunning(e, now) ? 'running' : e.end && now >= Date.parse(e.end) ? 'after' : 'before';
+    return { event: e, phase };
+  }
+
   /** In the producer's roster (a seasonal star stays there for good once opened). */
+  /** In the roster: opened for tokens / signed (the save) or by a confirmed PRIME SHOP purchase (1.8.8). */
   ownsFighter(id: FighterId): boolean {
-    return !!this.store.data.fighters[id]?.unlocked;
+    return inRoster(this.store.data, id);
   }
 
   /**
@@ -336,7 +350,7 @@ export class EventManager {
     const item = e.fighters?.find((x) => x.fighter === id);
     if (!item) return { ok: false, reason: 'Этого бойца нет в обмене' };
     const s = this.store.data;
-    if (s.fighters[id].unlocked) return { ok: false, reason: 'Боец уже в вашем составе' };
+    if (this.ownsFighter(id)) return { ok: false, reason: 'Боец уже в вашем составе' };
     const p = this.progress(e.id);
     const lack = item.cost - p.tokens;
     if (lack > 0) return { ok: false, reason: `Не хватает ${lack} ${plural(lack, e.currency!.short)}` };

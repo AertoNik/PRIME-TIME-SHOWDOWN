@@ -1,5 +1,7 @@
 import type PocketBase from 'pocketbase';
+import type { OfferRevision } from '../config/offer.config';
 import { APP_VERSION } from '../config/version';
+import { orderOf, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
 
 // Alpha 1.8.1 — the game's only door to the accounts server: the official PocketBase JS SDK plus
 // the PRIME routes (backend/pb_hooks). Every failure becomes a PrimeApiError with a `kind` the
@@ -144,7 +146,55 @@ export interface ServerConfig {
   pow: boolean;
   /** 1.8.4: export, deletion and «send again» with a timer exist on this server. */
   accountTools: boolean;
+  /** 1.8.8 stage 3: PRIME CHECKOUT exists on this server (/api/prime/shop/*). */
+  shopCheckout: boolean;
+  /**
+   * 1.8.8 stage 4: orders, Robokassa's notifications and the registry of rights exist on this server
+   * (/api/prime/shop/purchases, /orders/…). Whether payments are switched ON is /api/prime/shop/status.
+   */
+  shopPayments: boolean;
+  /**
+   * 1.8.8: what the server sells now (null: a server that does not say) — the items' OFFICIAL prices (pricesKop;
+   * null = not approved) and what a payment in this mode asks (chargeKop: the official price, or a staging
+   * server's test amount); env «demo» during the official site's demonstration (until demoUntil, Moscow time).
+   */
+  shop: { selling: boolean; env: PayEnv; pricesKop: Record<string, number | null>; chargeKop: Record<string, number | null>; demoUntil: string } | null;
 }
+
+/** 1.8.8 stage 3: the offer revision in force as the server states it (the same shape as offer.config.ts). */
+export type ServerOffer = OfferRevision;
+
+/** 1.8.8 stage 3: GET /api/prime/shop/status — the signed-in account and PRIME SHOP, as the server sees them. */
+export interface ShopServerStatus {
+  verified: boolean;
+  legalNeeds: string[];
+  offer: ServerOffer | null;
+  /** The newest offer revision this account accepted (0: none). */
+  acceptedRevision: number;
+  sales: boolean;
+  payments: boolean;
+  /** Confirmed purchases (skus) of this account — the server's registry of rights (stage 4). */
+  owned: string[];
+  /** 1.8.8 stage 4: «test» / «demo» on a server in Robokassa's test mode (every step is labelled a test payment). */
+  env: PayEnv;
+  /** What a payment in that mode asks, in kopecks (null: not for sale; absent: a stage-3 server). */
+  pricesKop: Record<string, number | null> | null;
+  /** 1.8.8 final: the items' official prices in kopecks (null: not approved; absent: an older server). */
+  listKop: Record<string, number | null> | null;
+  /** This account's open (unpaid) orders. */
+  orders: ServerOrder[];
+}
+
+/** 1.8.8 stage 4: POST /api/prime/shop/checkout once everything passed — the order and Robokassa's page. */
+export interface CheckoutStart {
+  order: ServerOrder;
+  /** As the server sent it — PrimeCheckout checks it (checkPaymentPage) before leaving for it. */
+  payment: unknown;
+  /** The same open order again (a repeated tap): the same InvId, never a second payment. */
+  reused: boolean;
+}
+
+export type { PaymentPage, ServerOrder };
 
 /** 1.8.3: the page's game session, sent with every cloud write (the key is random and lives only in memory). */
 export interface SessionToken {
@@ -193,6 +243,11 @@ function toError(e: unknown): PrimeApiError {
 type Rec = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 0);
+/** A payment environment as the server names it (anything unknown reads as live — never as a test). */
+const payEnv = (v: unknown): PayEnv => (v === 'test' || v === 'demo' ? v : 'live');
+/** sku → whole kopecks above zero, or null. */
+const kopMap = (v: unknown): Record<string, number | null> =>
+  Object.fromEntries(Object.entries((v ?? {}) as Record<string, unknown>).map(([k, x]) => [k, typeof x === 'number' && Number.isInteger(x) && x > 0 ? x : null]));
 
 function cloudSaveOf(r: Rec): CloudSave {
   return {
@@ -326,6 +381,80 @@ export class PrimeApi {
         : null,
       pow: r.pow === 1,
       accountTools: r.account === 1,
+      shopCheckout: ((r.shop ?? {}) as Rec).checkout === 1,
+      shopPayments: ((r.shop ?? {}) as Rec).payments === 1,
+      shop: (() => {
+        const sh = (r.shop ?? {}) as Rec;
+        if (sh.payments !== 1 || !sh.prices || typeof sh.prices !== 'object') return null;
+        const pricesKop = kopMap(sh.prices);
+        return {
+          selling: sh.selling === true,
+          env: payEnv(sh.env),
+          pricesKop,
+          // (a server without «charge» charges the listed price)
+          chargeKop: sh.charge && typeof sh.charge === 'object' ? kopMap(sh.charge) : pricesKop,
+          demoUntil: typeof sh.demoUntil === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sh.demoUntil) ? sh.demoUntil : '',
+        };
+      })(),
+    };
+  }
+
+  // ------------------------------------------------------------ PRIME CHECKOUT (1.8.8 stage 3)
+  /** The signed-in account and PRIME SHOP: documents, the offer and this account's consent, sales, payments. */
+  async shopStatus(): Promise<ShopServerStatus> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/shop/status', { ...o, method: 'GET' }));
+    const off = r.offer && typeof r.offer === 'object' ? (r.offer as Rec) : null;
+    const l = (r.legal ?? {}) as Rec;
+    return {
+      verified: r.verified === true,
+      legalNeeds: Array.isArray(l.needs) ? l.needs.filter((x): x is string => typeof x === 'string') : [],
+      offer: off ? { revision: int(off.revision), sha256: str(off.sha256), title: str(off.title), url: str(off.url), effectiveFrom: str(off.effectiveFrom) } : null,
+      acceptedRevision: int(r.accepted),
+      sales: r.sales === true,
+      payments: r.payments === true,
+      owned: Array.isArray(r.owned) ? r.owned.filter((x): x is string => typeof x === 'string') : [],
+      env: payEnv(r.env),
+      pricesKop: r.prices && typeof r.prices === 'object' ? kopMap(r.prices) : null,
+      listKop: r.listPrices && typeof r.listPrices === 'object' ? kopMap(r.listPrices) : null,
+      orders: Array.isArray(r.orders) ? r.orders.map(orderOf).filter((o): o is ServerOrder => o !== null) : [],
+    };
+  }
+
+  /** Accept the CURRENT offer revision (the server checks it is the one in force); the accepted revision. */
+  async acceptOffer(revision: number, sha256: string, lang: 'ru' | 'en'): Promise<number> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/shop/offer/accept', { ...o, method: 'POST', body: { revision, sha256, lang } }));
+    return int(r.accepted);
+  }
+
+  /**
+   * Start a purchase of `sku`. Only the sku is sent — never a price, an account or a status: the server takes
+   * the price from its own list and the account from the session, checks everything again and makes the
+   * order (or gives back the open one) with Robokassa's signed payment page. A refusal is a PrimeApiError with
+   * the reason in `code` (owned, sales_closed, offer_consent_required, payments_unavailable, too_many_orders…).
+   */
+  async startCheckout(sku: string): Promise<CheckoutStart> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/shop/checkout', { ...o, method: 'POST', body: { sku } }));
+    const order = orderOf(r.order);
+    // anything but an order is «not available» (never a guess that something was bought)
+    if (!order) throw new PrimeApiError('server', 'payments_unavailable', 503);
+    return { order, payment: r.payment, reused: r.reused === true };
+  }
+
+  /** 1.8.8 stage 4: one of this account's orders as the server sees it, and the account's rights now. */
+  async order(inv: number): Promise<{ order: ServerOrder; owned: string[] }> {
+    const r = await this.call((o) => this.pb.send<Rec>(`/api/prime/shop/orders/${Math.floor(inv)}`, { ...o, method: 'GET' }));
+    const order = orderOf(r.order);
+    if (!order) throw new PrimeApiError('server', 'bad_answer', 502);
+    return { order, owned: Array.isArray(r.owned) ? r.owned.filter((x): x is string => typeof x === 'string') : [] };
+  }
+
+  /** 1.8.8 stage 4: what this PRIME ID owns from PRIME SHOP and its latest orders (every device, every sign-in). */
+  async purchases(): Promise<{ env: PayEnv; owned: string[]; orders: ServerOrder[] }> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/shop/purchases', { ...o, method: 'GET' }));
+    return {
+      env: payEnv(r.env),
+      owned: Array.isArray(r.owned) ? r.owned.filter((x): x is string => typeof x === 'string' && x.length <= 64) : [],
+      orders: Array.isArray(r.orders) ? r.orders.map(orderOf).filter((o): o is ServerOrder => o !== null) : [],
     };
   }
 

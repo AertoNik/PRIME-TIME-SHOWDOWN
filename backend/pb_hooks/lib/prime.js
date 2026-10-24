@@ -127,6 +127,20 @@ function config(e) {
     })(),
     pow: 1,
     account: 1,
+    // 1.8.8 stage 3: this server knows PRIME CHECKOUT (/api/prime/shop/*); sales and payments are told
+    // per account by /api/prime/shop/status. Stage 4: payments: 1 — orders, the Robokassa notifications and
+    // the registry of rights exist here (whether payments are switched ON is /api/prime/shop/status)
+    // 1.8.8: and the catalog's truth — does this server sell now (sales open AND payments configured), in which
+    // mode (test on a staging server) and at which prices (kopecks; null = not approved): the same numbers
+    // PRIME CHECKOUT and the payment page use
+    shop: (function () {
+      const PAY = require(`${__hooks}/lib/payments.js`);
+      const cfg = PAY.config();
+      const env = PAY.shopEnv(cfg);
+      // prices: the OFFICIAL prices (approved by the owner); charge: what a payment in this mode asks (test: the
+      // staging amounts; demo and live: the official price — Robokassa's test mode moves no money)
+      return { checkout: 1, payments: 1, selling: cfg.ready && PAY.salesOpen(cfg), env: env, prices: PAY.listPrices(), charge: PAY.pricesFor(env), demoUntil: cfg.ready && cfg.env === 'demo' ? cfg.demoDay : '' };
+    })(),
   });
 }
 
@@ -288,7 +302,9 @@ function readUpload(e, b) {
     fail(e, 400, 'hash_mismatch');
     return null;
   }
-  const c = V.checkSaveText(text);
+  // 1.8.8 stage 4: a fighter opened by a PRIME SHOP purchase may be the selected one, although the purchase
+  // is never written into the save (the server's registry of rights says so — lib/payments.js)
+  const c = V.checkSaveText(text, { paidFighters: require(`${__hooks}/lib/payments.js`).paidFighters(e.app, e.auth.id) });
   if (!c.ok) {
     e.app.logger().info('prime save rejected', 'user', e.auth.id, 'code', c.code, 'problems', c.problems.join('; ').slice(0, 500));
     fail(e, c.code === 'schema_unsupported' ? 409 : 400, c.code, { problems: c.problems.slice(0, 5) });

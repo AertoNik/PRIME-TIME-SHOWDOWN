@@ -18,10 +18,13 @@
 
 // version 2 (20.10.2026): the release texts replaced the version-1 drafts — a real change, so `reaccept`
 // is 2 as well (an account that accepted the drafts accepts the release texts once)
+// version 3 of terms and privacy (24.10.2026, Alpha 1.8.8): PRIME SHOP purchases added. The rules for playing
+// do not change — every purchase rule lives in the public offer, which a buyer accepts separately in PRIME
+// CHECKOUT — so terms keep `reaccept: 2`: nobody is stopped at the next start; new accounts accept version 3.
 const DOCS = {
-  terms: { version: 2, reaccept: 2, required: true },
+  terms: { version: 3, reaccept: 2, required: true },
   consent: { version: 2, reaccept: 2, required: true },
-  privacy: { version: 2, reaccept: 0, required: false },
+  privacy: { version: 3, reaccept: 0, required: false },
 };
 
 /** The documents a player must tick (in this order). */

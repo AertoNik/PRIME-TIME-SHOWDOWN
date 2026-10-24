@@ -229,7 +229,8 @@ export async function ownServerStarted(child: { exitCode: number | null }, logs:
 
 /** Create or update a superuser of a data dir from the CLI (used by the isolated tests only). */
 export function upsertSuperuser(dir: string, email: string, password: string, ports: Ports): void {
-  const r = cp.spawnSync(PB_BIN, ['superuser', 'upsert', email, password, `--dir=${dir}`, `--migrationsDir=${MIGRATIONS}`, `--hooksDir=${HOOKS}`, '--automigrate=false'], {
+  // (flags first, then «--»: a random password may start with «-» and must not be read as a flag)
+  const r = cp.spawnSync(PB_BIN, ['superuser', 'upsert', `--dir=${dir}`, `--migrationsDir=${MIGRATIONS}`, `--hooksDir=${HOOKS}`, '--automigrate=false', '--', email, password], {
     encoding: 'utf8',
     env: pbEnv(ports),
   });
