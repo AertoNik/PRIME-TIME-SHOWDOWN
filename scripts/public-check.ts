@@ -210,9 +210,16 @@ async function main(): Promise<void> {
   check('the game\'s fast challenge hash is exactly SHA-256 (3000 numbers)', powSame);
   const pages: string[] = [];
   const drafts: string[] = [];
-  // the date each release text carries: version 2 — 20.10.2026; version 3 (terms, privacy: PRIME SHOP) — the day the
-  // offer takes effect (`legal:release --approved --date=…`, the same day in offer.config.ts)
-  const RELEASE_DAY: Record<number, string> = { 2: '2026-10-20', 3: SHOP_OFFERS.find((o) => o.revision === 1)?.effectiveFrom ?? 'none' };
+  // the date each release text carries: version 2 — 20.10.2026; terms/privacy 3 (PRIME SHOP) — the day offer revision 1
+  // took effect; terms/privacy 4 and consent 3 (the seller's name in its passport spelling) — the day of revision 2
+  // (`legal:release --approved --date=…`, the same day in offer.config.ts)
+  const offerDay = (r: number) => SHOP_OFFERS.find((o) => o.revision === r)?.effectiveFrom ?? 'none';
+  const RELEASE_DAY: Record<string, Record<number, string>> = {
+    terms: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2) },
+    privacy: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2) },
+    consent: { 2: '2026-10-20', 3: offerDay(2) },
+    parents: { 2: '2026-10-20' },
+  };
   const RU_M = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   const EN_M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const dated = (html: string, iso: string) => {
@@ -227,10 +234,10 @@ async function main(): Promise<void> {
     if (!v || v[1] !== d || (want !== null && Number(v[2]) !== want) || !/primetimeshowdown\.official@gmail\.com/.test(html) || /<script/i.test(html)) pages.push(`${lang}/${d}`);
     // release texts: no draft banner, no placeholder, no note meant for the owner
     if (/doc-draft|class="todo"|TODO|\[(Уточнить|Требует|Confirm|To be confirmed)|Проект документа|Draft for review/.test(html)) drafts.push(`${lang}/${d}`);
-    if (!v || !dated(html, RELEASE_DAY[Number(v[2])] ?? 'none')) drafts.push(`${lang}/${d}: date`);
+    if (!v || !dated(html, RELEASE_DAY[d]?.[Number(v[2])] ?? 'none')) drafts.push(`${lang}/${d}: date`);
   }
   check(`every legal page exists in RU and EN, names its document, carries the server's version and the contact, no scripts${pages.length ? ' (' + pages.join(', ') + ')' : ''}`, pages.length === 0);
-  check(`the legal pages are release texts: dated (version 2 — 20.10.2026, version 3 — ${RELEASE_DAY[3]}), no draft banners or placeholders${drafts.length ? ' (' + drafts.join(', ') + ')' : ''}`, drafts.length === 0);
+  check(`the legal pages are release texts: each dated as its version (20.10.2026 / offer revisions: ${offerDay(1)}, ${offerDay(2)}), no draft banners or placeholders${drafts.length ? ' (' + drafts.join(', ') + ')' : ''}`, drafts.length === 0);
 
   // ======================================================= upgrade from 1.8.3.1
   const old = oldServer();

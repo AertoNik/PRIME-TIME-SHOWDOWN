@@ -11294,8 +11294,23 @@ button.pid-mini:active {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* the stand-in terms (test mode, the demonstration) have no page: a button that reads like the offer's link */
+.pco-doc {
+  display: inline;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: #9ff8ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
 .pco-offer a:focus-visible,
-.pco-check-text a:focus-visible {
+.pco-check-text a:focus-visible,
+.pco-doc:focus-visible {
   outline: 2px solid var(--ps-cyan);
   outline-offset: 2px;
   border-radius: 3px;

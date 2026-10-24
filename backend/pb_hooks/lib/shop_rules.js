@@ -78,9 +78,16 @@ module.exports = {
     {
       "revision": 1,
       "title": "Публичная оферта PRIME SHOP",
-      "url": "https://primetimeshowdown.online/legal/ru/offer.html",
+      "url": "https://primetimeshowdown.online/legal/ru/offer-r1.html",
       "effectiveFrom": "2026-10-24",
       "sha256": "2a6de21c5ed0452ce65667db792c1fc39c21675b0ac761ae785fb3b9a26b4625"
+    },
+    {
+      "revision": 2,
+      "title": "Публичная оферта PRIME SHOP",
+      "url": "https://primetimeshowdown.online/legal/ru/offer.html",
+      "effectiveFrom": "2026-10-24",
+      "sha256": "a8ae91f4be0a99336180823e5dfc8c0bc168b103ccbc3f10a3f98c41996a76c2"
     }
   ],
   "seasons": {

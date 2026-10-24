@@ -1,7 +1,9 @@
+import { DEMO_OFFER, DEMO_OFFER_TEXT, TEST_OFFER, TEST_OFFER_TEXT, offerDate, type OfferRevision } from '../config/offer.config';
 import type { Game } from '../game/Game';
 import { lang, setLang, tr, type Lang } from '../i18n/lang';
 import { DEFAULT_AGE, ageDecision, countryOptions, needsCountry } from '../net/ageRules';
 import { CONTACT_EMAIL, LEGAL_DOCS, LEGAL_TITLE, legalPath, type LegalDocId } from '../net/legal';
+import { sha256 } from '../net/sha256';
 import { esc } from './dom';
 
 // Alpha 1.8.4 — the legal side of PRIME ID, kept small: compact links, a document opened ON TOP of the
@@ -22,28 +24,8 @@ const DOC_RE = /(?:^|\/)(?:(ru|en)\/)?(terms|privacy|consent|parents)\.html(#.*)
  * document returns to it unchanged). Scrolls on its own; closes with ×, «Закрыть», Esc or a tap outside.
  */
 export function openLegalDoc(g: Game, doc: LegalDocId, docLang: Lang = lang()): void {
-  const host = (g.ui.root.querySelector('.modal-root') as HTMLElement | null) ?? g.ui.root;
-  host.querySelector('.legal-sheet')?.remove();
-  const opener = document.activeElement as HTMLElement | null;
-  const sheet = document.createElement('div');
-  sheet.className = 'legal-sheet';
-  sheet.setAttribute('role', 'dialog');
-  sheet.setAttribute('aria-modal', 'true');
-  sheet.setAttribute('aria-labelledby', 'legal-title');
-  host.appendChild(sheet);
+  const { sheet, close } = mountSheet(g);
   let current: { doc: LegalDocId; lang: Lang } = { doc, lang: docLang };
-  const close = () => {
-    document.removeEventListener('keydown', onKey, true);
-    sheet.remove();
-    opener?.focus?.({ preventScroll: true });
-  };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      close();
-    }
-  };
-  document.addEventListener('keydown', onKey, true);
   const render = () => {
     const { doc: d, lang: l } = current;
     const title = LEGAL_TITLE[d][l];
@@ -98,9 +80,136 @@ export function openLegalDoc(g: Game, doc: LegalDocId, docLang: Lang = lang()): 
   render();
 }
 
+/** The empty sheet over the screen (one at a time): Esc and × close it, focus goes back to what opened it. */
+function mountSheet(g: Game): { sheet: HTMLElement; close: () => void } {
+  const host = (g.ui.root.querySelector('.modal-root') as HTMLElement | null) ?? g.ui.root;
+  host.querySelector('.legal-sheet')?.remove();
+  const opener = document.activeElement as HTMLElement | null;
+  const sheet = document.createElement('div');
+  sheet.className = 'legal-sheet';
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+  sheet.setAttribute('aria-labelledby', 'legal-title');
+  host.appendChild(sheet);
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    sheet.remove();
+    opener?.focus?.({ preventScroll: true });
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && sheet.isConnected) {
+      e.stopPropagation();
+      close();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  return { sheet, close };
+}
+
+// ------------------------------------------------------------ PRIME CHECKOUT: the terms before paying
+const SITE = 'https://primetimeshowdown.online/';
+/** The offer's page on this very site (works the same on the official domain, a preview and localhost). */
+const offerPage = (url: string) => (url.startsWith(SITE) ? './' + url.slice(SITE.length) : url);
+/** The stand-in terms of Robokassa's test mode, carried by the build (no page): TEST (staging) and DEMO. */
+const STAND_IN = new Map<number, string>([
+  [TEST_OFFER.revision, TEST_OFFER_TEXT],
+  [DEMO_OFFER.revision, DEMO_OFFER_TEXT],
+]);
+
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  // crypto.subtle exists only on secure pages (https, localhost); the build's own SHA-256 elsewhere
+  if (globalThis.crypto?.subtle) {
+    const d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    return Array.from(d, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  return sha256(new TextDecoder().decode(bytes));
+}
+
+/**
+ * 1.8.8: the terms a PRIME CHECKOUT consent is about, read in place (phones included), over the same purchase window:
+ * the public offer — its page, checked against the revision's SHA-256, so the text shown is exactly the one the
+ * server records — or, in Robokassa's test mode (staging, the demonstration), the stand-in terms the build carries
+ * (also checked against the server's SHA-256). Closing returns to the same purchase; nothing here ticks the consent.
+ */
+export function openOfferDoc(g: Game, o: OfferRevision): void {
+  const { sheet, close } = mountSheet(g);
+  const page = o.url ? offerPage(o.url) : '';
+  sheet.innerHTML = `<div class="legal-card panel">
+      <div class="legal-top">
+        <b id="legal-title">${esc(o.title)}</b>
+        <button type="button" class="legal-x" data-close aria-label="Закрыть">×</button>
+      </div>
+      <div class="legal-body" tabindex="0"><p class="muted">Загрузка…</p></div>
+      <div class="legal-foot">
+        ${page ? `<a href="${esc(page)}" target="_blank" rel="noopener">Открыть отдельной страницей</a>` : ''}
+        <button type="button" class="btn wide" data-close>Закрыть</button>
+      </div>
+    </div>`;
+  sheet.querySelectorAll<HTMLElement>('[data-close]').forEach((b) => b.addEventListener('click', close));
+  const body = sheet.querySelector('.legal-body') as HTMLElement;
+  sheet.addEventListener('click', (e) => {
+    if (e.target === sheet) return close();
+    const a = (e.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
+    if (!a || !a.closest('.legal-body')) return;
+    const href = a.getAttribute('href') ?? '';
+    // within the offer: its own sections; the PRIME ID documents open in the same kind of sheet
+    if (href.startsWith('#')) {
+      e.preventDefault();
+      (body.querySelector(`[id="${CSS.escape(href.slice(1))}"]`) as HTMLElement | null)?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const m = DOC_RE.exec(href);
+    if (m) {
+      e.preventDefault();
+      openLegalDoc(g, m[2] as LegalDocId, (m[1] as Lang | undefined) ?? 'ru');
+    } else if (!/^mailto:/.test(href)) {
+      a.href = new URL(href, new URL(page || './', location.href)).href;
+      a.target = '_blank';
+      a.rel = 'noopener';
+    }
+  });
+  const meta = `Редакция ${o.revision} · действует с ${esc(offerDate(o))}`;
+  void loadOffer(o, page).then((r) => {
+    if (!sheet.isConnected) return;
+    body.innerHTML = '';
+    if (r === 'stale') {
+      body.innerHTML = `<p>Текст условий в игре не совпадает с редакцией ${o.revision}, которую записывает сервер. Обновите страницу игры и откройте условия снова — до этого не подтверждайте согласие.</p>`;
+    } else if (r === 'offline') {
+      body.innerHTML = `<p>Не удалось загрузить условия. Проверьте соединение${page ? ' или откройте их отдельной страницей (ссылка ниже)' : ' и попробуйте ещё раз'}.</p>`;
+    } else {
+      r.insertAdjacentHTML('beforeend', `<p class="doc-meta">Это полный текст редакции ${o.revision}: именно её сервер записывает, когда вы отмечаете согласие.</p>`);
+      if (!o.url) r.insertAdjacentHTML('afterbegin', `<h1>${esc(o.title)}</h1><p class="doc-meta">${meta}</p>`);
+      body.appendChild(r);
+    }
+    body.scrollTop = 0;
+  });
+  (sheet.querySelector('.legal-x') as HTMLElement).focus({ preventScroll: true });
+}
+
+/** The terms' text as a cleaned document — or why it is not shown (never a text other than the revision's). */
+async function loadOffer(o: OfferRevision, page: string): Promise<HTMLElement | 'stale' | 'offline'> {
+  if (!o.url) {
+    const text = STAND_IN.get(o.revision);
+    if (text === undefined || sha256(text) !== o.sha256) return 'stale';
+    const out = document.createElement('div');
+    out.className = 'legal-doc';
+    out.innerHTML = `<p>${esc(text)}</p>`;
+    return out;
+  }
+  try {
+    const r = await fetch(page, { cache: 'no-cache', credentials: 'omit' });
+    if (!r.ok) return 'offline';
+    const bytes = await r.arrayBuffer();
+    if ((await sha256Hex(bytes)) !== o.sha256) return 'stale';
+    return cleanMain(new TextDecoder().decode(bytes)) ?? 'offline';
+  } catch {
+    return 'offline';
+  }
+}
+
 const cache = new Map<string, string>();
 
-/** The <main> of a document page, cleaned (the pages are ours, but nothing active is ever taken over). */
+/** A PRIME ID document's <main>, cleaned. */
 async function loadDoc(l: Lang, d: LegalDocId): Promise<HTMLElement | null> {
   const url = legalPath(l, d);
   try {
@@ -111,19 +220,24 @@ async function loadDoc(l: Lang, d: LegalDocId): Promise<HTMLElement | null> {
       html = await r.text();
       cache.set(url, html);
     }
-    const main = new DOMParser().parseFromString(html, 'text/html').querySelector('main');
-    if (!main) return null;
-    main.querySelectorAll('script,iframe,object,embed,style,link,form,nav.doc-nav').forEach((n) => n.remove());
-    main.querySelectorAll('*').forEach((n) => {
-      for (const at of Array.from(n.attributes)) if (/^on/i.test(at.name) || (at.name === 'href' && /^\s*javascript:/i.test(at.value))) n.removeAttribute(at.name);
-    });
-    const out = document.createElement('div');
-    out.className = 'legal-doc';
-    out.innerHTML = main.innerHTML;
-    return out;
+    return cleanMain(html);
   } catch {
     return null;
   }
+}
+
+/** The <main> of a document page, cleaned (the pages are ours, but nothing active is ever taken over). */
+function cleanMain(html: string): HTMLElement | null {
+  const main = new DOMParser().parseFromString(html, 'text/html').querySelector('main');
+  if (!main) return null;
+  main.querySelectorAll('script,iframe,object,embed,style,link,form,nav.doc-nav').forEach((n) => n.remove());
+  main.querySelectorAll('*').forEach((n) => {
+    for (const at of Array.from(n.attributes)) if (/^on/i.test(at.name) || (at.name === 'href' && /^\s*javascript:/i.test(at.value))) n.removeAttribute(at.name);
+  });
+  const out = document.createElement('div');
+  out.className = 'legal-doc';
+  out.innerHTML = main.innerHTML;
+  return out;
 }
 
 /** The compact row of documents (+ the language) for PRIME ID — every element carries data-acc. */

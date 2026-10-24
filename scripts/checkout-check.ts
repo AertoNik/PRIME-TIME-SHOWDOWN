@@ -15,7 +15,8 @@
 //               migration down and up.
 
 import { EVENTS } from '../src/config/events.config';
-import { SHOP_OFFERS, currentOffer, type OfferRevision } from '../src/config/offer.config';
+import { DEMO_OFFER, DEMO_OFFER_TEXT, SHOP_OFFERS, TEST_OFFER, TEST_OFFER_TEXT, currentOffer, type OfferRevision } from '../src/config/offer.config';
+import { sha256 } from '../src/net/sha256';
 import { SHOP_ITEMS, SHOP_SALES_OPEN, approvedPriceRub, formatKop, rubToKop, type ShopSku } from '../src/config/shop.config';
 import {
   CHECKOUT_PENDING_KEY,
@@ -212,9 +213,11 @@ function safetyChecks(): void {
   for (const s of SKUS) for (const st of ['guest', 'ready', 'unverified', 'expired'] as const) buildCheckout({ sku: s, state: w.shop.state(SHOP_ITEMS.find((i) => i.sku === s)!), priceRub: 199, salesOpen: true, offer: OFFER1, account: ACC(st), acceptedRevision: 0, paymentsReady: true, consentTicked: true });
   check('opening, ticking and closing the window change nothing in the save', JSON.stringify(w.store.data) === before && w.store.saves === 0);
   // offer registry
-  // revision 1 — approved by the owner on 24.10.2026 (legal:release --approved); in force from its own day on
-  const rev1 = SHOP_OFFERS[0];
-  check('offer registry: revision 1 is the approved offer page on the game domain, in force from its day (not before)', SHOP_OFFERS.length === 1 && rev1.revision === 1 && rev1.url === 'https://primetimeshowdown.online/legal/ru/offer.html' && /^[0-9a-f]{64}$/.test(rev1.sha256) && currentOffer(Date.parse(rev1.effectiveFrom + 'T00:00:00Z'))?.revision === 1 && currentOffer(Date.parse(rev1.effectiveFrom + 'T00:00:00Z') - 1) === null);
+  // every approved revision (1 — 24.10.2026; 2 — the seller's name in its passport spelling): numbered 1…N, the newest
+  // at offer.html, each older one kept at its own offer-r<N>.html; the newest is in force from its day (not before)
+  const lastRev = SHOP_OFFERS[SHOP_OFFERS.length - 1];
+  const dayOf = (o: OfferRevision) => Date.parse(o.effectiveFrom + 'T00:00:00Z');
+  check('offer registry: revisions 1…N, the newest at /legal/ru/offer.html, every older one kept at its own offer-r<N>.html; the newest is in force from its day', SHOP_OFFERS.length >= 1 && SHOP_OFFERS.every((o, i) => o.revision === i + 1 && /^[0-9a-f]{64}$/.test(o.sha256) && o.url === `https://primetimeshowdown.online/legal/ru/${o === lastRev ? 'offer' : `offer-r${o.revision}`}.html` && (i === 0 || dayOf(o) >= dayOf(SHOP_OFFERS[i - 1]))) && currentOffer(dayOf(lastRev))?.revision === lastRev.revision && currentOffer(dayOf(SHOP_OFFERS[0]) - 1) === null);
   const bad = SHOP_OFFERS.filter((o) => {
     const rel = o.url.replace(/^https:\/\/primetimeshowdown\.online\//, '');
     const file = path.join(ROOT, 'public', rel);
@@ -230,9 +233,21 @@ function safetyChecks(): void {
   const sellerJson = JSON.parse(read('docs/legal-drafts/seller.json')) as { inn: string };
   const seller = read('src/config/seller.config.ts');
   const scan = (dir: string): string[] => (fs.existsSync(path.join(ROOT, dir)) ? fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e: any) => (e.isDirectory() ? (dir === 'docs' && e.name === 'legal-drafts' ? [] : scan(path.join(dir, e.name))) : /\.(ts|js|html|md|css|json|sh|example)$/.test(e.name) ? [path.join(dir, e.name)] : [])) : []);
-  const innAt = ['src', 'public', 'docs', 'scripts', 'backend/pb_hooks', 'backend/pb_migrations', 'deploy'].flatMap(scan).concat(['index.html', 'README.md']).filter((f) => f !== 'src/config/seller.config.ts' && !/^public\/legal\/ru\/(offer|refunds|seller|shop|terms|privacy)\.html$/.test(f) && read(f).includes(sellerJson.inn));
+  const innAt = ['src', 'public', 'docs', 'scripts', 'backend/pb_hooks', 'backend/pb_migrations', 'deploy'].flatMap(scan).concat(['index.html', 'README.md']).filter((f) => f !== 'src/config/seller.config.ts' && !/^public\/legal\/ru\/(offer|offer-r\d+|refunds|seller|shop|terms|privacy)\.html$/.test(f) && read(f).includes(sellerJson.inn));
   const sellerPublished = !/export const SELLER: SellerInfo \| null = null;/.test(seller);
   check(sellerPublished ? 'the seller\'s details are published (approved): the seller page, the offer and the game\'s line carry the same ИНН' : 'the seller\'s ИНН stays private until the owner approves publication: SELLER is null and the ИНН is nowhere outside docs/legal-drafts', innAt.length === 0 && (sellerPublished ? fs.existsSync(path.join(ROOT, 'public/legal/ru/seller.html')) && read('public/legal/ru/seller.html').includes(sellerJson.inn) && seller.includes(sellerJson.inn) : !fs.existsSync(path.join(ROOT, 'public/legal/ru/seller.html'))), innAt.join());
+  // 24.10.2026: the seller's name in its passport spelling («Артем»); the old spelling stays only in the archived offer
+  // revision 1 (its text is what was accepted then)
+  const sellerName = (JSON.parse(read('docs/legal-drafts/seller.json')) as { name: string }).name;
+  const oldName = ['src', 'public', 'docs/legal-drafts/site'].flatMap(scan).concat(['index.html']).filter((f) => !/^public\/legal\/ru\/offer-r\d+\.html$/.test(f) && /Артём Юрьевич|Artyom/.test(read(f)));
+  check(`the seller's name is written one way everywhere (seller.json = seller.config.ts = the pages); the old spelling only in archived offer revisions${oldName.length ? ' (' + oldName.join(', ') + ')' : ''}`, oldName.length === 0 && (!sellerPublished || (seller.includes(JSON.stringify(sellerName)) && read('public/legal/ru/seller.html').includes(sellerName) && read('public/legal/ru/offer.html').includes(sellerName))));
+  // 24.10.2026: the terms are read in place before paying (phones): a sheet over the purchase window, never a new
+  // tab; the text shown must hash to the revision the server records (the game's own SHA-256 for the stand-ins);
+  // the sheet never touches the consent box
+  const pcoSrc = read('src/ui/checkoutUI.ts');
+  const sheetSrc = read('src/ui/legalUI.ts');
+  const offerSheet = sheetSrc.slice(sheetSrc.indexOf('export function openOfferDoc'), sheetSrc.indexOf('const cache = new Map'));
+  check('PRIME CHECKOUT: the terms (the offer; TEST/DEMO stand-ins) open in a sheet over the window, checked against the revision\'s SHA-256, without ticking the consent', (pcoSrc.match(/data-pco="doc"/g) ?? []).length === 2 && /if \(t\.dataset\.pco === 'doc'\) e\.preventDefault\(\)/.test(pcoSrc) && /case 'doc':[\s\S]{0,120}openOfferDoc\(g, o\)/.test(pcoSrc) && /sha256\(text\) !== o\.sha256/.test(offerSheet) && /\(await sha256Hex\(bytes\)\) !== o\.sha256/.test(offerSheet) && !/consent|ticked|checked/.test(offerSheet.replace(/отмечаете согласие|согласие/g, '')) && sha256(DEMO_OFFER_TEXT) === DEMO_OFFER.sha256 && sha256(TEST_OFFER_TEXT) === TEST_OFFER.sha256);
   const tpl = ['offer', 'refunds', 'seller', 'shop', 'terms', 'privacy'].map((p) => read(`docs/legal-drafts/site/ru/${p}.html`));
   check('the six release pages use only the fields legal:release fills, name their document, carry the contact and no script', tpl.every((t) => (t.match(/\{\{([A-Z_]+)\}\}/g) ?? []).every((m) => /^\{\{(NAME|STATUS|INN|NPD_SINCE|EMAIL|DATE|PRICES_DATE|FOOTER|CATALOG|CONTACT_INLINE|EXTRA_REQUISITES|EXTRA_ROWS)\}\}$/.test(m)) && /<meta name="prime-doc" content="[a-z]+" data-version="\d+"/.test(t) && /\{\{(EMAIL|CONTACT_INLINE)\}\}/.test(t) && !/<script/i.test(t)));
   // the owner's decisions (24.10.2026): email is the only public contact — no phone or city written into a page,

@@ -5,7 +5,7 @@
 import type { SellerInfo } from './seller.types';
 
 export const SELLER: SellerInfo | null = {
-  "name": "Никора Артём Юрьевич",
+  "name": "Никора Артем Юрьевич",
   "nameShort": "Никора А. Ю.",
   "inn": "950000333623",
   "npdSince": "2026-10-19",

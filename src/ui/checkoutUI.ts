@@ -8,6 +8,7 @@ import { POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepCheckin
 import { PrimeApiError, type CheckoutStart, type ShopServerStatus } from '../net/PrimeApi';
 import { accountAction, openLogin, openRegister } from './accountUI';
 import { orderBodyHTML, orderFoot, orderStatus, type OrderIssue, type OrderView } from './checkoutOrder';
+import { openOfferDoc } from './legalUI';
 import { DEV_SCENARIO_DEFAULT, applyDevScenario, devOrderView, devPanelHTML, devScenarioTap, type DevScenario } from './checkoutPreview';
 import { esc, el } from './dom';
 import { UI_ICONS } from './icons';
@@ -283,6 +284,8 @@ export class PrimeCheckout {
       if (e.target === root) return this.close();
       const t = (e.target as HTMLElement).closest('[data-pco],[data-dev]') as HTMLElement | null;
       if (!t) return;
+      // the terms open in a sheet over this window (never a new tab, never ticking the consent box)
+      if (t.dataset.pco === 'doc') e.preventDefault();
       if (DEV_PREVIEW && t.dataset.dev) {
         const next = devScenarioTap(this.dev, t);
         if (next) {
@@ -429,6 +432,11 @@ export class PrimeCheckout {
       case 'noop':
       case 'support':
         return;
+      case 'doc': {
+        const o = this.view().offer;
+        if (o) openOfferDoc(g, o);
+        return;
+      }
       case 'repay':
         void this.pay(true);
         return;
@@ -991,7 +999,8 @@ export class PrimeCheckout {
     if (!o) {
       return `<section class="pco-offer"><span class="pco-offer-ico">${ICON.doc}</span><div><b>Условия покупки</b><span>Публичная оферта PRIME SHOP будет опубликована до начала продаж.</span></div></section>`;
     }
-    const link = (label: string) => (o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${label}</a>` : `<u>${label}</u>`);
+    // the terms read in place (a sheet over this window; the page stays a plain link for a browser without scripts)
+    const link = (label: string) => (o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener" data-pco="doc">${label}</a>` : `<button type="button" class="pco-doc" data-pco="doc">${label}</button>`);
     const head = `<span class="pco-offer-ico">${ICON.doc}</span><div><b>${link(esc(o.title))}</b><span>Редакция ${o.revision} · действует с ${esc(offerDate(o))}${o.url ? '' : ' · тест, документа нет'}</span></div>`;
     // the consent box: for a signed-in account that can buy, never ticked in advance
     const canTick = v.block === null || v.block === 'payments_unavailable';

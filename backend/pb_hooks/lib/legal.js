@@ -21,10 +21,12 @@
 // version 3 of terms and privacy (24.10.2026, Alpha 1.8.8): PRIME SHOP purchases added. The rules for playing
 // do not change — every purchase rule lives in the public offer, which a buyer accepts separately in PRIME
 // CHECKOUT — so terms keep `reaccept: 2`: nobody is stopped at the next start; new accounts accept version 3.
+// terms 4, consent 3, privacy 4 (24.10.2026): the operator's name corrected to its passport spelling — a small fix,
+// so `version` only: nobody is asked again; earlier records keep the version they name.
 const DOCS = {
-  terms: { version: 3, reaccept: 2, required: true },
-  consent: { version: 2, reaccept: 2, required: true },
-  privacy: { version: 3, reaccept: 0, required: false },
+  terms: { version: 4, reaccept: 2, required: true },
+  consent: { version: 3, reaccept: 2, required: true },
+  privacy: { version: 4, reaccept: 0, required: false },
 };
 
 /** The documents a player must tick (in this order). */
