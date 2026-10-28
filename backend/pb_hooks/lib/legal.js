@@ -99,4 +99,10 @@ function record(tx, uid, docs, action, lang, privacyShown, age) {
   if (age) add(tx, uid, { doc: 'age', version: 0, lang: lang, action: 'declared', country: age.country, ageBand: age.band });
 }
 
-module.exports = { DOCS, requiredDocs, publicInfo, needs, checkAccept, record };
+/** 1.8.9: the account declared «18+» (the offer sells to adults only; only «13-17» / «18+» is ever stored). */
+function adult(app, uid) {
+  const r = latest(app, uid, 'age');
+  return !!r && r.getString('ageBand') === '18+';
+}
+
+module.exports = { DOCS, requiredDocs, publicInfo, needs, checkAccept, record, adult };

@@ -73,7 +73,7 @@ module.exports = {
     "fx_vhs_card_frame": 49,
     "fighter_lucien": null
   },
-  "salesOpen": false,
+  "salesOpen": true,
   "offers": [
     {
       "revision": 1,

@@ -290,10 +290,11 @@ export function formatKop(kop: number): string {
 }
 
 /**
- * Real-money sales are switched on only together with payments (stage 4). The server has its own
- * second switch (PRIME_SHOP_SALES=open): a release alone never opens sales.
+ * This release MAY sell for real money (1.8.9: the owner's decision to open PRIME SHOP to every PRIME ID).
+ * It opens nothing by itself: the PRIME NETWORK server decides — its live payment mode (with the receipt) AND
+ * its own sales switch. Closing that switch stops new orders at once; paid orders are still delivered.
  */
-export const SHOP_SALES_OPEN = false;
+export const SHOP_SALES_OPEN = true;
 
 // (1.8.8 stage 3: the public offer moved to src/config/offer.config.ts — revisions with their date
 // and the hash of the published text, not a bare address.)

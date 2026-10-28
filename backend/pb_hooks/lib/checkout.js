@@ -120,7 +120,7 @@ function status(e) {
     offer: offerOut(currentOffer(Date.now())),
     accepted: acceptedRevision(e.app, u.id),
     sales: salesOpen(),
-    payments: cfg.ready,
+    payments: PAY.payReady(cfg),
     // 1.8.8 stage 4: «test» on a server in Robokassa's test mode, «demo» during the official site's demonstration
     // (the game labels every price and step as a test payment); the amounts charged in that mode in kopecks
     // (null = not for sale) and the items' official prices (what the catalog shows)
@@ -182,6 +182,8 @@ function checkout(e) {
   const kop = PAY.priceKop(sku, env);
   // a demonstration never opens a fighter (a playable character is not a cosmetic to try out)
   if (env === 'demo' && it.kind === 'fighter') return fail(e, 409, 'not_in_demo');
+  // 1.8.9: real purchases — adults only (the offer, section 5.1); the registration rules are not changed
+  if (env === 'live' && !LEGAL.adult(e.app, u.id)) return fail(e, 403, 'adult_only');
   if (kop === null) return fail(e, 409, 'price_pending');
   const listKop = PAY.listPrices()[sku];
   const quote = { sku: sku, priceRub: kop / 100, priceKop: kop, listKop: listKop, currency: 'RUB', env: env };

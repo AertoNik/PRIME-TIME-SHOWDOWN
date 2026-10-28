@@ -139,7 +139,7 @@ function config(e) {
       const env = PAY.shopEnv(cfg);
       // prices: the OFFICIAL prices (approved by the owner); charge: what a payment in this mode asks (test: the
       // staging amounts; demo and live: the official price — Robokassa's test mode moves no money)
-      return { checkout: 1, payments: 1, selling: cfg.ready && PAY.salesOpen(cfg), env: env, prices: PAY.listPrices(), charge: PAY.pricesFor(env), demoUntil: cfg.ready && cfg.env === 'demo' ? cfg.demoDay : '' };
+      return { checkout: 1, payments: 1, selling: PAY.payReady(cfg) && PAY.salesOpen(cfg), env: env, prices: PAY.listPrices(), charge: PAY.pricesFor(env), demoUntil: cfg.ready && cfg.env === 'demo' ? cfg.demoDay : '' };
     })(),
     // 1.8.9: DAILY PRIME STREAK on this server (/api/prime/daily); 0 — the game shows no gift
     daily: require(`${__hooks}/lib/daily.js`).enabled() ? 1 : 0,

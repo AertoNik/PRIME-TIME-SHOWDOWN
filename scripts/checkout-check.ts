@@ -104,8 +104,8 @@ function modelChecks(): void {
   // all seven items, as the game is configured today
   const today = SKUS.map((s) => [s, buildCheckout(real(s, ACC('guest'))), buildCheckout(real(s, ACC('ready')))] as const);
   check('all 7 items open the window (name, price line, RUB)', today.every(([, a]) => !!a.item && a.priceText.length > 0 && a.currency === 'RUB'));
-  check('today: nothing can be paid for any item, guest or signed in (real sales are closed)', today.every(([, a, b]) => !a.canPay && !b.canPay));
-  check('today: the six cosmetics show their APPROVED price and the reason is «sales closed» (LUCIEN: the season, tokens only)', today.every(([s, a, b]) => (s === 'fighter_lucien' ? a.block === 'seasonal_only' && b.block === 'seasonal_only' : a.block === 'sales_closed' && b.block === 'sales_closed' && a.priceText === formatKop(rubToKop(approvedPriceRub(s))!))), today.map(([s, a]) => s + ':' + a.block + ':' + a.priceText).join(' '));
+  check('today: nothing can be paid for any item, guest or signed in, until the SERVER takes payments (the release only allows sales)', today.every(([, a, b]) => !a.canPay && !b.canPay));
+  check('today: the six cosmetics show their APPROVED price; a guest is asked for PRIME ID, a signed-in player waits for the server\'s payments (LUCIEN: the season, tokens only)', today.every(([s, a, b]) => (s === 'fighter_lucien' ? a.block === 'seasonal_only' && b.block === 'seasonal_only' : a.block === 'guest' && b.block === 'payments_unavailable' && a.priceText === formatKop(rubToKop(approvedPriceRub(s))!))), today.map(([s, a]) => s + ':' + a.block + ':' + a.priceText).join(' '));
   check('an unknown item is «недоступен», never sold', buildCheckout({ ...real('skin_ray_neon_runner', ACC('ready')), sku: 'skin_free_gold', state: null }).block === 'unavailable');
   // the order of the reasons, with test data in place of the missing approvals
   const open = (o: Partial<CheckoutInput> = {}): CheckoutInput => ({ ...real('skin_ray_neon_runner', ACC('ready')), priceRub: 199, salesOpen: true, offer: OFFER1, ...o });
@@ -429,7 +429,7 @@ async function serverChecks(): Promise<void> {
   testHooks(null);
   await startPb({ PRIME_SHOP_SALES: 'open' });
   const real4 = await Promise.all(SKUS.filter((s) => s !== 'fighter_lucien').map((s) => http('POST', '/api/prime/shop/checkout', A.tok, { sku: s })));
-  check('this release on a server: every cosmetic → sales_closed (the release keeps real sales closed) with its approved price, even with the server switch open', real4.every((r, i) => r.status === 409 && r.j.code === 'sales_closed' && r.j.quote?.priceKop === rubToKop(approvedPriceRub(SKUS.filter((s) => s !== 'fighter_lucien')[i]))), real4.map((r) => r.j.code + ':' + r.j.quote?.priceKop).join(' '));
+  check('this release on a server with the switch open but no Robokassa: every cosmetic → payments_unavailable with its approved price — no order', real4.every((r, i) => r.status === 503 && r.j.code === 'payments_unavailable' && r.j.quote?.priceKop === rubToKop(approvedPriceRub(SKUS.filter((s) => s !== 'fighter_lucien')[i]))), real4.map((r) => r.j.code + ':' + r.j.quote?.priceKop).join(' '));
   const pubRev = SHOP_OFFERS[SHOP_OFFERS.length - 1];
   const pubOffer = (await http('GET', '/api/prime/shop/offer')).j.offer;
   check(`…the server names the published offer (revision ${pubRev?.revision}, ${pubRev?.effectiveFrom}) and accepts consent only to exactly that text (another hash → offer_changed)`, !!pubRev && pubOffer?.revision === pubRev.revision && pubOffer?.sha256 === pubRev.sha256 && pubOffer?.url === pubRev.url && (await http('POST', '/api/prime/shop/offer/accept', B.tok, { revision: pubRev.revision, sha256: H1 })).j.code === 'offer_changed');

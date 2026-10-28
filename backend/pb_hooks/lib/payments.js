@@ -254,6 +254,12 @@ function config() {
   };
 }
 
+/** A payment can start here: Robokassa configured, and a LIVE one only with the «Receipt» (startOrder refuses). */
+function payReady(cfg) {
+  const c = cfg || config();
+  return c.ready && !(c.env === 'live' && !c.receipt);
+}
+
 /** The configuration without a single secret (the console command, the start log). */
 function publicConfig() {
   const c = config();
@@ -1539,6 +1545,7 @@ module.exports = {
   normalizeGameUrl,
   publicOrigin,
   receiptName,
+  payReady,
   role,
   countedEnv,
   config,

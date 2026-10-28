@@ -829,15 +829,78 @@ async function serverChecks(): Promise<void> {
   const ok256 = await notify(signedNote(s256.j.order.inv, '79.000000', id256, LIVE_P2, 'sha256'));
   check('…ResultURL with SHA256 (live Password#2, "79.000000", Shp_order): «OK{InvId}», a live right; an MD5 signature is refused', bad256.status === 400 && ok256.text === `OK${s256.j.order.inv}` && sqlite(`select env||'|'||status from shop_entitlements where "order"='${id256}';`) === 'live|active', `${bad256.status} ${ok256.text}`);
   await stopPb();
-  // the REAL 1.8.8 rules (prices only proposed, sales flag off) on a fully set-up live server: nothing is sold
+  // ---------------------------------------------------------------- 1.8.9: PRIME SHOP for every PRIME ID, real money
+  section('PUBLIC LIVE: настоящие продажи для всех PRIME ID (правила этого релиза, SHA256, Receipt, искусственные пароли)');
   testHooks(null);
-  await startPb(LIVE_ENV);
+  const PUB_ENV = { ...LIVE_ENV, ROBOKASSA_HASH_ALGORITHM: 'sha256' };
+  await startPb(PUB_ENV);
+  const P = await mk('player@payments.test');
+  const M = await mk('minor@payments.test', true, false);
+  for (const d of ['terms', 'consent']) await http('POST', '/api/collections/consents/records', su, { user: M.id, doc: d, version: cfg.legal[d].v, lang: 'ru', action: 'register' });
+  await http('POST', '/api/collections/consents/records', su, { user: M.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '13-17' });
   const realCfg = (await http('GET', '/api/prime/config')).j.shop;
-  const realBuy = await http('POST', '/api/prime/shop/checkout', B.tok, { sku: 'fx_prime_broadcast' });
-  const realLucien = await http('POST', '/api/prime/shop/checkout', B.tok, { sku: 'fighter_lucien' });
-  check('the real 1.8.8 rules on a live production server with Robokassa set up: the approved prices are shown (PRIME BROADCAST 49 ₽), but real sales stay closed (the release\'s flag) → sales_closed, no order', realCfg.selling === false && realCfg.prices.fx_prime_broadcast === 4900 && realCfg.prices.skin_bruno_casino_boss === 14900 && realCfg.prices.fighter_lucien === null && realBuy.status === 409 && realBuy.j.code === 'sales_closed' && realBuy.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where env='live' and user='${B.id}';`) === '0', JSON.stringify(realCfg) + ' ' + JSON.stringify(realBuy.j));
-  check('…LUCIEN\'s price is not approved: never sold (seasonal_only during his season, price_pending after it)', realLucien.status === 409 && ['seasonal_only', 'price_pending'].includes(realLucien.j.code), JSON.stringify(realLucien.j));
+  const realPrices = { skin_ray_neon_runner: 9900, skin_bruno_casino_boss: 14900, fx_prime_broadcast: 4900, fx_phantom_dash: 4900, fx_golden_confetti: 4900, fx_vhs_card_frame: 4900, fighter_lucien: null };
+  check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽; LUCIEN none)', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === v), JSON.stringify(realCfg));
+  const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
+  check('…the terms are the published offer (revision 2, /legal/ru/offer.html, its SHA-256) — never the test 9001 or the demo 9002 stand-in', liveOffer?.revision === 2 && liveOffer.url === 'https://primetimeshowdown.online/legal/ru/offer.html' && liveOffer.sha256.startsWith('a8ae91f4'), JSON.stringify(liveOffer));
+  const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
+  check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
+  await http('POST', '/api/prime/shop/offer/accept', M.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
+  const minor = await http('POST', '/api/prime/shop/checkout', M.tok, { sku: 'fx_prime_broadcast' });
+  check('a PRIME ID declared «13-17» → 403 adult_only (the offer sells to adults only), no order', minor.status === 403 && minor.j.code === 'adult_only' && sqlite(`select count(*) from shop_orders where user='${M.id}';`) === '0');
+  const acc = await http('POST', '/api/prime/shop/offer/accept', P.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
+  check('…accepting the offer is recorded by the server (consents: shop_offer, revision 2, its hash)', acc.status === 200 && sqlite(`select count(*) from consents where user='${P.id}' and doc='shop_offer' and version=2 and docHash='${liveOffer.sha256}';`) === '1');
+  const pb1 = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast', priceKop: 1, amountKop: 1, IsTest: '1', Receipt: 'forged' });
+  const pf = pb1.j.payment?.fields ?? {};
+  const pId = sqlite(`select id from shop_orders where invId=${pb1.j.order?.inv};`);
+  const pRc = pf.Receipt ? JSON.parse(decodeURIComponent(pf.Receipt)) : null;
+  check('…then a REAL order: 49 ₽ from the server catalog (the request\'s price / IsTest / Receipt ignored), a LIVE invoice number, env live, no IsTest', pb1.status === 200 && pb1.j.order.amountKop === 4900 && pf.OutSum === '49.00' && pb1.j.order.env === 'live' && pb1.j.order.inv >= PAYJS.invFloor('live', Date.now() - 60000) && pb1.j.order.inv < 500000000000000 && !('IsTest' in pf), JSON.stringify(pb1.j).slice(0, 200));
+  check('…SHA256 over "login:49.00:InvId:Receipt:<LIVE Password#1>:Shp_order=…"; the Receipt is {name = the receipt name, quantity 1, sum 49, tax none}', pf.SignatureValue === H.sha256(`${LOGIN}:49.00:${pb1.j.order.inv}:${pf.Receipt}:${LIVE_P1}:Shp_order=${pId}`) && !!pRc && Object.keys(pRc.items[0]).join() === 'name,quantity,sum,tax' && pRc.items[0].sum === 49 && pRc.items[0].name === 'Цифровой предмет оформления PRIME BROADCAST для игры PRIME TIME: SHOWDOWN' && pRc.items[0].tax === 'none');
+  const realLucien = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
+  check('…LUCIEN is never sold for roubles (seasonal_only during his season, price_pending after it), no order', realLucien.status === 409 && ['seasonal_only', 'price_pending'].includes(realLucien.j.code) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
+  const pInv = pb1.j.order.inv;
+  const pForged = [
+    await notify(signedNote(pInv, '49.000000', pId, TEST_P2, 'sha256')),
+    await notify({ ...signedNote(pInv, '49.000000', pId, LIVE_P2, 'sha256'), OutSum: '1.000000' }),
+    await notify(signedNote(pInv, '49.000000', pId, LIVE_P2, 'sha256', { IsTest: '1' })),
+    await notify(signedNote(pInv, '49.000000', 'abcdefghijklmno', LIVE_P2, 'sha256')),
+    await notify({ ...signedNote(pInv, '49.000000', pId, LIVE_P2, 'sha256'), SignatureValue: '0'.repeat(64) }),
+  ];
+  const pSucc = await fetch(API + `/api/prime/pay/robokassa/success?InvId=${pInv}&OutSum=49.00&Shp_order=${pId}&SignatureValue=${H.sha256(`49.00:${pInv}:${LIVE_P1}:Shp_order=${pId}`)}`, { redirect: 'manual' });
+  check('forged ResultURLs (a test password, a changed sum, IsTest=1, another order, a broken signature) and SuccessURL grant nothing; the order still waits', pForged.every((r: any) => r.text !== `OK${pInv}`) && pSucc.status === 303 && sqlite(`select status from shop_orders where id='${pId}';`) === 'pending_payment' && sqlite(`select count(*) from shop_entitlements where user='${P.id}';`) === '0', pForged.map((r: any) => r.status).join(','));
+  const okP = await notify(signedNote(pInv, '49.000000', pId, LIVE_P2, 'sha256'));
+  const againP = await notify(signedNote(pInv, '49.000000', pId, LIVE_P2, 'sha256'));
+  check('the signed live ResultURL (SHA256, live Password#2, "49.000000") → «OK{InvId}», one LIVE right; a repeated one → «OK», still one', okP.text === `OK${pInv}` && againP.text === `OK${pInv}` && sqlite(`select env||'|'||status||'|'||count(*) from shop_entitlements where user='${P.id}';`) === 'live|active|1');
+  const relog = (await http('POST', '/api/collections/users/auth-with-password', '', { identity: P.email, password: pw })).j.token as string;
+  check('…kept in the account: a new sign-in (another device) sees it owned; buying it again → 409 owned', (await http('GET', '/api/prime/shop/purchases', relog)).j.owned.includes('fx_prime_broadcast') && (await http('POST', '/api/prime/shop/checkout', relog, { sku: 'fx_prime_broadcast' })).j.code === 'owned');
+  const pRay = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
+  const rayId = sqlite(`select id from shop_orders where invId=${pRay.j.order?.inv};`);
+  check('(set-up) a real order for RAY (99 ₽) left waiting for its payment', pRay.status === 200 && pRay.j.order.amountKop === 9900 && pRay.j.payment.fields.OutSum === '99.00');
   await stopPb();
+  // the emergency switch: PRIME_SHOP_SALES=closed (a restart) — no new order; paid and waiting orders go on
+  for (const closed of ['closed', '']) {
+    await startPb({ ...PUB_ENV, PRIME_SHOP_SALES: closed });
+    const cCfg = (await http('GET', '/api/prime/config')).j.shop;
+    const cNew = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_phantom_dash' });
+    const cWait = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
+    check(`PRIME_SHOP_SALES=${closed || '(missing)'}: selling off at once, a new order → sales_closed, no payment page even for the waiting order — which stays as it was`, cCfg.selling === false && cNew.status === 409 && cNew.j.code === 'sales_closed' && !cNew.j.payment && cWait.j.code === 'sales_closed' && !cWait.j.payment && sqlite(`select status from shop_orders where id='${rayId}';`) === 'pending_payment' && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '2');
+    await stopPb();
+  }
+  await startPb({ ...PUB_ENV, PRIME_SHOP_SALES: 'closed' });
+  const rayOk = await notify(signedNote(pRay.j.order.inv, '99.000000', rayId, LIVE_P2, 'sha256'));
+  check('…sales closed: the signed ResultURL of the order made before is still confirmed and delivered; the earlier right stays', rayOk.text === `OK${pRay.j.order.inv}` && (await http('GET', '/api/prime/shop/purchases', P.tok)).j.owned.sort().join() === 'fx_prime_broadcast,skin_ray_neon_runner');
+  const rf = cli({ ...PUB_ENV, PRIME_SHOP_SALES: 'closed' }, 'prime-shop', 'refund', String(pRay.j.order.inv), 'reason=check');
+  const rfDone = cli({ ...PUB_ENV, PRIME_SHOP_SALES: 'closed' }, 'prime-shop', 'refund-done', String(pRay.j.order.inv));
+  check('…a live refund still works: refund_pending (manual, in the Robokassa cabinet) → refund-done → refunded, only that right revoked, the trail kept', /refund_pending/.test(rf) && sqlite(`select status from shop_orders where id='${rayId}';`) === 'refunded' && sqlite(`select status||'|'||revokeReason from shop_entitlements where "order"='${rayId}';`) === 'revoked|refunded' && (await http('GET', '/api/prime/shop/purchases', P.tok)).j.owned.join() === 'fx_prime_broadcast' && Number(sqlite(`select count(*) from shop_payment_events where "order"='${rayId}';`)) >= 4, rf + ' / ' + rfDone);
+  await stopPb();
+  await startPb({ ...PUB_ENV, ROBOKASSA_RECEIPT: '' });
+  const noRcCfg = (await http('GET', '/api/prime/config')).j.shop;
+  const noRcSt = (await http('GET', '/api/prime/shop/status', P.tok)).j;
+  check('LIVE without ROBOKASSA_RECEIPT=on: the game is told nothing is on sale (selling false, payments false) — and the server refuses anyway', noRcCfg.selling === false && noRcSt.payments === false && (await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_phantom_dash' })).j.code === 'receipt_required_for_live');
+  await stopPb();
+  await off({ ...PUB_ENV, ROBOKASSA_PASSWORD_2: '' }, 'LIVE without the live Password#2', 'passwords_missing');
+  await off({ ...PUB_ENV, ROBOKASSA_HASH_ALGORITHM: '' }, 'LIVE without the signature algorithm', 'algorithm_missing');
+  await off({ ...PUB_ENV, ROBOKASSA_MERCHANT_LOGIN: '' }, 'LIVE without the shop login', 'merchant_login_missing');
   // ---------------------------------------------------------------- the official site's demonstration
   section('Демонстрация на официальном сайте (PRIME_PAY_MODE=demo): тестовый режим Robokassa, свои заказы и права');
   const mskDay = (ms: number) => new Date(ms + 3 * 3600000).toISOString().slice(0, 10);

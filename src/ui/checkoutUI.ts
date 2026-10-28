@@ -77,6 +77,7 @@ const SERVER_BLOCK: Record<string, CheckoutBlock> = {
   unknown_item: 'unavailable',
   not_verified: 'unverified',
   legal_required: 'legal_required',
+  adult_only: 'adult_only',
   owned: 'owned',
   seasonal_only: 'seasonal_only',
   price_pending: 'price_pending',
@@ -950,6 +951,8 @@ export class PrimeCheckout {
         return { tone: 'warn', title: 'Подтвердите email, чтобы продолжить', text: acc.email ? `Откройте ссылку из письма, отправленного на ${acc.email}, и нажмите «Я подтвердил». Нет письма — проверьте «Спам».` : 'Откройте ссылку из письма и нажмите «Я подтвердил». Нет письма — проверьте «Спам».' };
       case 'legal_required':
         return { tone: 'warn', title: 'Примите документы PRIME ID', text: 'Перед покупками нужно принять актуальные документы PRIME ID — это займёт минуту.' };
+      case 'adult_only':
+        return { tone: 'lock', title: 'Покупки — только с 18 лет', text: 'По условиям оферты покупки в PRIME SHOP доступны только совершеннолетним владельцам PRIME ID. Примерить предмет можно бесплатно.' };
       case 'session_elsewhere':
         return { tone: 'warn', title: 'PRIME ID открыт на другом устройстве', text: 'Продолжите игру здесь, чтобы оформить покупку на этом устройстве.' };
       case 'account_changed':
@@ -1027,7 +1030,7 @@ export class PrimeCheckout {
     if (v.block === 'owned') return 'Предметы, полученные в PRIME ID, хранятся в аккаунте и доступны после повторного входа.';
     if (v.block === 'seasonal_only') return 'Сезонный способ открытия и цена в жетонах не меняются.';
     if (isTestPay(this.server?.env) && (v.canPay || v.block === null)) return 'Тестовый режим Robokassa: настоящие деньги не списываются. Предмет станет доступен после подтверждения тестовой оплаты сервером PRIME NETWORK — возврат на сайт сам по себе ничего не выдаёт.';
-    if (v.canPay || v.block === null) return 'Оплата — на защищённой странице Robokassa: данные карты PRIME NETWORK не получает. Предмет станет доступен в вашем PRIME ID после подтверждения оплаты сервером.';
+    if (v.canPay || v.block === null) return `Это настоящая покупка: будет списано ${v.priceRub !== null ? v.priceText : 'указанная сумма'}. Оплата — на защищённой странице Robokassa: данные карты PRIME NETWORK не получает. Предмет станет доступен в вашем PRIME ID после подтверждения оплаты сервером.`;
     return 'Сейчас оплата не подключена — никаких списаний не происходит. Предмет станет доступен только после подтверждения оплаты сервером PRIME NETWORK.';
   }
 
