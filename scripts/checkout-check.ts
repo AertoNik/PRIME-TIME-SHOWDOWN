@@ -33,6 +33,10 @@ import {
   type CheckoutInput,
 } from '../src/meta/Checkout';
 import { setEntitlements } from '../src/meta/entitlements';
+import PocketBase, { BaseAuthStore } from 'pocketbase';
+import { PAY_TRIES_MAX, PAY_TRIES_WINDOW_MS, noteTry, orderPhase, triesOf, type ServerOrder } from '../src/meta/Payments';
+import { PrimeApi, PrimeApiError } from '../src/net/PrimeApi';
+import { issueOfError, orderBanner, orderFoot, orderStatus, type OrderIssue, type OrderView } from '../src/ui/checkoutOrder';
 import { EventManager } from '../src/meta/EventManager';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
 import { Shop } from '../src/meta/Shop';
@@ -446,10 +450,108 @@ async function serverChecks(): Promise<void> {
   check('the 1.8.8 migration goes down and up again; accounts and their rows stay', afterDown === '0' && afterUp === '1' && sqlite('select count(*) from users;') === users, (downOut + upOut).slice(0, 200));
 }
 
+// ============================================== 1.8.9: the order screen on a phone when Robokassa fails
+async function mobileChecks(): Promise<void> {
+  section('PRIME CHECKOUT на телефоне: недоступная Robokassa, сеть, повторы (1.8.9)');
+  const item = SHOP_ITEMS.find((i) => i.sku === 'fx_golden_confetti')!;
+  const ord = (status: ServerOrder['status'], env: ServerOrder['env'] = 'live'): ServerOrder => ({ inv: 10000000123, sku: item.sku, title: '', amountKop: 4900, currency: 'RUB', status, env, created: '', expiresAt: Date.now() + 3600000, paidAt: 0, fulfilledAt: 0 });
+  const V = (o: Partial<OrderView> & { status?: ServerOrder['status']; owned?: string[] } = {}): OrderView => {
+    const order = ord(o.status ?? 'pending_payment');
+    return { item, order, inv: order.inv, phase: orderPhase(order, o.owned ?? [], false), issue: null, slow: false, leaving: false, failReturn: false, elsewhere: false, canNewTab: false, prepared: false, triesLeft: PAY_TRIES_MAX, nickname: 'player', ...o };
+  };
+  const acts = (v: OrderView) => orderFoot(v).map((b) => b.act);
+
+  // API failures → precise causes (never «нет связи» for a refusal or a server error)
+  const map: [string, string, OrderIssue][] = [
+    ['network', 'network', 'offline'], ['network', 'timeout', 'timeout'], ['server', 'server_error', 'server'], ['server', 'bad_answer', 'server'],
+    ['rate', 'rate_limited', 'rate'], ['rate', 'too_many_orders', 'rate'], ['conflict', 'sales_closed', 'paused'], ['server', 'payments_unavailable', 'paused'],
+    ['server', 'receipt_required_for_live', 'paused'], ['forbidden', 'adult_only', 'refused'], ['forbidden', 'legal_required', 'refused'], ['invalid', 'invalid', 'refused'],
+    ['unauthorized', 'unauthorized', 'signin'], ['notfound', 'order_not_found', 'missing'],
+  ];
+  const badMap = map.filter(([k, c, want]) => issueOfError(k, c) !== want);
+  check('API failures → their own causes: no connection, timeout, 5xx, 429, paused sales, another 4xx, sign-in, another account', badMap.length === 0, badMap.map((m) => m.join('→') + ' got ' + issueOfError(m[0], m[1])).join(' | '));
+
+  // the real API layer: a timeout, Safari's «Load failed», 5xx, 429, 409 sales_closed
+  const fakeFetch = (mode: string): typeof fetch => (async (_u: any, init?: any) => {
+    if (mode === 'hang') return new Promise<Response>((_r, rej) => init?.signal?.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+    if (mode === 'down') throw new TypeError('Load failed');
+    const [status, code] = mode.split(':');
+    return new Response(JSON.stringify({ code, message: code }), { status: Number(status), headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+  const failOf = async (mode: string): Promise<PrimeApiError | null> => {
+    try {
+      await new PrimeApi(new PocketBase('http://127.0.0.1:9', new BaseAuthStore()), 150, fakeFetch(mode)).order(10000000123);
+      return null;
+    } catch (e) {
+      return e instanceof PrimeApiError ? e : null;
+    }
+  };
+  const fHang = await failOf('hang');
+  const fDown = await failOf('down');
+  const f503 = await failOf('503:server_error');
+  const f429 = await failOf('429:too_many_orders');
+  const f409 = await failOf('409:sales_closed');
+  check('PrimeApi: no answer in time → kind network, code «timeout»; no connection (Safari «Load failed») → kind network, code «network»', fHang?.kind === 'network' && fHang.code === 'timeout' && fDown?.kind === 'network' && fDown.code === 'network', `${fHang?.kind}/${fHang?.code} ${fDown?.kind}/${fDown?.code}`);
+  check('…HTTP 503 → «server», 429 → «rate», 409 sales_closed → the order screen says «paused» (never «нет связи»)', f503?.kind === 'server' && issueOfError(f503.kind, f503.code) === 'server' && f429?.kind === 'rate' && issueOfError(f429.kind, f429.code) === 'rate' && !!f409 && issueOfError(f409.kind, f409.code) === 'paused');
+
+  // the chip: «Нет связи» only for no connection; Robokassa's page not opening has its own words
+  const chip = (issue: OrderIssue) => orderStatus(V({ issue })).text;
+  check('chip: Robokassa\'s page did not open → «Страница оплаты не открылась» (not «Нет связи»)', chip('leave_failed') === 'Страница оплаты не открылась');
+  const issues: OrderIssue[] = ['offline', 'timeout', 'server', 'rate', 'paused', 'refused', 'leave_failed'];
+  check('chip: «Нет связи» only when PRIME NETWORK cannot be reached; timeout, 5xx, 429, paused sales, refusals each have their own words', issues.filter((i) => chip(i) === 'Нет связи').join() === 'offline' && new Set(issues.map(chip)).size === issues.length, issues.map((i) => i + '=' + chip(i)).join(' | '));
+
+  // «Открыть в новой вкладке» — only from a page already here (inside the tap); otherwise prepared first
+  const lfTab = acts(V({ issue: 'leave_failed', canNewTab: true }));
+  const lfNoTab = orderFoot(V({ issue: 'leave_failed', canNewTab: false }));
+  check('page did not open, the signed page is here: «Повторить оплату здесь» + «Открыть в новой вкладке» (opens inside the tap) + check status', lfTab.join() === 'repay,newtab,recheck,back' && orderFoot(V({ issue: 'leave_failed', canNewTab: true }))[0].label === 'Повторить оплату здесь');
+  check('…after a reload (no signed page): «Подготовить оплату в новой вкладке» — never a same-tab jump under the «new tab» label', lfNoTab.map((b) => b.act).join() === 'repay,prepare,recheck,back' && !lfNoTab.some((b) => b.act === 'newtab') && lfNoTab[1].label === 'Подготовить оплату в новой вкладке');
+  check('…prepared: the next tap opens it — «Открыть оплату в новой вкладке» is the main button, status check kept', acts(V({ prepared: true, canNewTab: true })).join() === 'newtab,recheck,back' && orderStatus(V({ prepared: true, canNewTab: true })).text === 'Страница оплаты готова');
+  check('…opened in a new tab: no «open again» without the signed page; with it — one more, while tries are left', !acts(V({ elsewhere: true, canNewTab: false })).includes('newtab') && acts(V({ elsewhere: true, canNewTab: true })).includes('newtab') && !acts(V({ elsewhere: true, canNewTab: true, triesLeft: 0 })).includes('newtab'));
+
+  // a refused try keeps the order screen with «Проверить статус»; no endless loop
+  const stuck = issues.filter((i) => i !== 'leave_failed');
+  check('another try refused (no connection, timeout, 5xx, 429, paused sales, 4xx): the order screen stays — «Проверить статус» first, no pay button', stuck.every((i) => acts(V({ issue: i })).join() === 'recheck,back'));
+  const pausedB = orderBanner(V({ issue: 'paused', issueCode: 'sales_closed' }));
+  check('…paused sales: «Новые оплаты временно приостановлены», the order kept, paid orders still confirmed — never «продажи не открыты»', /приостановлены/.test(pausedB.title) && /сохранён/.test(pausedB.text) && /будет подтверждена/.test(pausedB.text));
+  check('…refused for a reason (18+, documents): the reason in words, the order kept', /18 лет/.test(orderBanner(V({ issue: 'refused', issueCode: 'adult_only' })).text) && /документы/.test(orderBanner(V({ issue: 'refused', issueCode: 'legal_required' })).text));
+  check('tries over (3 in 10 minutes): no «repay», no new tab — only «Проверить статус»; the banner explains and suggests another network / browser', acts(V({ issue: 'leave_failed', triesLeft: 0, canNewTab: true })).join() === 'recheck,back' && acts(V({ triesLeft: 0, failReturn: true })).join() === 'recheck,back' && /другой сети|другом браузере/.test(orderBanner(V({ issue: 'leave_failed', triesLeft: 0 })).text));
+
+  // pending_payment / failed / fulfilled
+  check('pending_payment → «Продолжить / Повторить оплату» with «Проверить статус»; failed → «Платёж не прошёл», «Оформить заново»; fulfilled + right → «Покупка подтверждена»', acts(V()).join() === 'repay,recheck,back' && orderFoot(V({ failReturn: true }))[0].label === 'Повторить оплату' && acts(V({ status: 'failed' })).join() === 'anew,back' && orderBanner(V({ status: 'failed' })).title === 'Платёж не прошёл' && orderStatus(V({ status: 'fulfilled', owned: [item.sku] })).text === 'Покупка подтверждена' && acts(V({ status: 'fulfilled', owned: [] })).includes('back'));
+  // nothing claims the money was or was not taken on the strength of a browser error
+  const live = [...issues.map((i) => V({ issue: i, issueCode: 'sales_closed' })), V({ failReturn: true }), V(), V({ triesLeft: 0 }), V({ prepared: true, canNewTab: true }), V({ elsewhere: true })];
+  const claims = live.map(orderBanner).filter((b) => /не списал|не списыва|деньги не|второго списания/i.test(b.title + b.text));
+  check('live order screens never claim the money was not taken (a browser error proves nothing)', claims.length === 0, claims.map((b) => b.title).join(' | '));
+
+  // the try counter (sessionStorage): per order, a window, survives a reload, junk-proof
+  const mem = new Map<string, string>();
+  const st = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+  const t0 = Date.UTC(2026, 9, 28, 12);
+  const n1 = noteTry(st, 10000000123, t0);
+  const n2 = noteTry(st, 10000000123, t0 + 1000);
+  const n3 = noteTry(st, 10000000123, t0 + 2000);
+  check('tries: counted per order (1, 2, 3 — the same after a reload), a new order starts again, forgotten after the window', n1 === 1 && n2 === 2 && n3 === 3 && triesOf(st, 10000000123, t0 + 3000) === 3 && triesOf(st, 10000000077, t0 + 3000) === 0 && triesOf(st, 10000000123, t0 + 2000 + PAY_TRIES_WINDOW_MS) === 0 && noteTry(st, 10000000077, t0 + 4000) === 1);
+  mem.set('primetime-showdown-pay-tries-v1', '{"inv":10000000077,"n":"x","last":1}');
+  const junk1 = triesOf(st, 10000000077, t0);
+  mem.set('primetime-showdown-pay-tries-v1', 'not json');
+  check('…a damaged note counts as no tries (never blocks a purchase by mistake)', junk1 === 0 && triesOf(st, 10000000077, t0) === 0 && triesOf(null, 1, t0) === 0);
+
+  // the window's code: inside the tap, guarded against a double tap, a refused try never leaves the order
+  const ui = read('src/ui/checkoutUI.ts');
+  const tab = ui.slice(ui.indexOf('private openPaymentNewTab(): void {'), ui.indexOf('// ---------------------------------------------------------------- following an order'));
+  check('«Открыть в новой вкладке»: no request before the form (no await — opens inside the tap), no window.open; without the page → prepare; a second tap within 3 s ignored; each opening counted', !/await /.test(tab) && !/window\.open/.test(ui) && /if \(!page\) return void this\.pay\(true, true\)/.test(tab) && /Date\.now\(\) - this\.lastLeaveAt < 3000/.test(tab) && /this\.countTry\(this\.orderInv\)/.test(tab) && /form\.target = '_blank'/.test(ui));
+  const payFn = ui.slice(ui.indexOf('private async pay(again = false, prepareOnly = false)'), ui.indexOf('private triesLeft('));
+  check('repay refused: stays on the order (issue from the error, «owned» → re-check), leaves only when the offer must be accepted again; out of tries → nothing is sent', /if \(again && this\.orderInv !== null && code !== 'offer_changed' && code !== 'offer_consent_required'\)/.test(payFn) && /this\.orderIssue = e instanceof PrimeApiError \? issueOfError\(e\.kind, e\.code\)/.test(payFn) && /code === 'owned'\) return this\.startPolling/.test(payFn) && /this\.triesLeft\(this\.orderInv\) <= 0\) return this\.render\(\)/.test(payFn) && /if \(this\.busy \|\| !this\.sku\) return;/.test(payFn));
+  const goFn = ui.slice(ui.indexOf('private goToPayment(start: CheckoutStart): void {'), ui.indexOf('/** Robokassa\'s form (hidden fields'));
+  check('the same order out of tries is never sent again from the purchase itself either (closing and reopening the window): the order screen instead', /if \(this\.triesLeft\(start\.order\.inv\) <= 0\) \{[\s\S]*?this\.orderIssue = 'leave_failed';[\s\S]*?return;/.test(goFn) && goFn.indexOf('triesLeft(start.order.inv) <= 0') < goFn.indexOf('form.submit()'));
+  check('back from Robokassa / a reload: the order is followed again from the server (pageshow, visibility, ?prime_pay=…), the try count kept in sessionStorage', /addEventListener\('pageshow', this\.onPageShow\)/.test(ui) && /addEventListener\('visibilitychange', this\.onVisible\)/.test(ui) && /noteTry\(sessionStore\(\), inv\)/.test(ui));
+}
+
 async function main(): Promise<void> {
   modelChecks();
   noteChecks();
   safetyChecks();
+  await mobileChecks();
   await serverChecks();
 }
 

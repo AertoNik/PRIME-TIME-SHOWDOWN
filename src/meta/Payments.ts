@@ -161,6 +161,15 @@ export const PAY_RETURN_KEY = 'primetime-showdown-pay-v1';
 /** An order lives two hours (the server's ORDER_TTL_MS); the note a little longer, then it is dropped. */
 export const PAY_RETURN_TTL_MS = 3 * 3600 * 1000;
 
+/**
+ * 1.8.9: how many times this tab tried to open Robokassa's page for one order. After PAY_TRIES_MAX tries in
+ * PAY_TRIES_WINDOW_MS the window stops offering another try (no endless loop when the page cannot open from
+ * the player's network) and only checks the order; the count lives in sessionStorage, so a reload keeps it.
+ */
+export const PAY_TRIES_KEY = 'primetime-showdown-pay-tries-v1';
+export const PAY_TRIES_MAX = 3;
+export const PAY_TRIES_WINDOW_MS = 10 * 60 * 1000;
+
 interface MiniStorage {
   getItem(k: string): string | null;
   setItem(k: string, v: string): void;
@@ -173,6 +182,31 @@ export function saveReturn(store: MiniStorage | null, r: Omit<PayReturn, 'v'>): 
   } catch {
     /* storage blocked: the shop still lists the open order (the server keeps it) */
   }
+}
+
+/** The tries this tab made for order `inv` within the window (0 for another order or after the window). */
+export function triesOf(store: MiniStorage | null, inv: number, now: number = Date.now()): number {
+  try {
+    const v: unknown = JSON.parse(store?.getItem(PAY_TRIES_KEY) ?? 'null');
+    if (!v || typeof v !== 'object') return 0;
+    const t = v as Record<string, unknown>;
+    const n = typeof t.n === 'number' && Number.isFinite(t.n) ? Math.max(0, Math.floor(t.n)) : 0;
+    const last = typeof t.last === 'number' && Number.isFinite(t.last) ? t.last : 0;
+    return t.inv === inv && now - last < PAY_TRIES_WINDOW_MS && last <= now + 60000 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** One more try for order `inv` (a new order starts from 1); the count after it. */
+export function noteTry(store: MiniStorage | null, inv: number, now: number = Date.now()): number {
+  const n = triesOf(store, inv, now) + 1;
+  try {
+    store?.setItem(PAY_TRIES_KEY, JSON.stringify({ v: 1, inv, n, last: now }));
+  } catch {
+    /* storage blocked: the window still counts while it is open */
+  }
+  return n;
 }
 
 export function clearReturn(store: MiniStorage | null): void {

@@ -4,10 +4,10 @@ import { currentOffer, offerDate } from '../config/offer.config';
 import { SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { Game } from '../game/Game';
 import { CLIENT_PAYMENTS, buildCheckout, maskEmail, savePending, sessionStore, type CheckoutAccount, type CheckoutBlock, type CheckoutInput, type CheckoutView } from '../meta/Checkout';
-import { POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepChecking, onOrderSignal, orderPhase, saveReturn, signalOrder, type OrderPhase, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
+import { PAY_TRIES_MAX, POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepChecking, noteTry, onOrderSignal, orderPhase, saveReturn, signalOrder, triesOf, type OrderPhase, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
 import { PrimeApiError, type CheckoutStart, type ShopServerStatus } from '../net/PrimeApi';
 import { accountAction, openLogin, openRegister } from './accountUI';
-import { orderBodyHTML, orderFoot, orderStatus, type OrderIssue, type OrderView } from './checkoutOrder';
+import { issueOfError, orderBodyHTML, orderFoot, orderStatus, type OrderIssue, type OrderView } from './checkoutOrder';
 import { openOfferDoc } from './legalUI';
 import { DEV_SCENARIO_DEFAULT, applyDevScenario, devOrderView, devPanelHTML, devScenarioTap, type DevScenario } from './checkoutPreview';
 import { esc, el } from './dom';
@@ -85,7 +85,10 @@ const SERVER_BLOCK: Record<string, CheckoutBlock> = {
   offer_missing: 'offer_missing',
   offer_unavailable: 'offer_missing',
   payments_unavailable: 'payments_unavailable',
-  too_many_orders: 'payments_unavailable',
+  receipt_required_for_live: 'payments_unavailable',
+  too_many_orders: 'rate_limited',
+  ledger_unavailable: 'server_unavailable',
+  order_failed: 'server_unavailable',
 };
 
 interface Info {
@@ -141,6 +144,14 @@ export class PrimeCheckout {
   private lastPayment: PaymentPage | null = null;
   /** Robokassa's page was opened in a new tab from here. */
   private elsewhere = false;
+  /** 1.8.9: the server's code behind the order's issue «refused» / «paused». */
+  private orderIssueCode = '';
+  /** 1.8.9: the page was fetched again for a new tab; the player's next tap opens it. */
+  private prepared = false;
+  /** 1.8.9: when Robokassa's page was last sent from here (a second tap a moment later is ignored). */
+  private lastLeaveAt = 0;
+  /** 1.8.9: tries for the order also counted here (sessionStorage may be blocked). */
+  private triesMem: { inv: number; n: number } | null = null;
   private unsubSignal: (() => void) | null = null;
   private lastPollAt = 0;
   /**
@@ -243,6 +254,8 @@ export class PrimeCheckout {
     this.unsubSignal = null;
     this.elsewhere = false;
     this.lastPayment = null;
+    this.prepared = false;
+    this.orderIssueCode = '';
     this.pollTimer = null;
     this.leaveTimer = null;
     this.orderInv = null;
@@ -444,6 +457,9 @@ export class PrimeCheckout {
       case 'newtab':
         this.openPaymentNewTab();
         return;
+      case 'prepare':
+        void this.pay(true, true);
+        return;
       case 'recheck':
         g.audio.ui('click');
         this.startPolling(false);
@@ -552,8 +568,10 @@ export class PrimeCheckout {
    * makes the order and signs Robokassa's page. The window only sends the player there; only the server's
    * confirmation of the payment can make an item owned.
    */
-  private async pay(again = false): Promise<void> {
+  private async pay(again = false, prepareOnly = false): Promise<void> {
     if (this.busy || !this.sku) return;
+    // 1.8.9: a followed order out of tries — only checking it (no endless loop)
+    if (again && this.orderInv !== null && this.triesLeft(this.orderInv) <= 0) return this.render();
     const v = this.view();
     if (!again && !v.canPay) return;
     const g = this.g;
@@ -574,10 +592,21 @@ export class PrimeCheckout {
       }
       start = await api.startCheckout(this.sku);
     } catch (e) {
+      const code = e instanceof PrimeApiError ? e.code : '';
+      if (again && this.orderInv !== null && code !== 'offer_changed' && code !== 'offer_consent_required') {
+        // 1.8.9: another try refused — stay on the order (it is kept on the server), say why, keep «Проверить статус»
+        this.busy = false;
+        if (code === 'owned') return this.startPolling(false);
+        this.orderIssue = e instanceof PrimeApiError ? issueOfError(e.kind, e.code) : 'refused';
+        this.orderIssueCode = code;
+        this.prepared = false;
+        return this.render();
+      }
       // anything refused: back to the purchase itself, which explains it (an order stays on the server)
       if (again) this.leaveOrder();
       if (e instanceof PrimeApiError) {
         if (e.kind === 'unauthorized') this.serverIssue = 'expired';
+        else if (e.kind === 'network' && e.code === 'timeout') this.serverBlock = 'server_unavailable';
         else if (e.kind === 'network') this.serverIssue = 'offline';
         else if (e.code === 'offer_changed' || e.code === 'offer_consent_required') {
           this.ticked = false;
@@ -585,14 +614,54 @@ export class PrimeCheckout {
           void this.verify();
         } else {
           if (e.code === 'too_many_orders') g.ui.toast('Слишком много заказов за час — попробуйте немного позже');
-          this.serverBlock = SERVER_BLOCK[e.code] ?? 'payments_unavailable';
+          this.serverBlock = SERVER_BLOCK[e.code] ?? (e.kind === 'rate' ? 'rate_limited' : e.kind === 'server' ? 'server_unavailable' : 'payments_unavailable');
         }
       } else this.serverBlock = 'payments_unavailable';
     } finally {
       this.busy = false;
     }
-    if (start) this.goToPayment(start);
+    if (start && prepareOnly) this.preparePayment(start);
+    else if (start) this.goToPayment(start);
     else if (this.root) this.render();
+  }
+
+  /** 1.8.9: tries left to open Robokassa's page for order `inv` from this tab. */
+  private triesLeft(inv: number): number {
+    const mem = this.triesMem && this.triesMem.inv === inv ? this.triesMem.n : 0;
+    return Math.max(0, PAY_TRIES_MAX - Math.max(mem, triesOf(sessionStore(), inv)));
+  }
+
+  /** 1.8.9: one more try to open Robokassa's page for `inv` (counted in sessionStorage and here). */
+  private countTry(inv: number): void {
+    const stored = noteTry(sessionStore(), inv);
+    const mem = this.triesMem && this.triesMem.inv === inv ? this.triesMem.n + 1 : 1;
+    this.triesMem = { inv, n: Math.max(stored, mem) };
+    this.lastLeaveAt = Date.now();
+  }
+
+  /**
+   * 1.8.9: «Подготовить оплату в новой вкладке» — the server gave the order's signed page again (the same open
+   * order); nothing is opened yet: a tab opened after a request would be blocked (iPhone Safari), so the
+   * player's next tap opens it (openPaymentNewTab, inside that tap).
+   */
+  private preparePayment(start: CheckoutStart): void {
+    const page: PaymentPage | null = checkPaymentPage(start.payment, import.meta.env.DEV);
+    if (start.order.inv !== this.orderInv) {
+      // the server answered with another order (the old one closed meanwhile): follow that one
+      this.leaveOrder();
+      this.orderInv = start.order.inv;
+      this.watchSignals();
+    }
+    this.order = start.order;
+    if (!page) {
+      this.orderIssue = 'leave_failed';
+      return this.render();
+    }
+    this.lastPayment = page;
+    this.prepared = true;
+    this.orderIssue = null;
+    this.orderIssueCode = '';
+    this.render();
   }
 
   /** The order is there: check Robokassa's page, remember the way back, leave for it. */
@@ -608,7 +677,18 @@ export class PrimeCheckout {
       this.render();
       return;
     }
+    // 1.8.9: the same order out of tries (also from the purchase itself, after closing the window): no
+    // new attempt — the order screen explains and keeps «Проверить статус»
+    if (this.triesLeft(start.order.inv) <= 0) {
+      this.lastPayment = page;
+      this.watchSignals();
+      this.orderIssue = 'leave_failed';
+      this.render();
+      return;
+    }
     saveReturn(sessionStore(), { inv: start.order.inv, sku: this.sku!, account: checkoutAccount(g).id, at: Date.now(), result: 'left' });
+    this.countTry(start.order.inv);
+    this.prepared = false;
     this.lastPayment = page;
     this.watchSignals();
     this.leaving = true;
@@ -663,7 +743,14 @@ export class PrimeCheckout {
    */
   private openPaymentNewTab(): void {
     const page = this.lastPayment;
-    if (!page || this.orderInv === null) return void this.pay(true);
+    if (this.orderInv === null) return;
+    // 1.8.9: no signed page here (a reload, a return from Robokassa): fetch it first — never a same-tab jump
+    // under the «new tab» label; the next tap opens it
+    if (!page) return void this.pay(true, true);
+    if (this.busy || Date.now() - this.lastLeaveAt < 3000) return;
+    if (this.triesLeft(this.orderInv) <= 0) return this.render();
+    this.countTry(this.orderInv);
+    saveReturn(sessionStore(), { inv: this.orderInv, sku: this.sku, account: checkoutAccount(this.g).id, at: Date.now(), result: 'left' });
     const form = this.paymentForm(page, true);
     try {
       form.submit();
@@ -674,6 +761,8 @@ export class PrimeCheckout {
     this.leaveTimer = null;
     this.leaving = false;
     this.orderIssue = null;
+    this.orderIssueCode = '';
+    this.prepared = false;
     this.elsewhere = true;
     this.watchSignals();
     this.render();
@@ -716,6 +805,7 @@ export class PrimeCheckout {
       this.order = r.order;
       this.orderOwned = r.owned;
       this.orderIssue = null;
+      this.orderIssueCode = '';
       if (!this.sku || this.sku !== r.order.sku) {
         const it = SHOP_ITEMS.find((i) => i.sku === r.order.sku);
         if (it) this.sku = it.sku;
@@ -723,7 +813,8 @@ export class PrimeCheckout {
       g.account?.applyRights(r.owned);
     } catch (e) {
       if (this.orderInv !== inv) return;
-      this.orderIssue = e instanceof PrimeApiError && e.kind === 'notfound' ? 'missing' : e instanceof PrimeApiError && e.kind === 'unauthorized' ? 'signin' : 'offline';
+      this.orderIssue = e instanceof PrimeApiError ? issueOfError(e.kind, e.code) : 'offline';
+      this.orderIssueCode = e instanceof PrimeApiError ? e.code : '';
     }
     if (!this.root) return;
     const phase = this.orderPhaseNow();
@@ -754,6 +845,10 @@ export class PrimeCheckout {
       leaving: this.leaving,
       failReturn: this.orderReturn === 'fail',
       elsewhere: this.elsewhere,
+      canNewTab: this.lastPayment !== null,
+      prepared: this.prepared,
+      triesLeft: this.triesLeft(this.orderInv),
+      issueCode: this.orderIssueCode,
       nickname: checkoutAccount(this.g).nickname,
     };
   }
@@ -934,7 +1029,7 @@ export class PrimeCheckout {
       case 'price_pending':
         return { tone: 'wait', title: 'Продажи пока не открыты', text: 'Цена этого предмета ещё не утверждена, купить его сейчас нельзя. Примерить можно бесплатно.' };
       case 'sales_closed':
-        return { tone: 'wait', title: 'Продажи пока не открыты', text: 'Покупки в PRIME SHOP сейчас не принимаются. Примерить предмет можно бесплатно.' };
+        return { tone: 'wait', title: 'Покупки сейчас недоступны', text: 'Новые покупки в PRIME SHOP сейчас не принимаются. Уже оформленные заказы сохраняются и подтверждаются. Примерить предмет можно бесплатно.' };
       case 'offer_missing':
         return { tone: 'wait', title: 'Условия продажи готовятся', text: 'Публичная оферта PRIME SHOP ещё не опубликована. Без неё оформить покупку нельзя.' };
       case 'no_network':
@@ -959,6 +1054,10 @@ export class PrimeCheckout {
         return { tone: 'warn', title: 'Вы вошли в другой PRIME ID', text: 'Оформление было начато в другом аккаунте. Проверьте товар и начните заново.' };
       case 'payments_unavailable':
         return { tone: 'wait', title: 'Оплата не подключена', text: 'Сейчас оплата не принимается. Никаких списаний не происходит.' };
+      case 'server_unavailable':
+        return { tone: 'warn', title: 'PRIME NETWORK временно недоступен', text: 'Сервер не ответил или ответил ошибкой. Попробуйте через минуту — если заказ уже создан, он сохранится и откроется снова.' };
+      case 'rate_limited':
+        return { tone: 'warn', title: 'Слишком много попыток', text: 'Подождите немного и попробуйте снова. Уже созданный заказ сохраняется.' };
       default:
         return null;
     }
@@ -1026,7 +1125,7 @@ export class PrimeCheckout {
 
   private noteText(v: CheckoutView): string {
     const open = v.block === null ? this.server?.orders.find((o) => o.sku === this.sku) : undefined;
-    if (open) return `Заказ №${open.inv} уже создан и ждёт оплаты: кнопка откроет его же — второго списания не будет.`;
+    if (open) return `Заказ №${open.inv} уже создан и ждёт оплаты: кнопка откроет его же, а не новый заказ.`;
     if (v.block === 'owned') return 'Предметы, полученные в PRIME ID, хранятся в аккаунте и доступны после повторного входа.';
     if (v.block === 'seasonal_only') return 'Сезонный способ открытия и цена в жетонах не меняются.';
     if (isTestPay(this.server?.env) && (v.canPay || v.block === null)) return 'Тестовый режим Robokassa: настоящие деньги не списываются. Предмет станет доступен после подтверждения тестовой оплаты сервером PRIME NETWORK — возврат на сайт сам по себе ничего не выдаёт.';
@@ -1061,6 +1160,8 @@ export class PrimeCheckout {
         main = btn('terms', 'Открыть документы', 'pco-main');
         break;
       case 'offline':
+      case 'server_unavailable':
+      case 'rate_limited':
         main = btn('retry', 'Повторить', 'pco-main');
         break;
       case 'session_elsewhere':

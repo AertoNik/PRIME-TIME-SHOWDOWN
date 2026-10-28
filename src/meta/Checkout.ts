@@ -67,6 +67,8 @@ export type CheckoutBlock =
   | 'unverified'
   | 'legal_required'
   | 'adult_only'
+  | 'server_unavailable'
+  | 'rate_limited'
   | 'session_elsewhere'
   | 'account_changed'
   | 'payments_unavailable';

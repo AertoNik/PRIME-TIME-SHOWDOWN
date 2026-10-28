@@ -394,10 +394,16 @@ export class PrimeApi {
 
   private async call<T>(fn: (o: { signal: AbortSignal; requestKey: null; keepalive?: boolean; fetch?: typeof fetch }) => Promise<T>, keepalive = false): Promise<T> {
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), this.timeoutMs);
+    let timedOut = false;
+    const t = setTimeout(() => {
+      timedOut = true;
+      ctl.abort();
+    }, this.timeoutMs);
     try {
       return await fn({ signal: ctl.signal, requestKey: null, ...(keepalive ? { keepalive: true } : {}), ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
     } catch (e) {
+      // 1.8.9: no answer in time (kind «network», code «timeout») — apart from no connection at all
+      if (timedOut && !(e instanceof PrimeApiError)) throw new PrimeApiError('network', 'timeout', 0);
       throw toError(e);
     } finally {
       clearTimeout(t);
