@@ -3,7 +3,7 @@
 // these prices and offer revisions; `npm run checkout` fails while this file is out of date.
 
 module.exports = {
-  "app": "1.8.8-alpha",
+  "app": "1.8.9-alpha",
   "catalog": {
     "skin_ray_neon_runner": {
       "kind": "skin",

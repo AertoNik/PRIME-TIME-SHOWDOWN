@@ -145,14 +145,18 @@ function paymentForm(o) {
 }
 
 /**
- * Prepared, OFF by default: the 54-ФЗ «Receipt» (one item, no VAT). A self-employed seller (НПД) gets the
- * receipt from Robokassa's «Робочеки СМЗ» without it; it is sent only if the owner switches it on after
- * Robokassa confirms it is needed (docs/PRIME_PAYMENTS.md, «Чеки НПД»). URL-encoded minimised JSON — the
- * very text that goes into the signature and the form field.
+ * The «Receipt» (nomenclature for «Робочеки СМЗ»), OFF unless ROBOKASSA_RECEIPT=on: ONE item — the order's own
+ * receipt name, quantity 1, the order's sum in roubles (the same kopecks as OutSum), tax «none». Exactly the fields
+ * Robokassa support confirmed in writing for a self-employed seller (НПД): items with name, quantity,
+ * sum, tax = none; «sno», «payment_method» and «payment_object» are not sent. URL-encoded minimised UTF-8 JSON — the
+ * very text that goes into the signature (MerchantLogin:OutSum:InvId:Receipt:Password#1[:Shp_*]) and into the form
+ * field. The browser POSTs the form as application/x-www-form-urlencoded and so encodes it a second time on the
+ * wire — the same double encoding Robokassa expects in a GET link; it decodes the transport once and gets the signed text.
  */
 function receipt(title, kop) {
-  const sum = Number(outSum(kop));
-  const json = JSON.stringify({ items: [{ name: description(title).slice(0, 128), quantity: 1, sum: sum, tax: 'none', payment_method: 'full_payment', payment_object: 'service' }] });
+  const name = description(title).slice(0, 128);
+  if (!name) throw new Error('robokassa: a receipt needs the item name');
+  const json = JSON.stringify({ items: [{ name: name, quantity: 1, sum: Number(outSum(kop)), tax: 'none' }] });
   return encodeURIComponent(json);
 }
 

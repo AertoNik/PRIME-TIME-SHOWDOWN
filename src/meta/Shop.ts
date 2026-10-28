@@ -49,6 +49,20 @@ export type ShopStatus =
   /** LUCIEN opened (by any way). */
   | 'received';
 
+/** One look of a fighter in the wardrobe (Shop.wardrobe). */
+export interface WardrobeEntry {
+  /** null: the fighter's standard look. */
+  skin: SkinId | null;
+  /** The look id FighterModel builds. */
+  look: string;
+  name: string;
+  /** May be worn now: the standard look always, a skin only while owned. */
+  available: boolean;
+  worn: boolean;
+  /** Where the right comes from (entitlements.paidSource): a purchase, a test-mode / demonstration right, a dev grant. */
+  source: 'purchase' | 'test' | 'dev' | null;
+}
+
 export interface ShopItemState {
   item: ShopItemDef;
   status: ShopStatus;
@@ -282,6 +296,19 @@ export class Shop {
   lookFor(fighter: FighterId): string {
     const skin = this.skinFor(fighter);
     return skin ? SKINS[skin].look : FIGHTERS[fighter].look;
+  }
+
+  /**
+   * The quick wardrobe of the roster (and anything else that lists one fighter's looks): the standard look first,
+   * then every skin made for the fighter. `available` is the same rule setSkin applies (owned through the PRIME
+   * NETWORK server's rights — a demonstration right only while the server still lists it); `source` says how.
+   */
+  wardrobe(fighter: FighterId): WardrobeEntry[] {
+    const worn = this.skinFor(fighter);
+    return [
+      { skin: null, look: FIGHTERS[fighter].look, name: 'Стандарт', available: true, worn: worn === null, source: null },
+      ...this.skinsOf(fighter).map((s) => ({ skin: s, look: SKINS[s].look, name: SKINS[s].name, available: this.ownsSkin(s), worn: worn === s, source: paidSource(SKU_OF_SKIN[s]) })),
+    ];
   }
 
   /** The skins made for a fighter (the wardrobe lists them). */

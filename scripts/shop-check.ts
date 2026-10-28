@@ -18,6 +18,7 @@ import {
   SKU_OF_COSMETIC,
   SKU_OF_SKIN,
   type ShopSku,
+  type SkinId,
 } from '../src/config/shop.config';
 import { Rng } from '../src/core/math';
 import { SHOP_OFFERS, currentOffer } from '../src/config/offer.config';
@@ -376,6 +377,43 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   // 1.8.8 stage 4: the paid way is wired — the server's right opens him, the save never holds it
   check('LUCIEN: a paid right (confirmed by the server) opens him in the roster — never written into the save', late.events.ownsFighter('lucien') && late.store.data.fighters.lucien.unlocked === false);
   setEntitlements([]);
+}
+
+// ------------------------------------------------------------------ the roster's quick wardrobe (the hanger)
+{
+  setEntitlements([]);
+  const w = world('2026-10-22T12:00:00Z');
+  const ray0 = w.shop.wardrobe('ray');
+  check('wardrobe: the standard look is first and always available (no rights at all), worn when nothing else is', ray0[0].skin === null && ray0[0].available && ray0[0].worn && ray0[0].look === FIGHTERS.ray.look && ray0[0].source === null);
+  check('wardrobe: a skin that is not owned is listed locked and cannot be put on (the save stays untouched)', ray0.length === 2 && ray0[1].skin === 'ray_neon_runner' && !ray0[1].available && !ray0[1].worn && !w.shop.setSkin('ray', 'ray_neon_runner') && w.store.saves === 0 && w.shop.lookFor('ray') === 'ray');
+  check('wardrobe: every fighter lists only his own looks (switching fighters switches the list); one with no skins has only the standard look', w.shop.wardrobe('bruno').map((x) => x.skin ?? 'std').join() === 'std,bruno_casino_boss' && (Object.keys(FIGHTERS) as (keyof typeof FIGHTERS)[]).every((f) => w.shop.wardrobe(f).every((x) => x.skin === null || SKINS[x.skin].fighter === f)) && w.shop.wardrobe('nika').length === 1);
+  check('wardrobe: built from the skin registry (SKINS), not tied to one skin — every skin of a fighter is listed', (Object.keys(SKINS) as SkinId[]).every((id) => w.shop.wardrobe(SKINS[id].fighter).some((x) => x.skin === id && x.look === SKINS[id].look)));
+  setEntitlements(['skin_ray_neon_runner']);
+  check('wardrobe: a purchased skin is available, chosen in one step, saved once and worn everywhere (lookFor)', w.shop.wardrobe('ray')[1].available && w.shop.wardrobe('ray')[1].source === 'purchase' && w.shop.setSkin('ray', 'ray_neon_runner') && w.store.saves === 1 && w.shop.wardrobe('ray')[1].worn && !w.shop.wardrobe('ray')[0].worn && w.shop.lookFor('ray') === 'ray_neon_runner');
+  const again = world('2026-10-22T12:00:00Z', JSON.parse(JSON.stringify(w.store.data)));
+  check('wardrobe: the choice survives a reload (the same save field the collection and PRIME CLOUD use: shop.skins)', again.shop.lookFor('ray') === 'ray_neon_runner' && again.store.data.shop.skins.ray === 'ray_neon_runner');
+  check('wardrobe: the collection and the roster agree — one choice, read back by either (the same Shop methods)', again.shop.skinFor('ray') === 'ray_neon_runner' && again.shop.wardrobe('ray').find((x) => x.worn)!.skin === again.shop.skinFor('ray') && again.shop.setSkin('ray', null) && again.shop.wardrobe('ray')[0].worn && again.shop.lookFor('ray') === 'ray');
+  check('wardrobe: another fighter\'s skin is refused by the roster too', !w.shop.setSkin('bruno', 'ray_neon_runner' as any) && !w.shop.setSkin('bruno', 'bruno_casino_boss') && !w.shop.wardrobe('bruno')[1].available);
+  // the demonstration (Robokassa's test mode): the right is the server's and lasts only while the server lists it
+  setEntitlements(['skin_bruno_casino_boss'], true, 'test');
+  check('wardrobe: a demonstration right makes the skin available, marked as a test right (never a purchase)', w.shop.wardrobe('bruno')[1].available && w.shop.wardrobe('bruno')[1].source === 'test' && w.shop.setSkin('bruno', 'bruno_casino_boss') && w.shop.lookFor('bruno') === 'bruno_casino_boss');
+  setEntitlements([], true);
+  check('wardrobe: the demonstration ended (the right is gone) — the standard look is back at once, the skin is locked again; the stored choice is only a choice', w.shop.lookFor('bruno') === 'bruno' && w.shop.wardrobe('bruno')[0].worn && !w.shop.wardrobe('bruno')[1].available && !w.shop.setSkin('bruno', 'bruno_casino_boss') && w.store.data.shop.skins.bruno === 'bruno_casino_boss');
+  // a forged local state: the save says «wear it», nobody owns it — not worn, not offered
+  const forged = defaultSave() as any;
+  forged.shop = { skins: { ray: 'ray_neon_runner' }, equip: {} };
+  const fw = world('2026-10-22T12:00:00Z', sanitize(forged));
+  check('wardrobe: a forged save cannot dress the fighter (no right — the standard look is worn and listed as worn)', fw.shop.lookFor('ray') === 'ray' && fw.shop.wardrobe('ray')[0].worn && !fw.shop.wardrobe('ray')[1].available);
+  setEntitlements([]);
+  // the screen: one wardrobe system, the server's rights, the 3D model in step
+  const roster = read('src/ui/screens/RosterScreen.ts');
+  const lookAct = roster.slice(roster.indexOf("} else if (act === 'look') {"), roster.indexOf("} else if (act === 'select') {"));
+  check('roster: a look is put on only when available AND Shop.setSkin accepts it (else a refusal, nothing written)', /if \(!entry\.available \|\| !g\.shop\.setSkin\(id, skin\)\)/.test(lookAct) && /g\.audio\.ui\('deny'\)/.test(lookAct));
+  check('roster: no second wardrobe — no save field, storage or grant of its own (only g.shop.wardrobe / setSkin)', /g\.shop\.wardrobe\(id\)/.test(roster) && !/localStorage|sessionStorage|save\.data\.shop|store\.save|setEntitlements|devGrant/.test(roster));
+  check('roster: the 3D fighter is redrawn in the worn look on every render (fighterLook → Shop.lookFor), and again when the rights change', /g\.showcase\.show\(g\.fighterLook\(f\.id\), f\.theme\.accent\)/.test(roster) && /this\.rights !== entitlementsVersion\(\)\) this\.render\(\)/.test(roster) && /fighterLook\(id: FighterId\): string \{\s*return this\.shop\.lookFor\(id\);/.test(read('src/game/Game.ts')));
+  check('roster: the hanger only for a fighter with more than the standard look; it never starts the model drag', /looks\.length < 2\s*\? ''/.test(roster) && /closest\('\.nav-arrow, \.wr-hanger'\)/.test(roster));
+  check('battle: the fighter enters the fight in the worn look (the same lookFor)', /this\.battleView\.setup\(match, \[this\.fighterLook\(fighter\), null\]\)/.test(read('src/game/Game.ts')));
+  check('roster: opening the wardrobe asks the server for the current rights; the listeners are added once (constructor)', /act === 'wardrobe'[\s\S]{0,400}refreshRights\(true\)/.test(roster) && (roster.match(/addEventListener\(/g) ?? []).length === 6 && (roster.match(/onChange\(/g) ?? []).length === 1);
 }
 
 // ------------------------------------------------------------------ performance loops (headless)

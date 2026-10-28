@@ -248,6 +248,7 @@ function config() {
     p2: p2,
     p3: p3,
     gateway: gateway,
+    // the «Receipt» (nomenclature for «Робочеки СМЗ», lib/robokassa.js receipt())
     receipt: env('ROBOKASSA_RECEIPT') === 'on',
     refundApi: mode === 'live' && p3.length >= SECRET_MIN && env('PRIME_PAY_REFUND_API') === 'on',
   };
@@ -266,11 +267,12 @@ function publicConfig() {
     merchant: c.ready ? c.login : env('ROBOKASSA_MERCHANT_LOGIN') ? 'set' : 'missing',
     algorithm: c.ready ? c.alg : env('ROBOKASSA_HASH_ALGORITHM') || 'missing',
     gateway: c.ready ? (c.gateway === RK.PAY_URL ? 'robokassa' : 'local emulator (dev)') : '-',
-    receipt: c.ready ? c.receipt : false,
+    receipt: c.ready ? (c.receipt ? 'on (НПД: name, quantity, sum, tax none)' : c.env === 'live' ? 'off — LIVE refuses new orders (receipt_required_for_live)' : 'off') : 'off',
     refundApi: c.ready ? c.refundApi : false,
     resultIps: env('ROBOKASSA_RESULT_IPS') ? 'restricted' : 'any (signature checked)',
     demoUntil: c.ready && c.env === 'demo' ? c.demoDay + ' (Moscow time, inclusive)' : env('PRIME_DEMO_UNTIL') ? env('PRIME_DEMO_UNTIL') + ' (not active)' : '-',
     relay: relayBase() ? relayBase() + ' (test-range invoices' + (role() === 'production' ? ')' : ', ignored: not a production server)') : 'off',
+    relayReturn: role() !== 'production' ? '-' : relayPublicBase() ? relayPublicBase() + ' (players back after test-range payments)' : env('PRIME_PAY_RELAY_PUBLIC_URL') ? 'INVALID — the return page is shown' : 'off (the return page is shown)',
     gameUrl: gameUrl() ? gameUrl() : env('PRIME_GAME_URL') ? 'INVALID (' + env('PRIME_GAME_URL').slice(0, 80) + ')' : 'missing',
     ledger: (function () {
       const h = LEDGER.health($app, countedEnv());
@@ -452,6 +454,12 @@ const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
  * Answers { order, payment: { url, method, fields }, reused }.
  */
 function startOrder(e, uid, sku, it, kop, offer, cfg) {
+  // fail closed: LIVE never takes money without the «Receipt» (Robokassa: required for «Робочеки СМЗ») — no new order,
+  // no payment page; the orders already made, ResultURL, refunds and the ledger go on as they were
+  if (cfg.env === 'live' && !cfg.receipt) {
+    e.app.logger().warn('prime-pay: a live order refused — ROBOKASSA_RECEIPT is not on', 'problem', 'receipt_required_for_live');
+    return fail(e, 503, 'receipt_required_for_live');
+  }
   let out = null;
   try {
     e.app.runInTransaction((tx) => {
@@ -718,6 +726,25 @@ function relayFor(inv) {
 }
 
 /**
+ * staging's PUBLIC https origin (no path), or '': where a production server sends the PLAYER back after a
+ * TEST-range payment — the relay above may be loopback, which no browser can reach. A DNS name only: never an IP
+ * address, localhost, plain http, a path or a user name.
+ */
+function publicOrigin(raw) {
+  const u = String(raw || '').trim().replace(/\/+$/, '');
+  const m = /^https:\/\/([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?::[0-9]{1,5})?$/.exec(u);
+  if (!m) return '';
+  const host = m[1].toLowerCase();
+  const tld = host.slice(host.lastIndexOf('.') + 1);
+  if (!/^([a-z]{2,63}|xn--[a-z0-9-]+)$/.test(tld) || /(^|\.)localhost$/.test(host)) return '';
+  return 'https://' + host + u.slice(8 + host.length);
+}
+
+function relayPublicBase() {
+  return publicOrigin(env('PRIME_PAY_RELAY_PUBLIC_URL'));
+}
+
+/**
  * Pass a notification on to staging untouched (the same fields, POST) and answer Robokassa with staging's own
  * answer («OK…» only if staging confirmed). Production checks nothing, records nothing, grants nothing here.
  */
@@ -847,13 +874,13 @@ function htmlEsc(s) {
  * The return page when no redirect is possible (PRIME_GAME_URL missing or wrong): the PRIME look, what happened
  * in plain words and one clear button back to the game. Never says the purchase is done — the game asks the server.
  */
-function returnPage(kind, inv, target) {
+function returnPage(kind, inv, target, note) {
   const ok = kind === 'success';
   const title = ok ? 'Проверяем оплату' : 'Оплата не завершена';
   const text = ok
     ? 'Вернитесь в игру: PRIME NETWORK проверит платёж' + (inv ? ' по заказу №' + inv : '') + ', и предмет появится в «Моей коллекции» сразу после подтверждения.'
     : 'Платёж не был завершён — предмет не выдан.' + (inv ? ' Заказ №' + inv + ' сохранён: его можно оплатить ещё раз из игры.' : '');
-  const button = target ? '<a class="btn" href="' + htmlEsc(target) + '">Вернуться в игру</a>' : '<p class="hint">Адрес игры на этом сервере не настроен (PRIME_GAME_URL) — откройте игру вручную.</p>';
+  const button = target ? '<a class="btn" href="' + htmlEsc(target) + '">Вернуться в игру</a>' : '<p class="hint">' + htmlEsc(note || 'Адрес игры на этом сервере не настроен (PRIME_GAME_URL) — откройте игру вручную.') + '</p>';
   return (
     '<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="robots" content="noindex"><title>PRIME TIME: SHOWDOWN — ' + htmlEsc(title) + '</title><style>' +
@@ -884,9 +911,20 @@ function back(e, kind) {
     raw = '';
   }
   const inv = INV_RE.test(raw) ? raw : '';
-  // staging's invoice: back to staging's own way back (it knows the order and its game)
-  const relay = inv ? relayFor(Number(inv)) : '';
-  if (relay) return e.redirect(303, relay + '/api/prime/pay/robokassa/' + (kind === 'success' ? 'success' : 'fail') + '?InvId=' + inv);
+  // staging's invoice on production: the PLAYER goes to staging's PUBLIC way back (it knows the order and its
+  // game) — never to the relay's loopback address; not set (or this very server): a page, no redirect
+  if (inv && role() === 'production' && envOfInv(Number(inv)) === 'test') {
+    const pub = relayPublicBase();
+    let self = false;
+    try {
+      self = !!pub && String(e.request.host || '').toLowerCase().split(':')[0] === pub.slice(8).split(':')[0];
+    } catch (_) {
+      self = false;
+    }
+    if (pub && !self) return e.redirect(303, pub + '/api/prime/pay/robokassa/' + (kind === 'success' ? 'success' : 'fail') + '?InvId=' + inv);
+    e.app.logger().warn('prime-pay: a test-range return on production without a usable PRIME_PAY_RELAY_PUBLIC_URL — the return page is shown');
+    return e.html(200, returnPage(kind, inv, '', 'Это тестовый заказ (STAGING). Вернитесь в тестовую версию игры вручную — оплата проверяется там.'));
+  }
   if (inv) {
     try {
       const o = findOne(e.app, 'shop_orders', 'invId = {:i}', { i: Number(inv) });
@@ -1499,6 +1537,7 @@ module.exports = {
   invFloor,
   pickInv,
   normalizeGameUrl,
+  publicOrigin,
   receiptName,
   role,
   countedEnv,

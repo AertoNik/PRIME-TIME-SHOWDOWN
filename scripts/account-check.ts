@@ -338,7 +338,7 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   check('the account claims only when the game is opened (in front), on «Повторить» after a failed claim, or before a first upload the player asked for — never from a timer', (rtm.match(/session\.claim\(\)|s\.claim\(\)/g) ?? []).length === 3 && /if \(document\.visibilityState === 'visible'\) void this\.activate\(\);/.test(rtm) && /\} else if \(!this\.activated\) \{/.test(rtm) && !/setInterval/.test(rtm));
   check('a match cannot start before the account\'s progress is loaded and compared with PRIME CLOUD; unknown server = sessions assumed (no false freedom offline)', /if \(!this\.ready\) return s\.state === 'unconfirmed' \? 'offline' : 'loading';/.test(rtm) && /return this\.serverConfig \? this\.serverConfig\.sessions : true;/.test(rtm));
   const api = read('src/net/PrimeApi.ts');
-  check('every cloud write (save, archive, restore) carries the page\'s game session', (api.match(/\.\.\.this\.sessionBody\(\)/g) ?? []).length === 3);
+  check('every cloud write (save, archive, restore, 1.8.9 daily reward) carries the page\'s game session', (api.match(/\.\.\.this\.sessionBody\(\)/g) ?? []).length === 4);
   const sync = read('src/net/SyncManager.ts');
   check('uploads only from the page holding the session; a refused write stops uploads; «Синхронизировано» only from the server', /if \(this\.o\.session && !this\.o\.session\.canWrite\) return this\.status;/.test(sync) && /case 'superseded':[\s\S]{0,300}this\.stop\(\);/.test(sync));
   const prime = read('backend/pb_hooks/lib/prime.js');

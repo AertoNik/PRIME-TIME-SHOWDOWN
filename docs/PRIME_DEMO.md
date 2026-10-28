@@ -42,6 +42,7 @@
 
 1. Адреса в кабинете указывают на **production**: `https://api.primetimeshowdown.online/api/prime/pay/robokassa/{result,success,fail}` (Result — POST).
 2. Production с `PRIME_PAY_RELAY_URL=http://127.0.0.1:8091` (staging на том же VPS) **передаёт** уведомления и возвраты по счетам **тестового диапазона** (staging) на staging без изменений и отвечает Robokassa ответом staging. Сам production по ним ничего не проверяет, не записывает и не выдаёт. Работает и при выключенной оплате на production.
+   **Возврат игрока (Alpha 1.8.9):** по тестовому счёту браузер с SuccessURL/FailURL production уходит не на этот внутренний адрес, а на публичный HTTPS-адрес staging из `PRIME_PAY_RELAY_PUBLIC_URL` (например, `https://primetime-showdown-staging.duckdns.org`; только доменное имя по https, без пути, без IP и localhost). Дальше staging сам отправляет игрока в свою игру (`PRIME_GAME_URL`). Если адрес не задан или не подходит — страница возврата без перенаправления. Пересылка ResultURL не меняется.
 3. Демо-счета (≥ 7·10¹⁴) и боевые остаются на production. Повторная передача исключена (заголовок `X-Prime-Relay`, ответ 508); staging никогда не передаёт дальше.
 
 Так staging продолжает работать при любой настройке production, а будущие боевые платежи приходят прямо на production — переключать адреса туда-обратно больше не нужно.

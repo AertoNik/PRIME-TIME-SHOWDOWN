@@ -141,6 +141,8 @@ function config(e) {
       // staging amounts; demo and live: the official price — Robokassa's test mode moves no money)
       return { checkout: 1, payments: 1, selling: cfg.ready && PAY.salesOpen(cfg), env: env, prices: PAY.listPrices(), charge: PAY.pricesFor(env), demoUntil: cfg.ready && cfg.env === 'demo' ? cfg.demoDay : '' };
     })(),
+    // 1.8.9: DAILY PRIME STREAK on this server (/api/prime/daily); 0 — the game shows no gift
+    daily: require(`${__hooks}/lib/daily.js`).enabled() ? 1 : 0,
   });
 }
 
@@ -696,4 +698,10 @@ module.exports = {
   guardMail: guardMail,
   limitMail: limitMail,
   ageRules: ageRules,
+  // 1.8.9: DAILY PRIME STREAK (lib/daily.js) writes the reward into the cloud save with the same checks
+  requireVerified: requireVerified,
+  sessionProblem: sessionProblem,
+  saveInfo: saveInfo,
+  archiveRecord: archiveRecord,
+  prune: prune,
 };

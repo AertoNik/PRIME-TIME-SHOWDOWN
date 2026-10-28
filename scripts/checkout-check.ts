@@ -435,10 +435,11 @@ async function serverChecks(): Promise<void> {
   check(`…the server names the published offer (revision ${pubRev?.revision}, ${pubRev?.effectiveFrom}) and accepts consent only to exactly that text (another hash → offer_changed)`, !!pubRev && pubOffer?.revision === pubRev.revision && pubOffer?.sha256 === pubRev.sha256 && pubOffer?.url === pubRev.url && (await http('POST', '/api/prime/shop/offer/accept', B.tok, { revision: pubRev.revision, sha256: H1 })).j.code === 'offer_changed');
   await stopPb();
 
-  // the migration can be undone and applied again (consents and accounts stay); stage 4's and the demonstration's
-  // migrations sit on top
+  // the migration can be undone and applied again (consents and accounts stay); every later migration (stage 4, the
+  // demonstration, 1.8.9's DAILY PRIME STREAK …) sits on top and goes down first
   const users = sqlite('select count(*) from users;');
-  const downOut = cli('migrate', 'down', '3');
+  const onTop = fs.readdirSync(MIGRATIONS).filter((f: string) => /^\d+_.*\.js$/.test(f) && f >= '1792700000_prime_checkout.js').length;
+  const downOut = cli('migrate', 'down', String(onTop));
   const afterDown = sqlite('select count(*) from pragma_table_info("consents") where name="docHash";');
   const upOut = cli('migrate', 'up');
   const afterUp = sqlite('select count(*) from pragma_table_info("consents") where name="docHash";');

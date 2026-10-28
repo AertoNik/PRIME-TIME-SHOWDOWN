@@ -210,7 +210,8 @@ export interface SaveData {
   selected: FighterId;
   difficulty: Difficulty;
   goals: Record<GoalId, GoalState>;
-  settings: { sound: boolean; music: boolean; quality: QualitySetting; camera: CameraMotion };
+  /** Device settings (never uploaded to PRIME CLOUD). headHp: the small HP bars over the fighters in a fight (off by default). */
+  settings: { sound: boolean; music: boolean; quality: QualitySetting; camera: CameraMotion; headHp: boolean };
   nextRival: RivalId;
   lastRival: RivalId | null;
   seed: number;
@@ -231,6 +232,12 @@ export interface SaveData {
   streak: StreakState;
   /** 1.8.8 (PRIME SHOP): what the player chose to WEAR among PRIME SHOP items — never ownership. */
   shop: ShopState;
+  /**
+   * 1.8.9 DAILY PRIME STREAK: the last daily reward this save already holds (the claim's number for the account and
+   * its game day) — written by the PRIME NETWORK server together with the dollars, so a reward is never applied
+   * twice. Not the streak itself (that is the server's: GET /api/prime/daily). No save version bump.
+   */
+  daily: { claims: number; day: number };
 }
 
 /**
@@ -320,7 +327,7 @@ export function defaultSave(): SaveData {
     selected: 'ray',
     difficulty: 'rookie',
     goals,
-    settings: { sound: true, music: true, quality: 'auto', camera: 'full' },
+    settings: { sound: true, music: true, quality: 'auto', camera: 'full', headHp: false },
     nextRival: 'dex',
     lastRival: null,
     seed: Math.floor(Math.random() * 1e9),
@@ -334,6 +341,7 @@ export function defaultSave(): SaveData {
     tutorial: 'pending',
     streak: { current: 0, best: 0, since: Date.now() },
     shop: { skins: {}, equip: {} },
+    daily: { claims: 0, day: 0 },
   };
 }
 
@@ -697,6 +705,8 @@ export function sanitize(raw: unknown): SaveData {
     if (s.quality === 'auto' || s.quality === 'high' || s.quality === 'medium' || s.quality === 'low') d.settings.quality = s.quality;
     // v2: camera motion intensity (absent in Alpha 1.0 saves -> 'full')
     if (s.camera === 'full' || s.camera === 'reduced' || s.camera === 'off') d.settings.camera = s.camera;
+    // the HP bars over the fighters: off unless the player switched them on (absent before this setting)
+    d.settings.headHp = bool(s.headHp, false);
   }
   if (typeof r.nextRival === 'string' && RIVAL_ORDER.includes(r.nextRival as RivalId)) d.nextRival = r.nextRival as RivalId;
   if (typeof r.lastRival === 'string' && RIVAL_ORDER.includes(r.lastRival as RivalId)) d.lastRival = r.lastRival as RivalId;
@@ -754,6 +764,11 @@ export function sanitize(raw: unknown): SaveData {
     d.streak.best = Math.max(d.streak.current, count(st.best));
     const since = num(st.since, 0);
     if (since > 0) d.streak.since = since;
+  }
+  // 1.8.9: the daily reward the save holds (absent before 1.8.9 -> none)
+  if (r.daily && typeof r.daily === 'object') {
+    const dl = r.daily as Partial<SaveData['daily']>;
+    d.daily = { claims: Math.min(1e6, count(dl.claims)), day: Math.min(1e7, count(dl.day)) };
   }
   return d;
 }

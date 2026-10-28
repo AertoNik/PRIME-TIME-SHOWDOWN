@@ -226,7 +226,8 @@ function loadRaw(raw: unknown): { sys: SaveSystem; st: MemoryStorage } {
   check('collection: cosmetics, titles, history, "seen" marks and personal rewards kept', same(d.cosmetics, raw.cosmetics));
   check('seasonal: Halloween Premiere tokens, quests, exchange purchases and daily cap kept', same(d.events, raw.events));
   check('modes: Survival records, Prime Challenge and Boss Fight progress kept', same(d.modes, raw.modes));
-  check('settings kept (sound, music, quality, camera)', same(d.settings, raw.settings));
+  // (1.8.8+: the HP bars over the fighters — a new device setting, off for every save that never chose it)
+  check('settings kept (sound, music, quality, camera) + the new HP-bars setting off by default', same(d.settings, { ...raw.settings, headHp: false }));
   check('v12 fields appear: producer and fighter streaks start at 0, tracking from now', d.streak.current === 0 && d.streak.best === 0 && d.streak.since > 0 && FIGHTER_ORDER.every((id) => d.fighters[id].streak === 0 && d.fighters[id].bestStreak === 0));
   const b = sys.backups();
   check('migration: the original v11 text is kept as a safety copy before the first v12 write', b.length === 1 && b[0].reason === 'migration' && b[0].raw === JSON.stringify(raw) && b[0].summary.version === 11);
@@ -507,7 +508,7 @@ function career(data?: SaveData): { sys: SaveSystem; career: CareerSystem; st: M
   const raw: Record<string, any> = { ...save176(), version: 12 };
   const { sys, st } = loadRaw(raw);
   sys.save();
-  check('device settings survive save and reload unchanged', same(open(st).data.settings, raw.settings));
+  check('device settings survive save and reload unchanged (+ the new HP-bars setting, off)', same(open(st).data.settings, { ...raw.settings, headHp: false }));
   const copy = sys.backups()[0];
   sys.data.settings.quality = 'high';
   sys.data.settings.sound = true;

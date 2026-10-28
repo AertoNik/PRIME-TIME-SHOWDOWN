@@ -126,10 +126,15 @@ export interface SyncMeta {
    * progress was kept in the cloud copies, the account's current progress was loaded».
    */
   notice: { kind: 'kept-device'; at: number } | null;
+  /**
+   * 1.8.9: a DAILY PRIME STREAK claim sent but not answered: asked again with the SAME op before anything else goes
+   * up (the server recognises the repeat and never pays twice) — base: the cloud revision it was sent for.
+   */
+  daily: { op: string; base: number; at: number } | null;
 }
 
 export function emptySyncMeta(): SyncMeta {
-  return { revision: 0, hash: '', syncedAt: 0, pending: null, conflict: null, newer: 0, notice: null };
+  return { revision: 0, hash: '', syncedAt: 0, pending: null, conflict: null, newer: 0, notice: null, daily: null };
 }
 
 export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
@@ -145,6 +150,8 @@ export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
   const c = r.conflict as SyncMeta['conflict'];
   if (c && (c.kind === 'diverged' || c.kind === 'cloud-newer' || c.kind === 'damaged' || c.kind === 'missing')) m.conflict = { kind: c.kind, revision: n(c.revision), hash: typeof c.hash === 'string' ? c.hash : '', at: n(c.at) };
   m.newer = n(r.newer);
+  const dl = r.daily as SyncMeta['daily'];
+  if (dl && typeof dl.op === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(dl.op)) m.daily = { op: dl.op, base: n(dl.base), at: n(dl.at) };
   const no = r.notice as SyncMeta['notice'];
   if (no && no.kind === 'kept-device') m.notice = { kind: 'kept-device', at: n(no.at) };
   return m;

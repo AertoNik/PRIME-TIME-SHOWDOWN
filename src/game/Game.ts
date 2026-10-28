@@ -51,6 +51,7 @@ import { showTutorialChoice } from '../ui/firstRun';
 import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 import { ACCOUNTS_BUILD, buildBootProfile, networkConfig } from '../net/build';
 import { AccountRuntime } from './AccountRuntime';
+import { DailyRuntime } from './DailyRuntime';
 
 export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival';
 
@@ -126,6 +127,8 @@ export class Game {
   readonly save = bootSave();
   /** Alpha 1.8.1: PRIME NETWORK accounts (null in every build without them, e.g. the published game). */
   readonly account: AccountRuntime | null;
+  /** 1.8.9: DAILY PRIME STREAK — the streak as the server sees it, and today's reward (through PRIME CLOUD). */
+  readonly daily: DailyRuntime;
   readonly career: CareerSystem;
   readonly events: EventManager;
   /** MY COLLECTION (Alpha 1.5): owned cosmetics and achievements (state in save.cosmetics). */
@@ -202,6 +205,7 @@ export class Game {
     const net = ACCOUNTS_BUILD ? networkConfig() : null;
     this.account = ACCOUNTS_BUILD && net && net.mode !== 'off' ? new AccountRuntime(this, net) : null;
     void this.account?.init();
+    this.daily = new DailyRuntime(this);
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
     // 1.8.8 stage 4: back from Robokassa — the title says which purchase the tap will check
@@ -846,6 +850,7 @@ export class Game {
         `<div class="h1">Пауза</div>
          <div class="toggle-row"><span>Звук</span><button class="switch ${s.sound ? 'on' : ''}" data-t="sound"></button></div>
          <div class="toggle-row"><span>Музыка</span><button class="switch ${s.music ? 'on' : ''}" data-t="music"></button></div>
+         <div class="toggle-row"><span>Полоски здоровья над бойцами</span><button class="switch ${s.headHp ? 'on' : ''}" data-t="headHp" role="switch" aria-checked="${s.headHp}" aria-label="Полоски здоровья над бойцами"></button></div>
          <div class="modal-actions">
            <button class="btn teal wide" data-a="resume">Продолжить</button>
            ${
@@ -860,6 +865,7 @@ export class Game {
             const tg = t.closest('[data-t]') as HTMLElement | null;
             if (tg) {
               if (tg.dataset.t === 'sound') this.toggleSound();
+              else if (tg.dataset.t === 'headHp') this.toggleHeadHp();
               else this.toggleMusic();
               render();
               return;
@@ -997,6 +1003,15 @@ export class Game {
     if (s.sound) this.audio.ui('click');
   }
 
+  /** The small HP bars over the fighters (device setting, off by default); a running fight follows at once. */
+  toggleHeadHp(): void {
+    const s = this.save.data.settings;
+    s.headHp = !s.headHp;
+    this.save.save();
+    this.hud.setHeadHp(s.headHp);
+    this.audio.ui('click');
+  }
+
   toggleMusic(): void {
     const s = this.save.data.settings;
     s.music = !s.music;
@@ -1030,6 +1045,7 @@ export class Game {
         `<div class="h1">Настройки</div>
          <div class="toggle-row"><span>Звук</span><button class="switch ${s.sound ? 'on' : ''}" data-t="sound"></button></div>
          <div class="toggle-row"><span>Музыка</span><button class="switch ${s.music ? 'on' : ''}" data-t="music"></button></div>
+         <div class="toggle-row"><span>Полоски здоровья над бойцами</span><button class="switch ${s.headHp ? 'on' : ''}" data-t="headHp" role="switch" aria-checked="${s.headHp}" aria-label="Полоски здоровья над бойцами"></button></div>
          <div style="padding:12px 0 4px" class="label">Качество графики</div>
          <div class="seg-control" style="grid-template-columns:repeat(4,1fr)">${qBtn('auto', 'Авто')}${qBtn('high', 'Высок.')}${qBtn('medium', 'Средн.')}${qBtn('low', 'Низк.')}</div>
          <div style="padding:12px 0 4px" class="label">Движение камеры</div>
@@ -1048,6 +1064,7 @@ export class Game {
             const tg = t.closest('[data-t]') as HTMLElement | null;
             if (tg) {
               if (tg.dataset.t === 'sound') this.toggleSound();
+              else if (tg.dataset.t === 'headHp') this.toggleHeadHp();
               else this.toggleMusic();
               render();
               return;

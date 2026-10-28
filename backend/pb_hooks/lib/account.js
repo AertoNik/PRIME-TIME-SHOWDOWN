@@ -136,6 +136,8 @@ function exportData(e) {
     invite: inv ? { usedToRegister: true } : null,
     // 1.8.8 stage 4: PRIME SHOP — the account's orders (no card data is ever kept) and its rights
     purchases: require(`${__hooks}/lib/payments.js`).exportOf(app, u.id),
+    // 1.8.9: DAILY PRIME STREAK — the streak and every daily reward
+    daily: require(`${__hooks}/lib/daily.js`).exportOf(app, u.id),
     notIncluded:
       'Пароль хранится только в виде хэша и не выгружается. Технические журналы сервера (IP-адрес, браузер, время запросов) хранятся ограниченное время и выдаются по запросу на primetimeshowdown.official@gmail.com. / The password is stored only as a hash and is not exported. Server logs (IP address, browser, request times) are kept for a limited time and are provided on request.',
   });

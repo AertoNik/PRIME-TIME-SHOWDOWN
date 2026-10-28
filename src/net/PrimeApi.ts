@@ -159,6 +159,65 @@ export interface ServerConfig {
    * server's test amount); env «demo» during the official site's demonstration (until demoUntil, Moscow time).
    */
   shop: { selling: boolean; env: PayEnv; pricesKop: Record<string, number | null>; chargeKop: Record<string, number | null>; demoUntil: string } | null;
+  /** 1.8.9: DAILY PRIME STREAK exists and is switched on here (/api/prime/daily). */
+  daily: boolean;
+}
+
+/** 1.8.9 DAILY PRIME STREAK — one day's reward as the server states it (the table: src/config/daily.config.ts). */
+export interface DailyRewardInfo {
+  day: number;
+  money: number;
+  kind: 'daily' | 'weekly' | 'milestone';
+  milestone: number;
+  label: string;
+}
+
+/** 1.8.9: the account's streak today, as the PRIME NETWORK server sees it (its own clock, Moscow game days). */
+export interface DailyStatus {
+  today: number;
+  /** The server's «now» and the start of its next game day (ms). */
+  now: number;
+  nextDayAt: number;
+  streak: number;
+  best: number;
+  claims: number;
+  total: number;
+  claimedToday: boolean;
+  canClaim: boolean;
+  /** Claiming now starts a new streak (it broke) / forgives yesterday with the free shield. */
+  willReset: boolean;
+  willShield: boolean;
+  next: DailyRewardInfo;
+  upcoming: DailyRewardInfo[];
+  milestones: { day: number; money: number; title: string; short: string; reached: boolean; on: number }[];
+  nextMilestone: { day: number; title: string; short: string; money: number; left: number };
+  /** ready: a miss of the next day would be forgiven; else it is ready again on game day readyOn. */
+  shield: { ready: boolean; usedOn: number; readyOn: number; days: number };
+  history: { day: number; streakDay: number; money: number; kind: string; milestone: number }[];
+}
+
+/** 1.8.9: what one claim paid (written into the cloud save by the server). */
+export interface DailyClaim {
+  seq: number;
+  day: number;
+  streakDay: number;
+  money: number;
+  kind: 'daily' | 'weekly' | 'milestone';
+  milestone: number;
+  label: string;
+  shield: boolean;
+  reset: boolean;
+  /** The milestone reached for the first time ever. */
+  first: boolean;
+}
+
+export interface DailyClaimResult {
+  claim: DailyClaim;
+  /** The cloud save revision and hash the reward was written into. */
+  revision: number;
+  hash: string;
+  duplicate: boolean;
+  status: DailyStatus | null;
 }
 
 /** 1.8.8 stage 3: the offer revision in force as the server states it (the same shape as offer.config.ts). */
@@ -248,6 +307,47 @@ const payEnv = (v: unknown): PayEnv => (v === 'test' || v === 'demo' ? v : 'live
 /** sku → whole kopecks above zero, or null. */
 const kopMap = (v: unknown): Record<string, number | null> =>
   Object.fromEntries(Object.entries((v ?? {}) as Record<string, unknown>).map(([k, x]) => [k, typeof x === 'number' && Number.isInteger(x) && x > 0 ? x : null]));
+
+const dailyKind = (v: unknown): DailyRewardInfo['kind'] => (v === 'weekly' || v === 'milestone' ? v : 'daily');
+const dailyRewardOf = (v: unknown): DailyRewardInfo => {
+  const x = (v ?? {}) as Rec;
+  return { day: int(x.day), money: Math.max(0, int(x.money)), kind: dailyKind(x.kind), milestone: int(x.milestone), label: str(x.label) };
+};
+
+/** The server's daily status, read defensively (anything missing reads as nothing). */
+export function dailyStatusOf(r: Rec): DailyStatus {
+  const nm = (r.nextMilestone ?? {}) as Rec;
+  const sh = (r.shield ?? {}) as Rec;
+  return {
+    today: int(r.today),
+    now: int(r.now),
+    nextDayAt: int(r.nextDayAt),
+    streak: int(r.streak),
+    best: int(r.best),
+    claims: int(r.claims),
+    total: int(r.total),
+    claimedToday: r.claimedToday === true,
+    canClaim: r.canClaim === true,
+    willReset: r.willReset === true,
+    willShield: r.willShield === true,
+    next: dailyRewardOf(r.next),
+    upcoming: Array.isArray(r.upcoming) ? r.upcoming.slice(0, 14).map(dailyRewardOf) : [],
+    milestones: Array.isArray(r.milestones)
+      ? r.milestones.slice(0, 12).map((m) => {
+          const x = (m ?? {}) as Rec;
+          return { day: int(x.day), money: int(x.money), title: str(x.title), short: str(x.short), reached: x.reached === true, on: int(x.on) };
+        })
+      : [],
+    nextMilestone: { day: int(nm.day), title: str(nm.title), short: str(nm.short), money: int(nm.money), left: int(nm.left) },
+    shield: { ready: sh.ready === true, usedOn: int(sh.usedOn), readyOn: int(sh.readyOn), days: int(sh.days) || 7 },
+    history: Array.isArray(r.history)
+      ? r.history.slice(0, 20).map((h) => {
+          const x = (h ?? {}) as Rec;
+          return { day: int(x.day), streakDay: int(x.streakDay), money: int(x.money), kind: str(x.kind), milestone: int(x.milestone) };
+        })
+      : [],
+  };
+}
 
 function cloudSaveOf(r: Rec): CloudSave {
   return {
@@ -396,6 +496,40 @@ export class PrimeApi {
           demoUntil: typeof sh.demoUntil === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sh.demoUntil) ? sh.demoUntil : '',
         };
       })(),
+      daily: r.daily === 1,
+    };
+  }
+
+  // ------------------------------------------------------- 1.8.9 DAILY PRIME STREAK
+  /** The account's streak today (a verified PRIME ID). */
+  async dailyStatus(): Promise<DailyStatus> {
+    return dailyStatusOf(await this.call((o) => this.pb.send<Rec>('/api/prime/daily', { ...o, method: 'GET' })));
+  }
+
+  /**
+   * Today's reward: the server pays it into the cloud save revision `base` (the one this page is in step with) and
+   * answers with the new revision. The request names nothing else — a repeat with the same op is answered again.
+   */
+  async dailyClaim(op: string, base: number): Promise<DailyClaimResult> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/daily/claim', { ...o, method: 'POST', body: { op, base, ...this.sessionBody() } }));
+    const c = (r.claim ?? {}) as Rec;
+    return {
+      claim: {
+        seq: int(c.seq),
+        day: int(c.day),
+        streakDay: int(c.streakDay),
+        money: Math.max(0, int(c.money)),
+        kind: dailyKind(c.kind),
+        milestone: int(c.milestone),
+        label: str(c.label),
+        shield: c.shield === true,
+        reset: c.reset === true,
+        first: c.first === true,
+      },
+      revision: int(r.revision),
+      hash: str(r.hash),
+      duplicate: r.duplicate === true,
+      status: r.status && typeof r.status === 'object' ? dailyStatusOf(r.status as Rec) : null,
     };
   }
 

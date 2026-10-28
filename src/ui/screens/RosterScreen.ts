@@ -1,5 +1,9 @@
 import { CARDS, PASSIVES } from '../../config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
+import { LOOKS } from '../../config/looks';
+import type { SkinId } from '../../config/shop.config';
+import { entitlementsVersion } from '../../meta/entitlements';
+import type { WardrobeEntry } from '../../meta/Shop';
 import { inRoster } from '../../meta/roster';
 import type { FighterId } from '../../config/types';
 import { formatNumber } from '../../core/math';
@@ -25,6 +29,10 @@ export class RosterScreen implements Screen {
   private dragId: number | null = null;
   private backTo: 'menu' | 'prep' | 'career' | 'events' = 'menu';
   private lastX = 0;
+  /** The quick wardrobe (hanger) is open for the fighter on screen. */
+  private wardrobe = false;
+  /** The PRIME SHOP rights this screen was drawn with (entitlements.ts): a change redraws it. */
+  private rights = -1;
 
   constructor(g: Game) {
     this.g = g;
@@ -32,7 +40,7 @@ export class RosterScreen implements Screen {
     this.el.addEventListener('click', (e) => this.onClick(e));
     this.el.addEventListener('pointerdown', (e) => {
       const z = (e.target as HTMLElement).closest('.drag-zone');
-      if (!z || (e.target as HTMLElement).closest('.nav-arrow')) return;
+      if (!z || (e.target as HTMLElement).closest('.nav-arrow, .wr-hanger')) return;
       this.dragId = e.pointerId;
       this.lastX = e.clientX;
       this.g.showcase.setDragging(true);
@@ -50,6 +58,17 @@ export class RosterScreen implements Screen {
     };
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
+    // the wardrobe closes with Esc (focus is inside it while it is open)
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !this.wardrobe) return;
+      e.stopPropagation();
+      this.closeWardrobe();
+    });
+    // rights arrive or change while the roster is open (sign-in, a purchase elsewhere, the end of a demonstration):
+    // the fighter is shown again in what he may wear — a skin no longer owned falls back to the standard look
+    g.account?.onChange(() => {
+      if (g.ui.current === 'roster' && this.rights !== entitlementsVersion()) this.render();
+    });
   }
 
   /** Alpha 1.7: who the roster shows — a seasonal star only once owned or while its event runs. */
@@ -68,6 +87,7 @@ export class RosterScreen implements Screen {
     this.backTo = typeof params === 'string' ? 'career' : p?.back === 'prep' ? 'prep' : p?.back === 'events' ? 'events' : 'menu';
     const id = (typeof params === 'string' ? params : (p?.fighter ?? this.g.save.data.selected)) as FighterId;
     this.idx = Math.max(0, this.order.indexOf(id));
+    this.wardrobe = false;
     this.render(false);
   }
 
@@ -93,6 +113,32 @@ export class RosterScreen implements Screen {
       const n = this.order.length;
       this.idx = (Math.min(this.idx, n - 1) + (act === 'next' ? 1 : n - 1)) % n;
       this.render();
+    } else if (act === 'wardrobe') {
+      // 1.8.8+: the quick wardrobe — the looks of the fighter on screen, applied at once (Shop.setSkin)
+      g.audio.ui('click');
+      if (this.wardrobe) return this.closeWardrobe();
+      this.wardrobe = true;
+      // the rights as the server has them now (another device may have bought, a demonstration may have ended)
+      g.account?.refreshRights(true);
+      this.render();
+      (this.el.querySelector('.wr-look.on') as HTMLElement | null)?.focus({ preventScroll: true });
+    } else if (act === 'wardrobe-close') {
+      g.audio.ui('click');
+      this.closeWardrobe();
+    } else if (act === 'look') {
+      const id = this.viewing;
+      const skin = (t.dataset.skin || null) as SkinId | null;
+      const entry = g.shop.wardrobe(id).find((w) => w.skin === skin);
+      if (!entry || entry.worn) return;
+      // only an available look is worn: the standard one, or a skin this PRIME ID owns (setSkin checks it again)
+      if (!entry.available || !g.shop.setSkin(id, skin)) {
+        g.audio.ui('deny');
+        g.ui.toast(`${entry.name}: облик открывается покупкой в PRIME SHOP — примерить его можно бесплатно`);
+        return;
+      }
+      g.audio.ui(skin ? 'confirm' : 'click');
+      this.render();
+      (this.el.querySelector('.wr-look.on') as HTMLElement | null)?.focus({ preventScroll: true });
     } else if (act === 'select') {
       if (g.career.select(this.viewing)) {
         g.audio.ui('confirm');
@@ -117,6 +163,41 @@ export class RosterScreen implements Screen {
     }
   }
 
+  private closeWardrobe(): void {
+    this.wardrobe = false;
+    this.render();
+    (this.el.querySelector('[data-act="wardrobe"]') as HTMLElement | null)?.focus({ preventScroll: true });
+  }
+
+  /** The hanger's panel: the fighter's looks, the one worn lit up; a look not owned is shown locked, never worn. */
+  private wardrobeHTML(name: string, looks: WardrobeEntry[]): string {
+    const g = this.g;
+    const f = FIGHTERS[this.viewing];
+    const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+    const env = g.shop.payEnv();
+    const cards = looks.map((w) => {
+      const lk = LOOKS[w.look];
+      const art = w.skin ? portraitHTML(g.portraitFor(w.look), hex(lk.top.accent), hex(lk.top.main)) : portraitHTML(g.portraitFor(w.look), f.theme.main, f.theme.dark);
+      // a test-mode right is never shown as a purchase: DEMO (the official site's demonstration) / ТЕСТ / DEV
+      const tag = w.source === 'test' ? (env === 'demo' ? 'DEMO' : 'ТЕСТ') : w.source === 'dev' ? 'DEV' : '';
+      const state = w.worn ? `${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} Надет` : w.available ? 'Выбрать' : `${UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')} PRIME SHOP`;
+      return `<button type="button" class="wr-look ${w.worn ? 'on' : ''} ${w.available ? '' : 'locked'}" data-act="look" data-skin="${w.skin ?? ''}" aria-pressed="${w.worn}"${w.available ? '' : ' aria-disabled="true"'}>
+          <span class="wr-art">${art}${tag ? `<i class="wr-tag">${tag}</i>` : ''}</span>
+          <span class="wr-name">${esc(w.name)}</span>
+          <span class="wr-state">${state}</span>
+        </button>`;
+    });
+    return `<section class="wardrobe panel" id="roster-wardrobe" role="dialog" aria-label="${esc(name)} — выбор облика">
+        <div class="wr-head">
+          <span class="wr-ico">${UI_ICONS.hanger}</span>
+          <div class="wr-title"><b>${esc(name)}</b><span>Выбор облика</span></div>
+          <button type="button" class="wr-x" data-act="wardrobe-close" aria-label="Закрыть выбор облика">×</button>
+        </div>
+        <div class="wr-list scroll">${cards.join('')}</div>
+        <div class="wr-note">Только внешний вид: характеристики, оружие и карты не меняются. Облик сохраняется и виден в меню, подготовке и бою.</div>
+      </section>`;
+  }
+
   private render(keep = true): void {
     const g = this.g;
     const s = g.save.data;
@@ -125,6 +206,15 @@ export class RosterScreen implements Screen {
     const fp = s.fighters[id];
     // 1.8.8: signed / opened for tokens (the save) or opened by a confirmed PRIME SHOP purchase
     const open = inRoster(s, id);
+    this.rights = entitlementsVersion();
+    // 1.8.8+: the hanger only for a fighter who has more than the standard look (nothing to offer otherwise)
+    const looks = g.shop.wardrobe(id);
+    if (looks.length < 2) this.wardrobe = false;
+    const worn = looks.find((w) => w.worn)!;
+    const hanger =
+      looks.length < 2
+        ? ''
+        : `<button type="button" class="wr-hanger ${this.wardrobe ? 'on' : ''} ${worn.skin ? 'skinned' : ''}" data-act="wardrobe" aria-label="Облик бойца ${esc(f.name)}: ${esc(worn.name)}" aria-expanded="${this.wardrobe}" aria-controls="roster-wardrobe">${UI_ICONS.hanger}</button>`;
     g.showcase.show(g.fighterLook(f.id), f.theme.accent);
     const sig = CARDS[f.signature];
     const pas = PASSIVES[f.passive];
@@ -190,6 +280,7 @@ export class RosterScreen implements Screen {
         <button class="nav-arrow l" data-act="prev" aria-label="Предыдущий">${UI_ICONS.back}</button>
         <button class="nav-arrow r" data-act="next" aria-label="Следующий">${UI_ICONS.next}</button>
         <div class="drag-hint">ПОТЯНИТЕ, ЧТОБЫ ПОВЕРНУТЬ</div>
+        ${hanger}
       </div>
       <div class="sheet panel scroll">
         <div class="title-row">
@@ -221,7 +312,8 @@ export class RosterScreen implements Screen {
         </div>
         <div class="spacer-8"></div>
         ${action}
-      </div>`,
+      </div>
+      ${this.wardrobe ? this.wardrobeHTML(f.name, looks) : ''}`,
       keep,
     );
   }

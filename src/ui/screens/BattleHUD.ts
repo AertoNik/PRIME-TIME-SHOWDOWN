@@ -15,6 +15,7 @@ import { ICONS } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { PERK_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
+import { headTagShown } from '../headTags';
 
 interface Floater {
   el: HTMLElement;
@@ -138,6 +139,8 @@ export class BattleHUD implements Screen {
   private hintT = 0;
   private statusKey = ['', ''];
   private enemyWarn = false;
+  /** The small HP bars over the fighters (settings, off by default); the «!» of a wind-up shows either way. */
+  private headHp = false;
   /** Game-mode strip under the rating (Survival wave / challenge goal). */
   private modeStrip!: HTMLElement;
   private modeLive: HTMLElement | null = null;
@@ -298,6 +301,12 @@ export class BattleHUD implements Screen {
     });
   }
 
+  /** Show or hide the HP bars over the fighters (the top bars, HP and every marker stay as they are). */
+  setHeadHp(on: boolean): void {
+    this.headHp = on;
+    this.el.classList.toggle('head-hp', on);
+  }
+
   // --------------------------------------------------------------- setup
   /**
    * @param dress Alpha 1.4 broadcast dressing: `stage` shows the TV caption of the
@@ -306,6 +315,7 @@ export class BattleHUD implements Screen {
   setup(m: Match, mode: ModeSession = { kind: 'classic' }, dress: { stage?: boolean; halloween?: boolean } = {}): void {
     this.m = m;
     const g = this.g;
+    this.setHeadHp(g.save.data.settings.headHp);
     const pf = FIGHTERS[m.cfg.fighter];
     const rv = m.rival;
     (this.el.querySelector('[data-portrait="0"]') as HTMLElement).innerHTML = portraitHTML(g.portraitOf(pf.id), pf.theme.main, pf.theme.dark);
@@ -836,16 +846,19 @@ export class BattleHUD implements Screen {
       f.el.style.transform = `translate3d(${_p.x + f.ox}px, ${y}px, 0) translate(-50%, -50%) scale(${sc})`;
       f.el.style.opacity = String(k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1);
     }
-    // head tags
+    // head tags: the HP bar only when the player wants it (settings); the enemy's wind-up «!» always
     for (const side of [0, 1] as Side[]) {
       const f = m.fighters[side];
       const tag = this.headTags[side];
-      view.headPos(side, _v);
-      view.project(_v.x, _v.y, _v.z, _p);
       const minY = this.safeTop + (side === 1 && this.enemyWarn ? 36 : 10);
-      tag.style.transform = `translate3d(${_p.x}px, ${Math.max(minY, _p.y)}px, 0) translate(-50%, -100%)`;
-      tag.style.display = f.ko || m.phase !== 'fight' ? 'none' : '';
-      this.headBars[side].style.transform = `scaleX(${f.hpFrac})`;
+      const shown = headTagShown({ headHp: this.headHp, ko: f.ko, fight: m.phase === 'fight', warn: side === 1 && this.enemyWarn });
+      tag.style.display = shown ? '' : 'none';
+      if (shown) {
+        view.headPos(side, _v);
+        view.project(_v.x, _v.y, _v.z, _p);
+        tag.style.transform = `translate3d(${_p.x}px, ${Math.max(minY, _p.y)}px, 0) translate(-50%, -100%)`;
+        if (this.headHp) this.headBars[side].style.transform = `scaleX(${f.hpFrac})`;
+      }
       const warn = side === 1 && f.action.kind === 'windup';
       if (warn !== this.enemyWarn && side === 1) {
         this.enemyWarn = warn;

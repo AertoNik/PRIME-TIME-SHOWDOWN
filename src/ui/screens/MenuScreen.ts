@@ -11,6 +11,7 @@ import { UI_ICONS } from '../icons';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
+import { openDaily } from '../dailyUI';
 
 /**
  * Alpha 1.8.8: the «ТВОЙ PRIME ID» hint next to the profile button — for a player not signed in to
@@ -49,6 +50,28 @@ function retireHint(): void {
   }
 }
 
+/**
+ * Alpha 1.8.9: the one-time «ТВОЙ ЕЖЕДНЕВНЫЙ ЭФИР НАЧАЛСЯ!» note by the gift — for a PRIME ID that has never taken a
+ * daily reward, until the window is opened or the note closed. Only this small local mark is stored.
+ */
+const DAILY_HINT_KEY = 'primetime-showdown-hint-daily-v1';
+
+function dailyHintLeft(): boolean {
+  try {
+    return localStorage.getItem(DAILY_HINT_KEY) !== 'done';
+  } catch {
+    return false;
+  }
+}
+
+function retireDailyHint(): void {
+  try {
+    localStorage.setItem(DAILY_HINT_KEY, 'done');
+  } catch {
+    /* this page only */
+  }
+}
+
 export class MenuScreen implements Screen {
   readonly el: HTMLElement;
   private g: Game;
@@ -68,6 +91,12 @@ export class MenuScreen implements Screen {
         this.el.querySelector('.pid-hint')?.remove();
         return;
       }
+      if (act === 'daily-hint-close') {
+        // 1.8.9: the daily note does not come back either
+        retireDailyHint();
+        this.el.querySelector('.daily-hint')?.remove();
+        return;
+      }
       this.g.audio.ui(act === 'modes' ? 'confirm' : 'click');
       if (act === 'profile') retireHint();
       // 1.8.8: one way into the fights — «В БОЙ!» opens the modes (CLASSIC DUEL first)
@@ -79,9 +108,48 @@ export class MenuScreen implements Screen {
       else if (act === 'events') this.g.goto('events');
       else if (act === 'collection') this.g.goto('collection');
       else if (act === 'profile') this.g.goto('profile');
+      else if (act === 'daily') {
+        // 1.8.9: DAILY PRIME STREAK — the window over the menu (never on its own, never during a fight)
+        retireDailyHint();
+        this.el.querySelector('.daily-hint')?.remove();
+        openDaily(this.g);
+      }
     });
     // Alpha 1.8.3: the PRIME CLOUD line follows the account live (only an account career shows it)
-    g.account?.onChange(() => this.paintCloud());
+    g.account?.onChange(() => {
+      this.paintCloud();
+      this.paintDaily();
+    });
+    // 1.8.9: the gift lights up when today's reward waits, and goes quiet once it is taken
+    g.daily.onChange(() => this.paintDaily());
+  }
+
+  /**
+   * 1.8.9: the DAILY PRIME STREAK gift under the sound button — only where the server has the streak; a soft gold
+   * dot while today's reward waits (a short pulse, then still); the one-time note for a first-time PRIME ID.
+   */
+  private paintDaily(): void {
+    const btn = this.el.querySelector('[data-act="daily"].daily-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    const d = this.g.daily;
+    btn.hidden = !d.supported;
+    const ready = d.giftReady;
+    btn.classList.toggle('ready', ready);
+    btn.setAttribute('aria-label', `DAILY PRIME STREAK — ежедневный эфир${ready ? ': подарок ждёт' : d.status?.claimedToday ? ': сегодня получено' : ''}`);
+    const s = d.status;
+    const wantHint = ready && !!s && s.claims === 0 && this.g.save.data.tutorial !== 'pending' && this.g.ui.current === 'menu' && dailyHintLeft();
+    const hint = this.el.querySelector('.daily-hint');
+    if (wantHint && !hint) {
+      btn.insertAdjacentHTML(
+        'afterend',
+        `<div class="daily-hint" data-act="daily" role="note">
+          <span class="dh-arrow" aria-hidden="true"></span>
+          <b>Твой ежедневный эфир начался!</b>
+          <span>Загляни за первым подарком</span>
+          <button class="ph-x" data-act="daily-hint-close" aria-label="Закрыть подсказку">×</button>
+        </div>`,
+      );
+    } else if (!wantHint && hint) hint.remove();
   }
 
   // 1.8.3.1: the PRIME CLOUD line no longer hangs there — it shows loading / saving and anything the
@@ -212,6 +280,7 @@ export class MenuScreen implements Screen {
         </div>`
       : '';
     this.el.innerHTML = `
+      <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${UI_ICONS.gift}<i class="daily-dot" aria-hidden="true"></i></button>
       <div class="topbar" style="padding-right:62px">
         <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge">${lvl.level}</span><span class="lvl-id">ID</span></button>${hint}
         <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
@@ -265,6 +334,8 @@ export class MenuScreen implements Screen {
     if (this.shownRep >= 0 && this.shownRep !== s.reputation) countUp(repEl, this.shownRep, s.reputation, 0.9, (n) => String(Math.floor(n)));
     this.shownMoney = s.money;
     this.paintCloud(true);
+    this.paintDaily();
+    void g.daily.refresh();
     this.shownRep = s.reputation;
   }
 }

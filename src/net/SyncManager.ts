@@ -2,7 +2,7 @@ import { VERSION, type ProfileId, type SaveStorage, type SaveSystem } from '../m
 import { randomId } from '../meta/TabLock';
 import { readSync, writeSync, type SyncMeta } from './accountStore';
 import { cloudCopyOf, readCloudText, type CloudCopy } from './cloudSave';
-import { PrimeApiError, type CloudSave, type HistoryEntry, type PrimeApi } from './PrimeApi';
+import { PrimeApiError, dailyStatusOf, type CloudSave, type DailyClaim, type DailyClaimResult, type DailyStatus, type HistoryEntry, type PrimeApi } from './PrimeApi';
 import type { SessionManager } from './SessionManager';
 
 // Alpha 1.8.1 — SYNC MANAGER: keeps the signed-in account's local copy and its cloud save in step.
@@ -41,6 +41,15 @@ export type SyncStatus =
   | 'outdated';
 
 export type SyncDecision = 'in-sync' | 'upload' | 'adopt' | 'fast-forward' | 'conflict' | 'newer' | 'damaged' | 'missing';
+
+/**
+ * 1.8.9 DAILY PRIME STREAK — how a claim ended: paid (applied: the dollars went into this device's copy now; false —
+ * the copy already held them), or why not: already claimed today (the server's status), offline (a claim sent and
+ * unanswered is asked again with the same id), the page may not write / is not in step yet, a conflict, refused.
+ */
+export type DailyOutcome =
+  | { ok: true; claim: DailyClaim; status: DailyStatus | null; applied: boolean }
+  | { ok: false; code: 'already_claimed' | 'offline' | 'not_ready' | 'conflict' | 'no_cloud_save' | 'session' | 'refused'; status: DailyStatus | null };
 
 /**
  * What to do, given what this device last confirmed (meta), its account copy now (localHash) and
@@ -83,7 +92,7 @@ export interface SyncOptions {
 }
 
 const RETRY_MS = [5000, 15000, 30000, 60000];
-const newOp = () => 'op_' + randomId().replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
+const newOp = (prefix = 'op_') => prefix + randomId().replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
 
 export class SyncManager {
   status: SyncStatus = 'idle';
@@ -236,6 +245,11 @@ export class SyncManager {
     if (this.stopped) return this.status;
     // 1.8.3: only the page that holds the account's game session writes
     if (this.o.session && !this.o.session.canWrite) return this.status;
+    // 1.8.9: a daily claim still unanswered goes first — the server may already have written its revision
+    if (this.meta.daily) {
+      const d = await this.settleDaily();
+      if (d === 'offline') return this.status;
+    }
     let m = this.meta;
     if (m.conflict) return this.set('conflict');
     if (m.newer) return this.set('newer');
@@ -473,6 +487,110 @@ export class SyncManager {
         this.set('newer');
         return 'decide';
     }
+  }
+
+  // ------------------------------------------------------------- 1.8.9 DAILY PRIME STREAK
+  /**
+   * Today's reward. The page's own progress goes up first, so the server writes the dollars into exactly the cloud
+   * revision this device holds; the answer is then applied to this device's copy in place (money + amount and the
+   * claim's mark — the very change the server made), no reload, no conflict. Runs one request at a time with the
+   * uploads. A claim whose answer never came is asked again with the same id first (the server never pays twice).
+   */
+  async claimDaily(): Promise<DailyOutcome> {
+    while (this.busy) await this.busy.catch(() => undefined);
+    let done!: (s: SyncStatus) => void;
+    this.busy = new Promise<SyncStatus>((r) => (done = r));
+    try {
+      return await this.doClaimDaily();
+    } finally {
+      this.busy = null;
+      done(this.status);
+    }
+  }
+
+  private async doClaimDaily(): Promise<DailyOutcome> {
+    if (this.stopped || this.blocked) return { ok: false, code: 'not_ready', status: null };
+    if (this.meta.daily) {
+      const s = await this.settleDaily();
+      if (s === 'offline') return { ok: false, code: 'offline', status: null };
+      if (typeof s === 'object') return s;
+    }
+    // this device's progress first: the reward is written into the revision it is in step with
+    const st = await this.upload(false);
+    if (st !== 'synced') return { ok: false, code: st === 'offline' ? 'offline' : st === 'superseded' || st === 'outdated' ? 'session' : 'not_ready', status: null };
+    const m = this.meta;
+    m.daily = { op: newOp('daily_'), base: m.revision, at: this.now() };
+    this.setMeta(m);
+    const r = await this.sendDaily();
+    return r === 'offline' ? { ok: false, code: 'offline', status: null } : r;
+  }
+
+  /** The unanswered claim, asked again: its outcome, or 'offline' (still unanswered) / 'none' (nothing pending). */
+  private settleDaily(): Promise<DailyOutcome | 'offline' | 'none'> {
+    return this.meta.daily ? this.sendDaily() : Promise.resolve('none');
+  }
+
+  private async sendDaily(): Promise<DailyOutcome | 'offline'> {
+    const p = this.meta.daily!;
+    let r: DailyClaimResult;
+    try {
+      r = await this.o.api.dailyClaim(p.op, p.base);
+    } catch (e) {
+      const err = e instanceof PrimeApiError ? e : new PrimeApiError('network', 'network', 0);
+      if (err.kind === 'network' || err.kind === 'server' || err.kind === 'rate') {
+        // unanswered (or the server is busy): the same id is asked again later — the reward is never lost or doubled
+        this.set('offline', err.code);
+        this.retryLater();
+        return 'offline';
+      }
+      const m = this.meta;
+      m.daily = null;
+      this.setMeta(m);
+      const status = err.data && typeof err.data.status === 'object' && err.data.status ? dailyStatusOf(err.data.status as Record<string, unknown>) : null;
+      if (err.code === 'already_claimed' || err.code === 'daily_clock') return { ok: false, code: 'already_claimed', status };
+      if (err.code === 'no_cloud_save') return { ok: false, code: 'no_cloud_save', status };
+      if (err.kind === 'conflict') {
+        await this.doCheck();
+        return { ok: false, code: 'conflict', status };
+      }
+      if (err.kind === 'superseded' || err.kind === 'outdated' || err.kind === 'unauthorized' || err.kind === 'unverified') {
+        await this.failed(err);
+        return { ok: false, code: 'session', status };
+      }
+      return { ok: false, code: 'refused', status };
+    }
+    const applied = this.applyDaily(r);
+    return { ok: true, claim: r.claim, status: r.status, applied };
+  }
+
+  /** The server's change, made to this device's copy too — once (the save's daily mark says which claim it holds). */
+  private applyDaily(r: DailyClaimResult): boolean {
+    const save = this.o.save;
+    const fresh = save.data.daily.claims < r.claim.seq;
+    if (fresh) {
+      save.data.money = Math.max(0, save.data.money) + r.claim.money;
+      save.data.daily = { claims: r.claim.seq, day: r.claim.day };
+      const hook = save.onSaved;
+      save.onSaved = null;
+      save.save();
+      save.onSaved = hook;
+    }
+    const m = this.meta;
+    m.daily = null;
+    // the cloud revision the reward was written into (never back to an older one: a late repeat changes nothing)
+    if (fresh || m.revision < r.revision) {
+      m.revision = r.revision;
+      m.hash = r.hash;
+      m.pending = null;
+      m.syncedAt = this.now();
+    }
+    this.setMeta(m);
+    this.failures = 0;
+    // the same text as the cloud's (canonical JSON on both sides); anything else here goes up as usual
+    const st = this.local().hash === m.hash ? 'synced' : 'pending';
+    this.set(st);
+    if (st === 'pending') this.schedule(this.o.soonMs ?? 3000);
+    return fresh;
   }
 
   // ------------------------------------------------------------------ decisions

@@ -402,8 +402,18 @@ function validateSave(s, ctx) {
     }
   }
 
+  // 1.8.9 DAILY PRIME STREAK: which daily reward the save already holds (written by the server, lib/daily.js) —
+  // a mark against applying one twice, never a source of money or days
+  if (s.daily !== undefined) {
+    if (!isObj(s.daily)) fail('daily', 'not an object');
+    else {
+      num(s.daily.claims, 'daily.claims', 1000000, { int: true });
+      num(s.daily.day, 'daily.day', 10000000, { int: true });
+    }
+  }
+
   // forward compatibility: a few unknown top-level fields (a newer minor's additions) are kept
-  const known = ['version', 'orgName', 'money', 'reputation', 'matches', 'wins', 'losses', 'draws', 'bestRating', 'totalEarned', 'fansEarned', 'bestCombosInMatch', 'bestPerfectsInMatch', 'proWins', 'championWins', 'fighters', 'selected', 'difficulty', 'goals', 'settings', 'nextRival', 'lastRival', 'seed', 'hintsSeen', 'events', 'cosmetics', 'modes', 'arena', 'careerClaimed', 'cards', 'tutorial', 'streak', 'shop'];
+  const known = ['version', 'orgName', 'money', 'reputation', 'matches', 'wins', 'losses', 'draws', 'bestRating', 'totalEarned', 'fansEarned', 'bestCombosInMatch', 'bestPerfectsInMatch', 'proWins', 'championWins', 'fighters', 'selected', 'difficulty', 'goals', 'settings', 'nextRival', 'lastRival', 'seed', 'hintsSeen', 'events', 'cosmetics', 'modes', 'arena', 'careerClaimed', 'cards', 'tutorial', 'streak', 'shop', 'daily'];
   let unknown = 0;
   for (const k of Object.keys(s)) if (known.indexOf(k) < 0) unknown++;
   if (unknown > MAX_UNKNOWN_TOP_FIELDS) fail('save', 'too many unknown fields');

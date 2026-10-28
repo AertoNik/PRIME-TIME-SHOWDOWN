@@ -1,6 +1,11 @@
 // Verifies that Alpha 1.0 (schema v1) and Alpha 1.1 (schema v2) saves load into the
 // current schema (v12, Alpha 1.8) without losing progress.
-import { sanitize } from '../src/meta/SaveSystem';
+import { cloudCopyOf } from '../src/net/cloudSave';
+import { headTagShown } from '../src/ui/headTags';
+import { defaultSave, sanitize } from '../src/meta/SaveSystem';
+import { fs } from './lib/node';
+
+const readFileSync = (p: string, enc: 'utf8') => fs.readFileSync(p, enc) as string;
 
 const alpha10 = {
   version: 1,
@@ -116,6 +121,27 @@ const checks: [string, boolean][] = [
   })()],
   ['1.2.5: Vega progress round-trips', sanitize(JSON.parse(JSON.stringify({ ...alpha11, selected: 'vega', fighters: { ...alpha11.fighters, vega: { unlocked: true, fans: 2600, wins: 3, losses: 1, draws: 0, matches: 4, bestRating: 81, deck: ['dash', 'power_shot', 'overdrive', 'charged_shot'] } } }))).selected === 'vega'],
 ];
+// 1.8.8+: the small HP bars over the fighters — a device setting, off by default; the top bars and the fight unchanged
+{
+  const hud = readFileSync('src/ui/screens/BattleHUD.ts', 'utf8');
+  const game = readFileSync('src/game/Game.ts', 'utf8');
+  const css = readFileSync('src/styles/main.css', 'utf8');
+  const base = { ko: false, fight: true, warn: false };
+  const cloud = cloudCopyOf(JSON.stringify({ ...defaultSave(), settings: { ...defaultSave().settings, headHp: true } }));
+  checks.push(
+    ['HP bars: off by default (a new save, an old save without the setting, a damaged value)', defaultSave().settings.headHp === false && s.settings.headHp === false && s11.settings.headHp === false && sanitize({ version: 12, settings: { headHp: 'yes' } }).settings.headHp === false],
+    ['HP bars: an explicit choice is kept (on stays on, off stays off) across a save round-trip', sanitize(JSON.parse(JSON.stringify({ ...alpha11, version: 12, settings: { ...alpha11.settings, headHp: true } }))).settings.headHp === true && sanitize({ version: 12, settings: { headHp: false } }).settings.headHp === false],
+    ['HP bars: a device setting — never sent with the PRIME CLOUD copy (like sound and camera)', !/headHp/.test(cloud.text)],
+    ['HP bars: hidden by default — no tag over either fighter in a fight', !headTagShown({ ...base, headHp: false })],
+    ['HP bars: switched on — shown over the fighters; switched off again — hidden', headTagShown({ ...base, headHp: true }) && !headTagShown({ ...base, headHp: false })],
+    ['HP bars: the opponent\'s wind-up «!» is a combat warning — shown with the bars off too', headTagShown({ ...base, headHp: false, warn: true })],
+    ['HP bars: nothing over a KO\'d fighter or outside the fighting phase, whatever the setting', !headTagShown({ headHp: true, ko: true, fight: true, warn: true }) && !headTagShown({ headHp: true, ko: false, fight: false, warn: true })],
+    ['HP bars: the HUD uses the rule, writes the bar only while it is shown, and takes the setting at the start of every match', /const shown = headTagShown\(/.test(hud) && /if \(this\.headHp\) this\.headBars\[side\]\.style\.transform/.test(hud) && /this\.setHeadHp\(g\.save\.data\.settings\.headHp\)/.test(hud)],
+    ['HP bars: the switch is in the settings and in the pause (a running fight follows at once), saved with the device settings', (game.match(/data-t="headHp"/g) ?? []).length === 2 && /toggleHeadHp\(\): void \{\s*const s = this\.save\.data\.settings;\s*s\.headHp = !s\.headHp;\s*this\.save\.save\(\);\s*this\.hud\.setHeadHp\(s\.headHp\);/.test(game) && /Полоски здоровья над бойцами/.test(game)],
+    ['HP bars: hiding keeps the place of the bar (the «!» does not move) and leaves no frame behind; only the bar is hidden', /\.hud:not\(\.head-hp\) \.head-tag \.ht-bar \{\s*visibility: hidden;\s*\}/.test(css)],
+    ['HP bars: the top HP panel is untouched (its bars, lag and numbers are still drawn)', /<div class="hp-bar"><div class="lag"><\/div><div class="val"><\/div><\/div>/.test(hud) && (hud.match(/class="hp-bar"/g) ?? []).length === 2],
+  );
+}
 let ok = true;
 for (const [name, pass] of checks) {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`);

@@ -123,6 +123,34 @@ function protocolChecks(): void {
   const withRc = RK.paymentForm({ login: LOGIN, password1: LIVE_P1, alg: 'sha256', H, kop: 14900, inv: 1000002, title: 'x', test: false, shp: {}, expires: 0, receipt: rc, gateway: '' });
   check('prepared (off by default) Receipt: URL-encoded minimised JSON, one item, the order sum, signed between InvId and the password', JSON.parse(decodeURIComponent(rc)).items[0].sum === 149 && withRc.fields.Receipt === rc && withRc.fields.SignatureValue === H.sha256(`${LOGIN}:149.00:1000002:${rc}:${LIVE_P1}`));
 
+  // ---- the «Receipt» (nomenclature for «Робочеки СМЗ»): exact content, UTF-8, the signature with Shp_*, the transport
+  const NAME = 'Цифровой облик бойца RAY: NEON RUNNER для игры PRIME TIME: SHOWDOWN';
+  const rcRay = RK.receipt(NAME, 9900);
+  const rj = JSON.parse(decodeURIComponent(rcRay));
+  check('Receipt for НПД: exactly one item with exactly {name, quantity 1, sum, tax none} — no «sno», «payment_method», «payment_object» (Robokassa support, «Робочеки СМЗ»)', Object.keys(rj).join() === 'items' && rj.items.length === 1 && Object.keys(rj.items[0]).join() === 'name,quantity,sum,tax' && rj.items[0].quantity === 1 && rj.items[0].tax === 'none' && !/sno|payment_method|payment_object/.test(decodeURIComponent(rcRay)), decodeURIComponent(rcRay));
+  check('Receipt: no payment_object to choose — the old list and its third argument are gone', !('RECEIPT_OBJECTS' in RK) && RK.receipt.length === 2 && (RK.receipt as any)(NAME, 9900, 'goods') === rcRay);
+  check('Receipt: the Cyrillic name travels as UTF-8 and comes back unchanged; the text is pure ASCII (the signature hashes exactly these bytes)', rj.items[0].name === NAME && /^[\x21-\x7e]+$/.test(rcRay) && rcRay.includes('%D0%A6%D0%B8%D1%84'));
+  check('Receipt: the sum is the order\'s own kopecks in roubles — the same number as OutSum (99 → 99, 99.50 → 99.5, 49 → 49)', rj.items[0].sum === Number(RK.outSum(9900)) && JSON.parse(decodeURIComponent(RK.receipt(NAME, 9950))).items[0].sum === 99.5 && RK.outSum(9950) === '99.50' && JSON.parse(decodeURIComponent(RK.receipt(NAME, 4900))).items[0].sum === 49);
+  check('Receipt: an item without a name is never sent', (() => { try { RK.receipt('«»', 4900); return false; } catch { return true; } })());
+  const shpRc = { Shp_order: 'ord000000000001', Shp_a: 'x' };
+  const fRc = RK.paymentForm({ login: LOGIN, password1: TEST_P1, alg: 'sha256', H, kop: 9900, inv: 500000000000123, title: NAME, test: true, shp: shpRc, expires: 0, receipt: rcRay, gateway: '' }).fields;
+  check('SHA256 with Receipt and Shp_*: HASH("MerchantLogin:OutSum:InvId:Receipt:Password#1:Shp_a=…:Shp_order=…") — Receipt after InvId, the Shp_* after the password, sorted by name (pay-interface)', fRc.SignatureValue === H.sha256(`${LOGIN}:99.00:500000000000123:${rcRay}:${TEST_P1}:Shp_a=x:Shp_order=ord000000000001`) && fRc.SignatureValue.length === 64);
+  check('the form field Receipt is the very text in the signature; IsTest=1 is in the form, never in the signature', fRc.Receipt === rcRay && fRc.IsTest === '1' && !H.sha256(`${LOGIN}:99.00:500000000000123:${rcRay}:${TEST_P1}:IsTest=1:Shp_a=x:Shp_order=ord000000000001`).includes(fRc.SignatureValue));
+  const posted = new URLSearchParams(Object.entries(fRc) as [string, string][]).toString();
+  check('the POST form transport (application/x-www-form-urlencoded) delivers to Robokassa exactly the Receipt that was signed', new URLSearchParams(posted).get('Receipt') === rcRay && new URLSearchParams(posted).get('SignatureValue') === fRc.SignatureValue);
+  check('the signature takes the Receipt URL-encoded exactly once — neither the raw JSON nor a twice-encoded text', fRc.SignatureValue !== H.sha256(`${LOGIN}:99.00:500000000000123:${decodeURIComponent(rcRay)}:${TEST_P1}:Shp_a=x:Shp_order=ord000000000001`) && fRc.SignatureValue !== H.sha256(`${LOGIN}:99.00:500000000000123:${encodeURIComponent(rcRay)}:${TEST_P1}:Shp_a=x:Shp_order=ord000000000001`));
+  check('on the wire the Receipt is encoded twice — the POST body as a GET link would carry it ("%7B%22items" → "%257B%2522items"); one decoding of the transport gives back the signed text', posted.includes('Receipt=%257B%2522items%2522') && new URL(RK.PAY_URL + '?' + posted).searchParams.get('Receipt') === rcRay && decodeURIComponent(new URL(RK.PAY_URL + '?' + posted).searchParams.get('Receipt')!) === decodeURIComponent(rcRay));
+  const fLive = RK.paymentForm({ login: LOGIN, password1: LIVE_P1, alg: 'sha256', H, kop: 9900, inv: 10000000123, title: NAME, test: false, shp: shpRc, expires: 0, receipt: rcRay, gateway: '' }).fields;
+  check('the same Receipt signed in live mode: the LIVE Password#1, no IsTest — a test form can never pass for a live one', !('IsTest' in fLive) && fLive.SignatureValue === H.sha256(`${LOGIN}:99.00:10000000123:${rcRay}:${LIVE_P1}:Shp_a=x:Shp_order=ord000000000001`) && fLive.SignatureValue !== fRc.SignatureValue);
+  const rules = realRules();
+  const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
+  check('nomenclature: every item on sale gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum; LUCIEN has no price — never a receipt', sold.length === 6 && !sold.includes('fighter_lucien') && sold.every((k: string) => {
+    const n = PAYJS.receiptName(k);
+    const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
+    return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
+  }));
+  check('ResultURL is untouched by the Receipt: its signature stays "OutSum:InvId:Password#2[:Shp_*]"', RK.checkResult(signedNote(500000000000123, '99.00', 'ord000000000001'), { password2: TEST_P2, password1: TEST_P1, alg: 'sha256', H, equal: (a: string, b: string) => a === b, test: true }).ok === true);
+
   // ResultURL
   const sign = (sum: string, inv: string, pw: string, shp: Record<string, string>, alg = 'sha256') => (H as any)[alg](RK.resultBase(sum, inv, pw, RK.shpList(shp))).toUpperCase();
   const note = (o: Record<string, string> = {}) => ({ OutSum: '10.000000', InvId: '900000001', Shp_order: 'ord1', SignatureValue: sign('10.000000', '900000001', TEST_P2, { Shp_order: 'ord1' }), ...o });
@@ -211,6 +239,26 @@ function protocolChecks(): void {
   ];
   const wrong = urls.filter(([a, b]) => g(a) !== b);
   check('PRIME_GAME_URL: https anywhere, http only for this computer; «/» added after a bare host or folder; #fragment dropped; anything else refused', wrong.length === 0, wrong.map((w) => w[0] + ' → ' + g(w[0])).join(' | '));
+  const pubs: [string, string][] = [
+    ['https://primetime-showdown-staging.duckdns.org', 'https://primetime-showdown-staging.duckdns.org'],
+    [' https://Staging.Example.test:8443/ ', 'https://staging.example.test:8443'],
+    ['https://xn--80ak6aa92e.xn--p1ai', 'https://xn--80ak6aa92e.xn--p1ai'],
+    ['http://primetime-showdown-staging.duckdns.org', ''],
+    ['http://127.0.0.1:8091', ''],
+    ['https://127.0.0.1:8091', ''],
+    ['https://10.0.0.5', ''],
+    ['https://[::1]:8091', ''],
+    ['https://localhost:8091', ''],
+    ['https://staging.localhost', ''],
+    ['https://staging', ''],
+    ['https://staging.example.test/api', ''],
+    ['https://user@staging.example.test', ''],
+    ['https://staging.example.test?x=1', ''],
+    ['https://evil.example/"><script>', ''],
+    ['', ''],
+  ];
+  const wrongPub = pubs.filter(([a, b]) => PAYJS.publicOrigin(a) !== b);
+  check('PRIME_PAY_RELAY_PUBLIC_URL (the player\'s way back to staging): an https DNS name only — never http, an IP address, localhost, a path, a user name or a query', wrongPub.length === 0, wrongPub.map((w) => w[0] + ' → ' + PAYJS.publicOrigin(w[0])).join(' | '));
   check('invoice ranges name their environment before any signature: demo ≥ 700 000 000 000 000, test ≥ 500 000 000 000 000, live ≥ 10 000 000 000; the first scheme: test 900 000 001…, live 1 000 001…', PAYJS.envOfInv(PAYJS.invFloor('demo', Date.now())) === 'demo' && PAYJS.envOfInv(PAYJS.invFloor('test', Date.now())) === 'test' && PAYJS.envOfInv(PAYJS.invFloor('live', Date.now())) === 'live' && PAYJS.envOfInv(900000001) === 'test' && PAYJS.envOfInv(1000001) === 'live' && PAYJS.envOfInv(0) === '' && PAYJS.invFloor('test', Date.UTC(2226, 0, 1)) < PAYJS.INV_SCHEME.base.demo && PAYJS.invFloor('demo', Date.UTC(2226, 0, 1)) <= 999999999999999);
   const sha = (t: string) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
@@ -256,8 +304,8 @@ function testHooks(rules: Record<string, unknown> | null): void {
   if (rules) fs.writeFileSync(path.join(hooksDir, 'lib', 'shop_rules.js'), `module.exports = ${JSON.stringify(rules, null, 2)};\n`);
 }
 const TEST_ENV = { PRIME_SERVER_ROLE: 'dev', PRIME_PAY_MODE: 'test', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'sha256', ROBOKASSA_TEST_PASSWORD_1: TEST_P1, ROBOKASSA_TEST_PASSWORD_2: TEST_P2, PRIME_SHOP_SALES: 'open' };
-const LIVE_ENV = { PRIME_SERVER_ROLE: 'production', PRIME_PAY_MODE: 'live', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'md5', ROBOKASSA_PASSWORD_1: LIVE_P1, ROBOKASSA_PASSWORD_2: LIVE_P2, ROBOKASSA_PASSWORD_3: LIVE_P3, PRIME_SHOP_SALES: 'open' };
-const CLEAN = Object.fromEntries(['PRIME_SERVER_ROLE', 'PRIME_PAY_MODE', 'ROBOKASSA_MERCHANT_LOGIN', 'ROBOKASSA_HASH_ALGORITHM', 'ROBOKASSA_TEST_PASSWORD_1', 'ROBOKASSA_TEST_PASSWORD_2', 'ROBOKASSA_PASSWORD_1', 'ROBOKASSA_PASSWORD_2', 'ROBOKASSA_PASSWORD_3', 'PRIME_SHOP_SALES', 'PRIME_PAY_DEV_GATEWAY', 'ROBOKASSA_RESULT_IPS', 'ROBOKASSA_RECEIPT', 'PRIME_PAY_REFUND_API', 'PRIME_DEMO_UNTIL', 'PRIME_PAY_RELAY_URL'].map((k) => [k, '']));
+const LIVE_ENV = { PRIME_SERVER_ROLE: 'production', PRIME_PAY_MODE: 'live', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'md5', ROBOKASSA_PASSWORD_1: LIVE_P1, ROBOKASSA_PASSWORD_2: LIVE_P2, ROBOKASSA_PASSWORD_3: LIVE_P3, PRIME_SHOP_SALES: 'open', ROBOKASSA_RECEIPT: 'on' };
+const CLEAN = Object.fromEntries(['PRIME_SERVER_ROLE', 'PRIME_PAY_MODE', 'ROBOKASSA_MERCHANT_LOGIN', 'ROBOKASSA_HASH_ALGORITHM', 'ROBOKASSA_TEST_PASSWORD_1', 'ROBOKASSA_TEST_PASSWORD_2', 'ROBOKASSA_PASSWORD_1', 'ROBOKASSA_PASSWORD_2', 'ROBOKASSA_PASSWORD_3', 'PRIME_SHOP_SALES', 'PRIME_PAY_DEV_GATEWAY', 'ROBOKASSA_RESULT_IPS', 'ROBOKASSA_RECEIPT', 'PRIME_PAY_REFUND_API', 'PRIME_DEMO_UNTIL', 'PRIME_PAY_RELAY_URL', 'PRIME_PAY_RELAY_PUBLIC_URL'].map((k) => [k, '']));
 
 async function startPb(env: Record<string, string>): Promise<void> {
   pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { ...CLEAN, PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: GAME, PRIME_SESSIONS: 'off', ...env }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
@@ -678,11 +726,32 @@ async function serverChecks(): Promise<void> {
   await off(TEST_ENV, 'an unreadable invoice ledger (damaged mark) — never a guessed number', 'ledger_unavailable');
   fs.writeFileSync(markFile, markText);
 
+  // ---- «Receipt» switched on (test mode, IsTest=1 — no money): the form, the signature, the payment, the right
+  section('Чек: Receipt в тестовом режиме (IsTest=1)');
+  // (ROBOKASSA_RECEIPT_OBJECT is no setting any more: a stray value changes nothing)
+  await startPb({ ...TEST_ENV, ROBOKASSA_RECEIPT: 'on', ROBOKASSA_RECEIPT_OBJECT: 'goods' });
+  const stB = (await http('GET', '/api/prime/shop/status', B.tok)).j;
+  const rcSku = ['fx_golden_confetti', 'fx_vhs_card_frame', 'fx_phantom_dash', 'fx_prime_broadcast', 'skin_bruno_casino_boss', 'skin_ray_neon_runner'].find((k) => !stB.owned.includes(k) && !(stB.orders ?? []).some((o: any) => o.sku === k && o.status === 'pending_payment'))!;
+  const cR = await http('POST', '/api/prime/shop/checkout', B.tok, { sku: rcSku, priceKop: 1, amountKop: 1, Receipt: 'forged' });
+  const oR = cR.j.order;
+  const fR = cR.j.payment?.fields ?? {};
+  const jR = fR.Receipt ? JSON.parse(decodeURIComponent(fR.Receipt)) : null;
+  const idR = oR ? sqlite(`select id from shop_orders where invId=${oR.inv};`) : '';
+  check('order with the Receipt: one item {name = the order\'s receipt name, quantity 1, sum = the SERVER sum (= OutSum = the order\'s kopecks), tax none} and nothing else', cR.status === 200 && !!jR && jR.items.length === 1 && Object.keys(jR).join() === 'items' && Object.keys(jR.items[0]).join() === 'name,quantity,sum,tax' && jR.items[0].name === oR.title && oR.title === PAYJS.receiptName(rcSku) && jR.items[0].quantity === 1 && jR.items[0].sum === Number(fR.OutSum) && Math.round(jR.items[0].sum * 100) === oR.amountKop && jR.items[0].tax === 'none', JSON.stringify({ status: cR.status, j: cR.j?.code, jR }));
+  check('…signed with the TEST Password#1 over "login:OutSum:InvId:Receipt:Password#1:Shp_order=…", IsTest=1; the request\'s own «Receipt» and price are ignored', fR.IsTest === '1' && fR.SignatureValue === H.sha256(`${LOGIN}:${fR.OutSum}:${oR.inv}:${fR.Receipt}:${TEST_P1}:Shp_order=${idR}`) && fR.Receipt !== 'forged' && !JSON.stringify(cR.j).includes(TEST_P1));
+  check('…no right before the payment is confirmed', !(await http('GET', '/api/prime/shop/status', B.tok)).j.owned.includes(rcSku));
+  const nR = await notify(signedNote(oR.inv, fR.OutSum, idR));
+  const afterR = (await http('GET', '/api/prime/shop/status', B.tok)).j;
+  check('…the signed test notification (IsTest=1, Password#2, no Receipt in it) confirms it: «OK{InvId}», the item is granted once', nR.status === 200 && nR.text === `OK${oR.inv}` && afterR.owned.includes(rcSku) && sqlite(`select count(*) from shop_entitlements where sku='${rcSku}' and status='active' and env='test' and user='${B.id}';`) === '1');
+  check('…a repeated notification grants nothing more', (await notify(signedNote(oR.inv, fR.OutSum, idR))).text === `OK${oR.inv}` && sqlite(`select count(*) from shop_entitlements where sku='${rcSku}' and user='${B.id}';`) === '1');
+  // (LUCIEN and the real rules: the nomenclature check above and «the real 1.8.8 rules on a live production server» below)
+  await stopPb();
+
   // the way back from Robokassa with an incomplete or wrong PRIME_GAME_URL: never a blank page
-  const backWith = async (env: Record<string, string>, kind: 'success' | 'fail' = 'success') => {
+  const backWith = async (env: Record<string, string>, kind: 'success' | 'fail' = 'success', inv: number = o1.inv) => {
     const from = pbLog.length;
     await startPb(env);
-    const r = await fetch(API + `/api/prime/pay/robokassa/${kind}?InvId=${o1.inv}`, { redirect: 'manual' });
+    const r = await fetch(API + `/api/prime/pay/robokassa/${kind}?InvId=${inv}`, { redirect: 'manual' });
     const out = { status: r.status, location: r.headers.get('location') ?? '', html: await r.text(), warned: pbLog.slice(from).some((l) => /PRIME WARNING: PRIME_GAME_URL is INVALID/.test(l)) };
     await stopPb();
     return out;
@@ -691,8 +760,10 @@ async function serverChecks(): Promise<void> {
   check('PRIME_GAME_URL without the final «/» (http://localhost:5173) → 303 to http://localhost:5173/?prime_pay=success&inv=…', noSlash.status === 303 && noSlash.location === `http://localhost:5173/?prime_pay=success&inv=${o1.inv}`, noSlash.location);
   const badDev = await backWith({ ...TEST_ENV, PRIME_GAME_URL: 'http://192.168.1.20:5173' });
   check('a wrong PRIME_GAME_URL (plain http to a network address) → the PRIME return page (200, never blank), no button to a guessed address, the hint; a warning at start', badDev.status === 200 && /Проверяем оплату/.test(badDev.html) && !/class="btn"/.test(badDev.html) && /PRIME_GAME_URL/.test(badDev.html) && badDev.html.includes(`№${o1.inv}`) && badDev.warned);
-  const badProd = await backWith({ PRIME_SERVER_ROLE: 'production', PRIME_GAME_URL: 'primetimeshowdown.online' });
-  check('…on a production server the return page\'s button leads to the official game https://primetimeshowdown.online/?prime_pay=success&inv=…', badProd.status === 200 && badProd.html.includes(`href="https://primetimeshowdown.online/?prime_pay=success&amp;inv=${o1.inv}"`) && /Вернуться в игру/.test(badProd.html));
+  // (production's own invoice — a test-range one is staging's and has its own way back)
+  const prodInv = PAYJS.invFloor('live', Date.now());
+  const badProd = await backWith({ PRIME_SERVER_ROLE: 'production', PRIME_GAME_URL: 'primetimeshowdown.online' }, 'success', prodInv);
+  check('…on a production server the return page\'s button leads to the official game https://primetimeshowdown.online/?prime_pay=success&inv=…', badProd.status === 200 && badProd.html.includes(`href="https://primetimeshowdown.online/?prime_pay=success&amp;inv=${prodInv}"`) && /Вернуться в игру/.test(badProd.html));
   const failNone = await backWith({ ...TEST_ENV, PRIME_GAME_URL: '' }, 'fail');
   check('FailURL without any PRIME_GAME_URL → «Оплата не завершена», nothing promised (the order can be paid again from the game)', failNone.status === 200 && /Оплата не завершена/.test(failNone.html) && /предмет не выдан/.test(failNone.html) && !/class="btn"/.test(failNone.html));
 
@@ -711,7 +782,8 @@ async function serverChecks(): Promise<void> {
   await startPb(LIVE_ENV);
   const lv = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'skin_ray_neon_runner' });
   const idLv = sqlite(`select id from shop_orders where invId=${lv.j.order?.inv};`);
-  check('live mode on production: the real price (149 ₽ = 14900 kopecks), a LIVE invoice number (10 000 000 000 + clock), no IsTest, MD5 with the live Password#1', lv.status === 200 && lv.j.order.amountKop === 14900 && lv.j.order.inv >= PAYJS.invFloor('live', Date.now() - 60000) && lv.j.order.inv < 500000000000000 && lv.j.order.env === 'live' && !('IsTest' in lv.j.payment.fields) && lv.j.payment.fields.SignatureValue === H.md5(`${LOGIN}:149.00:${lv.j.order.inv}:${LIVE_P1}:Shp_order=${idLv}`), JSON.stringify(lv.j).slice(0, 200));
+  const lvRc = lv.j.payment?.fields?.Receipt ? JSON.parse(decodeURIComponent(lv.j.payment.fields.Receipt)) : null;
+  check('live mode on production (ROBOKASSA_RECEIPT=on): the real price (149 ₽ = 14900 kopecks), a LIVE invoice number (10 000 000 000 + clock), no IsTest, the Receipt (149, tax none), MD5 with the live Password#1 over "login:OutSum:InvId:Receipt:Password#1:Shp_order"', lv.status === 200 && lv.j.order.amountKop === 14900 && lv.j.order.inv >= PAYJS.invFloor('live', Date.now() - 60000) && lv.j.order.inv < 500000000000000 && lv.j.order.env === 'live' && !('IsTest' in lv.j.payment.fields) && lvRc?.items[0].sum === 149 && lvRc.items[0].tax === 'none' && lv.j.payment.fields.SignatureValue === H.md5(`${LOGIN}:149.00:${lv.j.order.inv}:${lv.j.payment.fields.Receipt}:${LIVE_P1}:Shp_order=${idLv}`), JSON.stringify(lv.j).slice(0, 200));
   const vhs = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_vhs_card_frame' });
   check('a price with kopecks (49.50 ₽) is exact: 4950 kopecks, OutSum "49.50"', vhs.j.order?.amountKop === 4950 && vhs.j.payment.fields.OutSum === '49.50');
   const testOnLive = await notify(signedNote(lv.j.order.inv, '149.00', idLv, TEST_P2, 'md5', { IsTest: '1' }));
@@ -722,6 +794,40 @@ async function serverChecks(): Promise<void> {
   const idVhs = sqlite(`select id from shop_orders where invId=${vhs.j.order.inv};`);
   await notify(signedNote(vhs.j.order.inv, '49.500000', idVhs, LIVE_P2, 'md5'));
   check('a live payment of 49.50 ₽ ("49.500000") → a live right', sqlite(`select env||'|'||status from shop_entitlements where "order"='${idVhs}';`) === 'live|active');
+  const held = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_golden_confetti' });
+  const idHeld = sqlite(`select id from shop_orders where invId=${held.j.order?.inv};`);
+  check('(set-up) a live order left waiting for its payment', held.status === 200 && !!idHeld && sqlite(`select status from shop_orders where id='${idHeld}';`) === 'pending_payment', JSON.stringify(held.j).slice(0, 160));
+  await stopPb();
+  // fail closed: LIVE without ROBOKASSA_RECEIPT=on makes no order and no payment page; what exists goes on
+  section('LIVE без Receipt: новые заказы запрещены (receipt_required_for_live)');
+  const liveOrders = sqlite("select count(*) from shop_orders where env='live';");
+  for (const rcOff of ['', 'off']) {
+    await startPb({ ...LIVE_ENV, ROBOKASSA_RECEIPT: rcOff });
+    const noRc = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_phantom_dash' });
+    const noRcAgain = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_golden_confetti' });
+    check(`ROBOKASSA_RECEIPT=${rcOff || '(missing)'} in LIVE: a new order is refused on the server — 503 receipt_required_for_live, no payment page, no order, no invoice number`, noRc.status === 503 && noRc.j.code === 'receipt_required_for_live' && !noRc.j.payment && !noRc.j.order && sqlite("select count(*) from shop_orders where env='live';") === liveOrders, JSON.stringify(noRc.j).slice(0, 160));
+    check('…nor a payment page for the order already waiting (it stays as it was)', noRcAgain.status === 503 && noRcAgain.j.code === 'receipt_required_for_live' && !noRcAgain.j.payment && sqlite(`select status from shop_orders where id='${idHeld}';`) === 'pending_payment');
+    check('…the server\'s own diagnosis names it (prime-shop status)', /receipt: off — LIVE refuses new orders \(receipt_required_for_live\)/.test(cli({ ...LIVE_ENV, ROBOKASSA_RECEIPT: rcOff }, 'prime-shop', 'status')) && pbLog.some((l) => /PRIME WARNING: LIVE payments without ROBOKASSA_RECEIPT=on/.test(l)));
+    await stopPb();
+  }
+  await startPb({ ...LIVE_ENV, ROBOKASSA_RECEIPT: '' });
+  const heldOk = await notify(signedNote(held.j.order.inv, '99.000000', idHeld, LIVE_P2, 'md5'));
+  check('…ResultURL is unchanged: the waiting order paid before the switch is confirmed — «OK{InvId}», a live right', heldOk.text === `OK${held.j.order.inv}` && sqlite(`select env||'|'||status from shop_entitlements where "order"='${idHeld}';`) === 'live|active', heldOk.text);
+  await stopPb();
+  // the shop's real setting is SHA256 (the runs above use MD5 on purpose: the algorithm follows the setting)
+  section('LIVE + SHA256 + Receipt: форма и ResultURL (искусственные пароли)');
+  await startPb({ ...LIVE_ENV, ROBOKASSA_HASH_ALGORITHM: 'sha256' });
+  const s256 = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_phantom_dash' });
+  const f256 = s256.j.payment?.fields ?? {};
+  const id256 = sqlite(`select id from shop_orders where invId=${s256.j.order?.inv};`);
+  const j256 = f256.Receipt ? JSON.parse(decodeURIComponent(f256.Receipt)) : null;
+  const base256 = `${LOGIN}:79.00:${s256.j.order?.inv}:${f256.Receipt}:${LIVE_P1}:Shp_order=${id256}`;
+  check('live + sha256: SignatureValue = SHA256("login:OutSum:InvId:Receipt:Password#1:Shp_order=…") with the LIVE Password#1, 64 hex; the Receipt in it is the form\'s own field, URL-encoded once; no IsTest', s256.status === 200 && f256.SignatureValue === H.sha256(base256) && /^[0-9a-f]{64}$/.test(f256.SignatureValue) && f256.SignatureValue !== H.md5(base256) && f256.OutSum === '79.00' && !('IsTest' in f256) && f256.Shp_order === id256 && f256.Receipt.startsWith('%7B%22items%22') && sqlite(`select hashAlg from shop_orders where id='${id256}';`) === 'sha256', JSON.stringify(s256.j).slice(0, 200));
+  check('…its Receipt: one item {name = the order\'s receipt name, quantity 1, sum 79 = OutSum, tax none}', !!j256 && Object.keys(j256.items[0]).join() === 'name,quantity,sum,tax' && j256.items[0].name === s256.j.order.title && j256.items[0].sum === 79 && j256.items[0].tax === 'none');
+  check('…sent as the browser sends it (POST, x-www-form-urlencoded): the Receipt arrives twice-encoded, one decoding gives the signed text', new URLSearchParams(new URLSearchParams(f256).toString()).get('Receipt') === f256.Receipt && new URLSearchParams(f256).toString().includes('Receipt=%257B%2522items%2522'));
+  const bad256 = await notify(signedNote(s256.j.order.inv, '79.000000', id256, LIVE_P2, 'md5'));
+  const ok256 = await notify(signedNote(s256.j.order.inv, '79.000000', id256, LIVE_P2, 'sha256'));
+  check('…ResultURL with SHA256 (live Password#2, "79.000000", Shp_order): «OK{InvId}», a live right; an MD5 signature is refused', bad256.status === 400 && ok256.text === `OK${s256.j.order.inv}` && sqlite(`select env||'|'||status from shop_entitlements where "order"='${id256}';`) === 'live|active', `${bad256.status} ${ok256.text}`);
   await stopPb();
   // the REAL 1.8.8 rules (prices only proposed, sales flag off) on a fully set-up live server: nothing is sold
   testHooks(null);
@@ -813,13 +919,45 @@ async function serverChecks(): Promise<void> {
   check('a demo- or live-range number is never passed on (here: payments off → 503)', notRel.status === 503 && relayed.length === 1);
   const relBack = await fetch(API + `/api/prime/pay/robokassa/success?InvId=${tInv}&OutSum=10.00&SignatureValue=x`, { redirect: 'manual' });
   const ownBack = await fetch(API + `/api/prime/pay/robokassa/fail?InvId=${PAYJS.invFloor('live', Date.now())}`, { redirect: 'manual' });
-  check('the way back: a staging invoice goes back to staging\'s own SuccessURL (only the number); the rest to this server\'s game', relBack.status === 303 && relBack.headers.get('location') === `http://127.0.0.1:${RELAY_PORT}/api/prime/pay/robokassa/success?InvId=${tInv}` && ownBack.status === 303 && (ownBack.headers.get('location') ?? '').startsWith(GAME));
+  const relFail = await fetch(API + `/api/prime/pay/robokassa/fail?InvId=${tInv}`, { redirect: 'manual' });
+  const relBody = await relBack.text();
+  check('the way back without PRIME_PAY_RELAY_PUBLIC_URL: a staging invoice gets the return page (200, no redirect) — never the relay\'s loopback address', relBack.status === 200 && !relBack.headers.get('location') && !relBody.includes('127.0.0.1') && relBody.includes('STAGING') && relFail.status === 200 && !relFail.headers.get('location') && !(await relFail.text()).includes('127.0.0.1'));
+  check('…the rest (live, demo) still goes to this server\'s game', ownBack.status === 303 && (ownBack.headers.get('location') ?? '').startsWith(GAME));
   const loop = await fetch(API + '/api/prime/pay/robokassa/result', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Prime-Relay': '1' }, body: new URLSearchParams(tNote).toString() });
   check('a relayed request is never relayed again (a misconfigured loop → 508)', loop.status === 508 && relayed.length === 1);
   await stopPb();
+  // the player's way back to staging: its PUBLIC https address (the server-to-server relay stays loopback)
+  const STG = 'https://primetime-showdown-staging.duckdns.org';
+  await startPb({ PRIME_SERVER_ROLE: 'production', PRIME_PAY_RELAY_URL: `http://127.0.0.1:${RELAY_PORT}`, PRIME_PAY_RELAY_PUBLIC_URL: STG + '/', PRIME_GAME_URL: GAME });
+  const pubOk = await fetch(API + `/api/prime/pay/robokassa/success?InvId=${tInv}&OutSum=10.00&SignatureValue=x&Shp_order=abcdefghijklmno&next=https://evil.example/`, { redirect: 'manual' });
+  const pubFail = await fetch(API + `/api/prime/pay/robokassa/fail`, { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `InvId=${tInv}&OutSum=10.00&Culture=ru` });
+  check('TEST SuccessURL on production → 303 to staging\'s PUBLIC SuccessURL with only the order number (nothing else from the request)', pubOk.status === 303 && pubOk.headers.get('location') === `${STG}/api/prime/pay/robokassa/success?InvId=${tInv}`, String(pubOk.headers.get('location')));
+  check('TEST FailURL on production (POST) → 303 to staging\'s PUBLIC FailURL', pubFail.status === 303 && pubFail.headers.get('location') === `${STG}/api/prime/pay/robokassa/fail?InvId=${tInv}`, String(pubFail.headers.get('location')));
+  const demoBack = await fetch(API + `/api/prime/pay/robokassa/success?InvId=${PAYJS.invFloor('demo', Date.now())}`, { redirect: 'manual' });
+  const liveBack = await fetch(API + `/api/prime/pay/robokassa/fail?InvId=${PAYJS.invFloor('live', Date.now())}`, { redirect: 'manual' });
+  check('…DEMO and LIVE invoices are untouched: back to this server\'s own game', demoBack.status === 303 && (demoBack.headers.get('location') ?? '').startsWith(GAME + '?prime_pay=success') && liveBack.status === 303 && (liveBack.headers.get('location') ?? '').startsWith(GAME + '?prime_pay=fail'));
+  check('…the ResultURL relay is unchanged: still server-to-server over loopback, never a redirect', (await notify(tNote)).text === `OK${tInv}` && relayed.length === 2 && relayed[1].url === '/api/prime/pay/robokassa/result');
+  const selfBack = await new Promise<{ status: number; location: string }>((r) => {
+    const rq = http2.request({ host: '127.0.0.1', port: Number(new URL(API).port), path: `/api/prime/pay/robokassa/success?InvId=${tInv}`, headers: { Host: 'primetime-showdown-staging.duckdns.org' } }, (res: any) => {
+      res.resume();
+      r({ status: res.statusCode, location: String(res.headers.location ?? '') });
+    });
+    rq.end();
+  });
+  check('…a public address that is this very server never loops: the return page instead', selfBack.status === 200 && !selfBack.location, JSON.stringify(selfBack));
+  check('…prime-shop status names the public way back', /relayReturn: https:\/\/primetime-showdown-staging\.duckdns\.org \(players back/.test(cli({ PRIME_SERVER_ROLE: 'production', PRIME_PAY_RELAY_PUBLIC_URL: STG }, 'prime-shop', 'status')));
+  await stopPb();
+  for (const badPub of ['http://127.0.0.1:8091', 'https://10.0.0.5:8091', 'http://primetime-showdown-staging.duckdns.org']) {
+    await startPb({ PRIME_SERVER_ROLE: 'production', PRIME_PAY_RELAY_URL: `http://127.0.0.1:${RELAY_PORT}`, PRIME_PAY_RELAY_PUBLIC_URL: badPub });
+    const b = await fetch(API + `/api/prime/pay/robokassa/success?InvId=${tInv}`, { redirect: 'manual' });
+    const bt = await b.text();
+    check(`an unacceptable public address (${badPub}) is never used: the return page, no redirect, no internal address in it`, b.status === 200 && !b.headers.get('location') && !bt.includes('127.0.0.1') && !bt.includes('10.0.0.5'));
+    await stopPb();
+  }
   await startPb({ ...TEST_ENV, PRIME_PAY_RELAY_URL: `http://127.0.0.1:${RELAY_PORT}` });
+  const relayedBefore = relayed.length;
   const stagingOwn = await notify(signedNote(tInv, '10.00', 'abcdefghijklmno', TEST_P2, 'sha256', { IsTest: '1' }));
-  check('a non-production server never relays (staging decides its own invoices)', stagingOwn.status === 404 && relayed.length === 1);
+  check('a non-production server never relays (staging decides its own invoices)', stagingOwn.status === 404 && relayed.length === relayedBefore);
   await stopPb();
   await new Promise<void>((r) => fakeStaging.close(() => r()));
 

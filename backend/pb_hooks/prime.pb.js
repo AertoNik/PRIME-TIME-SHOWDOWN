@@ -35,6 +35,8 @@
 //   1.8.8 stage 4 «PRIME PAYMENTS × ROBOKASSA» (lib/payments.js, lib/robokassa.js):
 //   GET  /api/prime/shop/orders/{inv}       the signed-in account's own order (its state, delivered or not)
 //   GET  /api/prime/shop/purchases          the items this PRIME ID owns and its latest orders
+//   GET  /api/prime/daily                  1.8.9 DAILY PRIME STREAK: the streak today (verified PRIME ID)
+//   POST /api/prime/daily/claim            today's reward — the server pays it into the cloud save (lib/daily.js)
 //   POST|GET /api/prime/pay/robokassa/result    Robokassa's ResultURL: signature, order, amount → delivery, «OK{InvId}»
 //   GET|POST /api/prime/pay/robokassa/success   SuccessURL: back to the game (proves nothing)
 //   GET|POST /api/prime/pay/robokassa/fail      FailURL: back to the game (proves nothing)
@@ -77,6 +79,12 @@ routerAdd('POST', '/api/prime/account/delete', (e) => require(`${__hooks}/lib/ac
 
 // 1.8.8 stage 3 «PRIME CHECKOUT»: the offer, the consent to it and the server's own checks before an order
 // (no order, no payment and no item is ever created here in stage 3 — see lib/checkout.js)
+// Alpha 1.8.9 — DAILY PRIME STREAK: the streak as the server sees it today, and today's reward (written into the
+// cloud save by the server; the game names nothing but its request id and the save revision it is in step with)
+routerAdd('GET', '/api/prime/daily', (e) => require(`${__hooks}/lib/daily.js`).status(e), $apis.requireAuth('users'));
+
+routerAdd('POST', '/api/prime/daily/claim', (e) => require(`${__hooks}/lib/daily.js`).claim(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+
 routerAdd('GET', '/api/prime/shop/offer', (e) => require(`${__hooks}/lib/checkout.js`).offer(e));
 
 routerAdd('GET', '/api/prime/shop/status', (e) => require(`${__hooks}/lib/checkout.js`).status(e), $apis.requireAuth('users'));
@@ -170,6 +178,7 @@ onBootstrap((e) => {
     console.log('PRIME: invoice ledger ' + c.ledger + '; game address ' + c.gameUrl);
     // 1.8.8 final: the demonstration (Robokassa's test mode, its own demo rights) and the relay of staging's invoices
     if (c.ready && c.env === 'demo') console.log('PRIME: DEMONSTRATION payments (Robokassa TEST mode, no money moves, demo rights counted) until ' + c.demoUntil);
+    if (c.ready && c.env === 'live' && /receipt_required_for_live/.test(c.receipt)) console.log('PRIME WARNING: LIVE payments without ROBOKASSA_RECEIPT=on — new orders are refused (receipt_required_for_live)');
     if (c.relay !== 'off') console.log('PRIME: test-range Robokassa notifications and returns are passed on to ' + c.relay);
     if (/^(INVALID|missing)/.test(c.gameUrl) && c.ready) console.log('PRIME WARNING: PRIME_GAME_URL is ' + c.gameUrl + ' — after paying, players see the return page instead of the game');
     pay.maintain(e.app);
