@@ -102,7 +102,8 @@ async function register(nickname: string, email: string, invite?: string): Promi
 async function mailLink(email: string, page: 'verify' | 'reset', count: number): Promise<string> {
   for (let i = 0; i < 40; i++) {
     const j = (await (await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)).json()) as { messages?: any[] };
-    const list = j.messages ?? [];
+    // 1.8.9.5: the notice to an address that already has an account is not a link letter — never counted here
+    const list = (j.messages ?? []).filter((m: any) => !/попытка регистрации/.test(String(m.Subject)));
     if (list.length >= count) {
       const newest = list.slice().sort((a, b) => String(b.Created).localeCompare(String(a.Created)))[0];
       const full = (await (await fetch(`${MAIL}/api/v1/message/${newest.ID}`)).json()) as { HTML: string };
@@ -208,7 +209,7 @@ async function main(): Promise<void> {
   const takenEmail = await register('FreshNick', 'friend@beta.test', cFail);
   const invFail = (await admin.collection('invites').getFullList({ filter: `id = "${made.ids[2]}"` }))[0];
   const after = await register('FreshNick', 'fresh@beta.test', cFail);
-  check('13 a registration that fails (nickname / email taken) leaves the code unused; it still works afterwards', taken.code === 'nickname_taken' && takenEmail.code === 'email_taken' && invFail.uses === 0 && after.code === 'ok');
+  check('13 a registration that fails (nickname / email taken) leaves the code unused; it still works afterwards', taken.code === 'nickname_taken' && takenEmail.code === 'ok' && invFail.uses === 0 && after.code === 'ok' && (await admin.collection('users').getFullList({ filter: 'email = "friend@beta.test"' })).length === 1);
   // 5: expired
   await admin.collection('invites').update(made.ids[3], { expiresAt: new Date(Date.now() - 60000).toISOString() });
   const exp = await register('Expired', 'expired@beta.test', cExp);

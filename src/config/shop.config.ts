@@ -296,5 +296,17 @@ export function formatKop(kop: number): string {
  */
 export const SHOP_SALES_OPEN = true;
 
+/**
+ * Alpha 1.8.9.5 — purchases by PRIME IDs aged 14–17 (LIVE). The server sells to them ONLY when its own switch
+ * PRIME_SHOP_MINORS=on is set AND the offer in force says so (its registry entry `minors: true`, offer.config.ts);
+ * otherwise every buyer under 18 is refused («adult_only»), as before. Then: cosmetics and skins only (never a
+ * fighter), at most `itemMaxRub` an item, at most `per30DaysRub` in all over 30 days (orders paid, delivered, under
+ * review or being refunded, and orders waiting for payment while they can still be paid; failed, expired, cancelled
+ * and refunded ones do not count — lib/checkout.js minorSpend). Approved by the owner on 29.10.2026 (offer revision 3,
+ * section 5): a ceiling for the catalogue, not the price of any item — and not a statement that every purchase within
+ * it is a small everyday transaction.
+ */
+export const MINOR_PURCHASES = { itemMaxRub: 299, per30DaysRub: 1500 } as const;
+
 // (1.8.8 stage 3: the public offer moved to src/config/offer.config.ts — revisions with their date
 // and the hash of the published text, not a bare address.)

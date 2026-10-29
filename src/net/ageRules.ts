@@ -16,11 +16,11 @@ export const COUNTRY_CODES: readonly string[] = (
   'TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW ZZ'
 ).split(' ');
 
-/** Until a server says otherwise: PRIME ID from 13, on one's own from 18. */
-export const DEFAULT_AGE: AgeConfig = { min: 13, self: 18, rules: {}, closed: [] };
+/** Until a server says otherwise: PRIME ID from 14 (1.8.9.5), on one's own from 18. */
+export const DEFAULT_AGE: AgeConfig = { min: 14, self: 18, rules: {}, closed: [] };
 
 export type AgeDecision =
-  | { ok: true; band: '13-17' | '18+' }
+  | { ok: true; band: '14-17' | '18+' }
   | { ok: false; code: 'country_invalid' | 'country_required' | 'age_invalid' | 'age_too_young' | 'country_unavailable' | 'age_guardian_required' };
 
 /** Does the answer for this age depend on the country (the same rule as the server's needsCountry)? */
@@ -39,7 +39,7 @@ export function ageDecision(cfg: AgeConfig, country: string, age: number): AgeDe
   } else if (!COUNTRY_CODES.includes(country)) return { ok: false, code: 'country_invalid' };
   if (country && cfg.closed.includes(country)) return { ok: false, code: 'country_unavailable' };
   if (age < ((country && cfg.rules[country]) || cfg.self)) return { ok: false, code: 'age_guardian_required' };
-  return { ok: true, band: age >= 18 ? '18+' : '13-17' };
+  return { ok: true, band: age >= 18 ? '18+' : '14-17' };
 }
 
 /** The country's name in the player's language (the browser knows them all); the code if it does not. */

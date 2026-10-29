@@ -159,6 +159,44 @@ function acceptOffer(e) {
   return e.json(200, { accepted: o.revision, duplicate: false });
 }
 
+/**
+ * 1.8.9.5: may this PRIME ID aged 14–17 buy this item at all? null = yes, otherwise the refusal:
+ *   adult_only   no age «14-17» on record, the server switch PRIME_SHOP_MINORS is not «on», or the terms in force
+ *                do not cover buyers under 18 (no `minors: true`: the offer's registry entry on production; the
+ *                TEST-ONLY terms of a staging server carry it, the demonstration's terms do not)
+ *   minor_item   a fighter, or a price above the release's limit for one item (shop_rules minors.itemMaxRub)
+ * The 30-day total is checked by minorSpend, inside the order's transaction.
+ */
+function minorRefusal(app, uid, it, kop, t) {
+  const o = currentOffer(t);
+  if (!LEGAL.minor(app, uid) || String($os.getenv('PRIME_SHOP_MINORS') || '').trim() !== 'on' || !o || o.minors !== true) return 'adult_only';
+  const itemMax = Math.round(Number((R.minors || {}).itemMaxRub || 0) * 100);
+  if (it.kind === 'fighter' || kop === null || !(itemMax > 0) || kop > itemMax) return 'minor_item';
+  return null;
+}
+
+/**
+ * 1.8.9.5: the 30-day total of a buyer aged 14–17 (shop_rules minors.per30DaysRub), counted INSIDE the order's
+ * transaction (PocketBase runs write transactions one after the other: two parallel requests never both pass).
+ * Counted: orders of this server's environment made in the last 30 days that are paid, delivered, under review or
+ * being refunded, and orders waiting for payment while they can still be paid (their reserve ends with the order's
+ * time); never failed, expired, cancelled or refunded ones, and never the open order of this very item (a retry
+ * reuses it). Exactly the limit is allowed; one kopeck more → «minor_limit».
+ */
+function minorSpend(tx, uid, sku, kop, t, envName) {
+  const capKop = Math.round(Number((R.minors || {}).per30DaysRub || 0) * 100);
+  const since = new Date(t - 30 * 86400000).toISOString().replace('T', ' ');
+  let spent = 0;
+  for (const x of tx.findRecordsByFilter('shop_orders', 'user = {:u} && env = {:e} && created >= {:s}', '', 1000, 0, { u: uid, e: envName, s: since })) {
+    const st = x.getString('status');
+    if (st === 'pending_payment') {
+      if (x.getString('sku') === sku || x.getInt('expiresAt') <= t) continue;
+    } else if (['paid', 'fulfilled', 'requires_review', 'refund_pending'].indexOf(st) < 0) continue;
+    spent += x.getInt('amountKop');
+  }
+  return capKop > 0 && spent + kop <= capKop ? null : 'minor_limit';
+}
+
 function checkout(e) {
   const u = e.auth;
   const b = body(e);
@@ -182,8 +220,14 @@ function checkout(e) {
   const kop = PAY.priceKop(sku, env);
   // a demonstration never opens a fighter (a playable character is not a cosmetic to try out)
   if (env === 'demo' && it.kind === 'fighter') return fail(e, 409, 'not_in_demo');
-  // 1.8.9: real purchases — adults only (the offer, section 5.1); the registration rules are not changed
-  if (env === 'live' && !LEGAL.adult(e.app, u.id)) return fail(e, 403, 'adult_only');
+  // 1.8.9: real purchases — adults only (the offer, section 5.1); 1.8.9.5: buyers aged 14–17 only when the server
+  // allows it AND the terms in force do (minorRefusal); the same check for a new order, its payment page and a retry —
+  // in every mode, so a staging server (test mode, its TEST-ONLY terms) shows exactly what production would do
+  const minor = !LEGAL.adult(e.app, u.id);
+  if (minor) {
+    const why = minorRefusal(e.app, u.id, it, PAY.priceKop(sku, env), t);
+    if (why) return fail(e, 403, why);
+  }
   if (kop === null) return fail(e, 409, 'price_pending');
   const listKop = PAY.listPrices()[sku];
   const quote = { sku: sku, priceRub: kop / 100, priceKop: kop, listKop: listKop, currency: 'RUB', env: env };
@@ -193,8 +237,9 @@ function checkout(e) {
   quote.offerRevision = o.revision;
   if (!consentRow(e.app, u.id, o.revision)) return fail(e, 409, 'offer_consent_required', { quote: quote, offer: offerOut(o) });
   if (!cfg.ready) return fail(e, 503, 'payments_unavailable', { quote: quote });
-  // here, and only here: the order (owner = e.auth, amount = the server's price) and the payment page
-  return PAY.startOrder(e, u.id, sku, it, kop, o, cfg);
+  // here, and only here: the order (owner = e.auth, amount = the server's price) and the payment page; 1.8.9.5: the
+  // 30-day limit of a buyer aged 14–17 is counted inside the order's own transaction (minorSpend)
+  return PAY.startOrder(e, u.id, sku, it, kop, o, cfg, minor ? (tx) => minorSpend(tx, u.id, sku, kop, Date.now(), env) : null);
 }
 
 module.exports = { offer, status, acceptOffer, checkout, offerAt, currentOffer, salesOpen, paymentsReady };

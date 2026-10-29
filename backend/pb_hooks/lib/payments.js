@@ -459,7 +459,7 @@ const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
  * payments ready). `it` = the catalog entry; `kop` = the server price; `offer` = the revision accepted.
  * Answers { order, payment: { url, method, fields }, reused }.
  */
-function startOrder(e, uid, sku, it, kop, offer, cfg) {
+function startOrder(e, uid, sku, it, kop, offer, cfg, guard) {
   // fail closed: LIVE never takes money without the «Receipt» (Robokassa: required for «Робочеки СМЗ») — no new order,
   // no payment page; the orders already made, ResultURL, refunds and the ledger go on as they were
   if (cfg.env === 'live' && !cfg.receipt) {
@@ -471,6 +471,13 @@ function startOrder(e, uid, sku, it, kop, offer, cfg) {
     e.app.runInTransaction((tx) => {
       if (activeRight(tx, uid, sku, cfg.env)) {
         out = [409, { code: 'owned' }];
+        return;
+      }
+      // 1.8.9.5: a check of the caller's that must see every other order of this account (lib/checkout.js: the 30-day
+      // limit of buyers aged 14–17) — inside this transaction, so parallel requests are counted one after the other
+      const why = guard ? guard(tx) : null;
+      if (why) {
+        out = [403, { code: why }];
         return;
       }
       const now = Date.now();

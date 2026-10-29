@@ -39,11 +39,11 @@ class MemSave {
 
 // ------------------------------------------------------------ availability
 check('five sets registered in order (1.7.5: + graveyard)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
-check('standard season: the three permanent sets are open', availableArenas('default').join() === 'original,casino,backlot');
+check('standard season: the permanent sets are open — 1.8.9.5: the cemetery among them', availableArenas('default').join() === 'original,casino,backlot,graveyard');
 check('Halloween: the haunted set and the cemetery open too', availableArenas('halloween').join() === 'original,casino,backlot,haunted,graveyard');
-check('another season (winter preview) opens neither Halloween set', !availableArenas('winter').includes('haunted') && !availableArenas('winter').includes('graveyard'));
-check('cemetery is seasonal (Halloween Premiere)', ARENAS.graveyard.availability.kind === 'seasonal' && ARENAS.graveyard.availability.themeId === 'halloween');
-check('a saved cemetery choice falls back to the original studio after the season', validArenaPref('graveyard', 'default') === 'original' && validArenaPref('graveyard', 'halloween') === 'graveyard');
+check('another season (winter preview): the haunted set closed, the cemetery open (permanent)', !availableArenas('winter').includes('haunted') && availableArenas('winter').includes('graveyard'));
+check('cemetery is permanent (Alpha 1.8.9.5), still the Halloween set by origin (its native season for the decor)', ARENAS.graveyard.availability.kind === 'permanent' && ARENAS.graveyard.nativeSeason === 'halloween');
+check('a saved cemetery choice stays in every season (no fallback any more)', validArenaPref('graveyard', 'default') === 'graveyard' && validArenaPref('graveyard', 'halloween') === 'graveyard' && validArenaPref('graveyard', 'winter') === 'graveyard');
 check('haunted set is seasonal (Halloween Premiere)', ARENAS.haunted.availability.kind === 'seasonal' && ARENAS.haunted.availability.themeId === 'halloween');
 check('a saved haunted choice falls back to the original studio after the season', validArenaPref('haunted', 'default') === 'original');
 check('a saved haunted choice stays during Halloween', validArenaPref('haunted', 'halloween') === 'haunted');
@@ -55,8 +55,8 @@ check('RANDOM stays RANDOM; junk becomes the original studio', validArenaPref('r
     const id = resolveArena('random', 'default', () => rng.next());
     seen.set(id, (seen.get(id) ?? 0) + 1);
   }
-  check('RANDOM (standard season) never picks the closed seasonal sets', !seen.has('haunted') && !seen.has('graveyard'));
-  check('RANDOM (standard season) picks every open set, roughly evenly', ['original', 'casino', 'backlot'].every((id) => (seen.get(id as ArenaId) ?? 0) > 1100));
+  check('RANDOM (standard season) never picks the closed seasonal set (haunted)', !seen.has('haunted'));
+  check('RANDOM (standard season) picks every open set, the cemetery included, roughly evenly', ['original', 'casino', 'backlot', 'graveyard'].every((id) => (seen.get(id as ArenaId) ?? 0) > 800));
   const seenH = new Set<ArenaId>();
   for (let i = 0; i < 400; i++) seenH.add(resolveArena('random', 'halloween', () => rng.next()));
   check('RANDOM during Halloween can pick all five sets', seenH.size === 5);

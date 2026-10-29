@@ -305,7 +305,7 @@ function testHooks(rules: Record<string, unknown> | null): void {
 }
 const TEST_ENV = { PRIME_SERVER_ROLE: 'dev', PRIME_PAY_MODE: 'test', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'sha256', ROBOKASSA_TEST_PASSWORD_1: TEST_P1, ROBOKASSA_TEST_PASSWORD_2: TEST_P2, PRIME_SHOP_SALES: 'open' };
 const LIVE_ENV = { PRIME_SERVER_ROLE: 'production', PRIME_PAY_MODE: 'live', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'md5', ROBOKASSA_PASSWORD_1: LIVE_P1, ROBOKASSA_PASSWORD_2: LIVE_P2, ROBOKASSA_PASSWORD_3: LIVE_P3, PRIME_SHOP_SALES: 'open', ROBOKASSA_RECEIPT: 'on' };
-const CLEAN = Object.fromEntries(['PRIME_SERVER_ROLE', 'PRIME_PAY_MODE', 'ROBOKASSA_MERCHANT_LOGIN', 'ROBOKASSA_HASH_ALGORITHM', 'ROBOKASSA_TEST_PASSWORD_1', 'ROBOKASSA_TEST_PASSWORD_2', 'ROBOKASSA_PASSWORD_1', 'ROBOKASSA_PASSWORD_2', 'ROBOKASSA_PASSWORD_3', 'PRIME_SHOP_SALES', 'PRIME_PAY_DEV_GATEWAY', 'ROBOKASSA_RESULT_IPS', 'ROBOKASSA_RECEIPT', 'PRIME_PAY_REFUND_API', 'PRIME_DEMO_UNTIL', 'PRIME_PAY_RELAY_URL', 'PRIME_PAY_RELAY_PUBLIC_URL'].map((k) => [k, '']));
+const CLEAN = Object.fromEntries(['PRIME_SERVER_ROLE', 'PRIME_PAY_MODE', 'ROBOKASSA_MERCHANT_LOGIN', 'ROBOKASSA_HASH_ALGORITHM', 'ROBOKASSA_TEST_PASSWORD_1', 'ROBOKASSA_TEST_PASSWORD_2', 'ROBOKASSA_PASSWORD_1', 'ROBOKASSA_PASSWORD_2', 'ROBOKASSA_PASSWORD_3', 'PRIME_SHOP_SALES', 'PRIME_PAY_DEV_GATEWAY', 'ROBOKASSA_RESULT_IPS', 'ROBOKASSA_RECEIPT', 'PRIME_PAY_REFUND_API', 'PRIME_DEMO_UNTIL', 'PRIME_PAY_RELAY_URL', 'PRIME_PAY_RELAY_PUBLIC_URL', 'PRIME_SHOP_MINORS'].map((k) => [k, '']));
 
 async function startPb(env: Record<string, string>): Promise<void> {
   pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { ...CLEAN, PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: GAME, PRIME_SESSIONS: 'off', ...env }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
@@ -842,7 +842,9 @@ async function serverChecks(): Promise<void> {
   const realPrices = { skin_ray_neon_runner: 9900, skin_bruno_casino_boss: 14900, fx_prime_broadcast: 4900, fx_phantom_dash: 4900, fx_golden_confetti: 4900, fx_vhs_card_frame: 4900, fighter_lucien: null };
   check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽; LUCIEN none)', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === v), JSON.stringify(realCfg));
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
-  check('…the terms are the published offer (revision 2, /legal/ru/offer.html, its SHA-256) — never the test 9001 or the demo 9002 stand-in', liveOffer?.revision === 2 && liveOffer.url === 'https://primetimeshowdown.online/legal/ru/offer.html' && liveOffer.sha256.startsWith('a8ae91f4'), JSON.stringify(liveOffer));
+  // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
+  const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom + 'T00:00:00Z') <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
+  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3].includes(liveOffer.revision), JSON.stringify(liveOffer));
   const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
   check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
   await http('POST', '/api/prime/shop/offer/accept', M.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
@@ -901,6 +903,99 @@ async function serverChecks(): Promise<void> {
   await off({ ...PUB_ENV, ROBOKASSA_PASSWORD_2: '' }, 'LIVE without the live Password#2', 'passwords_missing');
   await off({ ...PUB_ENV, ROBOKASSA_HASH_ALGORITHM: '' }, 'LIVE without the signature algorithm', 'algorithm_missing');
   await off({ ...PUB_ENV, ROBOKASSA_MERCHANT_LOGIN: '' }, 'LIVE without the shop login', 'merchant_login_missing');
+
+  // ---------------------------------------------------------------- 1.8.9.5: buyers aged 14–17 (a server switch + the offer)
+  section('Покупки 14–17 лет: серверный флаг PRIME_SHOP_MINORS и редакция оферты (по умолчанию — только 18+)');
+  const kid = async (email: string, band: string) => {
+    const u = await mk(email, true, false);
+    for (const d of ['terms', 'consent']) await http('POST', '/api/collections/consents/records', su, { user: u.id, doc: d, version: cfg.legal[d].v, lang: 'ru', action: 'register' });
+    await http('POST', '/api/collections/consents/records', su, { user: u.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: band });
+    return u;
+  };
+  // the rules of this release with every offer revision covering buyers under 18 (or none — the switch alone must not do it);
+  // one item above the limit for one item (300 ₽), one exactly at it (299 ₽); the real 30-day limit (1 500 ₽)
+  const rulesMinors = (covered: boolean): any => {
+    const r = JSON.parse(JSON.stringify(realRules()));
+    r.offers = r.offers.map((o: any) => ({ ...o, minors: covered }));
+    r.prices.skin_ray_neon_runner = 300;
+    r.prices.skin_bruno_casino_boss = 299;
+    return r;
+  };
+  check('this release\'s limits for 14–17: 299 ₽ an item, 1 500 ₽ in 30 days; offer revision 3 covers them (minors: true), revision 2 does not', realRules().minors.itemMaxRub === 299 && realRules().minors.per30DaysRub === 1500 && realRules().offers.find((o: any) => o.revision === 3)?.minors === true && !realRules().offers.find((o: any) => o.revision === 2)?.minors);
+  const MIN_ENV = { ...PUB_ENV, PRIME_SHOP_MINORS: 'on' };
+  // synthetic history of an account (superuser, this temporary database only): an order of `kop` in a given state
+  let synth = 0;
+  const past = async (who: { id: string }, kop: number, status: string, extra: Record<string, unknown> = {}) =>
+    http('POST', '/api/collections/shop_orders/records', su, { user: who.id, sku: 'fx_prime_broadcast', title: 'synthetic', amountKop: kop, currency: 'RUB', status, env: 'live', invId: 10000000000 + 900000 + ++synth, expiresAt: Date.now() + 3600000, ...extra });
+  testHooks(rulesMinors(false));
+  await startPb(MIN_ENV);
+  const K = await kid('teen@payments.test', '14-17');
+  const Kold = await kid('teen-old@payments.test', '13-17');
+  const offK = (await http('GET', '/api/prime/shop/offer', K.tok)).j.offer;
+  for (const who of [K, Kold]) await http('POST', '/api/prime/shop/offer/accept', who.tok, { revision: offK.revision, sha256: offK.sha256 });
+  const kNoOffer = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_phantom_dash' });
+  check('switch on, but the offer in force does not cover buyers under 18 → 403 adult_only, no order', kNoOffer.status === 403 && kNoOffer.j.code === 'adult_only' && sqlite(`select count(*) from shop_orders where user='${K.id}';`) === '0', kNoOffer.j.code);
+  await stopPb();
+  testHooks(rulesMinors(true));
+  await startPb(PUB_ENV);
+  const kNoFlag = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_phantom_dash' });
+  check('an offer covering buyers under 18, but no server switch (PRIME_SHOP_MINORS) → 403 adult_only — the default stays 18+', kNoFlag.status === 403 && kNoFlag.j.code === 'adult_only' && sqlite(`select count(*) from shop_orders where user='${K.id}';`) === '0');
+  await stopPb();
+  await startPb(MIN_ENV);
+  const kOk = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_phantom_dash', priceKop: 1 });
+  const kId = sqlite(`select id from shop_orders where invId=${kOk.j.order?.inv};`);
+  check('switch on + covering offer: a 14–17 PRIME ID buys a cosmetic at the REAL price (49 ₽), a live order, the same signed page (SHA256 + Receipt)', kOk.status === 200 && kOk.j.order.amountKop === 4900 && kOk.j.order.env === 'live' && kOk.j.payment.fields.SignatureValue === H.sha256(`${LOGIN}:49.00:${kOk.j.order.inv}:${kOk.j.payment.fields.Receipt}:${LIVE_P1}:Shp_order=${kId}`), JSON.stringify(kOk.j).slice(0, 160));
+  const k299 = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'skin_bruno_casino_boss' });
+  const k300 = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'skin_ray_neon_runner' });
+  check(`…an item at exactly 299 ₽ is allowed (${k299.status}); 300 ₽ → ${k300.status} ${k300.j.code}, no order`, k299.status === 200 && k299.j.order.amountKop === 29900 && k300.status === 403 && k300.j.code === 'minor_item' && sqlite(`select count(*) from shop_orders where user='${K.id}' and sku='skin_ray_neon_runner';`) === '0');
+  const kAgain = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_phantom_dash' });
+  check('…a retry of the waiting order reuses it and is not counted twice', kAgain.status === 200 && kAgain.j.reused === true && kAgain.j.order.inv === kOk.j.order.inv);
+  const kPaid = await notify(signedNote(kOk.j.order.inv, '49.000000', kId, LIVE_P2, 'sha256'));
+  check('…its signed ResultURL → «OK», one LIVE right — the same delivery as for adults', kPaid.text === `OK${kOk.j.order.inv}` && sqlite(`select env||'|'||status from shop_entitlements where "order"='${kId}';`) === 'live|active');
+  // the 30-day total, with a synthetic history: 49 (paid above) + 299 (waiting) = 348 ₽ so far
+  await past(K, 150000 - 4900 - 29900 - 4900, 'fulfilled');
+  const kEdge = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_golden_confetti' });
+  check(`…a purchase that brings the 30 days to EXACTLY 1 500 ₽ is allowed (${kEdge.status})`, kEdge.status === 200 && kEdge.j.order.amountKop === 4900);
+  const kOver = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_vhs_card_frame' });
+  check(`…the next one (1 549 ₽) → ${kOver.status} ${kOver.j.code}`, kOver.status === 403 && kOver.j.code === 'minor_limit');
+  // one kopeck over: a second account with 1 451.01 ₽ behind it
+  const K2 = await kid('teen2@payments.test', '14-17');
+  await http('POST', '/api/prime/shop/offer/accept', K2.tok, { revision: offK.revision, sha256: offK.sha256 });
+  await past(K2, 150000 - 4900 + 1, 'paid');
+  const k2Over = await http('POST', '/api/prime/shop/checkout', K2.tok, { sku: 'fx_golden_confetti' });
+  check(`…one kopeck over the limit (1 500.01 ₽) → ${k2Over.status} ${k2Over.j.code}`, k2Over.status === 403 && k2Over.j.code === 'minor_limit');
+  // what does not count: failed, expired, cancelled, refunded, a waiting order past its time, orders older than 30 days
+  const K3 = await kid('teen3@payments.test', '14-17');
+  await http('POST', '/api/prime/shop/offer/accept', K3.tok, { revision: offK.revision, sha256: offK.sha256 });
+  for (const st of ['failed', 'expired', 'canceled', 'refunded']) await past(K3, 145000, st);
+  await past(K3, 145000, 'pending_payment', { expiresAt: Date.now() - 60000 });
+  await past(K3, 145100, 'fulfilled');
+  sqlite(`update shop_orders set created='2026-01-01 00:00:00.000Z' where user='${K3.id}' and amountKop=145100;`);
+  const k3 = await http('POST', '/api/prime/shop/checkout', K3.tok, { sku: 'fx_golden_confetti' });
+  check('…failed, expired, cancelled and refunded orders, a waiting order past its time and orders older than 30 days do not count (a 49 ₽ purchase passes)', k3.status === 200, String(k3.j.code ?? k3.status));
+  // a waiting order inside its time DOES reserve the limit, and parallel requests never pass it together
+  const K4 = await kid('teen4@payments.test', '14-17');
+  await http('POST', '/api/prime/shop/offer/accept', K4.tok, { revision: offK.revision, sha256: offK.sha256 });
+  await past(K4, 150000 - 4900 * 2, 'pending_payment', { sku: 'skin_bruno_casino_boss' });
+  const parK4 = await Promise.all(['fx_golden_confetti', 'fx_vhs_card_frame', 'fx_phantom_dash', 'fx_prime_broadcast'].map((sku) => http('POST', '/api/prime/shop/checkout', K4.tok, { sku })));
+  const k4sum = Number(sqlite(`select sum(amountKop) from shop_orders where user='${K4.id}' and status in ('pending_payment','paid','fulfilled','requires_review','refund_pending');`));
+  check(`…four parallel requests against 98 ₽ left: ${parK4.map((r) => r.status).join('/')} — exactly two pass, the total stays ${k4sum / 100} ₽ ≤ 1 500 ₽`, parK4.filter((r) => r.status === 200).length === 2 && parK4.filter((r) => r.j.code === 'minor_limit').length === 2 && k4sum === 150000);
+  const kOld = await http('POST', '/api/prime/shop/checkout', Kold.tok, { sku: 'fx_golden_confetti' });
+  check('…an account made before 1.8.9.5 with the group «13-17» counts as under 18 (the same rules)', kOld.status === 200 && kOld.j.order?.env === 'live');
+  const adultBig = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
+  check('…an adult is not limited (300 ₽ goes through for 18+)', adultBig.status === 200 && adultBig.j.order.amountKop === 30000, String(adultBig.j.code ?? adultBig.status));
+  await stopPb();
+  testHooks(null);
+  await startPb(TEST_ENV);
+  const tOffer = (await http('GET', '/api/prime/shop/offer', K.tok)).j.offer;
+  await http('POST', '/api/prime/shop/offer/accept', K.tok, { revision: tOffer.revision, sha256: tOffer.sha256 });
+  const kTest = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_golden_confetti' });
+  check('TEST mode (staging) applies the same age rule: without PRIME_SHOP_MINORS a 14–17 test purchase → 403 adult_only', kTest.status === 403 && kTest.j.code === 'adult_only', String(kTest.j.code ?? kTest.status));
+  await stopPb();
+  await startPb({ ...TEST_ENV, PRIME_SHOP_MINORS: 'on' });
+  const kTestOn = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_golden_confetti' });
+  check('…with the switch on, the staging TEST-ONLY terms (revision 9001, `minors: true`) let a 14–17 account make a TEST purchase (IsTest=1, no money)', kTestOn.status === 200 && kTestOn.j.order?.env === 'test' && kTestOn.j.payment?.fields?.IsTest === '1', JSON.stringify(kTestOn.j).slice(0, 160));
+  await stopPb();
   // ---------------------------------------------------------------- the official site's demonstration
   section('Демонстрация на официальном сайте (PRIME_PAY_MODE=demo): тестовый режим Robokassa, свои заказы и права');
   const mskDay = (ms: number) => new Date(ms + 3 * 3600000).toISOString().slice(0, 10);

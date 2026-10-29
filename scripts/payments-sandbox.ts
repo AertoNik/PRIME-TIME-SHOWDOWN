@@ -20,7 +20,7 @@
 //   VITE_PRIME_ACCOUNTS=local VITE_PRIME_API_URL=http://127.0.0.1:19290 npx vite --mode accounts --port 5179 --strictPort
 // and open http://localhost:5179/?now=2026-11-10 (the date only for LUCIEN after his season; dev builds only).
 
-import { HOOKS, ROOT, binariesReady, ensurePortsFree, ownServerStarted, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
+import { HOOKS, ROOT, binariesReady, ensurePortsFree, ownServerStarted, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { crypto, fs, nodeModule, os, path, proc } from './lib/node';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -39,12 +39,16 @@ const P1 = 'sandbox-p1-' + rnd();
 const P2 = 'sandbox-p2-' + rnd();
 const log = (s: string) => proc.stdout.write(s + '\n');
 const DEMO = proc.argv.includes('--demo');
+// 1.8.9.5: `-- --public` — public registration (no invite), PRIME ID from 14 (PRIME_AGE_DEFAULT=14), letters caught
+// by the local Mailpit (http://127.0.0.1:19291) — to try the registration form against this temporary database
+const PUBLIC = proc.argv.includes('--public');
 const mskDay = (ms: number) => new Date(ms + 3 * 3600000).toISOString().slice(0, 10);
 
 const work: string = fs.mkdtempSync(path.join(os.tmpdir(), 'prime-payments-sandbox-'));
 const dataDir = path.join(work, 'pb_data');
 const hooksDir = path.join(work, 'pb_hooks');
 let pb: any = null;
+let mail: any = null;
 let emu: any = null;
 
 async function call(method: string, u: string, token = '', body?: unknown): Promise<any> {
@@ -147,12 +151,15 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(hooksDir, 'lib', 'shop_rules.js'), `module.exports = ${JSON.stringify(rules.exports, null, 2)};\n`);
   const su = { email: 'sandbox-admin@payments.test', pw: rnd() };
   upsertSuperuser(dataDir, su.email, su.pw, PORTS);
+  if (PUBLIC) mail = spawnMailpit(PORTS);
   pb = spawnPocketBase({
     dir: dataDir,
     ports: PORTS,
     origins: ['http://localhost:5179', 'http://127.0.0.1:5179'],
     env: {
-      PRIME_REGISTRATION: 'disabled',
+      PRIME_REGISTRATION: PUBLIC ? 'public' : 'disabled',
+      PRIME_AGE_DEFAULT: PUBLIC ? '14' : '',
+      PRIME_MAIL_LIMITS: PUBLIC ? 'relaxed' : '',
       PRIME_GAME_URL: GAME,
       PRIME_SERVER_ROLE: 'dev',
       PRIME_PAY_MODE: DEMO ? 'demo' : 'test',
@@ -194,6 +201,7 @@ async function main(): Promise<void> {
   log(`  аккаунт      вход записан в ${creds} (не печатается)`);
   log(`  игра         VITE_PRIME_ACCOUNTS=local VITE_PRIME_API_URL=${API} npx vite --mode accounts --port 5179 --strictPort`);
   log(`               затем ${GAME}?now=2026-11-10`);
+  if (PUBLIC) log(`  регистрация  публичная, PRIME ID с 14 лет; письма — http://127.0.0.1:${PORTS.mailUi}`);
   log('Ctrl+C — остановить и удалить временную базу.');
 }
 
@@ -204,6 +212,7 @@ async function stop(): Promise<void> {
     /* gone */
   }
   await stopChild(pb).catch(() => {});
+  await stopChild(mail).catch(() => {});
   fs.rmSync(work, { recursive: true, force: true });
 }
 

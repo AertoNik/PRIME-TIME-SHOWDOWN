@@ -66,7 +66,7 @@ function acceptLegal(e) {
     const prime = require(`${__hooks}/lib/prime.js`);
     const ar = prime.ageRules();
     const country = typeof b.country === 'string' ? b.country.trim().toUpperCase() : '';
-    const d = AGE.decide(country, b.age, ar.rules, ar.closed);
+    const d = AGE.decide(country, b.age, ar.rules, ar.closed, ar.self);
     // below the country's age: nothing is written — the account stays, PRIME CLOUD waits, export and deletion work
     if (!d.ok) return fail(e, d.code === 'age_invalid' || d.code === 'country_invalid' || d.code === 'country_required' ? 400 : 403, d.code);
     age = { country: country, band: d.band };

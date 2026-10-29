@@ -171,7 +171,9 @@ async function main(): Promise<void> {
   const cases: [string, number, Record<string, number>, string[]][] = [
     ['RU', 12, {}, []],
     ['RU', 13, {}, []],
-    ['US', 15, { US: 13 }, []],
+    ['RU', 14, { RU: 14 }, []],
+    ['RU', 13, { RU: 14 }, []],
+    ['US', 15, { US: 14 }, []],
     ['DE', 15, { DE: 16 }, []],
     ['ZZ', 30, {}, []],
     ['FR', 30, {}, ['FR']],
@@ -180,30 +182,36 @@ async function main(): Promise<void> {
     // 1.8.4 simplified form: no country unless the answer depends on it
     ['', 30, {}, []],
     ['', 15, {}, []],
-    ['', 15, { US: 13 }, []],
-    ['', 30, { US: 13 }, []],
+    ['', 15, { US: 14 }, []],
+    ['', 30, { US: 14 }, []],
     ['', 30, {}, ['FR']],
     ['', 19, { SG: 21 }, []],
-    ['', 12, { US: 13 }, []],
+    ['', 12, { US: 14 }, []],
+    ['', 13, { US: 14 }, []],
     ['XX', 30, {}, []],
   ];
-  const same = cases.every(([c, a, r, cl]) => {
-    const s = AGE.decide(c, a, r, cl);
-    const g = ageDecision({ min: 13, self: 18, rules: r, closed: cl }, c, a);
-    return (s.ok ? 'ok:' + s.band : s.code) === (g.ok ? 'ok:' + g.band : g.code);
-  });
-  check('the age decision is the same in the game and on the server (under 13 / country age / closed country / adult)', same);
-  check('under 13 → no PRIME ID; 13–17 → only where the country age is confirmed (default 18); 18+ → yes', AGE.decide('RU', 12, {}, []).code === 'age_too_young' && AGE.decide('RU', 15, {}, []).code === 'age_guardian_required' && AGE.decide('US', 15, AGE.parseRules('US:13'), []).band === '13-17' && AGE.decide('RU', 18, {}, []).band === '18+');
-  check('malformed age rules are ignored (stay at 18): «US:12», «ZZ:13», «XX:16», «DE:sixteen»', JSON.stringify(AGE.parseRules('US:12,ZZ:13,XX:16,DE:sixteen,GB:13')) === '{"GB":13}');
+  // 1.8.9.5: the same decisions with the default age 18 (as before) and 14 (PRIME_AGE_DEFAULT=14)
+  const same = [18, 14].every((self) =>
+    cases.every(([c, a, r, cl]) => {
+      const s = AGE.decide(c, a, r, cl, self);
+      const g = ageDecision({ min: AGE.MIN_AGE, self, rules: r, closed: cl }, c, a);
+      return (s.ok ? 'ok:' + s.band : s.code) === (g.ok ? 'ok:' + g.band : g.code);
+    }),
+  );
+  check('the age decision is the same in the game and on the server (under 14 / country age / closed country / adult; default 18 and 14)', same && AGE.MIN_AGE === 14);
+  check('under 14 → no PRIME ID (13 included); 14–17 → only where the country age is confirmed (default 18); 18+ → yes; a minor is stored as «14-17»', AGE.decide('RU', 12, {}, []).code === 'age_too_young' && AGE.decide('RU', 13, AGE.parseRules('RU:14'), []).code === 'age_too_young' && AGE.decide('RU', 15, {}, []).code === 'age_guardian_required' && AGE.decide('RU', 14, AGE.parseRules('RU:14'), []).band === '14-17' && AGE.decide('RU', 17, AGE.parseRules('RU:14'), []).band === '14-17' && AGE.decide('RU', 18, {}, []).band === '18+');
+  check('malformed age rules are ignored (stay at the default): «US:12», «GB:13» (under 14), «ZZ:14», «XX:16», «DE:sixteen»', JSON.stringify(AGE.parseRules('US:12,GB:13,ZZ:14,XX:16,DE:sixteen,RU:14')) === '{"RU":14}');
+  check('PRIME_AGE_DEFAULT: 14…25 is taken, anything else (empty, 13, 26, «14 лет») keeps 18', AGE.parseDefault('14') === 14 && AGE.parseDefault(' 16 ') === 16 && ['', '13', '26', '14 лет', 'x'].every((v) => AGE.parseDefault(v) === 18));
+  check('with PRIME_AGE_DEFAULT=14 no country is asked: 14 and 17 → «14-17», 13 → refused, 30 → «18+»', AGE.decide('', 14, {}, [], 14).band === '14-17' && AGE.decide('', 17, {}, [], 14).band === '14-17' && AGE.decide('', 13, {}, [], 14).code === 'age_too_young' && AGE.decide('', 30, {}, [], 14).band === '18+');
   check(
     'the country is asked only when the answer depends on it: never with default settings; 13–17 once country ages exist; everybody once a country is closed or needs more than 18',
     AGE.decide('', 30, {}, []).band === '18+' &&
       AGE.decide('', 15, {}, []).code === 'age_guardian_required' &&
-      AGE.decide('', 15, { US: 13 }, []).code === 'country_required' &&
-      AGE.decide('', 30, { US: 13 }, []).band === '18+' &&
+      AGE.decide('', 15, { US: 14 }, []).code === 'country_required' &&
+      AGE.decide('', 30, { US: 14 }, []).band === '18+' &&
       AGE.decide('', 30, {}, ['FR']).code === 'country_required' &&
       AGE.decide('', 19, { SG: 21 }, []).code === 'country_required' &&
-      AGE.decide('', 12, { US: 13 }, []).code === 'age_too_young',
+      AGE.decide('', 12, { US: 14 }, []).code === 'age_too_young',
   );
   let powSame = true;
   for (let n = 0; n < 3000; n++) if (parseInt(sha256('0123456789abcdef0123456789abcdef:' + n).slice(0, 8), 16) !== powWord('0123456789abcdef0123456789abcdef:', String(n))) powSame = false;
@@ -215,10 +223,12 @@ async function main(): Promise<void> {
   // (`legal:release --approved --date=…`, the same day in offer.config.ts)
   const offerDay = (r: number) => SHOP_OFFERS.find((o) => o.revision === r)?.effectiveFrom ?? 'none';
   const RELEASE_DAY: Record<string, Record<number, string>> = {
-    terms: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2) },
-    privacy: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2) },
+    terms: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2), 5: offerDay(3) },
+    // terms 5, privacy 5 and parents 3 (Alpha 1.8.9.5: PRIME ID from 14, buyers 14–17 under offer revision 3): the day
+    // revision 3 takes effect
+    privacy: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2), 5: offerDay(3) },
     consent: { 2: '2026-10-20', 3: offerDay(2) },
-    parents: { 2: '2026-10-20' },
+    parents: { 2: '2026-10-20', 3: offerDay(3) },
   };
   const RU_M = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   const EN_M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -307,7 +317,7 @@ async function main(): Promise<void> {
   // ================================================================= public
   section('Публичная регистрация без приглашений');
   const cfg = (await (await fetch(`${API}/api/prime/config`)).json()) as any;
-  check('the server says: public, documents with versions, age 13 / 18, a challenge, account tools', cfg.registration === 'public' && cfg.inviteRequired === false && cfg.legal.terms.v === V.terms && cfg.legal.consent.required === true && cfg.legal.privacy.required === false && cfg.age.min === 13 && cfg.age.self === 18 && cfg.pow === 1 && cfg.account === 1);
+  check('the server says: public, documents with versions, age 14 / 18, a challenge, account tools', cfg.registration === 'public' && cfg.inviteRequired === false && cfg.legal.terms.v === V.terms && cfg.legal.consent.required === true && cfg.legal.privacy.required === false && cfg.age.min === 14 && cfg.age.self === 18 && cfg.pow === 1 && cfg.account === 1);
   const okReg = await register('PublicOne', 'one@public.test');
   check('4. a registration without any code works (isolated temporary database)', okReg.code === 'ok' && okReg.body.mailSent === true && okReg.body.retryAfter === 60);
   const one = (await admin.collection('users').getFullList({ filter: 'email = "one@public.test"' }))[0];
@@ -362,7 +372,11 @@ async function main(): Promise<void> {
   const race = await Promise.all([register('RaceA', 'race@public.test'), register('RaceB', 'race@public.test')]);
   const raceUsers = (await admin.collection('users').getFullList({ filter: 'email = "race@public.test"' })).length;
   const raceProfiles = (await admin.collection('profiles').getFullList({ filter: 'nickname = "RaceA" || nickname = "RaceB"' })).length;
-  check(`no second profile: nickname (any case) and email stay unique (${dupNick.code}/${dupMail.code}); two taps at once → one account (${race.map((r) => r.code).join('/')})`, dupNick.code === 'nickname_taken' && dupMail.code === 'email_taken' && raceUsers === 1 && raceProfiles === 1);
+  check(`no second profile: nickname (any case) and email stay unique (${dupNick.code}/${dupMail.code}); two taps at once → one account (${race.map((r) => r.code).join('/')})`, dupNick.code === 'nickname_taken' && dupMail.code === 'ok' && raceUsers === 1 && raceProfiles === 1 && race.every((r) => r.code === 'ok'));
+  // 1.8.9.5: a registered address gets the same answer as a new one (no account enumeration) — and its owner a notice
+  const dupUsers = (await admin.collection('users').getFullList({ filter: 'email = "one@public.test"' })).length;
+  const notice = (await mails('one@public.test')).filter((m: any) => /попытка регистрации/.test(m.Subject ?? '')).length;
+  check(`a registered address: the very same answer as a new one (${JSON.stringify({ code: dupMail.code, mailSent: dupMail.body.mailSent, retryAfter: dupMail.body.retryAfter })}), no second account (${dupUsers}), the owner's notice waits for the per-address limit (${notice} now)`, dupMail.status === 200 && dupMail.body.mailSent === true && dupMail.body.retryAfter === okReg.body.retryAfter && dupMail.body.verification === okReg.body.verification && !('code' in dupMail.body) && dupUsers === 1 && notice <= 1);
   // unverified: no cloud
   const oneApi = device();
   await oneApi.login('one@public.test', PW);
@@ -560,17 +574,38 @@ async function main(): Promise<void> {
   check(`public without email does not open: the game is told «disabled», registration refused (${closedReg.code}), the log says why`, closedCfg.registration === 'disabled' && closedReg.code === 'registration_closed' && pbLog.some((l) => /registration stays CLOSED/.test(l)));
   await stopPb();
   // confirmed country ages, set on the server
-  await startPb('public', { PRIME_AGE_RULES: 'US:13,DE:16', PRIME_CLOSED_COUNTRIES: 'FR' });
+  await startPb('public', { PRIME_AGE_RULES: 'US:14,DE:16', PRIME_CLOSED_COUNTRIES: 'FR' });
   const cfgAge = (await (await fetch(`${API}/api/prime/config`)).json()) as any;
   const us15 = await register('UsTeen', 'us15@public.test', {}, { age: 15, country: 'US' });
   const de15 = await register('DeTeen', 'de15@public.test', {}, { age: 15, country: 'DE' });
   const fr30 = await register('FrAdult', 'fr30@public.test', {}, { age: 30, country: 'FR' });
   const teenNone = await register('TeenNone', 'teennone@public.test', {}, { age: 15 });
   const adultNone = await register('AdultNone', 'adultnone@public.test', {}, { age: 30 });
-  check(`6. country ages set on the server: US 15 → ${us15.code}, DE 15 → ${de15.code}, closed FR → ${fr30.code}; the game is told (${JSON.stringify(cfgAge.age.rules)})`, us15.code === 'ok' && de15.code === 'age_guardian_required' && fr30.code === 'country_unavailable' && cfgAge.age.rules.US === 13 && cfgAge.age.closed.includes('FR'));
+  check(`6. country ages set on the server: US 15 → ${us15.code}, DE 15 → ${de15.code}, closed FR → ${fr30.code}; the game is told (${JSON.stringify(cfgAge.age.rules)})`, us15.code === 'ok' && de15.code === 'age_guardian_required' && fr30.code === 'country_unavailable' && cfgAge.age.rules.US === 14 && cfgAge.age.closed.includes('FR'));
   check(`…and then the country becomes required where it matters: 15 without a country → ${teenNone.code}; with a closed country even an adult is asked → ${adultNone.code}`, teenNone.code === 'country_required' && adultNone.code === 'country_required');
   const teen = (await admin.collection('consents').getFullList({ filter: 'user.email = "us15@public.test" && doc = "age"' }))[0];
-  check('a 13–17 account is stored as «13-17» (no exact age)', teen?.ageBand === '13-17');
+  check('a 14–17 account is stored as «14-17» (no exact age)', teen?.ageBand === '14-17');
+  await stopPb();
+  // 1.8.9.5: PRIME ID from 14 for every country not listed (PRIME_AGE_DEFAULT=14)
+  await startPb('public', { PRIME_AGE_DEFAULT: '14', PRIME_MAIL_LIMITS: 'relaxed' });
+  const cfg14 = (await (await fetch(`${API}/api/prime/config`)).json()) as any;
+  const r13 = await register('ThirteenD', 'dflt13@public.test', {}, { age: 13 });
+  const r14 = await register('FourteenD', 'dflt14@public.test', {}, { age: 14 });
+  const r17 = await register('SeventeenD', 'dflt17@public.test', {}, { age: 17 });
+  const r18 = await register('EighteenD', 'dflt18@public.test', {}, { age: 18 });
+  const band = async (email: string) => (await admin.collection('consents').getFullList({ filter: `user.email = "${email}" && doc = "age"` }))[0]?.ageBand;
+  check(`PRIME_AGE_DEFAULT=14: the game is told min 14 / self 14; 13 → ${r13.code}, exactly 14 → ${r14.code}, 17 → ${r17.code}, 18 → ${r18.code}; no country asked`, cfg14.age.min === 14 && cfg14.age.self === 14 && r13.code === 'age_too_young' && r14.code === 'ok' && r17.code === 'ok' && r18.code === 'ok');
+  check('…stored only as a group: 14 and 17 → «14-17», 18 → «18+»; nothing for the refused 13', (await band('dflt14@public.test')) === '14-17' && (await band('dflt17@public.test')) === '14-17' && (await band('dflt18@public.test')) === '18+' && (await admin.collection('users').getFullList({ filter: 'email = "dflt13@public.test"' })).length === 0);
+  // 1.8.9.5: a registered address — the same answer, and (letter limits relaxed here) its owner's notice arrives
+  const dup14 = await register('SomeoneElse', 'DFLT14@public.test', {}, { age: 30 });
+  const notice14 = (await mails('dflt14@public.test')).filter((m: any) => /попытка регистрации/.test(m.Subject ?? ''));
+  const noticeHtml = notice14[0] ? String(((await (await fetch(`${MAIL}/api/v1/message/${notice14[0].ID}`)).json()) as any).HTML) : '';
+  check(`a registered address (any letter case): «ok» like a new one (${dup14.code}), still one account, the owner gets ONE notice without any link to act on but the game (${notice14.length})`, dup14.code === 'ok' && dup14.body.mailSent === true && (await admin.collection('users').getFullList({ filter: 'email = "dflt14@public.test"' })).length === 1 && notice14.length === 1 && /Забыли пароль/.test(noticeHtml) && !/auth\/(verify|reset)/.test(noticeHtml));
+  // a player cannot raise the age group by a plain API request (the records are written by the hooks only)
+  const minorAuth = await new PocketBase(API).collection('users').authWithPassword('dflt14@public.test', PW).catch(() => null);
+  const forged = minorAuth ? await fetch(`${API}/api/collections/consents/records`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: minorAuth.token }, body: JSON.stringify({ user: minorAuth.record.id, doc: 'age', version: 0, action: 'declared', ageBand: '18+' }) }) : null;
+  const reAge = minorAuth ? await fetch(`${API}/api/prime/legal/accept`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: minorAuth.token }, body: JSON.stringify({ accept: {}, lang: 'ru', age: 30 }) }) : null;
+  check(`a 14-year-old cannot make themselves «18+»: a record through the API → ${forged?.status}; the age question again → ${reAge?.status}; the group stays «14-17»`, !!forged && forged.status >= 400 && (await band('dflt14@public.test')) === '14-17' && (await admin.collection('consents').getFullList({ filter: 'user.email = "dflt14@public.test" && doc = "age"' })).length === 1);
   await stopPb();
 }
 

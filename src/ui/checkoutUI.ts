@@ -1,7 +1,7 @@
 import { COSMETICS } from '../config/cosmetics.config';
 import { FIGHTERS } from '../config/fighters';
 import { currentOffer, offerDate } from '../config/offer.config';
-import { SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
+import { MINOR_PURCHASES, SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { Game } from '../game/Game';
 import { CLIENT_PAYMENTS, buildCheckout, maskEmail, savePending, sessionStore, type CheckoutAccount, type CheckoutBlock, type CheckoutInput, type CheckoutView } from '../meta/Checkout';
 import { PAY_TRIES_MAX, POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepChecking, noteTry, onOrderSignal, orderPhase, saveReturn, signalOrder, triesOf, type OrderPhase, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
@@ -78,6 +78,8 @@ const SERVER_BLOCK: Record<string, CheckoutBlock> = {
   not_verified: 'unverified',
   legal_required: 'legal_required',
   adult_only: 'adult_only',
+  minor_item: 'minor_item',
+  minor_limit: 'minor_limit',
   owned: 'owned',
   seasonal_only: 'seasonal_only',
   price_pending: 'price_pending',
@@ -1048,6 +1050,10 @@ export class PrimeCheckout {
         return { tone: 'warn', title: 'Примите документы PRIME ID', text: 'Перед покупками нужно принять актуальные документы PRIME ID — это займёт минуту.' };
       case 'adult_only':
         return { tone: 'lock', title: 'Покупки — только с 18 лет', text: 'По условиям оферты покупки в PRIME SHOP доступны только совершеннолетним владельцам PRIME ID. Примерить предмет можно бесплатно.' };
+      case 'minor_item':
+        return { tone: 'lock', title: 'Этот предмет — только с 18 лет', text: `До 18 лет в PRIME SHOP можно купить косметические предметы до ${MINOR_PURCHASES.itemMaxRub} ₽. Примерить предмет можно бесплатно.` };
+      case 'minor_limit':
+        return { tone: 'wait', title: 'Лимит покупок до 18 лет', text: `До 18 лет покупки в PRIME SHOP — не больше ${MINOR_PURCHASES.per30DaysRub} ₽ за 30 дней. Новая покупка станет доступна позже; уже купленные предметы остаются с вами.` };
       case 'session_elsewhere':
         return { tone: 'warn', title: 'PRIME ID открыт на другом устройстве', text: 'Продолжите игру здесь, чтобы оформить покупку на этом устройстве.' };
       case 'account_changed':

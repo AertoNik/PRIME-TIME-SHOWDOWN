@@ -87,11 +87,11 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
 {
   check('picker: CURSED CEMETERY SET is the fifth set, after HAUNTED PRIME SET', ARENA_ORDER.indexOf('graveyard') === 4 && ARENA_ORDER.indexOf('haunted') === 3);
   check('picker: its own name, show title, Russian description and caption', GY.name === 'CURSED CEMETERY SET' && GY.show === 'GRAVEYARD BROADCAST' && /кладбищ/.test(GY.description) && GY.caption.includes('CURSED CEMETERY SET'));
-  check('picker: Halloween Premiere badge (seasonal set of the Halloween theme)', GY.availability.kind === 'seasonal' && GY.availability.themeId === 'halloween' && GY.availability.event === 'Halloween Premiere');
   check('picker: a thumbnail of its own (not a copy of another set)', !!ARENA_ART.graveyard && ARENA_ART.graveyard.startsWith('<svg') && ARENA_ORDER.every((id) => id === 'graveyard' || ARENA_ART[id] !== ARENA_ART.graveyard));
   check('picker: its own colours and the Halloween dressing (no second set of seasonal pumpkins)', GY.colors.a !== ARENAS.haunted.colors.a && GY.nativeSeason === 'halloween');
   check('music: the existing Halloween fight track (haunted_arena), no new music', ARENA_MUSIC.graveyard === 'haunted_arena');
   const prep = readFileSync('src/ui/screens/PrepScreen.ts', 'utf8');
+  check('picker: a permanent set (1.8.9.5) — the «Постоянная» chip, never «Сезонная»', GY.availability.kind === 'permanent' && prep.includes("'<span class=\"chip teal\">Постоянная</span>'"));
   check('picker card shows «Разрушаемые укрытия» and the season bonus chip', prep.includes('Разрушаемые укрытия') && prep.includes('arenaBonus('));
 }
 
@@ -120,11 +120,11 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
   const first = at('2026-10-20T00:00:00Z');
   const last = at('2026-11-03T23:59:59Z');
   const after = at('2026-11-04T00:00:00Z');
-  check(`UTC: closed until 20 Oct 00:00 (19 Oct 23:59:59 → ${before.open ? 'open' : 'closed'})`, !before.open && !before.random && before.pref === 'original');
+  check(`UTC: open before the event too (19 Oct 23:59:59 → ${before.open ? 'open' : 'closed'}), but no event pays yet`, before.open && before.random && before.pref === 'graveyard' && !before.pays);
   check('UTC: open from 20 Oct 00:00:00 (in the picker and in RANDOM)', first.open && first.random && first.pref === 'graveyard' && first.pays);
   check('UTC: still open on 3 Nov 23:59:59', last.open && last.random && last.pays);
-  check('UTC: closed from 4 Nov 00:00 — a saved choice falls back to the original studio, RANDOM skips it', !after.open && !after.random && after.pref === 'original' && !after.pays);
-  check('RANDOM in the season picks the cemetery among the five; a fixed choice outside it is refused', resolveArena('graveyard', 'default', () => 0) === 'original' && resolveArena('random', 'halloween', () => 0.99) === 'graveyard');
+  check('UTC: still open from 4 Nov 00:00 — the saved choice stays, RANDOM keeps it; the event no longer pays', after.open && after.random && after.pref === 'graveyard' && !after.pays);
+  check('RANDOM picks the cemetery in and out of the season; a fixed choice outside it is honoured', resolveArena('graveyard', 'default', () => 0) === 'graveyard' && resolveArena('random', 'halloween', () => 0.99) === 'graveyard');
   // the cemetery itself adds no save fields; the schema is 12 since Alpha 1.8 (win streaks)
   check('saves: the choice round-trips by id and survives the season check (no new save fields)', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'graveyard' }))).arena === 'graveyard' && defaultSave().version === 12);
 }
@@ -685,7 +685,8 @@ function autoFight(fighter: FighterId, rival: RivalId, seed: number, mode: 'smar
   // after the event the picker shows no bonus, and a manual preview without its rewards none either
   now = T('2026-11-04T00:00:01Z');
   em.refresh();
-  check('bonus: after the event no bonus is offered (picker chip) and the set is closed', em.arenaBonus('graveyard') === null && !arenaAvailable(GY, em.themeId));
+  check('bonus: after the event no bonus is offered (picker chip) — the set itself stays open', em.arenaBonus('graveyard') === null && arenaAvailable(GY, em.themeId));
+  check('bonus: a cemetery win after the event pays no tokens at all (no event id → nothing)', pay({}, 'graveyard', null) === null);
   now = T('2026-10-25T12:00:00Z');
   em.refresh();
   check('bonus: offered in the picker while the event pays', em.arenaBonus('graveyard')?.tokens === 2 && em.arenaBonus('haunted') === null);

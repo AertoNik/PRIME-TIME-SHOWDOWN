@@ -434,7 +434,8 @@ async function serverChecks(): Promise<void> {
   await startPb({ PRIME_SHOP_SALES: 'open' });
   const real4 = await Promise.all(SKUS.filter((s) => s !== 'fighter_lucien').map((s) => http('POST', '/api/prime/shop/checkout', A.tok, { sku: s })));
   check('this release on a server with the switch open but no Robokassa: every cosmetic → payments_unavailable with its approved price — no order', real4.every((r, i) => r.status === 503 && r.j.code === 'payments_unavailable' && r.j.quote?.priceKop === rubToKop(approvedPriceRub(SKUS.filter((s) => s !== 'fighter_lucien')[i]))), real4.map((r) => r.j.code + ':' + r.j.quote?.priceKop).join(' '));
-  const pubRev = SHOP_OFFERS[SHOP_OFFERS.length - 1];
+  // the revision in force NOW (1.8.9.5: revision 3 is registered ahead of its date; until then revision 2, archived)
+  const pubRev = currentOffer();
   const pubOffer = (await http('GET', '/api/prime/shop/offer')).j.offer;
   check(`…the server names the published offer (revision ${pubRev?.revision}, ${pubRev?.effectiveFrom}) and accepts consent only to exactly that text (another hash → offer_changed)`, !!pubRev && pubOffer?.revision === pubRev.revision && pubOffer?.sha256 === pubRev.sha256 && pubOffer?.url === pubRev.url && (await http('POST', '/api/prime/shop/offer/accept', B.tok, { revision: pubRev.revision, sha256: H1 })).j.code === 'offer_changed');
   await stopPb();
@@ -544,6 +545,8 @@ async function mobileChecks(): Promise<void> {
   check('repay refused: stays on the order (issue from the error, «owned» → re-check), leaves only when the offer must be accepted again; out of tries → nothing is sent', /if \(again && this\.orderInv !== null && code !== 'offer_changed' && code !== 'offer_consent_required'\)/.test(payFn) && /this\.orderIssue = e instanceof PrimeApiError \? issueOfError\(e\.kind, e\.code\)/.test(payFn) && /code === 'owned'\) return this\.startPolling/.test(payFn) && /this\.triesLeft\(this\.orderInv\) <= 0\) return this\.render\(\)/.test(payFn) && /if \(this\.busy \|\| !this\.sku\) return;/.test(payFn));
   const goFn = ui.slice(ui.indexOf('private goToPayment(start: CheckoutStart): void {'), ui.indexOf('/** Robokassa\'s form (hidden fields'));
   check('the same order out of tries is never sent again from the purchase itself either (closing and reopening the window): the order screen instead', /if \(this\.triesLeft\(start\.order\.inv\) <= 0\) \{[\s\S]*?this\.orderIssue = 'leave_failed';[\s\S]*?return;/.test(goFn) && goFn.indexOf('triesLeft(start.order.inv) <= 0') < goFn.indexOf('form.submit()'));
+  // 1.8.9.5: the refusals for buyers under 18 have their own words (the window and the order screen)
+  check('1.8.9.5: minor_item / minor_limit / adult_only → their own blocks and texts (limits from shop.config), never «оплата не подключена»', /minor_item: 'minor_item'/.test(ui) && /minor_limit: 'minor_limit'/.test(ui) && /case 'minor_item':[\s\S]{0,80}только с 18 лет/.test(ui) && /MINOR_PURCHASES\.per30DaysRub/.test(ui) && issueOfError('forbidden', 'minor_limit') === 'refused' && /лимит покупок до 18 лет/i.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_limit' })).text) && /недорогие косметические/.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_item' })).text));
   check('back from Robokassa / a reload: the order is followed again from the server (pageshow, visibility, ?prime_pay=…), the try count kept in sessionStorage', /addEventListener\('pageshow', this\.onPageShow\)/.test(ui) && /addEventListener\('visibilitychange', this\.onVisible\)/.test(ui) && /noteTry\(sessionStore\(\), inv\)/.test(ui));
 }
 

@@ -271,7 +271,7 @@ export function legalAction(g: Game, act: string): boolean {
 }
 
 // ----------------------------------------------------------------- age question
-/** Under 13 answered: the question is not offered again on this device for a day (no «try another age»). */
+/** Under 14 answered (1.8.9.5; 13 before): the question is not offered again on this device for a day (no «try another age»). */
 const AGE_LOCK_KEY = 'primetime-showdown-agegate-v1';
 const AGE_LOCK_MS = 24 * 3600 * 1000;
 
@@ -302,7 +302,7 @@ export function ageFieldsHTML(country = '', age = ''): string {
   const opts = countryOptions(l)
     .map((c) => `<option value="${c.code}"${c.code === country ? ' selected' : ''}>${esc(c.name)}</option>`)
     .join('');
-  return `<label class="acc-field acc-age"><span>${tr('Возраст', 'Age')}</span><input name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" value="${esc(age)}" enterkeyhint="next"><small>${tr('Полных лет. Сохраняется только группа «13–17» или «18+».', 'In full years. Only the group «13–17» or «18+» is kept.')}</small></label>
+  return `<label class="acc-field acc-age"><span>${tr('Возраст', 'Age')}</span><input name="age" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" value="${esc(age)}" enterkeyhint="next"><small>${tr('Полных лет. Сохраняется только группа «14–17» или «18+».', 'In full years. Only the group «14–17» or «18+» is kept.')}</small></label>
     <label class="acc-field acc-country" hidden><span>${tr('Страна проживания', 'Country of residence')}</span><select name="country" autocomplete="country"><option value="">${tr('Выберите страну', 'Choose a country')}</option>${opts}</select><small>${tr('Для вашего возраста условия зависят от страны.', 'For your age the terms depend on the country.')}</small></label>`;
 }
 
@@ -326,7 +326,7 @@ export function bindAgeFields(g: Game, root: HTMLElement): void {
 export function ageText(c: string): string {
   switch (c) {
     case 'age_too_young':
-      return tr('PRIME ID доступен с 13 лет. Играть можно и без аккаунта — прогресс сохраняется на этом устройстве.', 'PRIME ID is available from the age of 13. You can still play without an account — your progress is saved on this device.');
+      return tr('PRIME ID доступен с 14 лет. Играть можно и без аккаунта — прогресс сохраняется на этом устройстве.', 'PRIME ID is available from the age of 14. You can still play without an account — your progress is saved on this device.');
     case 'age_guardian_required':
       return tr(
         'Для вашего возраста нужно согласие родителя или законного представителя. Такой порядок мы пока готовим, поэтому PRIME ID сейчас недоступен. Играйте как гость — прогресс сохранится на этом устройстве.',

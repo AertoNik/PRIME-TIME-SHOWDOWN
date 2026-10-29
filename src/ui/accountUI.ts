@@ -301,7 +301,7 @@ export function openRegister(g: Game): void {
     );
     return;
   }
-  // 1.8.4: one form — the age is one of its fields (under 13 answered here earlier today: the refusal again)
+  // 1.8.4: one form — the age is one of its fields (under 14 answered here earlier today: the refusal again)
   if (ageLocked()) return showAgeRefused(g, 'age_too_young');
   openRegisterForm(g);
 }

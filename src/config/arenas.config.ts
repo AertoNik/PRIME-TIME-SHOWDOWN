@@ -229,13 +229,16 @@ export const ARENAS: Record<ArenaId, ArenaDef> = {
     colors: { a: '#b45cff', b: '#ff8a1f', ink: '#0e0618' },
   },
 
-  // Alpha 1.7.5 — the second Halloween set, the first one with cover on the fighting floor
+  // Alpha 1.7.5 — the second Halloween set, the first one with cover on the fighting floor.
+  // Alpha 1.8.9.5: a PERMANENT set (every day, every mode, RANDOM included). Only the set is permanent: the
+  // season's «+2 for a win here» stays in the Halloween event's own rules (events.config.ts earnings.arenaWin),
+  // paid by EventManager only while that event really runs.
   graveyard: {
     id: 'graveyard',
     name: 'CURSED CEMETERY SET',
     show: 'GRAVEYARD BROADCAST',
-    description: 'Бутафорское кладбище Halloween Premiere: надгробия, колонны и тыквы прямо на арене — укрытия, которые можно разбить.',
-    availability: { kind: 'seasonal', themeId: 'halloween', event: 'Halloween Premiere' },
+    description: 'Бутафорское кладбище, рождённое на Halloween Premiere: надгробия, колонны и тыквы прямо на арене — укрытия, которые можно разбить.',
+    availability: { kind: 'permanent' },
     caption: 'NEXT BROADCAST — CURSED CEMETERY SET',
     props: [
       { kind: 'fogGate', x: 0, z: -N - 0.3, hp: 1, respawn: 0, radius: 1.6, reactive: true, cooldown: 2.2 },

@@ -479,7 +479,7 @@ export class PrimeApi {
       legal: legal ? { terms: doc(legal.terms), consent: doc(legal.consent), privacy: doc(legal.privacy) } : null,
       age: age
         ? {
-            min: int(age.min) || 13,
+            min: int(age.min) || 14,
             self: int(age.self) || 18,
             rules: Object.fromEntries(Object.entries((age.rules ?? {}) as Rec).filter(([k, v]) => /^[A-Z]{2}$/.test(k) && typeof v === 'number')) as Record<string, number>,
             closed: Array.isArray(age.closed) ? age.closed.filter((c): c is string => typeof c === 'string') : [],

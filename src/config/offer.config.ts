@@ -20,6 +20,11 @@ export interface OfferRevision {
   effectiveFrom: string;
   /** SHA-256 (hex) of the published file — which exact text a player accepted. */
   sha256: string;
+  /**
+   * Alpha 1.8.9.5: this revision's text lets PRIME IDs aged 14–17 buy (its section on buyers under 18). Without
+   * it the server sells only to 18+, whatever PRIME_SHOP_MINORS says (shop.config.ts MINOR_PURCHASES).
+   */
+  minors?: boolean;
 }
 
 /**
@@ -32,7 +37,10 @@ export interface OfferRevision {
  */
 export const SHOP_OFFERS: OfferRevision[] = [
   { revision: 1, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r1.html', effectiveFrom: '2026-10-24', sha256: '2a6de21c5ed0452ce65667db792c1fc39c21675b0ac761ae785fb3b9a26b4625' },
-  { revision: 2, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-10-24', sha256: 'a8ae91f4be0a99336180823e5dfc8c0bc168b103ccbc3f10a3f98c41996a76c2' },
+  { revision: 2, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r2.html', effectiveFrom: '2026-10-24', sha256: 'a8ae91f4be0a99336180823e5dfc8c0bc168b103ccbc3f10a3f98c41996a76c2' },
+  // Alpha 1.8.9.5: buyers from 14 (section 5: cosmetics, 299 ₽ an item, 1 500 ₽ in 30 days), effective 30.10.2026 00:00 UTC
+  // (03:00 Moscow time) — until then the server still offers revision 2 at its archived address
+  { revision: 3, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-10-30', sha256: '40681c01fb585828c920ec2e6a083e1ce3d936a5f6526e6ca48f73970661866d', minors: true },
 ];
 
 /**
@@ -49,6 +57,9 @@ export const TEST_OFFER: OfferRevision = {
   url: '',
   effectiveFrom: '2026-10-01',
   sha256: '2b7fa9fbdfa6508819f958ff95c29a3b3a98705675edcdd04ff5343b40be4231',
+  // 1.8.9.5: TEST ONLY — lets a staging server with PRIME_SHOP_MINORS=on check purchases by 14–17 on test payments
+  // (no money). Never a production text: production uses SHOP_OFFERS only.
+  minors: true,
 };
 
 /**

@@ -23,10 +23,13 @@
 // CHECKOUT — so terms keep `reaccept: 2`: nobody is stopped at the next start; new accounts accept version 3.
 // terms 4, consent 3, privacy 4 (24.10.2026): the operator's name corrected to its passport spelling — a small fix,
 // so `version` only: nobody is asked again; earlier records keep the version they name.
+// privacy 5 (Alpha 1.8.9.5): PRIME ID from 14 (it was 13), the age group «14-17» — a notice: nobody is asked again.
+// terms 5 (Alpha 1.8.9.5): purchases «under the offer» — 18+, and 14–17 within its section 5 (revision 3). The rules of
+// playing do not change, every purchase rule lives in the offer accepted in PRIME CHECKOUT: `version` only.
 const DOCS = {
-  terms: { version: 4, reaccept: 2, required: true },
+  terms: { version: 5, reaccept: 2, required: true },
   consent: { version: 3, reaccept: 2, required: true },
-  privacy: { version: 4, reaccept: 0, required: false },
+  privacy: { version: 5, reaccept: 0, required: false },
 };
 
 /** The documents a player must tick (in this order). */
@@ -99,10 +102,16 @@ function record(tx, uid, docs, action, lang, privacyShown, age) {
   if (age) add(tx, uid, { doc: 'age', version: 0, lang: lang, action: 'declared', country: age.country, ageBand: age.band });
 }
 
-/** 1.8.9: the account declared «18+» (the offer sells to adults only; only «13-17» / «18+» is ever stored). */
+/** 1.8.9: the account declared «18+» (the offer sells to adults only; only «14-17» / «18+» is ever stored). */
 function adult(app, uid) {
   const r = latest(app, uid, 'age');
   return !!r && r.getString('ageBand') === '18+';
 }
 
-module.exports = { DOCS, requiredDocs, publicInfo, needs, checkAccept, record, adult };
+/** 1.8.9.5: the account declared an age under 18 («14-17»; accounts made before 1.8.9.5 may say «13-17»). */
+function minor(app, uid) {
+  const r = latest(app, uid, 'age');
+  return !!r && !!r.getString('ageBand') && r.getString('ageBand') !== '18+';
+}
+
+module.exports = { DOCS, requiredDocs, publicInfo, needs, checkAccept, record, adult, minor };

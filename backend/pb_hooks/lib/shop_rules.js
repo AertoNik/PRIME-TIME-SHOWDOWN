@@ -3,7 +3,7 @@
 // these prices and offer revisions; `npm run checkout` fails while this file is out of date.
 
 module.exports = {
-  "app": "1.8.9-alpha",
+  "app": "1.8.9.5-alpha",
   "catalog": {
     "skin_ray_neon_runner": {
       "kind": "skin",
@@ -85,9 +85,17 @@ module.exports = {
     {
       "revision": 2,
       "title": "Публичная оферта PRIME SHOP",
-      "url": "https://primetimeshowdown.online/legal/ru/offer.html",
+      "url": "https://primetimeshowdown.online/legal/ru/offer-r2.html",
       "effectiveFrom": "2026-10-24",
       "sha256": "a8ae91f4be0a99336180823e5dfc8c0bc168b103ccbc3f10a3f98c41996a76c2"
+    },
+    {
+      "revision": 3,
+      "title": "Публичная оферта PRIME SHOP",
+      "url": "https://primetimeshowdown.online/legal/ru/offer.html",
+      "effectiveFrom": "2026-10-30",
+      "sha256": "40681c01fb585828c920ec2e6a083e1ce3d936a5f6526e6ca48f73970661866d",
+      "minors": true
     }
   ],
   "seasons": {
@@ -113,7 +121,8 @@ module.exports = {
       "title": "Тестовые условия оплаты PRIME SHOP",
       "url": "",
       "effectiveFrom": "2026-10-01",
-      "sha256": "2b7fa9fbdfa6508819f958ff95c29a3b3a98705675edcdd04ff5343b40be4231"
+      "sha256": "2b7fa9fbdfa6508819f958ff95c29a3b3a98705675edcdd04ff5343b40be4231",
+      "minors": true
     }
   },
   "demo": {
@@ -125,5 +134,9 @@ module.exports = {
       "effectiveFrom": "2026-10-23",
       "sha256": "4598f6a0b6d6d5a54de71167bf52853cd0b0746ec44c68bad041223aab729f11"
     }
+  },
+  "minors": {
+    "itemMaxRub": 299,
+    "per30DaysRub": 1500
   }
 };

@@ -107,7 +107,8 @@ async function waitMails(email: string, count: number, ms = 5000): Promise<any[]
 }
 /** The link of the newest email of that kind to that address. */
 async function mailLink(email: string, kind: 'verification' | 'password-reset', expectCount = 1): Promise<{ url: string; token: string; subject: string }> {
-  const list = await waitMails(email, expectCount);
+  // 1.8.9.5: the notice to an address that already has an account is not a link letter — skipped here
+  const list = (await waitMails(email, expectCount)).filter((m: any) => !/попытка регистрации/.test(String(m.Subject)));
   if (!list.length) return { url: '', token: '', subject: '' };
   const newest = list.slice().sort((a, b) => String(b.Created).localeCompare(String(a.Created)))[0];
   const full = (await (await fetch(`${MAIL}/api/v1/message/${newest.ID}`)).json()) as { HTML: string };
@@ -227,7 +228,8 @@ async function main(): Promise<void> {
   check('1 a new account: user + profile in one go, the verification email sent', r1.mailSent && !!aUser && aUser.verified === false && aProfile?.nickname === 'NightProducer' && aProfile?.nicknameKey === 'nightproducer');
   check('1 the email is stored lower-case; the user record exposes no password; the profile holds no email', aUser?.email === 'night@prime.test' && !('password' in aUser) && !('email' in (aProfile ?? {})));
   const e2 = await apiError(reg(d1, 'Somebody', 'NIGHT@prime.test', PW_A));
-  check('2 the same email again (other letter case) → «email_taken»', e2?.code === 'email_taken');
+  const e2Users = (await admin.collection('users').getFullList({ filter: 'email = "night@prime.test"' })).length;
+  check('2 the same email again (other letter case): the same answer as a new registration (1.8.9.5: no account enumeration), still one account', e2 === null && e2Users === 1);
   const nickCases: [string, string][] = [
     ['nightPRODUCER', 'nickname_taken'],
     ['NightРroducer', 'nickname_mixed'],

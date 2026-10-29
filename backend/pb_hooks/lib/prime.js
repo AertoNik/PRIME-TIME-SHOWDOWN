@@ -73,7 +73,7 @@ function mode() {
 
 /** 1.8.4: the age rules this server applies (see lib/age_rules.js; set in its environment). */
 function ageRules() {
-  return { rules: AGE.parseRules($os.getenv('PRIME_AGE_RULES')), closed: AGE.parseClosed($os.getenv('PRIME_CLOSED_COUNTRIES')) };
+  return { rules: AGE.parseRules($os.getenv('PRIME_AGE_RULES')), closed: AGE.parseClosed($os.getenv('PRIME_CLOSED_COUNTRIES')), self: AGE.parseDefault($os.getenv('PRIME_AGE_DEFAULT')) };
 }
 
 /**
@@ -123,7 +123,7 @@ function config(e) {
     legal: LEGAL.publicInfo(),
     age: (function () {
       const a = ageRules();
-      return { min: AGE.MIN_AGE, self: AGE.SELF_AGE, rules: a.rules, closed: a.closed };
+      return { min: AGE.MIN_AGE, self: a.self, rules: a.rules, closed: a.closed };
     })(),
     pow: 1,
     account: 1,
@@ -157,6 +157,35 @@ function inviteProblem(inv) {
 }
 
 // ------------------------------------------------------------------------ register
+/**
+ * 1.8.9.5: the address already has a PRIME ID — the SAME answer as a new registration, so the answer never tells
+ * whether an address is registered (account enumeration). The address's owner gets a short notice instead (sign in
+ * or reset the password); it goes through onMailerSend like every letter, so the usual limits apply (one a minute
+ * and a few a day per address, the daily cap) — a refused or failed letter changes nothing in the answer.
+ */
+function takenAnswer(e, email) {
+  if (mailMode() === 'off') return e.json(200, { ok: true, mailSent: false, verification: 'manual' });
+  try {
+    const meta = e.app.settings().meta;
+    const game = /^https?:\/\/[^\s"'<>]+$/.test(String($os.getenv('PRIME_GAME_URL') || '')) ? String($os.getenv('PRIME_GAME_URL')).slice(0, 200) : '';
+    const link = game ? '<p><a href="' + game + '">' + game + '</a></p>' : '';
+    const msg = new MailerMessage({
+      from: { address: meta.senderAddress, name: meta.senderName },
+      to: [{ address: email }],
+      subject: 'PRIME TIME: SHOWDOWN — попытка регистрации / registration attempt',
+      html:
+        '<p>Кто-то — возможно, вы — пытался создать PRIME ID с этим адресом. Аккаунт с ним уже есть: войдите в игре или восстановите пароль («Забыли пароль?»). Если это были не вы, ничего делать не нужно — новый аккаунт не создан.</p>' +
+        '<p>Someone — maybe you — tried to create a PRIME ID with this address. It already has an account: sign in in the game or reset the password («Forgot password?»). If it was not you, there is nothing to do — no new account was created.</p>' +
+        link,
+    });
+    e.app.newMailClient().send(msg);
+  } catch (err) {
+    // never the address itself in the log
+    e.app.logger().info('prime register: notice to an existing address not sent', 'error', String(err).slice(0, 120));
+  }
+  return e.json(200, { ok: true, mailSent: true, verification: 'email', retryAfter: GUARD.MAIL_GAP_S });
+}
+
 function register(e) {
   const m = mode();
   if (m === 'disabled') return fail(e, 403, 'registration_closed');
@@ -173,7 +202,7 @@ function register(e) {
   const lang = b.lang === 'en' ? 'en' : 'ru';
   const ar = ageRules();
   const country = typeof b.country === 'string' ? b.country.trim().toUpperCase() : '';
-  const age = AGE.decide(country, b.age, ar.rules, ar.closed);
+  const age = AGE.decide(country, b.age, ar.rules, ar.closed, ar.self);
   if (!age.ok) return fail(e, age.code === 'age_invalid' || age.code === 'country_invalid' || age.code === 'country_required' ? 400 : 403, age.code);
   const docs = LEGAL.requiredDocs();
   const legalBad = LEGAL.checkAccept(b.accept, docs);
@@ -234,9 +263,9 @@ function register(e) {
   } catch (err) {
     const msg = String(err && err.message ? err.message : err);
     for (const code of ['invite_invalid', 'invite_used', 'invite_expired']) if (msg.indexOf('prime:' + code) >= 0) return fail(e, 400, code);
-    if (msg.indexOf('prime:email_taken') >= 0) return fail(e, 409, 'email_taken');
+    if (msg.indexOf('prime:email_taken') >= 0) return takenAnswer(e, email);
     if (msg.indexOf('prime:nickname_taken') >= 0 || msg.indexOf('nicknameKey') >= 0) return fail(e, 409, 'nickname_taken');
-    if (msg.indexOf('email') >= 0 && msg.indexOf('unique') >= 0) return fail(e, 409, 'email_taken');
+    if (msg.indexOf('email') >= 0 && msg.indexOf('unique') >= 0) return takenAnswer(e, email);
     // never log the request body: it holds the password
     e.app.logger().warn('prime register failed', 'error', msg.slice(0, 300));
     return fail(e, 400, 'register_failed');
