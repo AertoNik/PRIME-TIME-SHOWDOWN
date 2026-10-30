@@ -1,10 +1,6 @@
-import { FIGHTERS, RIVALS, BEHAVIORS } from '../../config/fighters';
-import { formatMoney, formatNumber } from '../../core/math';
+import { formatMoney } from '../../core/math';
 import type { Game } from '../../game/Game';
-import { fameTier } from '../../meta/CareerSystem';
-import { CARDS, PASSIVES } from '../../config/cards';
-import { ThemeManager } from '../../game/ThemeManager';
-import { countUp, el, esc, portraitHTML } from '../dom';
+import { countUp, el, esc } from '../dom';
 import { ICONS } from '../eventArt';
 import { currencyIcon, formatSpan } from './EventsScreen';
 import { UI_ICONS } from '../icons';
@@ -224,14 +220,9 @@ export class MenuScreen implements Screen {
     const g = this.g;
     const s = g.save.data;
     const lvl = g.career.level();
-    const f = FIGHTERS[s.selected];
-    const fp = s.fighters[s.selected];
-    const rival = RIVALS[s.nextRival];
     const unclaimed = g.career.unclaimed();
     const em = g.events;
     const ev = em.active;
-    // the nameplate title as the selected fighter wears it (personal titles only on their owners)
-    const title = ThemeManager.titleName(g.collection.effectiveEquipped(s.selected));
     // seasonal entry: the main way into the Events screen
     let entry = '';
     if (ev && em.playable) {
@@ -294,24 +285,6 @@ export class MenuScreen implements Screen {
         <button class="cloud-pill" data-cloud data-act="profile" aria-live="polite" aria-hidden="true" tabindex="-1" hidden><i></i><span></span></button>
       </div>
       <div class="fill pass"></div>
-      <div class="fighter-plate panel" data-act="roster" style="cursor:pointer">
-        ${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}
-        <div class="meta">
-          <div class="name">${esc(f.name)}</div>
-          ${title ? `<div class="plate-title">${ICONS.crown}<span>${esc(title)}</span></div>` : ''}
-          <div class="nick" style="color:${f.theme.accent}">«${esc(f.nickname)}» · ${esc(f.style)}</div>
-          <div class="row" style="margin-top:6px;gap:6px;flex-wrap:wrap">
-            <span class="chip gold">${UI_ICONS.fans.replace('<svg', '<svg width="11" height="11" style="color:#ff4fd8"')} ${formatNumber(fp.fans)} фанатов</span>
-            <span class="chip plate-tier">${esc(fameTier(fp.fans))}</span>
-          </div>
-          <div class="plate-abilities"><span>◆ ${esc(PASSIVES[f.passive].name)}</span><span style="color:${CARDS[f.signature].color}">★ ${esc(CARDS[f.signature].name)}</span></div>
-        </div>
-      </div>
-      <div class="next-bout">
-        <span>След. эфир</span>
-        <b>VS ${esc(rival.name)} «${esc(rival.nickname)}»</b>
-        <span class="chip red">${esc(BEHAVIORS[rival.behavior].label)}</span>
-      </div>
       <div class="spacer-8"></div>
       ${entry ? `<div class="menu-event">${entry}</div>` : ''}
       <div class="menu-actions">

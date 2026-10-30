@@ -98,8 +98,9 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
 // ----------------------------------------------- 2. HAUNTED and the others unchanged
 {
   // fingerprints of 1.7.1: the four earlier sets' data and their stage code
+  // (1.9.1: OriginalStage merges its static pieces per material — fewer draw calls, the same picture — new fingerprint)
   const DATA: Record<string, string> = { original: '69dde642', casino: '2d1240e8', backlot: '38bbcaf8', haunted: '347a1089' };
-  const CODE: Record<string, string> = { HauntedStage: 'ba204c7a', OriginalStage: '3692e30f', CasinoStage: '2c95aa0', BacklotStage: 'd6ba30c7' };
+  const CODE: Record<string, string> = { HauntedStage: 'ba204c7a', OriginalStage: 'a7a20be3', CasinoStage: '2c95aa0', BacklotStage: 'd6ba30c7' };
   check('HAUNTED PRIME SET: its data is exactly as in 1.7.1 (props, light, colours, availability)', hash(JSON.stringify(ARENAS.haunted)) === DATA.haunted && !ARENAS.haunted.covers);
   check('HAUNTED PRIME SET: its stage code is untouched', hash(readFileSync('src/render/stages/HauntedStage.ts', 'utf8')) === CODE.HauntedStage);
   check('the three permanent sets: data and stage code untouched', (['original', 'casino', 'backlot'] as const).every((id) => hash(JSON.stringify(ARENAS[id])) === DATA[id]) && ['OriginalStage', 'CasinoStage', 'BacklotStage'].every((n) => hash(readFileSync(`src/render/stages/${n}.ts`, 'utf8')) === CODE[n]));

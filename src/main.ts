@@ -54,4 +54,6 @@ if (!stage || !ui) {
   // debugging handle for local development only (Alpha 1.8: not in the published build).
   // This is not an anti-cheat: the progress lives in the browser and can still be edited there.
   if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
+  // 1.9.1: ?preview=league — the league screens with made-up data, no server (dev builds only, never published)
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) void import('./dev/leaguePreview').then((m) => m.installLeaguePreview(game));
 }

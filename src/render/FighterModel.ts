@@ -2008,6 +2008,8 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   attach('torso', spine);
   const head = boneGroup('head', spine, [0, d.neckY, 0]);
   attach('head', head);
+  // 1.9.1: a smaller head is the same head scaled about the neck (the face keeps its proportions)
+  if (look.headScale) head.scale.setScalar(look.headScale);
 
   const eyes = new Mesh(G.eyes, eyeMat);
   eyes.position.set(G.eyePivot[0], G.eyePivot[1], G.eyePivot[2]);

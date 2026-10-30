@@ -224,6 +224,8 @@ input {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* 1.9.1: a list that reaches its end must not hand the swipe to the page (iOS PWA dragged the whole app) */
+  overscroll-behavior: contain;
 }
 .scroll::-webkit-scrollbar {
   display: none;
@@ -7183,6 +7185,64 @@ input {
   }
 }
 
+/* 1.9.1 — a PRIME SHOP item in MY COLLECTION keeps its shop picture (the general reward art is for the rest) */
+.cc-art.cc-shop {
+  --rar-rgb: var(--ps-violet-rgb);
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, rgba(var(--rar-rgb), 0.28), transparent 70%), linear-gradient(180deg, #1c1046, #0b0a22);
+  box-shadow: inset 0 0 0 1px rgba(var(--rar-rgb), 0.5);
+}
+.rarity-legendary .cc-art.cc-shop {
+  --rar-rgb: var(--ps-gold-rgb);
+}
+.rarity-rare .cc-art.cc-shop {
+  --rar-rgb: var(--ps-cyan-rgb);
+}
+.cc-shop .art-svg {
+  inset: 8%;
+}
+.cc-shop .art-svg svg {
+  width: 100%;
+  height: 100%;
+}
+.cc-shop .art-frame {
+  inset: 14% 7% 16%;
+}
+.cc-shop .art-frame i {
+  border-width: 1.5px;
+}
+.cc-shop .af-air {
+  bottom: 4px;
+  font-size: 5.5px;
+  padding: 1px 4px;
+}
+.cc-shop .af-hp {
+  top: 7px;
+  height: 3px;
+}
+.cc-shop .af-time {
+  top: 3px;
+  font-size: 6px;
+}
+.cc-shop .art-cards .card {
+  top: 14%;
+  width: 44%;
+}
+.cc-shop .art-cards .ac-1 {
+  left: 6%;
+}
+.cc-shop .art-cards .ac-2 {
+  right: 6%;
+}
+.cc-shop .art-cards .gem {
+  width: 14px;
+  height: 15px;
+  top: -4px;
+  left: -4px;
+  font-size: 8px;
+}
+
 /* Alpha 1.5.5 — personal rewards in MY COLLECTION */
 .cc-owners {
   display: flex;
@@ -13123,25 +13183,6 @@ button.pid-mini:active {
   min-width: 0;
   letter-spacing: 0.04em;
 }
-.lg-switch {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 6px 8px 6px 10px;
-  border-radius: 999px;
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--text);
-  background: rgba(var(--lg-v, 140, 110, 255), 0.16);
-  box-shadow: inset 0 0 0 1px rgba(var(--lg-v, 140, 110, 255), 0.45);
-}
-.lg-switch svg {
-  width: 14px;
-  height: 14px;
-}
 .modes .screen-head .h1 {
   flex: 1;
 }
@@ -13182,35 +13223,184 @@ button.pid-mini:active {
 .lg-scroll > * {
   flex: none;
 }
-.lg-tabs {
+/* 1.9.1: the league head — back · PRIME LEAGUE · ON AIR on one calm line */
+.lg-title {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(var(--shade-rgb), 0.55);
-  box-shadow: inset 0 0 0 1px var(--line);
-  overflow-x: auto;
-  scrollbar-width: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
 }
-.lg-tabs::-webkit-scrollbar {
-  display: none;
+.lg-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* «КАРЬЕРА | PRIME LEAGUE»: the two halves of the show — a big segmented switch under the head of both screens */
+.ent-switch {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0 12px 8px;
+  padding: 4px;
+  border-radius: 16px;
+  /* 1.9.1: an opaque-enough plate instead of a backdrop blur — a blur over the live 3D canvas is re-done every frame */
+  background: rgba(8, 6, 22, 0.88);
+  box-shadow: inset 0 0 0 1px var(--line), 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.es-opt {
+  --es-rgb: 255, 122, 26;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--es-rgb), 0.08);
+  box-shadow: inset 0 0 0 1px rgba(var(--es-rgb), 0.28);
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.es-opt.league {
+  --es-rgb: 140, 110, 255;
+}
+.es-opt > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.es-ico {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: rgb(var(--es-rgb));
+}
+.es-ico svg {
+  width: 100%;
+  height: 100%;
+}
+.es-opt.on {
+  color: #fff;
+  cursor: default;
+  background: linear-gradient(180deg, rgba(var(--es-rgb), 0.55), rgba(var(--es-rgb), 0.2));
+  box-shadow: inset 0 0 0 1.5px rgba(var(--es-rgb), 0.85), 0 0 18px rgba(var(--es-rgb), 0.3);
+}
+.es-opt:not(.on):active {
+  transform: scale(0.97);
+}
+@media (hover: hover) {
+  .es-opt:not(.on):hover {
+    color: #fff;
+    background: rgba(var(--es-rgb), 0.16);
+  }
+}
+.es-opt:focus-visible {
+  outline: 2px solid #5ec8ff;
+  outline-offset: 2px;
+}
+@media (min-width: 560px) {
+  .ent-switch {
+    width: min(460px, calc(100% - 24px));
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .es-opt {
+    transition: none;
+  }
+}
+/* 1.9.1: five equal tabs, each with its sign — no word cut on a 320 px phone, no sideways scroll */
+.lg-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(var(--shade-rgb), 0.6);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .lg-tab {
   position: relative;
-  flex: 1 0 auto;
-  padding: 9px 10px;
-  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 2px 6px;
+  border-radius: 12px;
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--muted);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.lg-tab-ico {
+  width: 18px;
+  height: 18px;
+  opacity: 0.75;
+}
+.lg-tab-ico svg {
+  width: 100%;
+  height: 100%;
+}
+.lg-tab-t {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .lg-tab.on {
   color: #fff;
-  background: linear-gradient(180deg, rgba(var(--lg-v), 0.55), rgba(var(--lg-v), 0.25));
-  box-shadow: inset 0 0 0 1px rgba(var(--lg-v), 0.7), 0 0 16px rgba(var(--lg-v), 0.3);
+  background: linear-gradient(180deg, rgba(var(--lg-v), 0.6), rgba(var(--lg-v), 0.22));
+  box-shadow: inset 0 0 0 1px rgba(var(--lg-v), 0.75), 0 0 16px rgba(var(--lg-v), 0.3);
+}
+.lg-tab.on .lg-tab-ico {
+  opacity: 1;
+  color: #ffd166;
+}
+@media (max-width: 420px) {
+  .lg-tab-t {
+    font-size: 9.5px;
+    letter-spacing: 0;
+  }
+  .es-opt {
+    gap: 5px;
+    padding: 6px 4px;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .es-ico {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (min-width: 560px) {
+  .lg-tabs {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .lg-tab {
+    flex-direction: row;
+    justify-content: center;
+    gap: 6px;
+    font-size: 10.5px;
+  }
 }
 .lg-dot {
   position: absolute;
@@ -13444,6 +13634,7 @@ button.pid-mini:active {
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: 2px 2px 6px;
   scrollbar-width: none;
 }
@@ -13489,14 +13680,25 @@ button.pid-mini:active {
   color: var(--muted);
   margin: 6px 0;
 }
-.lg-cardchip {
-  padding: 2px 7px;
-  border-radius: 6px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text);
-  background: rgba(var(--lg-v), 0.18);
-  box-shadow: inset 0 0 0 1px rgba(var(--lg-v), 0.35);
+/* 1.9.1: a deck as the game's own cards (cardHTML: the career's icon, colours and energy gem) */
+.lg-deckrow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 300px;
+  padding: 8px 4px 2px 8px;
+}
+.lg-dcard {
+  display: block;
+  min-width: 0;
+}
+.lg-mcard .gem {
+  top: -6px;
+  left: -6px;
+  width: 22px;
+  height: 24px;
+  font-size: 12px;
 }
 .lg-modes {
   display: grid;
@@ -13516,6 +13718,50 @@ button.pid-mini:active {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.lg-mode.squad {
+  background: radial-gradient(120% 80% at 0% 0%, rgba(124, 247, 212, 0.14), transparent 60%), linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 0 0 1px rgba(124, 247, 212, 0.28);
+}
+.lg-mode.rush {
+  background: radial-gradient(120% 80% at 0% 0%, rgba(47, 243, 255, 0.14), transparent 60%), linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: inset 0 0 0 1px rgba(47, 243, 255, 0.28);
+}
+.lg-mode-head {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.lg-mode-head .lg-k {
+  margin-bottom: 4px;
+}
+.lg-mode-ico {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.lg-mode-ico svg {
+  width: 30px;
+  height: 30px;
+}
+.lg-mode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lg-mode-chips span {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 .lg-mode p {
   margin: 0;
@@ -13695,31 +13941,62 @@ button.pid-mini:active {
 }
 .lg-cardgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 12px 10px;
+  max-width: 420px;
+  padding: 8px 2px 2px 8px;
 }
+/* a card to pick: the card itself + its role; chosen = lifted and outlined (the ids, costs and rules never change) */
 .lg-cardpick {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 7px 8px;
-  border-radius: 10px;
-  text-align: left;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 0 4px;
+  border-radius: 14px;
   color: var(--muted);
-  background: rgba(var(--shade-rgb), 0.5);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: none;
+  transition: transform 0.14s ease, filter 0.14s ease;
 }
-.lg-cardpick b {
-  font-size: 11px;
-  color: var(--text);
+.lg-cardpick .card {
+  width: 100%;
+  filter: saturate(0.55) brightness(0.8);
+  transition: filter 0.14s ease, box-shadow 0.14s ease;
 }
 .lg-cardpick small {
+  max-width: 100%;
   font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 .lg-cardpick.on {
-  background: rgba(var(--lg-v), 0.22);
-  box-shadow: inset 0 0 0 1.5px rgb(var(--lg-v));
+  transform: translateY(-3px);
+  color: var(--text);
+}
+.lg-cardpick.on .card {
+  filter: none;
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px #fff,
+    0 0 0 2px rgb(var(--lg-v)),
+    0 0 18px rgba(var(--lg-v), 0.65);
+}
+.lg-cardpick:active .card {
+  transform: scale(0.96);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-cardpick,
+  .lg-cardpick .card {
+    transition: none;
+  }
+  .lg-cardpick.on {
+    transform: none;
+  }
 }
 .lg-tacgrid {
   display: grid;
@@ -13769,15 +14046,19 @@ button.pid-mini:active {
 .lg-add {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
   font-size: 11.5px;
   color: var(--muted);
+  margin-top: -4px;
   padding-bottom: 4px;
 }
-.lg-board,
-.lg-track,
-.lg-hist {
+.lg-add > * {
+  scroll-snap-align: start;
+}
+.lg-board {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -13833,110 +14114,461 @@ button.pid-mini:active {
   font-size: 22px;
   color: var(--text);
 }
-.lg-tier {
+/* 1.9.1 — the season's road: a node per reward on a rail, reached steps lit, the next one pulsing. */
+.lg-road {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+.lg-road::before {
+  content: '';
+  position: absolute;
+  left: 27px;
+  top: 20px;
+  bottom: 20px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(var(--lg-c), 0.85), rgba(255, 255, 255, 0.08));
+}
+.lg-step {
+  position: relative;
   display: grid;
-  grid-template-columns: 52px 1fr auto;
+  grid-template-columns: 48px 1fr auto;
   gap: 10px;
   align-items: center;
-  padding: 8px 10px;
-  border-radius: 12px;
-  font-size: 12.5px;
-  background: rgba(var(--shade-rgb), 0.5);
+  min-height: 56px;
+  padding: 6px 10px 6px 0;
+  border-radius: 14px;
+  background: rgba(var(--shade-rgb), 0.82);
   box-shadow: inset 0 0 0 1px var(--line);
 }
-.lg-tier-at {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 12px;
-  color: var(--muted);
-}
-.lg-tier.can {
-  box-shadow: inset 0 0 0 1.5px rgb(var(--lg-c));
-}
-.lg-tier.prestige .lg-tier-what {
+.lg-step-node {
+  justify-self: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.16), rgba(10, 12, 30, 0.95) 70%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12), 0 6px 14px rgba(0, 0, 0, 0.45);
   color: var(--gold);
 }
-.lg-tier.got {
-  opacity: 0.7;
+.lg-step-node svg {
+  width: 28px;
+  height: 28px;
 }
-.lg-hrow {
-  display: grid;
-  grid-template-columns: 92px 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 7px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  background: rgba(var(--shade-rgb), 0.5);
-  box-shadow: inset 0 0 0 1px var(--line);
+.lg-step.lock .lg-step-node {
+  filter: grayscale(0.85) brightness(0.7);
 }
-.lg-hres {
-  font-family: var(--font-display);
-  font-size: 10px;
+.lg-step.title .lg-step-node {
+  box-shadow: 0 0 0 2px rgba(255, 210, 58, 0.6), 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+.lg-step.emblem .lg-step-node {
+  box-shadow: 0 0 0 2px rgba(var(--lg-v), 0.8), 0 0 16px rgba(var(--lg-v), 0.35);
+}
+.lg-step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lg-step-at {
+  font-family: var(--font-body);
+  font-size: 10.5px;
   font-weight: 800;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-.lg-hrow.win .lg-hres {
+.lg-step-what {
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.lg-step.title .lg-step-what b {
+  color: var(--gold);
+}
+.lg-step-got,
+.lg-step-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lg-step-got {
   color: var(--green);
 }
-.lg-hrow.loss .lg-hres {
-  color: #ff8a94;
-}
-.lg-hrow small {
+.lg-step-lock {
   color: var(--muted);
-  font-size: 9.5px;
 }
-.lg-hrp {
-  font-weight: 700;
-  font-size: 11.5px;
+.lg-step-got svg,
+.lg-step-lock svg {
+  width: 14px;
+  height: 14px;
+}
+.lg-step-claim {
+  min-height: 44px;
+  padding: 0 14px;
+}
+.lg-step.got {
+  opacity: 0.78;
+}
+.lg-step.can {
+  box-shadow: inset 0 0 0 1.5px rgb(var(--lg-c)), 0 0 18px rgba(var(--lg-c), 0.28);
+}
+.lg-step.can .lg-step-node {
+  animation: lgStepGlow 1.8s ease-in-out infinite;
+}
+.lg-step.next:not(.can) {
+  box-shadow: inset 0 0 0 1px rgba(var(--lg-c), 0.55);
+}
+@keyframes lgStepGlow {
+  50% {
+    box-shadow: 0 0 0 2px rgb(var(--lg-c)), 0 0 22px rgba(var(--lg-c), 0.55);
+  }
+}
+.lg-wallet {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.lg-wallet small {
+  display: block;
+  line-height: 1.4;
+}
+/* 1.9.1 — the history as a feed: result badge, opponent's look, who fought whom, what it gave. */
+.lg-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lg-fight,
+.lg-season-row {
+  display: grid;
+  grid-template-columns: 82px 36px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 52px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 12px;
+  background: rgba(var(--shade-rgb), 0.82);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px;
+}
+.lg-season-row {
+  grid-template-columns: 36px 1fr auto;
+  padding-left: 10px;
+}
+.lg-fres {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border-radius: 9px;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+.lg-fres small {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+.lg-fight.win .lg-fres {
+  color: #06140c;
+  background: linear-gradient(180deg, #5dffa0, #22c46a);
+}
+.lg-fight.loss .lg-fres {
+  color: #fff;
+  background: linear-gradient(180deg, #ff5c6c, #b31d33);
+}
+.lg-fight.draw .lg-fres {
+  color: #1a1400;
+  background: linear-gradient(180deg, #ffe07a, #d9a514);
+}
+.lg-fava {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.lg-fava svg {
+  width: 34px;
+  height: 34px;
+}
+.lg-mini-face {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  vertical-align: -4px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.lg-fava-f .lg-mini-face {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  border-radius: 10px;
+}
+.lg-mini-face > * {
+  width: 100%;
+  height: 100%;
+}
+.lg-fwho,
+.lg-season-row > span:not(.lg-fgain) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lg-fwho b,
+.lg-season-row b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lg-fwho small,
+.lg-season-row small {
+  color: var(--muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lg-fwho small {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+}
+.lg-fwho i {
+  font-style: normal;
+  opacity: 0.6;
+}
+.lg-fgain {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.lg-fgain small {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.lg-fight.win .lg-fgain b {
+  color: var(--green);
+}
+@media (max-width: 360px) {
+  .lg-fight {
+    grid-template-columns: 74px 30px 1fr auto;
+    gap: 6px;
+  }
+  .lg-fres {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .lg-fava,
+  .lg-fava svg,
+  .lg-fava-f .lg-mini-face {
+    width: 30px;
+    height: 30px;
+  }
+}
+/* 1.9.1 — an empty state with a sign, a meaning and the way forward. */
+.lg-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 16px 18px;
+  border-radius: var(--radius);
+  text-align: center;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(var(--lg-v), 0.22), transparent 65%), rgba(var(--shade-rgb), 0.82);
+  box-shadow: inset 0 0 0 1px rgba(var(--lg-v), 0.3);
+}
+.lg-empty-ico {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: rgb(var(--lg-c));
+  background: rgba(var(--lg-c), 0.12);
+  box-shadow: inset 0 0 0 1.5px rgba(var(--lg-c), 0.5);
+}
+.lg-empty-ico svg {
+  width: 26px;
+  height: 26px;
+}
+.lg-empty b {
+  font-size: 14px;
+}
+.lg-empty p {
+  margin: 0;
+  max-width: 300px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.lg-empty .btn {
+  min-height: 44px;
+  margin-top: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-step.can .lg-step-node {
+    animation: none;
+  }
 }
 /* the fight entry: career or league */
-.lg-entry {
+/* 1.9.1 «Выберите эфир»: the first «В БОЙ!» — two equal premium cards, the language of the career's mode cards */
+.ent {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+}
+.ent-head {
   text-align: center;
 }
-.lg-entry p {
-  margin: 0 0 4px;
-  font-size: 12.5px;
-}
-.lg-entry-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 14px;
-  border-radius: 16px;
-  text-align: left;
-  background: linear-gradient(180deg, var(--surface-a), var(--surface-b));
-  box-shadow: inset 0 0 0 1.5px var(--line-strong);
-}
-.lg-entry-card b {
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 900;
-}
-.lg-entry-card small {
-  font-size: 12px;
-  color: var(--muted);
-}
-.lg-entry-card .lge-k {
-  display: flex;
+.ent-k {
+  display: inline-flex;
   gap: 6px;
   align-items: center;
   font-family: var(--font-display);
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   color: var(--muted);
 }
-.lg-entry-card.career {
-  box-shadow: inset 0 0 0 1.5px rgba(255, 122, 26, 0.55);
+.ent-head .h1 {
+  margin: 4px 0 6px;
 }
-.lg-entry-card.league {
-  background: radial-gradient(120% 120% at 100% 0%, rgba(140, 110, 255, 0.35), transparent 60%), linear-gradient(180deg, var(--surface-a), var(--surface-b));
-  box-shadow: inset 0 0 0 1.5px rgba(140, 110, 255, 0.7), 0 0 22px rgba(140, 110, 255, 0.2);
+.ent-head p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.ent-card {
+  --ec-rgb: 255, 122, 26;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 12px;
+  min-height: 96px;
+  padding: 14px;
+  border-radius: var(--radius);
+  text-align: left;
+  color: #fff;
+  background:
+    radial-gradient(130% 120% at 100% 0%, rgba(var(--ec-rgb), 0.28), transparent 58%),
+    linear-gradient(180deg, var(--panel-a), var(--panel-b));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px rgba(var(--ec-rgb), 0.6);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ent-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 4px);
+}
+.ent-card.league {
+  --ec-rgb: 140, 110, 255;
+}
+.ent-card:active {
+  transform: scale(0.985);
+}
+.ent-card:focus-visible {
+  outline: 2px solid #5ec8ff;
+  outline-offset: 3px;
+}
+@media (hover: hover) {
+  .ent-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.5), inset 0 0 0 1.5px rgba(var(--ec-rgb), 0.9), 0 0 24px rgba(var(--ec-rgb), 0.25);
+  }
+}
+.ent-ico {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border-radius: 16px;
+  color: rgb(var(--ec-rgb));
+  background: rgba(var(--ec-rgb), 0.13);
+  box-shadow: inset 0 0 0 1px rgba(var(--ec-rgb), 0.45);
+}
+.ent-ico svg {
+  width: 100%;
+  height: 100%;
+}
+.ent-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.ent-kick {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: rgb(var(--ec-rgb));
+}
+.ent-txt b {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+.ent-txt small {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.ent-go {
+  width: 22px;
+  height: 22px;
+  color: rgb(var(--ec-rgb));
+}
+.ent-go svg {
+  width: 100%;
+  height: 100%;
+}
+.ent-hint {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ent-card {
+    transition: none;
+  }
 }
 /* the bill before a fight */
 .lg-poster {
@@ -14209,22 +14841,8 @@ button.pid-mini:active {
 }
 .lg-rules,
 .lg-state,
-.lg-tier,
-.lg-row,
-.lg-hrow {
+.lg-row {
   background-color: rgba(var(--shade-rgb), 0.82);
-}
-.lg-tab {
-  flex: 1 1 auto;
-  padding: 8px 6px;
-  font-size: 9px;
-  letter-spacing: 0.03em;
-}
-@media (min-width: 420px) {
-  .lg-tab {
-    padding: 9px 10px;
-    font-size: 10px;
-  }
 }
 .lg-head .lg-title .lg-onair {
   font-size: 8px;
@@ -14390,10 +15008,6 @@ button.pid-mini:active {
   .lg-rank {
     padding: 16px 18px;
   }
-  .lg-tab {
-    font-size: 11px;
-    padding: 10px 12px;
-  }
 }
 @media (min-width: 1100px) {
   .league::before {
@@ -14404,19 +15018,13 @@ button.pid-mini:active {
 .lg-fpick:focus-visible,
 .lg-cardpick:focus-visible,
 .lg-tacpick:focus-visible,
-.lg-mini:focus-visible,
-.lg-switch:focus-visible,
-.lg-entry-card:focus-visible {
+.lg-mini:focus-visible {
   outline: 2px solid rgb(var(--lg-c, 94, 200, 255));
   outline-offset: 2px;
 }
 @media (max-width: 360px) {
   .lg-head .lg-title .lg-onair {
     display: none;
-  }
-  .lg-switch {
-    font-size: 9px;
-    padding: 5px 6px 5px 8px;
   }
   .lg-head {
     gap: 6px;

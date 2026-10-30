@@ -10,8 +10,13 @@ import type { Game } from './Game';
 // checkpoints every few seconds (a lost connection loses nothing) and at the end; the SERVER replays them and answers
 // with the result it computed. The fight on screen and the server's replay are the same code, bit for bit.
 
-/** Where «В БОЙ!» goes: the career's modes or PRIME LEAGUE (a per-device convenience — never in the save). */
-const ENTRY_KEY = 'primetime-fight-entry-v1';
+/**
+ * Where «В БОЙ!» goes: the career's modes or PRIME LEAGUE (a per-device convenience — never in the save).
+ * 1.9.1: only an EXPLICIT choice is kept — a card of the «Выберите эфир» window or the switch in a screen's head.
+ * 1.9.0 wrote «career» on every visit of the career (also while the league was off), so its key is not read.
+ */
+const ENTRY_KEY = 'primetime-fight-entry-v2';
+const OLD_ENTRY_KEY = 'primetime-fight-entry-v1';
 export type FightEntry = 'career' | 'league';
 
 export function lastEntry(): FightEntry | null {
@@ -25,6 +30,7 @@ export function lastEntry(): FightEntry | null {
 export function rememberEntry(v: FightEntry): void {
   try {
     localStorage.setItem(ENTRY_KEY, v);
+    localStorage.removeItem(OLD_ENTRY_KEY);
   } catch {
     /* this page only */
   }

@@ -2,7 +2,7 @@ import { COSMETICS, COSMETIC_SLOTS, SLOT_LABELS, type CosmeticDef, type Cosmetic
 import { EVENTS } from '../../config/events.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
-import { SKINS, SKU_OF_COSMETIC, SKU_OF_SKIN, type SkinId } from '../../config/shop.config';
+import { SHOP_ITEMS, SKINS, SKU_OF_COSMETIC, SKU_OF_SKIN, type SkinId } from '../../config/shop.config';
 import { paidSource } from '../../meta/entitlements';
 import { inRoster } from '../../meta/roster';
 import type { FighterId } from '../../config/types';
@@ -12,6 +12,7 @@ import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
+import { shopArt } from '../shopArt';
 import type { Screen } from '../UI';
 
 const RARITY: Record<CosmeticDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
@@ -300,6 +301,15 @@ export class CollectionScreen implements Screen {
       </div>`;
   }
 
+  /**
+   * 1.9.1: a PRIME SHOP item keeps the picture it was bought with (the shop's own art); the general reward
+   * drawings stay for the rest. Before, a bought PHANTOM DASH looked like the seasonal PURPLE PHANTOM.
+   */
+  private art(c: CosmeticDef): string {
+    const item = c.paid ? SHOP_ITEMS.find((i) => i.sku === SKU_OF_COSMETIC[c.id]) : undefined;
+    return item ? `<div class="cc-art cc-shop">${shopArt(this.g, item)}</div>` : `<div class="cc-art">${REWARD_ART[c.art]}</div>`;
+  }
+
   private cosmeticCard(v: CosmeticView): string {
     const c = v.def;
     const fresh = this.freshOnOpen.has(c.id);
@@ -340,7 +350,7 @@ export class CollectionScreen implements Screen {
     const when = v.owned && v.at ? ` · ${fmtDate(v.at)}` : '';
     const ownedHere = c.personal ? v.owners.length > 0 : v.owned;
     return `<div class="col-card rarity-${c.rarity} ${ownedHere ? 'owned' : 'locked'} ${v.equipped ? 'equipped' : ''}">
-        <div class="cc-art">${REWARD_ART[c.art]}</div>
+        ${this.art(c)}
         <div class="cc-body">
           <div class="cc-top"><span class="cc-type">${esc(SLOT_LABELS[c.slot])}</span><span class="cc-rarity">${RARITY[c.rarity]}</span>${fresh ? '<span class="cc-new">NEW</span>' : ''}</div>
           <div class="cc-name">${esc(c.name)}</div>

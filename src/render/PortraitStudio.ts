@@ -53,7 +53,7 @@ export function renderPortraits(r: Renderer, models: ModelCache, looks: string[]
     rig.root.position.set(0, 0, 0);
     rig.root.updateMatrixWorld(true);
     const d = rig.dims;
-    const headY = d.hipY + d.spineY + d.neckY + d.headR * 0.75;
+    const headY = d.hipY + d.spineY + d.neckY + d.headR * 0.75 * (rig.look.headScale ?? 1);
     if (bust) {
       cam.position.set(0.5, headY + 0.15, 3.9);
       cam.lookAt(0, headY - 0.14, 0);

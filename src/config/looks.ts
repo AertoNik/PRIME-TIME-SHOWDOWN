@@ -43,6 +43,11 @@ export interface LookDef {
    * `skin` is the metal colour, `eyes` the visor glow.
    */
   robot?: boolean;
+  /**
+   * Alpha 1.9.1: the whole head (face, hair, cap, headphones) drawn a touch smaller, scaled about the neck.
+   * Visual only — the skeleton, hitbox and fight simulation never read it.
+   */
+  headScale?: number;
 }
 
 export interface FaceTraits {
@@ -86,6 +91,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x262c3c,
     glow: 0x22f0e0,
     rim: 0x7ff8ff,
+    headScale: 0.9,
   },
   bruno: {
     id: 'bruno',
@@ -146,6 +152,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x15151a,
     glow: 0xffa21a,
     rim: 0xffc07a,
+    headScale: 0.93,
   },
   tank: {
     id: 'tank',
@@ -334,6 +341,7 @@ export const LOOKS: Record<string, LookDef> = {
     glow: 0x2f8bff,
     rim: 0x8fdcff,
     face: { cheekbones: 0.3, jaw: 0.15, eyeHeight: 1.04, archedBrows: false, grin: false, browFlash: false },
+    headScale: 0.9,
   },
   // BRUNO — CASINO BOSS: the boss of a retro-futuristic casino. The same heavy body and BOOM CANNON;
   // a double-breasted black suit with gold-edged peak lapels, a bordeaux shirt and a black tie, a

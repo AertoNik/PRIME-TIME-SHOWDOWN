@@ -192,6 +192,45 @@ export function drawNeon(text: string, color: string, w = 1024, h = 256, font = 
   return canvasTexture(c);
 }
 
+/**
+ * Alpha 1.9.1 — performance: static set pieces that share a material are drawn as ONE mesh (one draw call
+ * instead of dozens). Each piece's geometry is baked where it stood (relative to `root`); the material stays
+ * the same object, so animated colours and swapped textures work as before and the picture does not change.
+ * Only for pieces that never move, hide or break, whose geometry nothing outside `pieces` uses.
+ */
+export function mergeStatic(root: Object3D, pieces: Mesh[]): void {
+  root.updateMatrixWorld(true);
+  const toRoot = new Matrix4().copy(root.matrixWorld).invert();
+  const buckets = new Map<string, Mesh[]>();
+  for (const m of pieces) {
+    const mat = m.material as Material;
+    const geo = m.geometry;
+    const key = `${mat.uuid}|${m.castShadow}|${m.receiveShadow}|${geo.index ? 'i' : 'n'}|${Object.keys(geo.attributes).sort().join(',')}`;
+    const list = buckets.get(key);
+    if (list) list.push(m);
+    else buckets.set(key, [m]);
+  }
+  const merged = new Set<Mesh>();
+  for (const list of buckets.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => m.geometry.clone().applyMatrix4(new Matrix4().multiplyMatrices(toRoot, m.matrixWorld)));
+    const geo = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    if (!geo) continue;
+    const one = new Mesh(geo, list[0].material);
+    one.castShadow = list[0].castShadow;
+    one.receiveShadow = list[0].receiveShadow;
+    root.add(one);
+    for (const m of list) {
+      m.removeFromParent();
+      merged.add(m);
+    }
+  }
+  // the source geometries go once no remaining piece draws with them
+  const kept = new Set(pieces.filter((m) => !merged.has(m)).map((m) => m.geometry));
+  for (const m of merged) if (!kept.has(m.geometry) && !m.geometry.userData.shared) m.geometry.dispose();
+}
+
 export function neonMaterial(tex: CanvasTexture, k = 1.6): MeshBasicMaterial {
   const m = new MeshBasicMaterial({ map: tex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
   m.color.setScalar(k);

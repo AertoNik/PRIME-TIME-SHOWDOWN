@@ -28,6 +28,7 @@ import {
   FLOOR_HZ,
   insetPath,
   makeSpotCone,
+  mergeStatic,
   neonMaterial,
   ringShape,
   Stage,
@@ -251,6 +252,8 @@ export class OriginalStage extends Stage {
   private sticks!: Points;
   private wallGlow!: MeshBasicMaterial;
   private props: PropView[] = [];
+  /** 1.9.1: set pieces that never move — merged per material once the set is built (fewer draw calls). */
+  private statics: Mesh[] = [];
 
   constructor(shared: StageShared) {
     super(shared);
@@ -261,6 +264,8 @@ export class OriginalStage extends Stage {
     this.buildBoards();
     this.buildScreens();
     this.buildLights();
+    mergeStatic(this.group, this.statics);
+    this.statics = [];
   }
 
   private buildFloor(): void {
@@ -319,6 +324,7 @@ export class OriginalStage extends Stage {
       const cap = new Mesh(capG, z > 0.1 ? capMatA : z < -0.1 ? capMatB : x < 0 ? capMatA : capMatB);
       cap.position.set(x, 1.3, z);
       this.group.add(cap);
+      this.statics.push(p, cap);
     }
   }
 
@@ -374,6 +380,7 @@ export class OriginalStage extends Stage {
       const rail = new Mesh(new BoxGeometry(w, 0.04, 0.04), railMat);
       rail.position.set(0, y + 0.02, z + 0.56);
       this.group.add(rail);
+      this.statics.push(step, rail);
       for (let x = -w / 2 + 0.6; x < w / 2 - 0.4; x += rng.range(0.5, 0.75)) {
         if (rng.chance(0.88)) seats.push(new Vector3(x + rng.range(-0.1, 0.1), y, z + rng.range(-0.15, 0.1)));
       }
@@ -391,6 +398,7 @@ export class OriginalStage extends Stage {
         const rail = new Mesh(new BoxGeometry(0.04, 0.04, len), railMat);
         rail.position.set(x - sx * 0.56, y + 0.02, -1.5);
         this.group.add(rail);
+        this.statics.push(step, rail);
         for (let z = -9.8; z < 6.8; z += rng.range(0.5, 0.75)) {
           if (rng.chance(0.85)) seats.push(new Vector3(x + rng.range(-0.15, 0.1), y, z));
         }
@@ -407,12 +415,14 @@ export class OriginalStage extends Stage {
     north.position.set(0, 0.62, -ARENA.wallZ - 1.0);
     north.rotation.x = -0.35;
     this.group.add(north);
+    this.statics.push(north);
     for (const sx of [-1, 1]) {
       const side = new Mesh(new PlaneGeometry(17, 0.75), mat);
       side.position.set(sx * (ARENA.wallX + 1.25), 0.62, -1.5);
       side.rotation.set(0, (-sx * Math.PI) / 2, 0);
       side.rotateX(-0.45);
       this.group.add(side);
+      this.statics.push(side);
     }
   }
 
@@ -420,22 +430,26 @@ export class OriginalStage extends Stage {
     const scrMat = new MeshBasicMaterial({ map: this.sh.screenTex, toneMapped: false });
     const frameMat = new MeshStandardMaterial({ color: 0x0c1028, roughness: 0.4, metalness: 0.6 });
     const big = new Group();
-    big.add(new Mesh(new BoxGeometry(10.6, 5.6, 0.4), frameMat));
+    const bigFrame = new Mesh(new BoxGeometry(10.6, 5.6, 0.4), frameMat);
+    big.add(bigFrame);
     const scr = new Mesh(new PlaneGeometry(10, 5), scrMat);
     scr.position.z = 0.21;
     big.add(scr);
     big.position.set(0, 4.6, -16.5);
     big.rotation.x = -0.18;
     this.group.add(big);
+    this.statics.push(bigFrame, scr);
     for (const sx of [-1, 1]) {
       const s = new Group();
-      s.add(new Mesh(new BoxGeometry(5.4, 3, 0.3), frameMat));
+      const frame = new Mesh(new BoxGeometry(5.4, 3, 0.3), frameMat);
+      s.add(frame);
       const sm = new Mesh(new PlaneGeometry(5, 2.6), scrMat);
       sm.position.z = 0.16;
       s.add(sm);
       s.position.set(sx * 11.5, 4.2, -11);
       s.rotation.set(-0.15, -sx * 0.7, 0);
       this.group.add(s);
+      this.statics.push(frame, sm);
     }
 
     // neon signs (textures are swapped by applyTheme)
@@ -449,6 +463,7 @@ export class OriginalStage extends Stage {
       s2.position.set(sx * 13.8, 5, -4);
       s2.rotation.y = (-sx * Math.PI) / 2;
       this.group.add(s2);
+      this.statics.push(s2);
     }
     const live = neonMaterial(drawNeon('● ON AIR', '#ff2a4a', 1024, 256, 120));
     const s3 = new Mesh(new PlaneGeometry(4.6, 1.15), live);
