@@ -4954,9 +4954,7 @@ input {
 }
 
 /* ---- modes screen */
-.modes.active {
-  background: linear-gradient(180deg, rgba(var(--shade-rgb), 0.6) 0%, rgba(var(--shade-rgb), 0.86) 35%, rgba(var(--shade-rgb), 0.92) 100%);
-}
+/* 1.9.2: the modes screen is dimmed by the shared #ui layer below (with PRIME LEAGUE), not by its own background */
 .modes-scroll {
   padding: 2px 12px 16px;
   display: flex;
@@ -13234,6 +13232,8 @@ button.pid-mini:active {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 1.9.2: a vertical list only — anything too wide must never turn the panel into a sideways-draggable page */
+  overflow-x: hidden;
 }
 .lg-scroll > * {
   flex: none;
@@ -13996,12 +13996,13 @@ button.pid-mini:active {
 }
 .lg-cardpick small {
   max-width: 100%;
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
   text-align: center;
-  overflow-wrap: anywhere;
+  /* 1.9.2: whole words (no «ПАРИРОВАНИ-Е»); a word longer than the column still breaks instead of overflowing */
+  overflow-wrap: break-word;
 }
 .lg-cardpick.on {
   transform: translateY(-3px);
@@ -14067,10 +14068,29 @@ button.pid-mini:active {
   background: rgba(var(--lg-c), 0.14);
   box-shadow: inset 0 0 0 1.5px rgb(var(--lg-c));
 }
+/* 1.9.2: the editor's two buttons always fit the card (a wide font + nowrap pushed «СОХРАНИТЬ КОЛОДУ» off a phone) */
 .lg-editor-act {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 10px;
+  margin: 4px 0 6px;
+}
+.lg-editor-act .btn {
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 12px;
+  font-size: 14px;
+  line-height: 1.15;
+  white-space: normal;
+  text-align: center;
+}
+@container (max-width: 430px) {
+  .lg-editor-act {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lg-editor-act [data-act='deck-save'] {
+    order: -1;
+  }
 }
 .lg-add {
   display: flex;
@@ -14851,8 +14871,30 @@ button.pid-mini:active {
     animation: none !important;
   }
 }
-/* PRIME LEAGUE: a studio scrim under the league's text-heavy pages (the 3D set stays visible at the edges) */
-.league::before,
+/*
+ * 1.9.2: ONE still studio scrim for the two halves of the show — the career's modes and PRIME LEAGUE. It lives on #ui
+ * (not on the screens): switching КАРЬЕРА ↔ PRIME LEAGUE no longer cross-fades two scrims (the 3D set flashed brighter
+ * mid-way) nor slides one with the incoming screen. It fades in / out only when the pair is entered or left.
+ */
+#ui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: linear-gradient(180deg, rgba(5, 6, 15, 0.86) 0%, rgba(9, 10, 32, 0.8) 55%, rgba(5, 6, 15, 0.9) 100%);
+}
+#ui[data-screen='modes']::before,
+#ui[data-screen='league']::before {
+  opacity: 1;
+}
+/* …and the two screens cross-fade in place (no 12 px slide): their heads and the switch stay put */
+.screen.modes,
+.screen.league {
+  transform: none;
+}
+/* the league result keeps its own scrim */
 .league-result::before {
   content: '';
   position: absolute;
@@ -15045,7 +15087,7 @@ button.pid-mini:active {
   }
 }
 @media (min-width: 1100px) {
-  .league::before {
+  #ui::before {
     background: radial-gradient(70% 100% at 50% 40%, rgba(5, 6, 15, 0.9) 0%, rgba(9, 10, 32, 0.84) 55%, rgba(5, 6, 15, 0.55) 100%);
   }
 }
