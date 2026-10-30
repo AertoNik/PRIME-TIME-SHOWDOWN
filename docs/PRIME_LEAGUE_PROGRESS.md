@@ -282,3 +282,11 @@
 **Дальше:** итог HF1 → восстановить env STAGING и остановить Mailpit → PRODUCTION: копия + `backup-check` → `update.sh` (флаги off) → smoke → `publish:sync --apply` + push + Actions → сайт → включение лиги (`SEASON_START=2026-11-02`).
 
 **PRODUCTION сейчас:** PID 266173, 1.8.9.5, live / open / public / RU:14, оферта rev 3 sha `40681c01…`, аккаунтов 6, сохранений 5, заказов 9 (оплачено 5), прав 5.
+
+### ВЫПУСК ЗАВЕРШЁН (30.10.2026, 15:50 МСК) — FULL RELEASE SUCCESS
+
+- **STAGING HOTFIX PASS:** HF1 (+40 при исчерпанном лимите, один раз), HF2 (лимиты через Caddy), HF3 (переключатель), smoke. STAGING восстановлен.
+- **PRODUCTION:** копия `pb_data-20261030-123717-293514` (`backup-check` OK) → `update.sh` (сервер `2cef325e…`, лига off) → smoke OK (live / open / ready, оферта rev 3, данные 6 / 5 / 9 / 5).
+- **Сайт:** коммит `f33d63b`, Actions 41057026983 success, сайт отдаёт `index-DFEnDxan.js`, «ALPHA 1.9.0».
+- **Лига включена:** `PRIME_LEAGUE=on`, `PRIME_LEAGUE_TOKENS=on`, `UPGRADES` off, `SEASON_START=2026-11-02` (предсезонье до 02.11 00:00 МСК); env до включения — `pocketbase.env.pre-league-202610301244`. После включения: health OK, ошибок 0, `replay differ` 0.
+- **Точка продолжения:** наблюдение за PRODUCTION (`_logs`: `replay differ` / 429 / 5xx, `prime-shop status`), обратная связь владельца с телефона. Будущие версии: применение PRIME TOKENS, художественный редизайн аватаров, внешнее хранение копий (`PRIME_BACKUP_AGE_RECIPIENT`).

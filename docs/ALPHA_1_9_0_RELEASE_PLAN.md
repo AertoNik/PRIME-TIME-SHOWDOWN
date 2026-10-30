@@ -4,7 +4,11 @@
 >
 > На PRODUCTION не менять: `PRIME_PAY_MODE=live`, `PRIME_SHOP_SALES=open`, `PRIME_REGISTRATION=public`, `PRIME_AGE_RULES=RU:14`, `PRIME_SHOP_MINORS=on`, оферту № 3 и ключи.
 
-## 0. Финальный выпуск 30.10.2026 — фактические параметры
+## 0. Финальный выпуск 30.10.2026 — ВЫПОЛНЕН (`docs/ALPHA_1_9_0_FINAL_RELEASE_REPORT.md`)
+
+Факт: PRODUCTION 1.9.0 (сервер `2cef325e…`) → сайт `f33d63b` (Actions 41057026983 success) → лига включена 15:44 МСК, сезон 1 с 02.11.2026 00:00 МСК. Резервная копия перед выпуском: `pb_data-20261030-123717-293514.tar.gz`; env до включения лиги: `/etc/primetime/pocketbase.env.pre-league-202610301244`.
+
+### Параметры
 
 - **Архив сервера:** `server-bundle/prime-server-1.9.0-alpha.tar.gz`, **SHA-256 `2cef325e7099ffa0b5e345efe90fef5dc86b1c5b75eea373176320b50040961e`** (64 файла).
   - Прежний STAGING-архив `081c5ae8…` сохранён как `prime-server-1.9.0-alpha.previous-081c5ae8.tar.gz` и больше не устанавливается.

@@ -1,5 +1,7 @@
 # Alpha 1.9.0 — готовность к выпуску
 
+> **Итог 30.10.2026: выпущено — FULL RELEASE SUCCESS** (`docs/ALPHA_1_9_0_FINAL_RELEASE_REPORT.md`). Ниже — основание решения.
+>
 > 30.10.2026. Основание: `docs/ALPHA_1_9_0_STAGING_REPORT.md`, `docs/ALPHA_1_9_0_PRODUCER_AVATARS_REPORT.md`, локальный регресс. **Выпуск не выполнялся.** PRODUCTION и GitHub не менялись.
 
 ## 0. Финальные hotfix (30.10.2026, по решению владельца)
