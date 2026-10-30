@@ -161,6 +161,10 @@ export interface ServerConfig {
   shop: { selling: boolean; env: PayEnv; pricesKop: Record<string, number | null>; chargeKop: Record<string, number | null>; demoUntil: string } | null;
   /** 1.8.9: DAILY PRIME STREAK exists and is switched on here (/api/prime/daily). */
   daily: boolean;
+  /** 1.9.0 PRIME LEAGUE on this server (PRIME_LEAGUE=on), the participation rules version and the fight's SIM_VERSION. */
+  league: { on: boolean; rules: number; sim: string | null };
+  /** 1.9.0 PRIME PRODUCER AVATARS on this server: the catalogue version (0: a server before 1.9.0). */
+  producer: number;
 }
 
 /** 1.8.9 DAILY PRIME STREAK — one day's reward as the server states it (the table: src/config/daily.config.ts). */
@@ -392,13 +396,13 @@ export class PrimeApi {
     return this.userId !== null;
   }
 
-  private async call<T>(fn: (o: { signal: AbortSignal; requestKey: null; keepalive?: boolean; fetch?: typeof fetch }) => Promise<T>, keepalive = false): Promise<T> {
+  private async call<T>(fn: (o: { signal: AbortSignal; requestKey: null; keepalive?: boolean; fetch?: typeof fetch }) => Promise<T>, keepalive = false, timeoutMs = this.timeoutMs): Promise<T> {
     const ctl = new AbortController();
     let timedOut = false;
     const t = setTimeout(() => {
       timedOut = true;
       ctl.abort();
-    }, this.timeoutMs);
+    }, timeoutMs);
     try {
       return await fn({ signal: ctl.signal, requestKey: null, ...(keepalive ? { keepalive: true } : {}), ...(this.fetchImpl ? { fetch: this.fetchImpl } : {}) });
     } catch (e) {
@@ -503,7 +507,32 @@ export class PrimeApi {
         };
       })(),
       daily: r.daily === 1,
+      league: (() => {
+        const l = (r.league ?? {}) as Rec;
+        return { on: l.on === true, rules: int(l.rules), sim: typeof l.sim === 'string' ? l.sim : null };
+      })(),
+      producer: int(r.producer),
     };
+  }
+
+  /** 1.9.0: the signed-in account's producer look (the server's — never a local copy). */
+  async producerGet(): Promise<{ avatar: string; frame: string; backdrop: string; rev: number; chosen: boolean }> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/producer', { ...o, method: 'GET' }));
+    return r.look as { avatar: string; frame: string; backdrop: string; rev: number; chosen: boolean };
+  }
+
+  /** 1.9.0: save the look — `rev` is the revision this page saw (another tab saved meanwhile → look_changed). */
+  async producerPut(look: { avatar: string; frame: string; backdrop: string }, rev: number): Promise<{ avatar: string; frame: string; backdrop: string; rev: number; chosen: boolean }> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/producer', { ...o, method: 'POST', body: { ...look, rev } }));
+    return r.look as { avatar: string; frame: string; backdrop: string; rev: number; chosen: boolean };
+  }
+
+  /**
+   * 1.9.0 PRIME LEAGUE: one request to /api/prime/league/* as the signed-in account (src/net/LeagueApi.ts shapes the
+   * answers). Errors come back as PrimeApiError with the server's code (league_off, match_active, too_early…).
+   */
+  async league<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>, timeoutMs?: number): Promise<T> {
+    return this.call((o) => this.pb.send<T>('/api/prime/league' + path, { ...o, method, ...(body ? { body } : {}) }), false, timeoutMs ?? this.timeoutMs);
   }
 
   // ------------------------------------------------------- 1.8.9 DAILY PRIME STREAK

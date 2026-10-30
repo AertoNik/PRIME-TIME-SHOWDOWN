@@ -1,3 +1,5 @@
+import { dm } from './dmath';
+
 export const TAU = Math.PI * 2;
 
 export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
@@ -7,7 +9,7 @@ export const invLerp = (a: number, b: number, v: number): number => (b === a ? 0
 
 /** Frame-rate independent exponential smoothing. */
 export function damp(current: number, target: number, lambda: number, dt: number): number {
-  return lerp(current, target, 1 - Math.exp(-lambda * dt));
+  return lerp(current, target, 1 - dm.exp(-lambda * dt));
 }
 
 export function wrapAngle(a: number): number {
@@ -17,7 +19,7 @@ export function wrapAngle(a: number): number {
 }
 
 export function dampAngle(current: number, target: number, lambda: number, dt: number): number {
-  return current + wrapAngle(target - current) * (1 - Math.exp(-lambda * dt));
+  return current + wrapAngle(target - current) * (1 - dm.exp(-lambda * dt));
 }
 
 export function smoothstep(a: number, b: number, x: number): number {
@@ -148,7 +150,7 @@ export function pointSegDist(px: number, pz: number, ax: number, az: number, bx:
   const dz = bz - az;
   const l = dx * dx + dz * dz;
   const t = l < 1e-9 ? 0 : clamp(((px - ax) * dx + (pz - az) * dz) / l, 0, 1);
-  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+  return dm.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 
 /** Closest distance between segments p1–p2 and q1–q2 (2D); 0 when they cross. */
@@ -182,7 +184,7 @@ export function clampRoundedRect(x: number, z: number, hx: number, hz: number, r
   const qz = clamp(z, -iz, iz);
   const dx = x - qx;
   const dz = z - qz;
-  const d = Math.hypot(dx, dz);
+  const d = dm.hypot(dx, dz);
   if (d > r) {
     out.x = qx + (dx / d) * r;
     out.z = qz + (dz / d) * r;

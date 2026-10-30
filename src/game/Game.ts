@@ -8,6 +8,8 @@ import { bossById } from '../config/boss.config';
 import { bossPhaseFlash, bossPhaseSpots, championThemeFor } from '../config/themes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
+import { leagueConfig, stateHash, type LeagueInput } from '../league/replay';
+import { snapshotOf, type LeagueMatch } from '../net/LeagueApi';
 import { Match, type MatchMods } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { Rng } from '../core/math';
@@ -52,8 +54,11 @@ import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 import { ACCOUNTS_BUILD, buildBootProfile, networkConfig } from '../net/build';
 import { AccountRuntime } from './AccountRuntime';
 import { DailyRuntime } from './DailyRuntime';
+import { LeagueRuntime } from './LeagueRuntime';
+import { ProducerRuntime } from './ProducerRuntime';
+import { LeagueResultScreen, LeagueScreen } from '../ui/screens/LeagueScreen';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival' | 'league' | 'leagueResult';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -62,7 +67,9 @@ export type ModeSession =
   | { kind: 'challenge'; id: string }
   | { kind: 'boss'; id: string }
   /** Alpha 1.6.5 — FIRST BROADCAST: the first-run tutorial (no career, event, mode or deck progress). */
-  | { kind: 'tutorial' };
+  | { kind: 'tutorial' }
+  /** Alpha 1.9.0 — PRIME LEAGUE: a fight the server fixed; nothing of the career is paid, the server settles it. */
+  | { kind: 'league'; view: LeagueMatch };
 
 /** Everything needed to set up one fight. */
 interface LaunchSpec {
@@ -129,6 +136,10 @@ export class Game {
   readonly account: AccountRuntime | null;
   /** 1.8.9: DAILY PRIME STREAK — the streak as the server sees it, and today's reward (through PRIME CLOUD). */
   readonly daily: DailyRuntime;
+  /** Alpha 1.9.0 PRIME LEAGUE (the fight's taps, checkpoints, the server's result). */
+  readonly league: LeagueRuntime;
+  /** Alpha 1.9.0 PRIME PRODUCER AVATARS: this page's producer look (the server's). */
+  readonly producer: ProducerRuntime;
   readonly career: CareerSystem;
   readonly events: EventManager;
   /** MY COLLECTION (Alpha 1.5): owned cosmetics and achievements (state in save.cosmetics). */
@@ -160,6 +171,8 @@ export class Game {
   private seasonCheckT = 0;
   private resultsShown = false;
   private acc = 0;
+  /** PRIME LEAGUE: the fight's fingerprint taken at the very step it ended (see frame()). */
+  private leagueOverHash: number | null = null;
   private last = 0;
   private screen: ScreenName = 'title';
   private stage: HTMLElement;
@@ -205,7 +218,11 @@ export class Game {
     const net = ACCOUNTS_BUILD ? networkConfig() : null;
     this.account = ACCOUNTS_BUILD && net && net.mode !== 'off' ? new AccountRuntime(this, net) : null;
     void this.account?.init();
+    // 1.9.0: the producer look follows the signed-in account (loaded from the server, forgotten on a switch)
+    this.account?.onChange(() => void this.producer.load());
     this.daily = new DailyRuntime(this);
+    this.league = new LeagueRuntime(this);
+    this.producer = new ProducerRuntime(this);
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
     // 1.8.8 stage 4: back from Robokassa — the title says which purchase the tap will check
@@ -301,6 +318,8 @@ export class Game {
     this.ui.register('battle', this.hud);
     this.ui.register('results', new ResultsScreen(this));
     this.ui.register('survival', new SurvivalScreen(this));
+    this.ui.register('league', new LeagueScreen(this));
+    this.ui.register('leagueResult', new LeagueResultScreen(this));
 
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(this.fighterLook(f.id), f.theme.accent);
@@ -412,8 +431,8 @@ export class Game {
   }
 
   // ------------------------------------------------------------ navigation
-  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results' | 'survival'>, param?: unknown): void {
-    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival') this.endBattleView();
+  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results' | 'survival' | 'leagueResult'>, param?: unknown): void {
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult') this.endBattleView();
     this.screen = name;
     this.refreshSeason();
     this.setChampionStage(false);
@@ -833,8 +852,67 @@ export class Game {
     if (isBlockedLandscape()) this.pause();
   }
 
+  /**
+   * Alpha 1.9.0 PRIME LEAGUE: the fight the SERVER fixed — its seed, set and both sides (the defender is a real
+   * participant's saved fighter, deck and AI director tactic). `held`: taps the server already holds (a fight resumed
+   * after a reload): they are replayed at once, without pictures, and the fight goes on live from there.
+   */
+  launchLeague(view: LeagueMatch, held: LeagueInput[] = []): void {
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult') this.endBattleView();
+    this.audio.stopCelebration(0.6);
+    const snap = snapshotOf(view);
+    const stage = snap.arena;
+    const switched = this.arena.setStage(stage);
+    this.setChampionStage(false);
+    const match = new Match(leagueConfig(snap));
+    if (held.length) {
+      // catch up to the last tap the server holds (no rendering: the same steps the server will replay)
+      const until = held[held.length - 1][0];
+      let k = 0;
+      const over = () => match.phase === 'over';
+      while (!over() && match.steps <= until) {
+        while (k < held.length && held[k][0] <= match.steps) {
+          if (held[k][1] < 0) match.forfeit();
+          else match.playCard(0, held[k][1]);
+          k++;
+        }
+        if (over()) break;
+        match.step(MATCH.fixedStep);
+        match.drainEvents();
+      }
+    }
+    const mode: ModeSession = { kind: 'league', view };
+    this.leagueOverHash = match.phase === 'over' ? stateHash(match) : null;
+    this.match = match;
+    this.matchMeta = { fighter: view.attacker.fighter, rival: 'dex', difficulty: 'pro', mode };
+    this.applyCosmetics(view.attacker.fighter);
+    this.matchEventId = null;
+    this.resultsShown = false;
+    this.paused = false;
+    this.acc = 0;
+    this.timeFx.hitstop = 0;
+    this.timeFx.slowmo = 0;
+    this.timeFx.slowScale = 1;
+    this.showcase.hide();
+    // looks are rendering only: the player's worn skin, the defender's chosen one (or its own)
+    this.battleView.setup(match, [this.fighterLook(view.attacker.fighter), view.defender.look ?? null]);
+    this.hud.setup(match, mode, { stage: switched || stage !== 'original', halloween: false });
+    this.cam.setMode('battle', 1.9);
+    this.cam.finishShift = 0.04;
+    this.cam.finishDist = 7.5;
+    this.screen = 'battle';
+    this.ui.showSoundFab(false);
+    this.ui.show('battle');
+    this.updateLayoutFraming();
+    this.audio.playTrack(ARENA_MUSIC[stage]);
+    this.audio.crowd(1);
+    if (isBlockedLandscape()) this.pause();
+  }
+
   playCard(index: number): CardFailReason | null {
     if (!this.match || this.paused) return 'phase';
+    // PRIME LEAGUE: every tap that reaches the fight is recorded with the step it came before (the server replays them)
+    if (this.matchMeta?.mode.kind === 'league') this.league.tap(this.match.steps, index);
     return this.match.playCard(0, index);
   }
 
@@ -884,7 +962,9 @@ export class Game {
               close();
               const kind = this.matchMeta?.mode.kind;
               const text =
-                kind === 'survival'
+                kind === 'league'
+                  ? 'Бой будет засчитан как поражение. Сервер запишет сдачу в журнал эфира.'
+                  : kind === 'survival'
                   ? 'Марафон закончится. Награда — только за уже пройденные волны.'
                   : kind === 'challenge'
                     ? 'Испытание не будет пройдено, а гонорар — урезан.'
@@ -893,6 +973,7 @@ export class Game {
                       : 'Бой будет засчитан как поражение, а гонорар — урезан.';
               this.confirm('Сдаться?', text, 'Сдаться', () => {
                 this.paused = false;
+                if (this.matchMeta?.mode.kind === 'league' && this.match) this.league.forfeitTap(this.match.steps);
                 this.match?.forfeit();
               }, () => {
                 this.paused = false;
@@ -938,6 +1019,15 @@ export class Game {
       this.ui.show('survival', wave ? { kind: wave.summary ? 'summary' : 'intermission', wave, summary: wave.summary, result: m.result, mode } : { kind: 'menu' });
       return;
     }
+    // Alpha 1.9.0 PRIME LEAGUE (after the session check: a page that lost the game session sends nothing — the server
+    // then settles the fight from its checkpoint): nothing of the career is paid; the SERVER replays the taps
+    if (mode.kind === 'league') {
+      this.league.localHash = this.leagueOverHash ?? stateHash(m);
+      // no victory / defeat sting yet: the result screen plays it once the SERVER confirmed the outcome
+      this.enterResultsView(m.result.outcome, true);
+      this.ui.show('leagueResult', { view: mode.view, local: m.result });
+      return;
+    }
     let challenge = null;
     let boss = null;
     let outcome;
@@ -975,7 +1065,7 @@ export class Game {
   }
 
   /** Shared after-fight presentation: camera on the winner, results music, win/loss sting. */
-  private enterResultsView(outcome: 'win' | 'loss' | 'draw'): void {
+  private enterResultsView(outcome: 'win' | 'loss' | 'draw', quiet = false): void {
     this.screen = 'results';
     // Lift the celebrating winner above the results panels.
     this.cam.finishShift = 0.35;
@@ -984,7 +1074,9 @@ export class Game {
     // the fight music fades out under the sting; the menu music decodes meanwhile and comes in after it
     this.audio.playTrack(null);
     this.audio.prepareMusic(this.menuMusic());
-    if (outcome === 'win') this.audio.victory();
+    if (quiet) {
+      /* PRIME LEAGUE: the sting comes with the server's confirmation (LeagueResultScreen) */
+    } else if (outcome === 'win') this.audio.victory();
     else if (outcome === 'loss') this.audio.defeat();
     else this.audio.reaction(2);
     setTimeout(() => {
@@ -1222,6 +1314,9 @@ export class Game {
         m.step(step);
         this.acc -= step;
         n++;
+        // PRIME LEAGUE: the server's replay stops at the step the fight ended; a slow frame runs a few steps at once
+        // and the ones after «over» still move the bodies — so the fingerprint is taken right there
+        if (this.leagueOverHash === null && m.phase === 'over' && this.matchMeta?.mode.kind === 'league') this.leagueOverHash = stateHash(m);
       }
       if (n >= maxSteps) this.acc = 0;
       alpha = this.acc / step;
@@ -1237,6 +1332,7 @@ export class Game {
       this.audio.intensity = m.broadcast.rating / 100;
       // Alpha 1.6.4: a quiet murmur, rising only a little with the show; small swells while the fight runs
       this.audio.crowdTick(m.phase === 'fight', m.broadcast.rating / 100);
+      if (this.matchMeta?.mode.kind === 'league' && m.phase === 'fight') this.league.tick(m.steps);
       if (m.phase === 'over' && !this.resultsShown) this.finishMatch();
     } else {
       this.showcase.update(dtReal);

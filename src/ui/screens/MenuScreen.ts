@@ -10,6 +10,7 @@ import { currencyIcon, formatSpan } from './EventsScreen';
 import { UI_ICONS } from '../icons';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
+import { openFightEntry } from './LeagueScreen';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
 import { openDaily } from '../dailyUI';
 
@@ -100,7 +101,8 @@ export class MenuScreen implements Screen {
       this.g.audio.ui(act === 'modes' ? 'confirm' : 'click');
       if (act === 'profile') retireHint();
       // 1.8.8: one way into the fights — «В БОЙ!» opens the modes (CLASSIC DUEL first)
-      if (act === 'modes') this.g.goto('modes');
+      // 1.9.0: «В БОЙ!» → the career's modes or PRIME LEAGUE (the last choice; the first time — the choice)
+      if (act === 'modes') openFightEntry(this.g);
       else if (act === 'shop') this.g.goto('shop');
       else if (act === 'roster') this.g.goto('roster');
       else if (act === 'career') this.g.goto('career');

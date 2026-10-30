@@ -8,6 +8,7 @@ import { el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
 import type { Screen } from '../UI';
+import { rememberEntry } from '../../game/LeagueRuntime';
 
 const DATE = (t: number) => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 
@@ -26,6 +27,10 @@ export class ModesScreen implements Screen {
       if (act === 'back') {
         this.g.audio.ui('click');
         this.g.goto('menu');
+      } else if (act === 'to-league') {
+        // 1.9.0: the other way into the fights — remembered for the next «В БОЙ!»
+        this.g.audio.ui('click');
+        this.g.goto('league');
       } else if (act === 'classic') {
         this.g.audio.ui('confirm');
         this.g.goto('prep', { mode: { kind: 'classic' } });
@@ -43,6 +48,8 @@ export class ModesScreen implements Screen {
   }
 
   onShow(): void {
+    // 1.9.0: the next «В БОЙ!» comes back here
+    rememberEntry('career');
     const g = this.g;
     const s = g.save.data;
     const rival = RIVALS[s.nextRival];
@@ -72,6 +79,7 @@ export class ModesScreen implements Screen {
       <div class="screen-head" style="padding-right:62px">
         <button class="icon-btn" data-act="back" aria-label="Назад">${UI_ICONS.back}</button>
         <div class="h1">Режимы эфира</div>
+        ${g.league.access() !== 'off' ? `<button class="lg-switch" data-act="to-league">PRIME LEAGUE ${UI_ICONS.next}</button>` : ''}
       </div>
       <div class="fill scroll modes-scroll">
         <section class="mode-card classic featured">

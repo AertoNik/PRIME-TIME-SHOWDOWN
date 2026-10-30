@@ -143,6 +143,10 @@ function config(e) {
     })(),
     // 1.8.9: DAILY PRIME STREAK on this server (/api/prime/daily); 0 — the game shows no gift
     daily: require(`${__hooks}/lib/daily.js`).enabled() ? 1 : 0,
+    // 1.9.0: PRIME LEAGUE on this server (PRIME_LEAGUE=on), its rules version and the fight's SIM_VERSION
+    league: require(`${__hooks}/lib/league.js`).publicConfig(),
+    // 1.9.0: PRIME PRODUCER AVATARS on this server (/api/prime/producer) — the catalogue version
+    producer: require(`${__hooks}/lib/producer_rules.js`).version,
   });
 }
 

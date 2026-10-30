@@ -113,6 +113,34 @@ routerAdd('POST', '/api/prime/pay/robokassa/fail', (e) => require(`${__hooks}/li
 
 // 1.8.2: a server without email (no PRIME_MAIL_MODE=smtp, no local catcher) answers PocketBase's own
 // verification / password-reset / email-change requests with 503 «mail_unavailable» — for every address
+// Alpha 1.9.0 — PRIME LEAGUE (lib/league.js; off unless PRIME_LEAGUE=on — every route answers 404 league_off).
+// Each handler requires its module itself: PocketBase runs handlers in pooled VMs without this file's top-level names.
+routerAdd('GET', '/api/prime/league/me', (e) => require(`${__hooks}/lib/league.js`).me(e), $apis.requireAuth('users'));
+routerAdd('POST', '/api/prime/league/join', (e) => require(`${__hooks}/lib/league.js`).join(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+routerAdd('PUT', '/api/prime/league/defense', (e) => require(`${__hooks}/lib/league.js`).putDefense(e), $apis.requireAuth('users'), $apis.bodyLimit(8 * 1024));
+routerAdd('PUT', '/api/prime/league/deck', (e) => require(`${__hooks}/lib/league.js`).putDeck(e), $apis.requireAuth('users'), $apis.bodyLimit(2 * 1024));
+routerAdd('POST', '/api/prime/league/defense/toggle', (e) => require(`${__hooks}/lib/league.js`).toggleDefense(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+routerAdd('POST', '/api/prime/league/report/seen', (e) => require(`${__hooks}/lib/league.js`).reportSeen(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+routerAdd('POST', '/api/prime/league/match/start', (e) => require(`${__hooks}/lib/league.js`).start(e), $apis.requireAuth('users'), $apis.bodyLimit(4 * 1024));
+routerAdd('GET', '/api/prime/league/match/{id}', (e) => require(`${__hooks}/lib/league.js`).getMatch(e), $apis.requireAuth('users'));
+routerAdd('POST', '/api/prime/league/match/{id}/inputs', (e) => require(`${__hooks}/lib/league.js`).checkpoint(e), $apis.requireAuth('users'), $apis.bodyLimit(16 * 1024));
+routerAdd('POST', '/api/prime/league/match/{id}/finish', (e) => require(`${__hooks}/lib/league.js`).finish(e), $apis.requireAuth('users'), $apis.bodyLimit(16 * 1024));
+routerAdd('GET', '/api/prime/league/board', (e) => require(`${__hooks}/lib/league.js`).board(e), $apis.requireAuth('users'));
+routerAdd('GET', '/api/prime/league/history', (e) => require(`${__hooks}/lib/league.js`).history(e), $apis.requireAuth('users'));
+routerAdd('POST', '/api/prime/league/track/claim', (e) => require(`${__hooks}/lib/league.js`).claimTier(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+routerAdd('POST', '/api/prime/league/upgrade', (e) => require(`${__hooks}/lib/league.js`).upgrade(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+routerAdd('POST', '/api/prime/league/series/start', (e) => require(`${__hooks}/lib/league_series.js`).start(e), $apis.requireAuth('users'), $apis.bodyLimit(4 * 1024));
+routerAdd('POST', '/api/prime/league/series/next', (e) => require(`${__hooks}/lib/league_series.js`).next(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+routerAdd('POST', '/api/prime/league/series/abandon', (e) => require(`${__hooks}/lib/league_series.js`).abandon(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+
+// Alpha 1.9.0 — PRIME PRODUCER AVATARS (lib/producer.js): the signed-in account's own look; cosmetic only
+routerAdd('GET', '/api/prime/producer', (e) => require(`${__hooks}/lib/producer.js`).get(e), $apis.requireAuth('users'));
+routerAdd('POST', '/api/prime/producer', (e) => require(`${__hooks}/lib/producer.js`).put(e), $apis.requireAuth('users'), $apis.bodyLimit(1024));
+
+cronAdd('prime_league', '*/2 * * * *', () => {
+  require(`${__hooks}/lib/league.js`).expire($app);
+});
+
 routerUse((e) => {
   if (e.request.method !== 'POST' || !/\/request-(verification|password-reset|email-change)$/.test(e.request.url.path)) return e.next();
   return require(`${__hooks}/lib/prime.js`).blockMailRequests(e);

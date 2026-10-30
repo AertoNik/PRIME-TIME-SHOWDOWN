@@ -1,5 +1,6 @@
 import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
 import { CARDS, COMBOS } from '../config/cards';
+import { CARD_KIND, adaptWeights, type TacticDef } from '../config/league.config';
 import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
 import { clamp, segSegDist } from '../core/math';
 import type { BankSolution } from './CombatSystem';
@@ -7,6 +8,7 @@ import type { CoverState } from './Covers';
 import type { FighterSim } from './FighterSim';
 import type { StageObject } from './types';
 import type { Match } from './Match';
+import { dm } from '../core/dmath';
 
 export interface AIProfile {
   aimLead: number;
@@ -25,6 +27,8 @@ export interface AIProfile {
   behavior: BehaviorDef;
   /** Alpha 1.5.5: rival-only limits on control cards (Zoe). */
   control?: RivalControl;
+  /** Alpha 1.9.0 PRIME LEAGUE: the defender's AI director — card priorities only (never movement, aim or stats). */
+  tactic?: TacticDef;
 }
 
 const isControl = (card: CardId) => card === 'shock' || card === 'system_overload';
@@ -207,7 +211,7 @@ export class FighterAI {
     const b = this.profile.behavior;
     const dx = t.x - f.x;
     const dz = t.z - f.z;
-    const dist = Math.hypot(dx, dz) || 0.001;
+    const dist = dm.hypot(dx, dz) || 0.001;
     const ux = dx / dist;
     const uz = dz / dist;
 
@@ -329,7 +333,7 @@ export class FighterAI {
       walls++;
     }
     if (walls >= 2) {
-      const cl = Math.hypot(f.x, f.z) || 1;
+      const cl = dm.hypot(f.x, f.z) || 1;
       mx -= (f.x / cl) * 0.9;
       mz -= (f.z / cl) * 0.9;
     }
@@ -337,7 +341,7 @@ export class FighterAI {
     // Personal space (real foe position, not the perceived one)
     const rdx = foe.x - f.x;
     const rdz = foe.z - f.z;
-    const rd = Math.hypot(rdx, rdz);
+    const rd = dm.hypot(rdx, rdz);
     if (rd < 1.5 && rd > 0.001) {
       mx -= (rdx / rd) * (1.5 - rd) * 1.5;
       mz -= (rdz / rd) * (1.5 - rd) * 1.5;
@@ -350,7 +354,7 @@ export class FighterAI {
       mz = v.z;
     }
 
-    const len = Math.hypot(mx, mz);
+    const len = dm.hypot(mx, mz);
     if (len > 0.05) {
       f.intentX = mx / len;
       f.intentZ = mz / len;
@@ -386,14 +390,14 @@ export class FighterAI {
         if (spot) {
           const dx = spot.x - f.x;
           const dz = spot.z - f.z;
-          const d = Math.hypot(dx, dz);
+          const d = dm.hypot(dx, dz);
           return d > 0.2 ? { x: (dx / d) * 1.5, z: (dz / d) * 1.5, keep: 0.15 } : { x: 0, z: 0, keep: 0.1 };
         }
         this.hideT = 0;
       }
     } else if (threat && this.hideCd <= 0) {
       const key = fa.kind === 'windup' ? 'w' + Math.round((m.time - fa.t) * 4) : 'b' + Math.round(m.time / 3);
-      if (key !== this.hideKey && Math.hypot(foe.x - f.x, foe.z - f.z) > 2.6) {
+      if (key !== this.hideKey && dm.hypot(foe.x - f.x, foe.z - f.z) > 2.6) {
         this.hideKey = key;
         let best: CoverState | null = null;
         let bd = 2.8;
@@ -401,7 +405,7 @@ export class FighterAI {
           if (!c.alive) continue;
           const spot = this.behindSpot(f, foe, c);
           if (!spot) continue;
-          const d = Math.hypot(spot.x - f.x, spot.z - f.z);
+          const d = dm.hypot(spot.x - f.x, spot.z - f.z);
           if (d < bd) {
             bd = d;
             best = c;
@@ -422,7 +426,7 @@ export class FighterAI {
     // ----- the line of fire is blocked: go round the piece
     const dx = t.x - f.x;
     const dz = t.z - f.z;
-    const dist = Math.hypot(dx, dz) || 1;
+    const dist = dm.hypot(dx, dz) || 1;
     const ux = dx / dist;
     const uz = dz / dist;
     const blocker = cov.onLine(f.x, f.z, t.x, t.z, 0.12);
@@ -462,7 +466,7 @@ export class FighterAI {
   private behindSpot(f: FighterSim, foe: FighterSim, c: CoverState): { x: number; z: number } | null {
     const dx = c.x - foe.x;
     const dz = c.z - foe.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     const k = c.radius + f.radius + 0.22;
     const x = c.x + (dx / d) * k;
     const z = c.z + (dz / d) * k;
@@ -479,10 +483,10 @@ export class FighterAI {
    */
   private coverAvoid(f: FighterSim, mx: number, mz: number, dt: number): { x: number; z: number } {
     const cov = this.m.covers;
-    let len = Math.hypot(mx, mz);
+    let len = dm.hypot(mx, mz);
     const near = cov.nearest(f.x, f.z);
     // stall watch: wants to move but barely moves (the velocity: this step has not moved yet)
-    if (f.intentSpeed > 0.5 && f.action.kind === 'none' && f.stun <= 0 && Math.hypot(f.vx, f.vz) < 0.6) {
+    if (f.intentSpeed > 0.5 && f.action.kind === 'none' && f.stun <= 0 && dm.hypot(f.vx, f.vz) < 0.6) {
       this.stallT += dt;
       if (this.stallT > 0.45) {
         this.stallT = 0;
@@ -495,10 +499,10 @@ export class FighterAI {
     } else this.stallT = Math.max(0, this.stallT - dt);
     if (this.unstickT > 0) {
       this.unstickT -= dt;
-      const cl = Math.hypot(f.x, f.z) || 1;
+      const cl = dm.hypot(f.x, f.z) || 1;
       mx = mx * 0.3 - (f.x / cl) * 1.2;
       mz = mz * 0.3 - (f.z / cl) * 1.2;
-      len = Math.hypot(mx, mz);
+      len = dm.hypot(mx, mz);
     }
     if (len < 0.05) return { x: mx, z: mz };
     const dx = mx / len;
@@ -512,7 +516,7 @@ export class FighterAI {
       const q = cov.contact(c, f.x, f.z, contactTmp);
       let nx = f.x - q.x;
       let nz = f.z - q.z;
-      const nl = Math.hypot(nx, nz) || 1;
+      const nl = dm.hypot(nx, nz) || 1;
       nx /= nl;
       nz /= nl;
       const toward = -(dx * nx + dz * nz);
@@ -533,7 +537,7 @@ export class FighterAI {
       ox += (nx * toward + tx * 0.7) * w;
       oz += (nz * toward + tz * 0.7) * w;
     }
-    const ol = Math.hypot(ox, oz) || 1;
+    const ol = dm.hypot(ox, oz) || 1;
     return { x: (ox / ol) * len, z: (oz / ol) * len };
   }
 
@@ -578,7 +582,7 @@ export class FighterAI {
       if (age < this.profile.reactMin) continue;
       const dx = f.x - o.x;
       const dz = f.z - o.z;
-      const d = Math.hypot(dx, dz) || 0.01;
+      const d = dm.hypot(dx, dz) || 0.01;
       const reach = o.kind === 'mine' ? o.radius + 0.8 : o.radius + 0.5;
       if (d >= reach) continue;
       const w = o.kind === 'mine' ? 1.4 : o.kind === 'prop' ? 1.8 : 1.1;
@@ -614,7 +618,7 @@ export class FighterAI {
       const mySide = (f.x - own.x) * nx + (f.z - own.z) * nz;
       const lateral = (f.x - own.x) * own.dirX + (f.z - own.z) * own.dirZ;
       const covered = mySide < 0 && Math.abs(lateral) < own.radius;
-      const pressed = this.underFire(f, foe) || (mySide > 0 && Math.hypot(foe.x - f.x, foe.z - f.z) < 2.2);
+      const pressed = this.underFire(f, foe) || (mySide > 0 && dm.hypot(foe.x - f.x, foe.z - f.z) < 2.2);
       if (pressed && !covered) {
         // take cover: behind the screen, in line with it
         const l = Math.max(-own.radius + 0.45, Math.min(own.radius - 0.45, lateral));
@@ -622,7 +626,7 @@ export class FighterAI {
         const cz = own.z + own.dirZ * l - nz * 0.9;
         const dx = cx - f.x;
         const dz = cz - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         sx += (dx / d) * 1.3;
         sz += (dz / d) * 1.3;
         any = true;
@@ -633,7 +637,7 @@ export class FighterAI {
         const ez = own.z + own.dirZ * s1 * (own.radius + 0.7);
         const dx = ex - f.x;
         const dz = ez - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         sx += (dx / d) * 1.1;
         sz += (dz / d) * 1.1;
         any = true;
@@ -648,7 +652,7 @@ export class FighterAI {
       const ez = theirs.z + theirs.dirZ * s1 * (theirs.radius + 1.0);
       const dx = ex - f.x;
       const dz = ez - f.z;
-      const d = Math.hypot(dx, dz) || 1;
+      const d = dm.hypot(dx, dz) || 1;
       sx += (dx / d) * 0.9;
       sz += (dz / d) * 0.9;
       any = true;
@@ -663,7 +667,7 @@ export class FighterAI {
       if (!p.alive || p.owner === f.side) continue;
       const rx = f.x - p.x;
       const rz = f.z - p.z;
-      const v = Math.hypot(p.vx, p.vz) || 1;
+      const v = dm.hypot(p.vx, p.vz) || 1;
       const along = (rx * p.vx + rz * p.vz) / v;
       if (along > 0 && along < 6 && Math.abs(rx * p.vz - rz * p.vx) / v < 1.2) return true;
     }
@@ -699,7 +703,7 @@ export class FighterAI {
       this.considered.add(key);
       const cx = p.x + pvx * tca - f.x;
       const cz = p.z + pvz * tca - f.z;
-      const miss = Math.hypot(cx, cz);
+      const miss = dm.hypot(cx, cz);
       if (miss > f.radius + p.radius + 0.25) continue;
       // Alpha 1.6 FREEZE FRAME: a shot crawling through a slow-motion zone is easier to read
       let chance = this.profile.dodgeSkill * f.stats.evasion * this.profile.behavior.dodgeMult * (p.heavy ? 1.25 : 1);
@@ -721,7 +725,7 @@ export class FighterAI {
   private aim(f: FighterSim, foe: FighterSim, t: Perceived, holo: Perceived | null, dt: number): void {
     const m = this.m;
     const atk = f.stats.attack;
-    const dist = Math.hypot(t.x - f.x, t.z - f.z);
+    const dist = dm.hypot(t.x - f.x, t.z - f.z);
     const lead = (dist / atk.speed) * this.profile.aimLead;
     // charged attacks and card shots (Alpha 1.6: a HOLO DECOY does not fool these)
     f.cardAimX = t.x + t.vx * lead;
@@ -754,7 +758,7 @@ export class FighterAI {
       f.aimErr = m.rng.range(-err, err);
     }
     const reach = atk.weapon === 'boom_cannon' ? 0.92 : 1.02;
-    const fireDist = holo ? Math.hypot(holo.x - f.x, holo.z - f.z) : dist;
+    const fireDist = holo ? dm.hypot(holo.x - f.x, holo.z - f.z) : dist;
     const own = m.objects.own(f.side, 'barrier');
     f.wantFire = fireDist <= atk.range * reach && !(own && this.coverBlocks(f, own));
     // Alpha 1.7.5: ducked behind cover, it holds fire (the shots would only chip its own shelter)
@@ -842,7 +846,7 @@ export class FighterAI {
       const vv = p.vx * p.vx + p.vz * p.vz;
       const tca = (rx * p.vx + rz * p.vz) / vv;
       if (tca < 0 || tca > 0.65) continue;
-      const miss = Math.hypot(p.x + p.vx * tca - f.x, p.z + p.vz * tca - f.z);
+      const miss = dm.hypot(p.x + p.vx * tca - f.x, p.z + p.vz * tca - f.z);
       if (miss < f.radius + p.radius + 0.5) return { key: 'p' + p.id + (p.bounced ? 'b' : ''), kind: 'incoming' };
     }
     return null;
@@ -858,7 +862,7 @@ export class FighterAI {
     const threat = this.detectThreat(f, foe);
     if (threat && threat.key !== this.threatKey) {
       this.threatKey = threat.key;
-      if (m.rng.chance(prof.dodgeSkill * b.dodgeMult)) {
+      if (m.rng.chance(prof.tactic ? Math.min(0.95, prof.dodgeSkill * b.dodgeMult * prof.tactic.react) : prof.dodgeSkill * b.dodgeMult)) {
         this.reactKind = threat.kind;
         this.reactT = m.rng.range(prof.reactMin, prof.reactMax);
       } else {
@@ -918,7 +922,7 @@ export class FighterAI {
       for (const c of COMBOS) {
         const first = c.first.find((x) => this.has(x) >= 0);
         // pressure fighters finish with the charge (KNOCKOUT) whenever they can
-        const seconds = b.pressure > 0 ? [...c.second].sort((x, y) => Number(y === 'knockout') - Number(x === 'knockout')) : c.second;
+        const seconds = b.pressure > 0 ? [...c.second.filter((x) => x === 'knockout'), ...c.second.filter((x) => x !== 'knockout')] : c.second;
         const second = seconds.find((x) => this.has(x) >= 0);
         if (!first || !second || first === second) continue;
         const total = CARDS[first].cost + CARDS[second].cost;
@@ -931,13 +935,15 @@ export class FighterAI {
       }
     }
 
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
+    const tw = prof.tactic ? (prof.tactic.adaptive ? adaptWeights(f.hpFrac, foe.hpFrac, m.time) : prof.tactic.weights) : null;
     const scored: { i: number; s: number }[] = [];
     for (let i = 0; i < hand.hand.length; i++) {
       const card = hand.hand[i];
       const cost = CARDS[card].cost;
       if (hand.energy < cost) continue;
       let s = this.score(card, f, foe, dist);
+      if (tw && s > 0) s *= tw[CARD_KIND[card] ?? 'attack'];
       if (isControl(card) && !this.controlAllowed(card)) s = -10;
       if (hand.energy - cost < b.energyReserve && s < 7) s *= 0.5;
       // variety: repeating recent cards is boring and predictable
@@ -948,7 +954,8 @@ export class FighterAI {
       if (s >= 5) scored.push({ i, s });
     }
     if (!scored.length) return;
-    scored.sort((a, c) => c.s - a.s);
+    // ties keep the hand order in every engine (the league server replays this)
+    scored.sort((a, c) => c.s - a.s || a.i - c.i);
     // Usually the best option, sometimes the runner-up (keeps rivals from looping).
     const pick = scored.length > 1 && m.rng.chance(0.38 - 0.25 * prof.cardSmarts) ? scored[1] : scored[0];
     const card = hand.hand[pick.i];
@@ -961,7 +968,7 @@ export class FighterAI {
       if (p.owner === f.side || !p.alive || !p.heavy || (p.kind === 'power' && p.pierce > 0) || p.kind === 'zap') continue;
       const rx = f.x - p.x;
       const rz = f.z - p.z;
-      if (rx * p.vx + rz * p.vz > 0 && Math.hypot(rx, rz) < 7) return true;
+      if (rx * p.vx + rz * p.vz > 0 && dm.hypot(rx, rz) < 7) return true;
     }
     return false;
   }
@@ -973,7 +980,7 @@ export class FighterAI {
 
   private comboMakesSense(id: string, f: FighterSim, foe: FighterSim, second?: CardId): boolean {
     if (second && this.coverStops(second, f, foe)) return false;
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
     // Alpha 1.7: BAT BITE is a lunge — the combo only makes sense within its reach
     if (second === 'bat_bite') return dist < CARD_TUNING.bat_bite.rushDistance * 0.85 && foe.shield <= 0;
     const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
@@ -1240,7 +1247,7 @@ export class FighterAI {
         s = 0.5;
         if (dist < 1.8 && b.pressure <= 0) s += 3;
         if (f.tether > 0) s += 3;
-        const under = m.objects.list.some((o) => o.owner !== this.side && ((o.kind === 'prop' && o.stage === 'warn') || o.kind === 'net') && Math.hypot(o.x - f.x, o.z - f.z) < o.radius);
+        const under = m.objects.list.some((o) => o.owner !== this.side && ((o.kind === 'prop' && o.stage === 'warn') || o.kind === 'net') && dm.hypot(o.x - f.x, o.z - f.z) < o.radius);
         if (under) s += 4.5;
         if (combo) s += 3;
         break;
@@ -1266,7 +1273,7 @@ export class FighterAI {
         s = 1.5;
         if (threatened) s += 3;
         let incoming = 0;
-        for (const p of m.projectiles) if (p.alive && p.owner !== this.side && Math.hypot(p.x - f.x, p.z - f.z) < 6) incoming++;
+        for (const p of m.projectiles) if (p.alive && p.owner !== this.side && dm.hypot(p.x - f.x, p.z - f.z) < 6) incoming++;
         if (incoming >= 3) s += 2.5;
         if (f.hpFrac < 0.5) s += 1;
         if (m.objects.own(this.side, 'freeze')) s = -10;

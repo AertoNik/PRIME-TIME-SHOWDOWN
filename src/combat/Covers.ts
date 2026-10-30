@@ -5,6 +5,7 @@ import { clampRoundedRect, pointSegDist, segSegDist, segmentCircleHit, type Clam
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
 import type { Projectile } from './types';
+import { dm } from '../core/dmath';
 
 /** One piece of cover on the fighting floor (Alpha 1.7.5, GRAVEYARD BROADCAST). */
 export interface CoverState {
@@ -60,8 +61,8 @@ export class Covers {
       const t = COVER_TUNING[d.kind];
       const yaw = d.yaw ?? 0;
       // the same turn as the view's rotation.y: local +X → (cos, −sin)
-      const ux = Math.cos(yaw) * t.half;
-      const uz = -Math.sin(yaw) * t.half;
+      const ux = dm.cos(yaw) * t.half;
+      const uz = -dm.sin(yaw) * t.half;
       return { index, kind: d.kind, x: d.x, z: d.z, ax: d.x - ux, az: d.z - uz, bx: d.x + ux, bz: d.z + uz, radius: t.radius, hp: t.hp, maxHp: t.hp, stage: 0, alive: true, hitAt: -99 };
     });
     this.live = this.list.length;
@@ -117,7 +118,7 @@ export class Covers {
         const qz = q.z;
         let nx = f.x - qx;
         let nz = f.z - qz;
-        const d = Math.hypot(nx, nz);
+        const d = dm.hypot(nx, nz);
         if (d >= R) continue;
         if (d > 1e-4) {
           nx /= d;
@@ -163,7 +164,7 @@ export class Covers {
     if (this.live <= 0) return null;
     const lx = x1 - x0;
     const lz = z1 - z0;
-    const ll = Math.hypot(lx, lz) || 1;
+    const ll = dm.hypot(lx, lz) || 1;
     let best: CoverState | null = null;
     let bestAlong = Infinity;
     for (const c of this.list) {
@@ -231,7 +232,7 @@ export class Covers {
     const q = this.closest(c, x, z);
     const dx = x - q.x;
     const dz = z - q.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     out.x = q.x + (dx / d) * c.radius;
     out.z = q.z + (dz / d) * c.radius;
     return out;
@@ -266,7 +267,7 @@ export class Covers {
         const q = this.closest(c, out.x, out.z);
         let nx = out.x - q.x;
         let nz = out.z - q.z;
-        const d = Math.hypot(nx, nz);
+        const d = dm.hypot(nx, nz);
         if (d >= R) continue;
         if (d > 1e-4) {
           nx /= d;

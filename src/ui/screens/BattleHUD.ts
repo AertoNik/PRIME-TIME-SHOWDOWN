@@ -9,6 +9,8 @@ import type { CardId, Side } from '../../config/types';
 import type { Match } from '../../combat/Match';
 import type { MatchEvent } from '../../combat/types';
 import { damp, formatNumber } from '../../core/math';
+import { TACTICS } from '../../config/league.config';
+import { lang } from '../../i18n/lang';
 import type { Game, ModeSession } from '../../game/Game';
 import { cardHTML, el, esc, portraitHTML, vibrate } from '../dom';
 import { ICONS } from '../eventArt';
@@ -322,6 +324,15 @@ export class BattleHUD implements Screen {
     (this.el.querySelector('[data-portrait="1"]') as HTMLElement).innerHTML = portraitHTML(g.portraits[rv.look], rv.theme.main, rv.theme.dark);
     (this.el.querySelector('[data-name="0"]') as HTMLElement).textContent = pf.name;
     (this.el.querySelector('[data-name="1"]') as HTMLElement).textContent = rv.name;
+    if (mode.kind === 'league') {
+      // 1.9.0: at the health bars the FIGHTERS (portrait and name) — and, smaller, their producers' nicknames
+      const v = mode.view;
+      const av = g.account?.view();
+      const mine = av && av.kind === 'account' ? av.nickname : '';
+      const df = FIGHTERS[v.defender.fighter];
+      (this.el.querySelector('[data-name="0"]') as HTMLElement).innerHTML = `<span class="hp-fighter">${esc(pf.name)}</span>${mine ? `<span class="hp-prod me">${esc(mine)}</span>` : ''}`;
+      (this.el.querySelector('[data-name="1"]') as HTMLElement).innerHTML = `<span class="hp-fighter">${esc(df.name)}</span><span class="hp-prod foe">${esc(v.opponent.kind === 'system' ? 'PRIME NETWORK' : v.opponent.name)}</span>`;
+    }
     for (const side of [0, 1] as Side[]) {
       // one tick per 1000 HP so damage reads at a glance
       const bar = this.hpBoxes[side].querySelector('.hp-bar') as HTMLElement;
@@ -518,6 +529,15 @@ export class BattleHUD implements Screen {
         : '';
       this.modeStrip.innerHTML = `<span class="ms-tag">SURVIVAL</span><span class="ms-main">${w.final ? 'ФИНАЛЬНАЯ ВОЛНА' : `ВОЛНА <b>${w.index + 1}</b>/${w.total}`}</span>${perks ? `<span class="ms-perks">${perks}</span>` : ''}`;
       return `<div class="mi-cap ${w.final ? 'final' : ''}">${w.final ? 'SURVIVAL · FINAL WAVE' : `SURVIVAL · WAVE ${w.index + 1}/${w.total}`}</div>`;
+    }
+    if (mode.kind === 'league') {
+      // Alpha 1.9.0 PRIME LEAGUE: an honest strip — the defender's cards are played by the AI director, its owner may be off air
+      const v = mode.view;
+      const t = v.defender.tactic ? TACTICS[v.defender.tactic] : null;
+      const tag = v.mode === 'challenge' ? 'QUALIFIER' : v.mode === 'squad' ? `SQUAD ${v.round + 1}/3` : v.mode === 'rush' ? `RUSH ${v.round + 1}` : 'PRIME DUEL';
+      const en = lang() === 'en';
+      this.modeStrip.innerHTML = `<span class="ms-tag lg">${tag}</span><span class="ms-main"><i>${en ? 'AI director' : 'ИИ-режиссёр'}</i>${t ? esc(t.name) : 'PRIME'}</span>${v.ranked ? '<span class="ms-live on">RP</span>' : `<span class="ms-live">${v.mode === 'rush' ? (en ? 'NO RP' : 'БЕЗ RP') : en ? 'TRAINING' : 'ТРЕНИРОВКА'}</span>`}`;
+      return `<div class="mi-cap lg">PRIME LEAGUE · VS ${esc(v.opponent.name)}</div>`;
     }
     if (mode.kind === 'challenge') {
       const def = challengeById(mode.id);

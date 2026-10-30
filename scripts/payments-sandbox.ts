@@ -22,6 +22,8 @@
 
 import { HOOKS, ROOT, binariesReady, ensurePortsFree, ownServerStarted, spawnMailpit, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { crypto, fs, nodeModule, os, path, proc } from './lib/node';
+import { defaultSave } from '../src/meta/SaveSystem';
+import { canonicalJSON } from '../src/net/cloudSave';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,6 +44,8 @@ const DEMO = proc.argv.includes('--demo');
 // 1.8.9.5: `-- --public` — public registration (no invite), PRIME ID from 14 (PRIME_AGE_DEFAULT=14), letters caught
 // by the local Mailpit (http://127.0.0.1:19291) — to try the registration form against this temporary database
 const PUBLIC = proc.argv.includes('--public');
+// 1.9.0: `-- --league` — PRIME LEAGUE on (tokens too) and a made-up second participant «SandboxRival» with a defence
+const LEAGUE_ON = proc.argv.includes('--league');
 const mskDay = (ms: number) => new Date(ms + 3 * 3600000).toISOString().slice(0, 10);
 
 const work: string = fs.mkdtempSync(path.join(os.tmpdir(), 'prime-payments-sandbox-'));
@@ -173,6 +177,11 @@ async function main(): Promise<void> {
       ROBOKASSA_PASSWORD_3: '',
       PRIME_SHOP_SALES: 'open',
       PRIME_PAY_DEV_GATEWAY: `http://127.0.0.1:${EMU}/pay`,
+      PRIME_LEAGUE: LEAGUE_ON ? 'on' : '',
+      PRIME_LEAGUE_TOKENS: LEAGUE_ON ? 'on' : '',
+      // season 1 from today (Moscow) and a test clock file the sandbox may move (role dev only)
+      PRIME_LEAGUE_SEASON_START: LEAGUE_ON ? new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10) : '',
+      PRIME_LEAGUE_CLOCK_FILE: LEAGUE_ON ? path.join(work, 'league-clock.txt') : '',
     },
     args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'],
   });
@@ -191,6 +200,29 @@ async function main(): Promise<void> {
   await call('POST', '/api/collections/profiles/records', tok, { user: u.id, nickname: 'SandboxBuyer', nicknameKey: 'sandboxbuyer' });
   for (const d of ['terms', 'consent']) await call('POST', '/api/collections/consents/records', tok, { user: u.id, doc: d, version: cfg.legal[d].v, lang: 'ru', action: 'register' });
   await call('POST', '/api/collections/consents/records', tok, { user: u.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '18+' });
+  if (LEAGUE_ON) {
+    // the sandbox player's PRIME CLOUD career: RAY, BRUNO, NIKA, VEGA signed (for SQUAD / RUSH by hand); a guest career
+    // on the device is offered the choice as usual
+    const sv: any = defaultSave();
+    for (const f of ['ray', 'bruno', 'nika', 'vega']) sv.fighters[f].unlocked = true;
+    sv.money = 2500;
+    sv.orgName = 'SANDBOX STUDIO';
+    const text = canonicalJSON(sv);
+    await call('POST', '/api/collections/saves/records', tok, { owner: u.id, data: text, schema: 12, hash: crypto.createHash('sha256').update(text, 'utf8').digest('hex'), revision: 1, client: 'sandbox', reason: 'sandbox' });
+    // a second made-up participant whose saved defence the sandbox player meets (league rows written directly)
+    const pw2 = 'Rival' + crypto.randomBytes(8).toString('hex');
+    const r = await call('POST', '/api/collections/users/records', tok, { email: 'sandbox-rival@league.test', password: pw2, passwordConfirm: pw2, verified: true });
+    await call('POST', '/api/collections/profiles/records', tok, { user: r.id, nickname: 'SandboxRival', nicknameKey: 'sandboxrival' });
+    await call('POST', '/api/collections/league_profiles/records', tok, { owner: r.id, season: 0, rp: 120, mmr: 1000, floor: 0, peak: 120, games: 4, wins: 2, losses: 2, defenseOn: true, rules: 1, joined: Date.now(), stats: {}, seen: {}, nick: 'SandboxRival' });
+    await call('POST', '/api/collections/league_defense/records', tok, { owner: r.id, slot: 1, fighter: 'bruno', deck: ['shield', 'power_shot', 'overdrive', 'knockout'], tactic: 'fortress', look: '', enabled: true, version: 1 });
+    await call('POST', '/api/collections/league_defense/records', tok, { owner: r.id, slot: 2, fighter: 'nika', deck: ['shock', 'power_shot', 'smoke', 'system_overload'], tactic: 'counter', look: '', enabled: true, version: 1 });
+    await call('POST', '/api/collections/league_defense/records', tok, { owner: r.id, slot: 3, fighter: 'kai', deck: ['dash', 'shield', 'overdrive', 'bank_shot'], tactic: 'combo', look: '', enabled: true, version: 1 });
+    // its career (the server checks every defender against it before each match)
+    const rv: any = defaultSave();
+    for (const f of ['ray', 'bruno', 'nika', 'kai']) rv.fighters[f].unlocked = true;
+    const rt = canonicalJSON(rv);
+    await call('POST', '/api/collections/saves/records', tok, { owner: r.id, data: rt, schema: 12, hash: crypto.createHash('sha256').update(rt, 'utf8').digest('hex'), revision: 1, client: 'sandbox', reason: 'sandbox' });
+  }
   const creds = path.join(work, 'sandbox-account.txt');
   fs.writeFileSync(creds, `${email}\n${pw}\n`, { mode: 0o600 });
   startEmulator();

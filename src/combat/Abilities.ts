@@ -4,6 +4,7 @@ import { clamp, clampRoundedRect, wrapAngle, type ClampResult } from '../core/ma
 import { lineReach, type BankSolution } from './CombatSystem';
 import type { BiteAction, CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
 import type { Match } from './Match';
+import { dm } from '../core/dmath';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 const bank: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
@@ -53,10 +54,10 @@ export class Abilities {
         if (screen) {
           const bx = screen.x - foe.x;
           const bz = screen.z - foe.z;
-          const bl = Math.hypot(bx, bz) || 1;
+          const bl = dm.hypot(bx, bz) || 1;
           const hx = screen.x + (bx / bl) * 1.1 - f.x;
           const hz = screen.z + (bz / bl) * 1.1 - f.z;
-          const hl = Math.hypot(hx, hz);
+          const hl = dm.hypot(hx, hz);
           if (hl > 0.4) {
             dir = { x: hx / hl, z: hz / hl };
             dist = Math.min(dist, hl);
@@ -123,7 +124,7 @@ export class Abilities {
           dx = bank.dirX;
           dz = bank.dirZ;
         }
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         f.action = {
           kind: 'windup',
           card,
@@ -145,7 +146,7 @@ export class Abilities {
         const empowered = t !== CARD_TUNING.directors_cut;
         const dx = f.aimX - f.x;
         const dz = f.aimZ - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         f.action = { kind: 'cut', stage: 'prep', shot: 0, t: 0, total: t.prep, dirX: dx / d, dirZ: dz / d, lockedAt: -1, inLaneAtLock: false, tune: t, empowered };
         f.cutCd = t.cooldown + this.cutLength(t);
         m.emit({ type: 'cutStart', side: f.side, prep: t.prep, empowered });
@@ -203,7 +204,7 @@ export class Abilities {
         m.emit({ type: 'shock', side: f.side, fromX: f.x, fromZ: f.z, toX: target.x, toZ: target.z, hit: true });
         const dx = target.x - f.x;
         const dz = target.z - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         m.combat.applyHit(target, f, {
           damage: t.damage * f.outgoingDamageMult(),
           kind: 'shock',
@@ -234,7 +235,7 @@ export class Abilities {
           f.shieldHp = 0;
           const dx = foe.x - f.x;
           const dz = foe.z - f.z;
-          const d = Math.hypot(dx, dz) || 1;
+          const d = dm.hypot(dx, dz) || 1;
           const hit = d < COMBO_TUNING.ironRushRadius && !foe.ko;
           m.emit({ type: 'shieldBurst', side: f.side, x: f.x, z: f.z, hit });
           if (hit) {
@@ -297,7 +298,7 @@ export class Abilities {
         m.emit({ type: 'overload', side: f.side, x: target.x, z: target.z, hit: true });
         const dx = target.x - f.x;
         const dz = target.z - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         m.combat.applyHit(target, f, {
           damage: t.damage * mult * f.outgoingDamageMult(),
           kind: 'overload',
@@ -421,7 +422,7 @@ export class Abilities {
     if (combo === 'replay') m.objects.erase(f.side);
     const dx = tx - f.x;
     const dz = tz - f.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     m.emit({ type: 'rewind', side: f.side, fromX: f.x, fromZ: f.z, toX: tx, toZ: tz, duration: t.duration });
     f.action = { kind: 'rewind', t: 0, total: t.duration, dirX: d > 0.01 ? dx / d : 0, dirZ: d > 0.01 ? dz / d : 0, speed: d / t.duration };
   }
@@ -450,7 +451,7 @@ export class Abilities {
       m.combat.windupAim(f, a.card, a.combo, aim);
       const dx = aim.x - f.x;
       const dz = aim.z - f.z;
-      const d = Math.hypot(dx, dz) || 1;
+      const d = dm.hypot(dx, dz) || 1;
       dirX = dx / d;
       dirZ = dz / d;
     }
@@ -503,7 +504,7 @@ export class Abilities {
       // Alpha 1.7 — the swarm lunge (see updateBite)
       const t = CARD_TUNING.bat_bite;
       f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX, dirZ, speed: t.rushSpeed, combo: a.combo, dodged: false, feinted: false };
-      f.facing = Math.atan2(dirX, dirZ);
+      f.facing = dm.atan2(dirX, dirZ);
       m.emit({ type: 'bite', side: f.side, what: 'rush', x: f.x, z: f.z, dx: dirX, dz: dirZ });
     } else {
       const t = CARD_TUNING.knockout;
@@ -518,7 +519,7 @@ export class Abilities {
         dodged: false,
       };
       f.action = rush;
-      f.facing = Math.atan2(dirX, dirZ);
+      f.facing = dm.atan2(dirX, dirZ);
       m.emit({ type: 'rush', side: f.side, x: f.x, z: f.z, dx: dirX, dz: dirZ });
     }
   }
@@ -543,7 +544,7 @@ export class Abilities {
     const tz = f.seenZ + f.seenVZ * lead;
     const dx = tx - f.x;
     const dz = tz - f.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     if (d < 0.05) return;
     a.dirX = dx / d;
     a.dirZ = dz / d;
@@ -580,8 +581,8 @@ export class Abilities {
           this.cutDir(f, a, t.lead);
           const err = m.rng.range(-1, 1) * m.difficulty.aimError * 0.5;
           if (err !== 0) {
-            const c = Math.cos(err);
-            const s = Math.sin(err);
+            const c = dm.cos(err);
+            const s = dm.sin(err);
             const x = a.dirX * c - a.dirZ * s;
             a.dirZ = a.dirX * s + a.dirZ * c;
             a.dirX = x;
@@ -591,7 +592,7 @@ export class Abilities {
           a.total = t.lock[a.shot];
           a.lockedAt = m.time;
           a.inLaneAtLock = !foe.ko && this.inCutLane(f, a.dirX, a.dirZ, t.halfWidth[a.shot], t.length[a.shot], foe.x, foe.z, foe.radius) >= 0;
-          f.facing = Math.atan2(a.dirX, a.dirZ);
+          f.facing = dm.atan2(a.dirX, a.dirZ);
           m.emit({ type: 'cutLock', side: f.side, shot: a.shot, dx: a.dirX, dz: a.dirZ, lock: a.total, empowered: a.empowered });
         }
         break;
@@ -689,7 +690,7 @@ export class Abilities {
       m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: true, heavy: true });
       m.combat.onEvade(foe);
     }
-    f.facing = Math.atan2(a.dirX, a.dirZ);
+    f.facing = dm.atan2(a.dirX, a.dirZ);
     m.emit({
       type: 'cutShot',
       side: f.side,
@@ -719,7 +720,7 @@ export class Abilities {
     const t = CARD_TUNING.knockout;
     // Decoys absorb the charge (a HOLO DECOY does not: the charge is aimed at the real fighter).
     for (const d of m.decoys) {
-      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) {
+      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && dm.hypot(d.x - f.x, d.z - f.z) < t.hitRange) {
         m.popDecoy(d);
       }
     }
@@ -740,7 +741,7 @@ export class Abilities {
         return;
       }
     }
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
     if (!foe.ko && dist < t.hitRange && !a.feinted) {
       if (foe.invuln > 0) {
         if (!a.dodged) {
@@ -756,11 +757,11 @@ export class Abilities {
         else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
         const dx = foe.x - f.x;
         const dz = foe.z - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         // Push direction blends charge direction and contact normal.
         let kx = a.dirX * 0.6 + (dx / d) * 0.4;
         let kz = a.dirZ * 0.6 + (dz / d) * 0.4;
-        const kl = Math.hypot(kx, kz) || 1;
+        const kl = dm.hypot(kx, kz) || 1;
         kx /= kl;
         kz /= kl;
         const r = m.combat.applyHit(foe, f, {
@@ -822,13 +823,13 @@ export class Abilities {
       return;
     }
     if (!foe.ko && !a.dodged && !a.feinted) {
-      const want = Math.atan2(foe.x - f.x, foe.z - f.z);
-      const cur = Math.atan2(a.dirX, a.dirZ);
+      const want = dm.atan2(foe.x - f.x, foe.z - f.z);
+      const cur = dm.atan2(a.dirX, a.dirZ);
       const diff = wrapAngle(want - cur);
       if (Math.abs(diff) < Math.PI / 2) {
         const ny = cur + clamp(diff, -t.turn * dt, t.turn * dt);
-        a.dirX = Math.sin(ny);
-        a.dirZ = Math.cos(ny);
+        a.dirX = dm.sin(ny);
+        a.dirZ = dm.cos(ny);
         f.facing = ny;
       }
     }
@@ -858,9 +859,9 @@ export class Abilities {
     }
     // a phantom decoy in the way takes the lunge (a HOLO DECOY does not fool a charge)
     for (const d of m.decoys) {
-      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && Math.hypot(d.x - f.x, d.z - f.z) < t.hitRange) m.popDecoy(d);
+      if (d.alive && d.kind === 'phantom' && d.owner !== f.side && dm.hypot(d.x - f.x, d.z - f.z) < t.hitRange) m.popDecoy(d);
     }
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
     if (!foe.ko && dist < t.hitRange && !a.feinted && !a.dodged && !m.objects.barrierOnLine(f.x, f.z, foe.x, foe.z, 0.05) && !m.covers.onLine(f.x, f.z, foe.x, foe.z, 0.05)) {
       if (foe.invuln > 0) {
         // DASHed through the swarm: the lunge rushes on past
@@ -873,7 +874,7 @@ export class Abilities {
         const mult = a.combo === 'superstar' ? COMBO_TUNING.superstarMult : 1;
         const dx = foe.x - f.x;
         const dz = foe.z - f.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = dm.hypot(dx, dz) || 1;
         const r = m.combat.applyHit(foe, f, {
           damage: t.damage * mult * f.outgoingDamageMult(),
           kind: 'bite',
@@ -929,7 +930,7 @@ export class Abilities {
     const m = this.m;
     const dx = foe.x - f.x;
     const dz = foe.z - f.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     const ux = dx / d;
     const uz = dz / d;
     const px = -uz;
@@ -947,7 +948,7 @@ export class Abilities {
     let best = cands[0];
     let bestScore = -Infinity;
     for (const c of cands) {
-      const l = Math.hypot(c.x, c.z);
+      const l = dm.hypot(c.x, c.z);
       c.x /= l;
       c.z /= l;
       const ex = f.x + c.x * dist;
@@ -955,11 +956,11 @@ export class Abilities {
       clampRoundedRect(ex, ez, ARENA.halfX - 0.3, ARENA.halfZ - 0.3, ARENA.cornerRadius, tmp);
       let score = 0;
       // stay on the floor: penalise clamped distance
-      score -= Math.hypot(tmp.x - ex, tmp.z - ez) * 3;
+      score -= dm.hypot(tmp.x - ex, tmp.z - ez) * 3;
       // Alpha 1.7.5: and the part of the dash that cover would swallow (GRAVEYARD)
       if (m.covers.live > 0) score -= (1 - m.covers.sweep(f.x, f.z, tmp.x, tmp.z, f.radius)) * dist * 3;
       // keep a sensible range
-      const nd = Math.hypot(foe.x - tmp.x, foe.z - tmp.z);
+      const nd = dm.hypot(foe.x - tmp.x, foe.z - tmp.z);
       score -= Math.abs(nd - pref) * 0.35;
       if (nd < 1.6) score -= 4;
       // dodge the telegraphed line: prefer perpendicular to the attack direction
@@ -973,7 +974,7 @@ export class Abilities {
       // dodge incoming projectiles
       for (const p of m.projectiles) {
         if (p.owner === f.side) continue;
-        const pl = Math.hypot(p.vx, p.vz) || 1;
+        const pl = dm.hypot(p.vx, p.vz) || 1;
         const toX = f.x - p.x;
         const toZ = f.z - p.z;
         const along = (toX * p.vx + toZ * p.vz) / pl;

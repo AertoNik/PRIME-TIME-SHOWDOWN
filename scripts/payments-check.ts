@@ -851,7 +851,7 @@ async function serverChecks(): Promise<void> {
   const minor = await http('POST', '/api/prime/shop/checkout', M.tok, { sku: 'fx_prime_broadcast' });
   check('a PRIME ID declared «13-17» → 403 adult_only (the offer sells to adults only), no order', minor.status === 403 && minor.j.code === 'adult_only' && sqlite(`select count(*) from shop_orders where user='${M.id}';`) === '0');
   const acc = await http('POST', '/api/prime/shop/offer/accept', P.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
-  check('…accepting the offer is recorded by the server (consents: shop_offer, revision 2, its hash)', acc.status === 200 && sqlite(`select count(*) from consents where user='${P.id}' and doc='shop_offer' and version=2 and docHash='${liveOffer.sha256}';`) === '1');
+  check(`…accepting the offer is recorded by the server (consents: shop_offer, revision ${liveOffer.revision} in force, its hash)`, acc.status === 200 && sqlite(`select count(*) from consents where user='${P.id}' and doc='shop_offer' and version=${liveOffer.revision} and docHash='${liveOffer.sha256}';`) === '1');
   const pb1 = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast', priceKop: 1, amountKop: 1, IsTest: '1', Receipt: 'forged' });
   const pf = pb1.j.payment?.fields ?? {};
   const pId = sqlite(`select id from shop_orders where invId=${pb1.j.order?.inv};`);
@@ -1133,7 +1133,8 @@ async function serverChecks(): Promise<void> {
   // (after the restore drill PocketBase's fresh log database is applied anew at every start — newer than the
   // payments migration: then the last two are reverted, the log one is re-created by itself)
   let down = '';
-  for (let i = 0; i < 4 && !/Reverted 1792800000_prime_payments/.test(down); i++) down += cli({}, 'migrate', 'down', i ? '2' : '1');
+  // (1.9.0: one migration more after it — PRIME LEAGUE — so one step more; the loop stops at the payments migration)
+  for (let i = 0; i < 8 && !/Reverted 1792800000_prime_payments/.test(down); i++) down += cli({}, 'migrate', 'down', i ? '2' : '1');
   const gone = sqlite("select count(*) from sqlite_master where name in ('shop_orders','shop_entitlements','shop_payment_events');");
   const up = cli({}, 'migrate', 'up');
   const back2 = sqlite("select count(*) from sqlite_master where name in ('shop_orders','shop_entitlements','shop_payment_events');");

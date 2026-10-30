@@ -8,6 +8,8 @@ import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 import { accountsOffNotice } from '../../net/build';
+import { producerSVG } from '../producerArt';
+import { openProducerStudio } from '../producerStudio';
 
 type Pane = 'overview' | 'hall' | 'collection';
 
@@ -51,6 +53,9 @@ export class ProfileScreen implements Screen {
     g.account?.onChange(() => {
       if (g.ui.current === 'profile') this.render();
     });
+    g.producer.onChange(() => {
+      if (this.g.ui.current === 'profile') this.render();
+    });
   }
 
   onShow(): void {
@@ -59,6 +64,8 @@ export class ProfileScreen implements Screen {
     // the dossier scrolls over the whole screen: the 3D fighter of the menu steps aside (back on leaving)
     this.g.showcase.hide();
     this.render(false);
+    // 1.9.0: the producer look from the server (the card repaints when it arrives or changes)
+    void this.g.producer.load();
   }
 
   private onClick(e: Event): void {
@@ -74,6 +81,10 @@ export class ProfileScreen implements Screen {
     if (act === 'back') {
       g.audio.ui('click');
       g.goto('menu');
+    } else if (act === 'look') {
+      // 1.9.0: СТУДИЯ ПРОДЮСЕРА — the producer's look (a guest learns how to keep one)
+      g.audio.ui('click');
+      openProducerStudio(g);
     } else if (act === 'pane') {
       const p = t.dataset.pane as Pane;
       if (p === this.pane) return;
@@ -159,9 +170,10 @@ export class ProfileScreen implements Screen {
           <span class="pid-onair">ON AIR</span>
         </div>
         <div class="pid-main">
-          <div class="pid-photo">
-            ${this.portrait(id, 'pid-portrait')}
-            <span class="pid-photo-cap">${fav ? 'Любимый боец' : 'В эфире'}</span>
+          <div class="pid-photo pid-producer-photo">
+            ${producerSVG(this.g.producer.shown(), 112, 'pid-ava')}
+            <span class="pid-fav" title="${fav ? 'Любимый боец' : 'В эфире'}">${this.portrait(id, 'pid-fav-portrait')}</span>
+            <button class="pid-look-btn" data-act="look">${UI_ICONS.pencil} Настроить образ</button>
           </div>
           <div class="pid-fields">
             <div class="pid-field">

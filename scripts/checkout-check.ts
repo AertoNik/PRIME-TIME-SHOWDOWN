@@ -432,6 +432,9 @@ async function serverChecks(): Promise<void> {
   // phase 4: the REAL generated rules of this release (approved prices, sales closed, offer revision 1)
   testHooks(null);
   await startPb({ PRIME_SHOP_SALES: 'open' });
+  // A accepts the offer in force today (its consent above was to the synthetic test text; since 30.10.2026 revision 3 is in force)
+  const inForce4 = currentOffer()!;
+  await http('POST', '/api/prime/shop/offer/accept', A.tok, { revision: inForce4.revision, sha256: inForce4.sha256 });
   const real4 = await Promise.all(SKUS.filter((s) => s !== 'fighter_lucien').map((s) => http('POST', '/api/prime/shop/checkout', A.tok, { sku: s })));
   check('this release on a server with the switch open but no Robokassa: every cosmetic → payments_unavailable with its approved price — no order', real4.every((r, i) => r.status === 503 && r.j.code === 'payments_unavailable' && r.j.quote?.priceKop === rubToKop(approvedPriceRub(SKUS.filter((s) => s !== 'fighter_lucien')[i]))), real4.map((r) => r.j.code + ':' + r.j.quote?.priceKop).join(' '));
   // the revision in force NOW (1.8.9.5: revision 3 is registered ahead of its date; until then revision 2, archived)

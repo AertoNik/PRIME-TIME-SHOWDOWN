@@ -14,8 +14,11 @@ import { ComboSystem } from './ComboSystem';
 import { Covers } from './Covers';
 import { FighterAI, type AIProfile } from './FighterAI';
 import { FighterSim } from './FighterSim';
+import { LEAGUE_DIFFICULTY, leagueRival, tacticBehavior, type LeagueFight } from './league';
+import { TACTICS } from '../config/league.config';
 import { StageObjects } from './StageObjects';
 import type { CardFailReason, Decoy, MatchEvent, MatchPhase, MatchResultData, Projectile, PropState, SmokeZone } from './types';
+import { dm } from '../core/dmath';
 
 /** Cards that need the fighter's body free (no charge, rush or recovery running); a DASH-like move defers them. */
 const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack', 'bat_bite']);
@@ -37,6 +40,11 @@ export interface MatchConfig {
   boss?: string;
   /** Alpha 1.4: studio set (only its set pieces matter to the simulation). Default: the original arena. */
   arena?: ArenaId;
+  /**
+   * Alpha 1.9.0 PRIME LEAGUE: the defender is a real fighter with its owner's saved deck, driven by an AI director
+   * tactic (`rival` and `difficulty` are then ignored). Fixed by the server; the server replays the same fight.
+   */
+  league?: LeagueFight;
 }
 
 /**
@@ -91,6 +99,8 @@ export class Match implements BroadcastHost {
   /** BOSS FIGHT phases and signature moves (null in every other mode). */
   readonly boss: BossDirector | null = null;
   clock = 0;
+  /** Alpha 1.9.0: fixed steps run so far — PRIME LEAGUE records each tap with the step it came before. */
+  steps = 0;
   winner: Side | null = null;
 
   readonly fighters: [FighterSim, FighterSim];
@@ -121,8 +131,9 @@ export class Match implements BroadcastHost {
     this.cfg = cfg;
     this.rng = new Rng(cfg.seed);
     const bossDef = cfg.boss ? bossById(cfg.boss) : null;
-    this.difficulty = bossDef ? bossDef.ai : DIFFICULTIES[cfg.difficulty];
-    this.rival = RIVALS[cfg.rival];
+    const lg = bossDef ? undefined : cfg.league;
+    this.difficulty = bossDef ? bossDef.ai : lg ? LEAGUE_DIFFICULTY : DIFFICULTIES[cfg.difficulty];
+    this.rival = lg ? leagueRival(lg.foe) : RIVALS[cfg.rival];
     const pDef = FIGHTERS[cfg.fighter];
     const eDef = rivalFighterDef(this.rival);
     const d = this.difficulty;
@@ -131,8 +142,10 @@ export class Match implements BroadcastHost {
     this.introTime = mods.introTime ?? MATCH.introTime;
     this.timeLeft = this.duration;
 
-    const player = new FighterSim(0, pDef, pDef.name, pDef.look, 1, mods.playerDmgMult ?? 1, MATCH.fighterRadius);
-    const enemy = new FighterSim(1, eDef, this.rival.name, this.rival.look, d.hpMult * (mods.rivalHpMult ?? 1), d.dmgMult * (mods.rivalDmgMult ?? 1), MATCH.fighterRadius);
+    const lvHp = lg?.hpMult ?? [1, 1];
+    const lvDmg = lg?.dmgMult ?? [1, 1];
+    const player = new FighterSim(0, pDef, pDef.name, pDef.look, lvHp[0], (mods.playerDmgMult ?? 1) * lvDmg[0], MATCH.fighterRadius);
+    const enemy = new FighterSim(1, eDef, this.rival.name, this.rival.look, d.hpMult * (mods.rivalHpMult ?? 1) * lvHp[1], d.dmgMult * (mods.rivalDmgMult ?? 1) * lvDmg[1], MATCH.fighterRadius);
     if (mods.playerHpFrac !== undefined) {
       player.hp = Math.max(1, Math.round(player.maxHp * Math.min(1, Math.max(0, mods.playerHpFrac))));
       player.startHp = player.hp;
@@ -186,6 +199,7 @@ export class Match implements BroadcastHost {
           usesCards: false,
           behavior: BEHAVIORS.tactical,
         };
+    const tactic = lg ? TACTICS[lg.foe.tactic ?? 'balance'] : undefined;
     const enemyProfile: AIProfile = {
       aimLead: d.aimLead,
       aimError: d.aimError,
@@ -194,11 +208,12 @@ export class Match implements BroadcastHost {
       reactMax: d.reactMax,
       decideMin: d.decideMin,
       decideMax: d.decideMax,
-      comboPlanning: d.comboPlanning,
+      comboPlanning: tactic ? tactic.comboPlanning : d.comboPlanning,
       cardSmarts: d.cardSmarts,
       usesCards: true,
-      behavior: BEHAVIORS[this.rival.behavior],
+      behavior: tactic ? tacticBehavior(tactic.id) : BEHAVIORS[this.rival.behavior],
       control: this.rival.mods?.control,
+      tactic,
     };
     this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, enemyProfile)];
     // Alpha 1.4: the stage's set pieces (Classic default: the original studio's speaker stacks)
@@ -260,6 +275,7 @@ export class Match implements BroadcastHost {
 
   // ------------------------------------------------------------------- step
   step(dt: number): void {
+    this.steps++;
     this.clock += dt;
     if (this.phase === 'intro') {
       this.phaseTime += dt;
@@ -525,7 +541,7 @@ export class Match implements BroadcastHost {
   inOwnSmoke(f: { side: Side; x: number; z: number }): boolean {
     for (const s of this.smokes) {
       if (s.owner !== f.side || s.t < 0.15) continue;
-      if (Math.hypot(f.x - s.x, f.z - s.z) < s.radius) return true;
+      if (dm.hypot(f.x - s.x, f.z - s.z) < s.radius) return true;
     }
     return false;
   }
@@ -552,7 +568,7 @@ export class Match implements BroadcastHost {
     for (const d of this.decoys) if (d.alive && d.owner === f.side && d.kind === 'holo') this.popDecoy(d);
     const dx = foe.x - f.x;
     const dz = foe.z - f.z;
-    const dl = Math.hypot(dx, dz) || 1;
+    const dl = dm.hypot(dx, dz) || 1;
     const px = -dz / dl;
     const pz = dx / dl;
     let best = { x: f.x, z: f.z };
@@ -561,7 +577,7 @@ export class Match implements BroadcastHost {
       const wx = f.x + px * sgn * t.offset;
       const wz = f.z + pz * sgn * t.offset;
       clampRoundedRect(wx, wz, ARENA.halfX - 0.2, ARENA.halfZ - 0.2, ARENA.cornerRadius, tmpClamp);
-      const room = Math.hypot(tmpClamp.x - f.x, tmpClamp.z - f.z);
+      const room = dm.hypot(tmpClamp.x - f.x, tmpClamp.z - f.z);
       if (room > bestRoom + 0.05) {
         bestRoom = room;
         best = { x: tmpClamp.x, z: tmpClamp.z };
@@ -590,7 +606,7 @@ export class Match implements BroadcastHost {
       const p = this.props[i];
       if (!p.alive) continue;
       const r = p.radius !== null ? (heavy ? p.radius * 1.25 : p.radius) : heavy ? 1.7 : 0.95;
-      if (Math.hypot(p.x - x, p.z - z) >= r) continue;
+      if (dm.hypot(p.x - x, p.z - z) >= r) continue;
       if (p.reactive) {
         if (p.cool > 0) continue;
         p.cool = p.cooldown;

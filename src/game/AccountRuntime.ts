@@ -379,8 +379,10 @@ export class AccountRuntime {
         this.me = await this.api.refresh();
         rememberName(this.storage, this.me.id, this.me.nickname);
       } catch (e) {
-        // offline: keep playing on the stored session; 401: signed out (the account's local copy stays)
-        if (e instanceof PrimeApiError && e.kind !== 'network') this.me = null;
+        // offline: keep playing on the stored session; a busy shared address (429): the same, and ask again a little
+        // later (PRIME ID and the producer look need the profile); 401: signed out (the account's local copy stays)
+        if (e instanceof PrimeApiError && e.kind === 'rate') this.retryMe(1);
+        else if (e instanceof PrimeApiError && e.kind !== 'network') this.me = null;
       }
     }
     this.started = true;
@@ -613,6 +615,20 @@ export class AccountRuntime {
     }
     // 1.8.8: the catalog shows the server's prices and «В ПРОДАЖЕ» only when this server really sells
     this.g.shop.setServer(this.serverConfig?.shop ?? null);
+  }
+
+  /** The profile was refused with 429 at start: asks again after 4, 8, 16, 30 s (never a tight loop), then gives up quietly. */
+  private retryMe(n: number): void {
+    setTimeout(async () => {
+      if (this.me || !this.api?.sessionRecord) return;
+      try {
+        this.me = await this.api.refresh();
+        rememberName(this.storage, this.me.id, this.me.nickname);
+        this.emit();
+      } catch (e) {
+        if (e instanceof PrimeApiError && e.kind === 'rate' && n < 4) this.retryMe(n + 1);
+      }
+    }, Math.min(30000, 4000 * 2 ** (n - 1)));
   }
 
   async recheckServer(): Promise<boolean> {

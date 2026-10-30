@@ -5,6 +5,7 @@ import { clampRoundedRect, pointSegDist, segSegDist, type ClampResult } from '..
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
 import type { Projectile, ProjectileKind, StageKind, StageObject } from './types';
+import { dm } from '../core/dmath';
 
 const tmp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 
@@ -85,22 +86,22 @@ export class StageObjects {
     let x = sx + f.seenVX * t.lead;
     let z = sz + f.seenVZ * t.lead;
     let p = this.onFloor(x, z, 0.4);
-    if (Math.hypot(p.x - sx, p.z - sz) < gap) {
+    if (dm.hypot(p.x - sx, p.z - sz) < gap) {
       // too close: further along the opponent's way, or towards the thrower when they stand still
-      const v = Math.hypot(f.seenVX, f.seenVZ);
+      const v = dm.hypot(f.seenVX, f.seenVZ);
       let ux = v > 0.6 ? f.seenVX / v : f.x - sx;
       let uz = v > 0.6 ? f.seenVZ / v : f.z - sz;
-      const ul = Math.hypot(ux, uz) || 1;
+      const ul = dm.hypot(ux, uz) || 1;
       ux /= ul;
       uz /= ul;
       x = sx + ux * gap;
       z = sz + uz * gap;
       p = this.onFloor(x, z, 0.4);
-      if (Math.hypot(p.x - sx, p.z - sz) < gap * 0.9) {
+      if (dm.hypot(p.x - sx, p.z - sz) < gap * 0.9) {
         // pinned against the barrier: put it between the opponent and the thrower
         const dx = f.x - sx;
         const dz = f.z - sz;
-        const dl = Math.hypot(dx, dz) || 1;
+        const dl = dm.hypot(dx, dz) || 1;
         p = this.onFloor(sx + (dx / dl) * gap, sz + (dz / dl) * gap, 0.4);
       }
     }
@@ -122,15 +123,15 @@ export class StageObjects {
     // the screen faces what the fighter sees; the bodies it must stay clear of are the real ones
     let dx = f.seenX - f.x;
     let dz = f.seenZ - f.z;
-    let dl = Math.hypot(dx, dz);
+    let dl = dm.hypot(dx, dz);
     if (dl < 0.05) {
-      dx = Math.sin(f.facing);
-      dz = Math.cos(f.facing);
+      dx = dm.sin(f.facing);
+      dz = dm.cos(f.facing);
       dl = 1;
     }
     const ux = dx / dl;
     const uz = dz / dl;
-    const d = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const d = dm.hypot(foe.x - f.x, foe.z - f.z);
     const cands: number[] = [];
     const between = Math.min(t.ahead, Math.max(t.minAhead, d * t.share));
     if (d - between >= t.clear && between >= t.clear) cands.push(between);
@@ -178,7 +179,7 @@ export class StageObjects {
         }
       }
     }
-    if (Math.hypot(cx - x, cz - z) > 1.2) return null;
+    if (dm.hypot(cx - x, cz - z) > 1.2) return null;
     return { x: cx, z: cz };
   }
 
@@ -204,7 +205,7 @@ export class StageObjects {
     this.removeOwn(f.side, 'echo');
     const vx = f.seenX - take.x;
     const vz = f.seenZ - take.z;
-    const vl = Math.hypot(vx, vz) || 1;
+    const vl = dm.hypot(vx, vz) || 1;
     const o = this.add({ ...this.base('echo', f, take.x, take.z), dirX: vx / vl, dirZ: vz / vl, stage: 'aim', total: CARD_TUNING.second_take.aim, combo });
     o.variant = Math.max(0, TAKE_CARDS.indexOf(take.card));
   }
@@ -244,7 +245,7 @@ export class StageObjects {
     let bd = Infinity;
     for (const o of this.list) {
       if (o.kind !== 'mine' || o.owner !== side || o.stage === 'gone') continue;
-      const d = Math.hypot(o.x - x, o.z - z);
+      const d = dm.hypot(o.x - x, o.z - z);
       if (d < bd) {
         bd = d;
         best = o;
@@ -278,7 +279,7 @@ export class StageObjects {
     for (const p of this.m.projectiles) {
       if (!p.alive || p.owner === side || !FREEZABLE.has(p.kind)) continue;
       if (this.m.boss && p.owner === 1) continue;
-      if (Math.hypot(p.x - o.x, p.z - o.z) >= o.radius) continue;
+      if (dm.hypot(p.x - o.x, p.z - o.z) >= o.radius) continue;
       p.alive = false;
       n++;
       this.m.emit({ type: 'erase', side, x: p.x, z: p.z });
@@ -383,7 +384,7 @@ export class StageObjects {
       this.end(o);
       return;
     }
-    if (!foe.ko && foe.holdImmune <= 0 && Math.hypot(foe.x - o.x, foe.z - o.z) < o.radius) {
+    if (!foe.ko && foe.holdImmune <= 0 && dm.hypot(foe.x - o.x, foe.z - o.z) < o.radius) {
       const s = foe.side === 1 && this.m.boss ? t.bossSlow : t.slow;
       if (s < foe.netSlow) foe.netSlow = s;
     }
@@ -420,7 +421,7 @@ export class StageObjects {
     if (foe.ko || foe.invuln > 0) return;
     const dx = foe.x - o.x;
     const dz = foe.z - o.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     if (d >= o.radius) return;
     this.end(o, 'trigger');
     const src = m.fighters[o.owner];
@@ -470,7 +471,7 @@ export class StageObjects {
     if (foe.ko) return;
     const dx = foe.x - o.x;
     const dz = foe.z - o.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     if (d >= o.radius) return;
     if (foe.invuln > 0) {
       foe.m.perfects++;
@@ -509,7 +510,7 @@ export class StageObjects {
     if (o.stage === 'aim') {
       const vx = f.seenX - o.x;
       const vz = f.seenZ - o.z;
-      const vl = Math.hypot(vx, vz);
+      const vl = dm.hypot(vx, vz);
       if (vl > 0.05) {
         o.dirX = vx / vl;
         o.dirZ = vz / vl;

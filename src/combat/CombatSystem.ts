@@ -5,6 +5,7 @@ import { clamp, clampRoundedRect, dampAngle, segSegDist, segmentCircleHit, wrapA
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
 import type { Decoy, HitInfo, HitKind, Projectile, ProjectileKind, StageObject } from './types';
+import { dm } from '../core/dmath';
 
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 const bankTmp = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1: 0, len2: 0 };
@@ -108,8 +109,8 @@ export function solveBank(sx: number, sz: number, tx: number, tz: number, out: B
       if (k <= 0.05 || k >= 1) continue;
       const pz = sz + (iz - sz) * k;
       if (Math.abs(pz) > straightZ) continue;
-      const l1 = Math.hypot(c - sx, pz - sz);
-      const l2 = Math.hypot(tx - c, tz - pz);
+      const l1 = dm.hypot(c - sx, pz - sz);
+      const l2 = dm.hypot(tx - c, tz - pz);
       if (l1 + l2 < best) {
         best = l1 + l2;
         out.bx = c;
@@ -127,8 +128,8 @@ export function solveBank(sx: number, sz: number, tx: number, tz: number, out: B
       if (k <= 0.05 || k >= 1) continue;
       const px = sx + (ix - sx) * k;
       if (Math.abs(px) > straightX) continue;
-      const l1 = Math.hypot(px - sx, c - sz);
-      const l2 = Math.hypot(tx - px, tz - c);
+      const l1 = dm.hypot(px - sx, c - sz);
+      const l2 = dm.hypot(tx - px, tz - c);
       if (l1 + l2 < best) {
         best = l1 + l2;
         out.bx = px;
@@ -142,13 +143,13 @@ export function solveBank(sx: number, sz: number, tx: number, tz: number, out: B
   if (out.bounce) {
     const dx = out.bx - sx;
     const dz = out.bz - sz;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     out.dirX = dx / d;
     out.dirZ = dz / d;
   } else {
     const dx = tx - sx;
     const dz = tz - sz;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     out.dirX = dx / d;
     out.dirZ = dz / d;
     out.bx = tx;
@@ -349,17 +350,17 @@ export class CombatSystem {
     this.tickStatuses(f, dt);
 
     if (f.ko || m.phase !== 'fight') {
-      f.vx *= Math.exp(-8 * dt);
-      f.vz *= Math.exp(-8 * dt);
+      f.vx *= dm.exp(-8 * dt);
+      f.vz *= dm.exp(-8 * dt);
       if (f.knockback > 0) {
         f.vx = f.kbX;
         f.vz = f.kbZ;
-        f.kbX *= Math.exp(-5 * dt);
-        f.kbZ *= Math.exp(-5 * dt);
+        f.kbX *= dm.exp(-5 * dt);
+        f.kbZ *= dm.exp(-5 * dt);
       }
       this.integrate(f, dt);
       if (!f.ko && m.phase !== 'fight') {
-        f.facing = dampAngle(f.facing, Math.atan2(foe.x - f.x, foe.z - f.z), 6, dt);
+        f.facing = dampAngle(f.facing, dm.atan2(foe.x - f.x, foe.z - f.z), 6, dt);
       }
       return;
     }
@@ -380,8 +381,8 @@ export class CombatSystem {
     } else if (f.knockback > 0) {
       tvx = f.kbX;
       tvz = f.kbZ;
-      f.kbX *= Math.exp(-5 * dt);
-      f.kbZ *= Math.exp(-5 * dt);
+      f.kbX *= dm.exp(-5 * dt);
+      f.kbZ *= dm.exp(-5 * dt);
       accel = 400;
     } else if (f.stun > 0 || a.kind === 'recover') {
       accel = 18;
@@ -392,7 +393,7 @@ export class CombatSystem {
     }
     const dvx = tvx - f.vx;
     const dvz = tvz - f.vz;
-    const dv = Math.hypot(dvx, dvz);
+    const dv = dm.hypot(dvx, dvz);
     const maxDv = accel * dt;
     // Alpha 1.6 BACKTRACK: an exact glide back along the tape (lands where it started from)
     if (a.kind === 'rewind' || dv <= maxDv || dv < 1e-6) {
@@ -406,7 +407,7 @@ export class CombatSystem {
     if (f.tether > 0) this.holdTether(f);
 
     // Aim / facing (model turns toward its aim point).
-    const desired = a.kind === 'cut' ? Math.atan2(a.dirX, a.dirZ) : Math.atan2(f.aimX - f.x, f.aimZ - f.z);
+    const desired = a.kind === 'cut' ? dm.atan2(a.dirX, a.dirZ) : dm.atan2(f.aimX - f.x, f.aimZ - f.z);
     if (a.kind === 'rush' || a.kind === 'dash' || a.kind === 'rewind' || a.kind === 'bite') {
       // Keep facing; view handles the dash pose.
     } else if (f.stun <= 0) {
@@ -433,13 +434,13 @@ export class CombatSystem {
           f.shoveZ -= sin * tmpClamp.nz;
         }
       }
-      const k = Math.exp(-CARD_TUNING.pulse_push.decay * dt);
+      const k = dm.exp(-CARD_TUNING.pulse_push.decay * dt);
       f.shoveX *= k;
       f.shoveZ *= k;
       if (f.shoveX * f.shoveX + f.shoveZ * f.shoveZ < 0.01) f.shoveX = f.shoveZ = 0;
     }
     if (tmpClamp.hit) {
-      const speed = Math.hypot(f.vx, f.vz);
+      const speed = dm.hypot(f.vx, f.vz);
       const into = f.vx * tmpClamp.nx + f.vz * tmpClamp.nz;
       if (f.knockback > 0 && into > 5.5) {
         this.wallSlam(f, speed, tmpClamp.nx, tmpClamp.nz);
@@ -489,7 +490,7 @@ export class CombatSystem {
     if (a.ko || b.ko) return;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     const min = a.radius + b.radius;
     if (d < min && d > 1e-4) {
       const push = (min - d) / 2;
@@ -520,7 +521,7 @@ export class CombatSystem {
             this.windupAim(f, a.card, a.combo, aimTmp);
             const dx = aimTmp.x - f.x;
             const dz = aimTmp.z - f.z;
-            const d = Math.hypot(dx, dz) || 1;
+            const d = dm.hypot(dx, dz) || 1;
             a.dirX = dx / d;
             a.dirZ = dz / d;
           }
@@ -641,7 +642,7 @@ export class CombatSystem {
   private caneMode(f: FighterSim, mel: MeleeStats): void {
     const t = this.m.time;
     if (t - f.caneSince < mel.dwell || f.strikeT > 0) return;
-    const d = Math.hypot(f.meleeX - f.x, f.meleeZ - f.z);
+    const d = dm.hypot(f.meleeX - f.x, f.meleeZ - f.z);
     if (!f.caneStrike && d < mel.enter) {
       f.caneStrike = true;
       f.caneSince = t;
@@ -672,13 +673,13 @@ export class CombatSystem {
    */
   private landStrike(f: FighterSim, foe: FighterSim, mel: MeleeStats): void {
     const m = this.m;
-    const fx = Math.sin(f.facing);
-    const fz = Math.cos(f.facing);
-    const cosArc = Math.cos(mel.arc);
+    const fx = dm.sin(f.facing);
+    const fz = dm.cos(f.facing);
+    const cosArc = dm.cos(mel.arc);
     const inArc = (x: number, z: number, r: number): number => {
       const dx = x - f.x;
       const dz = z - f.z;
-      const d = Math.hypot(dx, dz);
+      const d = dm.hypot(dx, dz);
       if (d > mel.reach + r * 0.5) return -1;
       if (d < 0.05) return 0;
       return (dx * fx + dz * fz) / d >= cosArc ? d : -1;
@@ -711,7 +712,7 @@ export class CombatSystem {
       const tz = decoy ? decoy.z : foe.z;
       const dx = tx - f.x;
       const dz = tz - f.z;
-      const d = Math.hypot(dx, dz) || 1;
+      const d = dm.hypot(dx, dz) || 1;
       const ux = dx / d;
       const uz = dz / d;
       cx = tx - ux * 0.35;
@@ -773,8 +774,8 @@ export class CombatSystem {
   private muzzleWorld(f: FighterSim, muzzle: number, yaw: number): { x: number; z: number } {
     const off = muzzleOffset(f.stats.attack.weapon, muzzle);
     // fighter right vector for yaw θ is (-cosθ, sinθ); forward is (sinθ, cosθ)
-    const s = Math.sin(yaw);
-    const c = Math.cos(yaw);
+    const s = dm.sin(yaw);
+    const c = dm.cos(yaw);
     return {
       x: f.x + s * off.fwd - c * off.right,
       z: f.z + c * off.fwd + s * off.right,
@@ -783,7 +784,7 @@ export class CombatSystem {
 
   fireAuto(f: FighterSim): void {
     const atk = f.stats.attack;
-    const yaw = Math.atan2(f.aimX - f.x, f.aimZ - f.z) + f.aimErr;
+    const yaw = dm.atan2(f.aimX - f.x, f.aimZ - f.z) + f.aimErr;
     const rng = this.m.rng;
     let muzzle = 0;
     if (atk.alternate) {
@@ -806,7 +807,7 @@ export class CombatSystem {
     // Alpha 1.5 — CROSSFIRE (Kai): shots fired while strafing across the line of fire hit harder
     let cross = false;
     if (f.def.passive === 'crossfire') {
-      const lat = Math.abs(f.vx * Math.cos(yaw) - f.vz * Math.sin(yaw));
+      const lat = Math.abs(f.vx * dm.cos(yaw) - f.vz * dm.sin(yaw));
       cross = lat >= f.stats.moveSpeed * PASSIVE_TUNING.crossfire.lateral;
     }
     // Alpha 1.5 — RIPOSTE (Rina): the volley after an evade hits harder (the whole double tap)
@@ -848,18 +849,18 @@ export class CombatSystem {
       });
     }
     f.m.shots++;
-    this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind });
+    this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind });
   }
 
   private fireAdrenaline(f: FighterSim, foe: FighterSim): void {
     const atk = f.stats.attack;
     // Adrenaline shots use perfect lead.
     const t = CARD_TUNING.adrenaline;
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
     const lead = dist / (atk.speed * 1.15);
     const tx = foe.x + foe.vx * lead;
     const tz = foe.z + foe.vz * lead;
-    const yaw = Math.atan2(tx - f.x, tz - f.z);
+    const yaw = dm.atan2(tx - f.x, tz - f.z);
     f.facing = yaw;
     f.muzzleToggle ^= 1;
     const muzzle = atk.alternate ? f.muzzleToggle : 0;
@@ -867,12 +868,12 @@ export class CombatSystem {
     const dmg = t.damage * f.outgoingDamageMult() * f.adrenalineMult;
     this.spawn(f.side, 'adrenaline', atk.weapon, origin.x, origin.z, yaw, atk.speed * 1.15, dmg, atk.radius * 1.1, atk.range * 1.3, {});
     f.m.shots++;
-    this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'adrenaline' });
+    this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind: 'adrenaline' });
   }
 
   /** Heavy card shot: POWER SHOT by default, or CHARGED SHOT (faster, longer, pierces shields). */
   firePower(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts, charged = false): void {
-    const yaw = Math.atan2(dirX, dirZ);
+    const yaw = dm.atan2(dirX, dirZ);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     const t = charged ? CARD_TUNING.charged_shot : CARD_TUNING.power_shot;
@@ -887,7 +888,7 @@ export class CombatSystem {
 
   /** Alpha 1.5 — BANK SHOT: the copper ricochet round along the first leg of the bank path. */
   fireBank(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts): void {
-    const yaw = Math.atan2(dirX, dirZ);
+    const yaw = dm.atan2(dirX, dirZ);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     const t = CARD_TUNING.bank_shot;
@@ -934,8 +935,8 @@ export class CombatSystem {
     const foe = m.fighters[1 - f.side];
     const t = CARD_TUNING.shock;
     const speed = ctl?.shockSpeed ?? 20;
-    const lead = (Math.hypot(foe.x - f.x, foe.z - f.z) / speed) * (ctl?.shockLead ?? 0);
-    const yaw = Math.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
+    const lead = (dm.hypot(foe.x - f.x, foe.z - f.z) / speed) * (ctl?.shockLead ?? 0);
+    const yaw = dm.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'zap', f.stats.attack.weapon, origin.x, origin.z, yaw, speed, t.damage * f.outgoingDamageMult(), ctl?.shockRadius ?? 0.32, 15, {
@@ -945,15 +946,15 @@ export class CombatSystem {
       combo: f.zapCombo,
     });
     f.zapCombo = null;
-    m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'zap' });
+    m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind: 'zap' });
   }
 
   /** Alpha 1.5 — FALSE START read an attack: Rina fires straight back at the attacker. */
   private fireCounter(f: FighterSim, foe: FighterSim): void {
     const t = CARD_TUNING.false_start;
-    const dist = Math.hypot(foe.x - f.x, foe.z - f.z);
+    const dist = dm.hypot(foe.x - f.x, foe.z - f.z);
     const lead = dist / t.counterSpeed;
-    const yaw = Math.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
+    const yaw = dm.atan2(foe.x + foe.vx * lead - f.x, foe.z + foe.vz * lead - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'counter', f.stats.attack.weapon, origin.x, origin.z, yaw, t.counterSpeed, t.counterDamage * f.feintMult * f.outgoingDamageMult(), t.counterRadius, t.counterRange, {
@@ -961,7 +962,7 @@ export class CombatSystem {
     });
     f.m.shots++;
     f.fireTimer = Math.max(f.fireTimer, 0.25);
-    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'counter' });
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind: 'counter' });
   }
 
   spawn(
@@ -984,8 +985,8 @@ export class CombatSystem {
     p.weapon = weapon;
     p.x = p.px = x;
     p.z = p.pz = z;
-    p.vx = Math.sin(yaw) * speed;
-    p.vz = Math.cos(yaw) * speed;
+    p.vx = dm.sin(yaw) * speed;
+    p.vz = dm.cos(yaw) * speed;
     p.speed = speed;
     p.radius = radius;
     p.damage = damage;
@@ -1034,7 +1035,7 @@ export class CombatSystem {
    * flight time. SPOTLIGHT combos lead fully and without aim error.
    */
   leadAim(f: FighterSim, speed: number, k: number, out: { x: number; z: number }): { x: number; z: number } {
-    const dist = Math.hypot(f.seenX - f.x, f.seenZ - f.z);
+    const dist = dm.hypot(f.seenX - f.x, f.seenZ - f.z);
     const time = (dist / Math.max(1, speed)) * k;
     out.x = f.seenX + f.seenVX * time;
     out.z = f.seenZ + f.seenVZ * time;
@@ -1056,7 +1057,7 @@ export class CombatSystem {
   /** SPLIT SHOT: one wide volley of three bolts instead of the next regular one (the weapon's own burst is skipped). */
   fireSplit(f: FighterSim, tight: boolean): void {
     const t = CARD_TUNING.split_shot;
-    const yaw = Math.atan2(f.cardAimX - f.x, f.cardAimZ - f.z);
+    const yaw = dm.atan2(f.cardAimX - f.x, f.cardAimZ - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     const fan = tight ? COMBO_TUNING.tightFan : t.fan;
@@ -1069,7 +1070,7 @@ export class CombatSystem {
     f.fireTimer = Math.max(f.fireTimer, f.stats.attack.interval / f.fireRateMult());
     f.m.shots++;
     this.recordTake(f, 'split_shot');
-    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'split' });
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind: 'split' });
   }
 
   /** Alpha 1.6.1 — a card attack SECOND TAKE can replay: remember what and where (echoes never call this). */
@@ -1082,10 +1083,10 @@ export class CombatSystem {
   fireDisc(f: FighterSim, combo: ComboId | null): void {
     const t = CARD_TUNING.rebound_disc;
     const at = combo === 'spotlight' ? this.leadAim(f, t.speed, COMBO_TUNING.spotlightLead, aimTmp) : { x: f.cardAimX, z: f.cardAimZ };
-    const yaw = Math.atan2(at.x - f.x, at.z - f.z);
+    const yaw = dm.atan2(at.x - f.x, at.z - f.z);
     f.facing = yaw;
     let reach: number = t.reach;
-    if (combo === 'boomerang') reach = clamp(Math.hypot(f.seenX - f.x, f.seenZ - f.z) + COMBO_TUNING.boomerangPast, t.minReach, t.reach);
+    if (combo === 'boomerang') reach = clamp(dm.hypot(f.seenX - f.x, f.seenZ - f.z) + COMBO_TUNING.boomerangPast, t.minReach, t.reach);
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'disc', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, reach, { crit: combo !== null });
     f.fireTimer = Math.max(f.fireTimer, 0.3);
@@ -1096,7 +1097,7 @@ export class CombatSystem {
   fireCable(f: FighterSim): void {
     const t = CARD_TUNING.cable_snare;
     this.leadAim(f, t.speed, f.leadK, aimTmp);
-    const yaw = Math.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
+    const yaw = dm.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'cable', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, t.range, {});
@@ -1113,7 +1114,7 @@ export class CombatSystem {
     }
     const dx = o.fromX - o.x;
     const dz = o.fromZ - o.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     o.dirX = dx / d;
     o.dirZ = dz / d;
   }
@@ -1128,7 +1129,7 @@ export class CombatSystem {
     const t = CARD_TUNING.second_take;
     const card = TAKE_CARDS[o.variant];
     const od = f.outgoingDamageMult();
-    const yaw = Math.atan2(o.dirX, o.dirZ);
+    const yaw = dm.atan2(o.dirX, o.dirZ);
     const x = o.x + o.dirX * 0.6;
     const z = o.z + o.dirZ * 0.6;
     const w = f.stats.attack.weapon;
@@ -1166,12 +1167,12 @@ export class CombatSystem {
     if (foe.ko || this.m.phase !== 'fight') return;
     const speed = COMBO_TUNING.releaseSpeed;
     this.leadAim(f, speed, f.leadK, aimTmp);
-    const yaw = Math.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
+    const yaw = dm.atan2(aimTmp.x - f.x, aimTmp.z - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'release', f.stats.attack.weapon, origin.x, origin.z, yaw, speed, dmg, 0.3, 12, { crit: true });
     f.m.shots++;
-    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: Math.sin(yaw), dz: Math.cos(yaw), kind: 'release' });
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind: 'release' });
   }
 
   /** Slide a fighter (PULSE PUSH, mine blast): not a knockback — no interrupt, no stun, no wall slam. */
@@ -1187,7 +1188,7 @@ export class CombatSystem {
     f.shoveX += ux * force * k;
     f.shoveZ += uz * force * k;
     // one push at a time: never faster than a single full push
-    const l = Math.hypot(f.shoveX, f.shoveZ);
+    const l = dm.hypot(f.shoveX, f.shoveZ);
     const cap = Math.max(force * k, CARD_TUNING.pulse_push.force);
     if (l > cap) {
       f.shoveX *= cap / l;
@@ -1216,7 +1217,7 @@ export class CombatSystem {
     }
     const dx = foe.x - ox;
     const dz = foe.z - oz;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = dm.hypot(dx, dz) || 1;
     let ux = dx / d;
     let uz = dz / d;
     const inReach = !foe.ko && d <= t.range + foe.radius * 0.5;
@@ -1235,13 +1236,13 @@ export class CombatSystem {
       if (mine) {
         const mx = mine.x - foe.x;
         const mz = mine.z - foe.z;
-        const ml = Math.hypot(mx, mz);
+        const ml = dm.hypot(mx, mz);
         if (ml > 0.05) {
-          const want = Math.atan2(mx / ml, mz / ml);
-          const cur = Math.atan2(ux, uz);
+          const want = dm.atan2(mx / ml, mz / ml);
+          const cur = dm.atan2(ux, uz);
           const turn = clamp(wrapAngle(want - cur), -COMBO_TUNING.mineDriveAngle, COMBO_TUNING.mineDriveAngle);
-          ux = Math.sin(cur + turn);
-          uz = Math.cos(cur + turn);
+          ux = dm.sin(cur + turn);
+          uz = dm.cos(cur + turn);
         }
       }
       force *= COMBO_TUNING.mineDriveForce;
@@ -1275,7 +1276,7 @@ export class CombatSystem {
   private holdTether(f: FighterSim): void {
     const dx = f.x - f.tetherX;
     const dz = f.z - f.tetherZ;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     if (d <= f.tetherR) return;
     const ux = dx / d;
     const uz = dz / d;
@@ -1309,14 +1310,14 @@ export class CombatSystem {
       if (p.kind === 'disc') {
         if (!this.steerDisc(p, sdt)) continue;
       } else if (p.homing > 0 && !foe.ko) {
-        const desired = Math.atan2(foe.x - p.x, foe.z - p.z);
-        const cur = Math.atan2(p.vx, p.vz);
+        const desired = dm.atan2(foe.x - p.x, foe.z - p.z);
+        const cur = dm.atan2(p.vx, p.vz);
         const diff = wrapAngle(desired - cur);
         if (Math.abs(diff) < 1.5) {
           const turn = clamp(diff, -p.homing * sdt, p.homing * sdt);
           const ny = cur + turn;
-          p.vx = Math.sin(ny) * p.speed;
-          p.vz = Math.cos(ny) * p.speed;
+          p.vx = dm.sin(ny) * p.speed;
+          p.vz = dm.cos(ny) * p.speed;
         }
       }
 
@@ -1352,7 +1353,7 @@ export class CombatSystem {
           const discDone = p.kind === 'disc' && (p.mask & (p.ret ? 2 : 1)) !== 0;
           const tf = foe.ko || p.passThrough || discDone ? -1 : segmentCircleHit(fx, fz, p.x, p.z, foe.x, foe.z, foe.radius + p.radius);
           if (tf < 0 || tf > cov.t) {
-            const len = Math.hypot(p.vx, p.vz) || 1;
+            const len = dm.hypot(p.vx, p.vz) || 1;
             const prog = clamp(p.traveled / p.range, 0, 1);
             const dmg = p.kind === 'disc' ? p.damage : p.damage * (1 + (p.falloff - 1) * prog);
             const hx = fx + (p.x - fx) * cov.t;
@@ -1435,7 +1436,7 @@ export class CombatSystem {
             // BANK SHOT: a straight hit before the ricochet is only a graze; after it, a TRICK SHOT
             const trick = p.kind === 'bank' && p.bounced;
             if (p.kind === 'bank' && !p.bounced) dmg *= CARD_TUNING.bank_shot.directMult;
-            const len = Math.hypot(p.vx, p.vz) || 1;
+            const len = dm.hypot(p.vx, p.vz) || 1;
             const src = m.fighters[p.owner];
             // Zoe's bolt keeps SHOCK's rule: it breaks a raised shield, which only shortens the stun
             let stun = p.stun;
@@ -1492,7 +1493,7 @@ export class CombatSystem {
 
       // Near-miss detection: projectile passed close to its target without landing.
       if (!foe.ko) {
-        const dist = Math.hypot(foe.x - p.x, foe.z - p.z);
+        const dist = dm.hypot(foe.x - p.x, foe.z - p.z);
         if (dist < p.closest) {
           p.closest = dist;
         } else if (!p.dodgeLogged && p.closest < foe.radius + 0.9 && dist > p.closest + 0.35) {
@@ -1533,7 +1534,7 @@ export class CombatSystem {
         p.closest = 999;
         p.dodgeLogged = false;
         p.sidestepped = false;
-        const l = Math.hypot(p.vx, p.vz) || 1;
+        const l = dm.hypot(p.vx, p.vz) || 1;
         m.emit({ type: 'bank', side: p.owner, x: tmpClamp.x, z: tmpClamp.z, nx, nz, dx: p.vx / l, dz: p.vz / l });
         m.hitProps(tmpClamp.x, tmpClamp.z, false);
         continue;
@@ -1585,17 +1586,17 @@ export class CombatSystem {
     }
     const dx = owner.x - p.x;
     const dz = owner.z - p.z;
-    const d = Math.hypot(dx, dz);
+    const d = dm.hypot(dx, dz);
     if (d < t.catchRadius) {
       p.alive = false;
       m.emit({ type: 'disc', side: p.owner, x: owner.x, z: owner.z, what: 'catch' });
       return false;
     }
-    const desired = Math.atan2(dx, dz);
-    const cur = Math.atan2(p.vx, p.vz);
+    const desired = dm.atan2(dx, dz);
+    const cur = dm.atan2(p.vx, p.vz);
     const ny = cur + clamp(wrapAngle(desired - cur), -t.turnRate * dt, t.turnRate * dt);
-    p.vx = Math.sin(ny) * p.speed;
-    p.vz = Math.cos(ny) * p.speed;
+    p.vx = dm.sin(ny) * p.speed;
+    p.vz = dm.cos(ny) * p.speed;
     // never leaves the ring on the way home
     const nx = p.x + p.vx * dt;
     const nz = p.z + p.vz * dt;
@@ -1603,7 +1604,7 @@ export class CombatSystem {
       clampRoundedRect(nx, nz, ARENA.wallX - 0.1, ARENA.wallZ - 0.1, ARENA.wallCorner, tmpClamp);
       p.vx = (tmpClamp.x - p.x) / Math.max(dt, 1e-4);
       p.vz = (tmpClamp.z - p.z) / Math.max(dt, 1e-4);
-      const l = Math.hypot(p.vx, p.vz);
+      const l = dm.hypot(p.vx, p.vz);
       if (l > p.speed) {
         p.vx *= p.speed / l;
         p.vz *= p.speed / l;
@@ -1615,8 +1616,8 @@ export class CombatSystem {
   /** FRAME CATCH geometry: a short segment `ahead` m in front of the fighter, across its facing. */
   private frameHit(f: FighterSim, p: Projectile): boolean {
     const t = CARD_TUNING.frame_catch;
-    const fx = Math.sin(f.facing);
-    const fz = Math.cos(f.facing);
+    const fx = dm.sin(f.facing);
+    const fz = dm.cos(f.facing);
     const cx = f.x + fx * t.ahead;
     const cz = f.z + fz * t.ahead;
     // only shots coming at the front of the frame
