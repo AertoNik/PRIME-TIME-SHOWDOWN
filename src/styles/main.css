@@ -9652,6 +9652,21 @@ button.pid-mini:active {
   font-size: 21px;
   padding: 14px 20px;
 }
+/* 1.9.2: CLASSIC DUEL as one block — the card takes the show's orange of «В БОЙ!» (frame, sign, kicker, glow), so the
+   button belongs to it; the facts sit on the same tint */
+.mode-card.classic {
+  --mc-rgb: 255, 122, 26;
+}
+.mode-card.classic .mc-kicker {
+  color: #ffb36b;
+}
+.mode-card.classic .mc-ico {
+  padding: 3px;
+}
+.mode-card.classic .mc-facts {
+  background: rgba(var(--mc-rgb), 0.08);
+  box-shadow: inset 0 0 0 1px rgba(var(--mc-rgb), 0.28);
+}
 @media (prefers-reduced-motion: reduce) {
   .pid-hint {
     animation: none;
@@ -13263,12 +13278,13 @@ button.pid-mini:active {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.78);
-  background: rgba(var(--es-rgb), 0.08);
-  box-shadow: inset 0 0 0 1px rgba(var(--es-rgb), 0.28);
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  /* 1.9.2: the other broadcast reads as available — light text, its colour, a clear frame (never «switched off») */
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(var(--es-rgb), 0.12);
+  box-shadow: inset 0 0 0 1px rgba(var(--es-rgb), 0.45);
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
 }
-.es-opt.league {
+.es-opt.es-league {
   --es-rgb: 140, 110, 255;
 }
 .es-opt > span:last-child {
@@ -13294,20 +13310,33 @@ button.pid-mini:active {
 }
 .es-opt:not(.on):active {
   transform: scale(0.97);
+  background: rgba(var(--es-rgb), 0.26);
 }
 @media (hover: hover) {
   .es-opt:not(.on):hover {
     color: #fff;
-    background: rgba(var(--es-rgb), 0.16);
+    background: rgba(var(--es-rgb), 0.2);
+    box-shadow: inset 0 0 0 1px rgba(var(--es-rgb), 0.7);
   }
 }
 .es-opt:focus-visible {
   outline: 2px solid #5ec8ff;
   outline-offset: 2px;
 }
-@media (min-width: 560px) {
-  .ent-switch {
-    width: min(460px, calc(100% - 24px));
+/* 1.9.2: wide game frames (container queries: on a desktop the game is a column — the window width says nothing):
+   the switch has the very width of the content under it, so every edge lines up */
+@container (min-width: 600px) {
+  .modes > .ent-switch {
+    width: calc(100% - 24px);
+    max-width: 556px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+@container (min-width: 720px) {
+  .league > .ent-switch {
+    width: calc(100% - 32px);
+    max-width: 728px;
     margin-left: auto;
     margin-right: auto;
   }
@@ -13341,13 +13370,23 @@ button.pid-mini:active {
   font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: var(--muted);
-  transition: color 0.15s ease, background 0.15s ease;
+  /* 1.9.2: inactive tabs are available, not dimmed */
+  color: rgba(236, 230, 255, 0.86);
+  transition: color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 }
 .lg-tab-ico {
   width: 18px;
   height: 18px;
-  opacity: 0.75;
+}
+.lg-tab:not(.on):active {
+  transform: scale(0.96);
+  background: rgba(var(--lg-v), 0.22);
+}
+@media (hover: hover) {
+  .lg-tab:not(.on):hover {
+    color: #fff;
+    background: rgba(var(--lg-v), 0.16);
+  }
 }
 .lg-tab-ico svg {
   width: 100%;
@@ -13373,7 +13412,7 @@ button.pid-mini:active {
   opacity: 1;
   color: #ffd166;
 }
-@media (max-width: 420px) {
+@container (max-width: 420px) {
   .lg-tab-t {
     font-size: 9.5px;
     letter-spacing: 0;
@@ -13389,12 +13428,7 @@ button.pid-mini:active {
     height: 18px;
   }
 }
-@media (min-width: 560px) {
-  .lg-tabs {
-    max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
-  }
+@container (min-width: 600px) {
   .lg-tab {
     flex-direction: row;
     justify-content: center;
@@ -13704,11 +13738,6 @@ button.pid-mini:active {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
-}
-@media (min-width: 640px) {
-  .lg-modes {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 .lg-mode {
   padding: 13px 14px;
@@ -14379,7 +14408,7 @@ button.pid-mini:active {
 .lg-fight.win .lg-fgain b {
   color: var(--green);
 }
-@media (max-width: 360px) {
+@container (max-width: 360px) {
   .lg-fight {
     grid-template-columns: 74px 30px 1fr auto;
     gap: 6px;
@@ -14495,7 +14524,7 @@ button.pid-mini:active {
   pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 4px);
 }
-.ent-card.league {
+.ent-card.ec-league {
   --ec-rgb: 140, 110, 255;
 }
 .ent-card:active {
@@ -14847,7 +14876,7 @@ button.pid-mini:active {
 .lg-head .lg-title .lg-onair {
   font-size: 8px;
 }
-@media (max-width: 380px) {
+@container (max-width: 380px) {
   .lg-head .lg-title {
     font-size: 15px;
   }
@@ -14857,6 +14886,11 @@ button.pid-mini:active {
   white-space: normal;
   line-height: 1.15;
   text-align: center;
+}
+/* 1.9.2: the start button closes the «ВАШ БОЕЦ» card — a calm gap above, room for its 3D edge below */
+.lg-duel > .lg-cta {
+  margin-top: 14px;
+  margin-bottom: 4px;
 }
 /* PRIME LEAGUE — final polish: locked fighters, the league deck, defence preview, producers on the bill, series, desktop */
 .lg-fpick.locked {
@@ -14992,7 +15026,7 @@ button.pid-mini:active {
   background: var(--muted);
 }
 /* tablets and desktops: a centred column, the 3D studio around it */
-@media (min-width: 720px) {
+@container (min-width: 720px) {
   .lg-scroll {
     width: 100%;
     max-width: 760px;
@@ -15002,8 +15036,9 @@ button.pid-mini:active {
   }
   .lg-head {
     width: 100%;
-    max-width: 792px;
+    max-width: 760px;
     margin: 0 auto;
+    padding-left: 16px;
   }
   .lg-rank {
     padding: 16px 18px;
@@ -15022,7 +15057,7 @@ button.pid-mini:active {
   outline: 2px solid rgb(var(--lg-c, 94, 200, 255));
   outline-offset: 2px;
 }
-@media (max-width: 360px) {
+@container (max-width: 360px) {
   .lg-head .lg-title .lg-onair {
     display: none;
   }

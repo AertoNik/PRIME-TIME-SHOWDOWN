@@ -31,7 +31,10 @@ const FOCUS_KEYS = ['data-act', 'data-tab', 'data-i', 'data-f', 'data-c', 'data-
 type Tab = (typeof TABS)[number];
 const TAB_NAME: Record<Tab, [string, string]> = { play: ['ИГРАТЬ', 'PLAY'], board: ['РЕЙТИНГ', 'RANKING'], defense: ['ЗАЩИТА', 'DEFENCE'], rewards: ['НАГРАДЫ', 'REWARDS'], history: ['ИСТОРИЯ', 'HISTORY'] };
 /** 1.9.1: each tab has its sign — five equal tabs that fit a 320 px phone without cutting a word. */
-const TAB_ICON: Record<Tab, string> = { play: UI_ICONS.bolt, board: UI_ICONS.trophy, defense: UI_ICONS.shieldMini, rewards: UI_ICONS.gift, history: UI_ICONS.film };
+/** 1.9.2: the ranking tab's cup in the league's own gold (UI_ICONS.trophy is dark ink for gold buttons — invisible here). */
+const TROPHY_GOLD = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M18 9 H8 C8 22 14 27 21 27 M46 9 H56 C56 22 50 27 43 27" fill="none" stroke="#ffb21a" stroke-width="4.5" stroke-linecap="round"/><path d="M17 6 H47 V22 C47 32.5 40.5 39 32 39 C23.5 39 17 32.5 17 22 Z" fill="#ffc23a"/><path d="M22 9 H27 V22 C27 28 29 32 32 34 C25 33 22 28 22 22 Z" fill="#fff3c4" opacity=".6"/><path d="M28 38 H36 V47 H43 V56 H21 V47 H28 Z" fill="#ffb21a"/><rect x="21" y="52" width="22" height="4" rx="1" fill="#d98a10"/></svg>`;
+
+const TAB_ICON: Record<Tab, string> = { play: UI_ICONS.bolt, board: TROPHY_GOLD, defense: UI_ICONS.shieldMini, rewards: UI_ICONS.gift, history: UI_ICONS.film };
 
 const ERR: Record<string, [string, string]> = {
   fighter_not_owned: ['Этот боец ещё не подписан в вашей карьере (или PRIME CLOUD не успел синхронизироваться).', 'This fighter is not signed in your career yet (or PRIME CLOUD has not synced).'],
@@ -96,6 +99,14 @@ function skinOf(id: FighterId): string | null {
   return null;
 }
 
+/**
+ * 1.9.2: the career's sign — a championship belt: a gold plate with the show's star on orange straps (the road from
+ * the first broadcast to the title). Plain fills, no gradient ids: the sign is drawn several times on one page.
+ * (Modifier classes are es-* / ec-*: plain «career» / «league» are the screens' own classes — «.league::before»
+ * painted the league screen's dark backdrop over the whole switch.)
+ */
+const CAREER_EMBLEM = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M1 23 Q10 20 18 21 V43 Q10 44 1 41 Z" fill="#e8641a"/><path d="M63 23 Q54 20 46 21 V43 Q54 44 63 41 Z" fill="#e8641a"/><path d="M1 34 Q10 35 18 34 V43 Q10 44 1 41 Z M63 34 Q54 35 46 34 V43 Q54 44 63 41 Z" fill="#a8400c"/><path d="M2 24.5 Q10 22 18 23 M62 24.5 Q54 22 46 23" stroke="#ffb06a" stroke-width="1.6" fill="none" stroke-linecap="round"/><rect x="8" y="26" width="5" height="12" rx="1.6" fill="#ffd56b"/><rect x="51" y="26" width="5" height="12" rx="1.6" fill="#ffd56b"/><circle cx="32" cy="33" r="17.5" fill="#ffc23a" stroke="#7a3a00" stroke-width="2.2"/><circle cx="29" cy="28.5" r="10" fill="#ffe58a" opacity=".55"/><circle cx="32" cy="33" r="13" fill="none" stroke="#fff3c4" stroke-width="1.3" opacity=".85"/><path d="M32 23 L35 29.6 L42.2 30.3 L36.8 35 L38.4 42 L32 38.3 L25.6 42 L27.2 35 L21.8 30.3 L29 29.6 Z" fill="#ff5a1f" stroke="#7a1f00" stroke-width="1.3" stroke-linejoin="round"/><path d="M24.5 14.5 L27 8 L32 12.5 L37 8 L39.5 14.5 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+
 /** 1.9.1: PRIME SQUAD's sign — three fighters shoulder to shoulder. */
 const SQUAD_ICON = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="16" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M4 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="48" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M36 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="32" cy="20" r="9" fill="#fff"/><path d="M17 54c0-10 7-17 15-17s15 7 15 17z" fill="#fff"/></svg>`;
 
@@ -110,8 +121,8 @@ function tokenCoin(size: number): string {
  */
 export function entrySwitch(active: 'career' | 'league'): string {
   return `<div class="ent-switch" role="tablist" aria-label="${tr('Эфир', 'Broadcast')}">
-      <button class="es-opt career ${active === 'career' ? 'on' : ''}" data-act="to-career" role="tab" aria-selected="${active === 'career'}"><span class="es-ico" aria-hidden="true">${MODE_ICONS.classic}</span><span>${tr('КАРЬЕРА', 'CAREER')}</span></button>
-      <button class="es-opt league ${active === 'league' ? 'on' : ''}" data-act="to-league" role="tab" aria-selected="${active === 'league'}"><span class="es-ico" aria-hidden="true">${rankEmblem(3, null, 22)}</span><span>PRIME LEAGUE</span></button>
+      <button class="es-opt es-career ${active === 'career' ? 'on' : ''}" data-act="to-career" role="tab" aria-selected="${active === 'career'}"><span class="es-ico" aria-hidden="true">${CAREER_EMBLEM}</span><span>${tr('КАРЬЕРА', 'CAREER')}</span></button>
+      <button class="es-opt es-league ${active === 'league' ? 'on' : ''}" data-act="to-league" role="tab" aria-selected="${active === 'league'}"><span class="es-ico" aria-hidden="true">${rankEmblem(3, null, 22)}</span><span>PRIME LEAGUE</span></button>
     </div>`;
 }
 
@@ -142,12 +153,12 @@ export function openFightEntry(g: Game): void {
     `<div class="ent" role="dialog" aria-labelledby="ent-title">
        <div class="ent-head"><span class="ent-k">${onAir()} PRIME NETWORK</span><div class="h1" id="ent-title">${tr('Выберите эфир', 'Choose your broadcast')}</div>
          <p>${tr('Карьера и PRIME LEAGUE — две части одного шоу. Сменить эфир можно в любой момент кнопкой в шапке экрана.', 'The career and PRIME LEAGUE are two halves of one show. Switch any time with the button in the screen’s head.')}</p></div>
-       <button class="ent-card career" data-e="career">
-         <span class="ent-ico">${MODE_ICONS.classic}</span>
+       <button class="ent-card ec-career" data-e="career">
+         <span class="ent-ico">${CAREER_EMBLEM}</span>
          <span class="ent-txt"><span class="ent-kick">${tr('СЮЖЕТ · БОССЫ · ОТКРЫТИЯ', 'STORY · BOSSES · UNLOCKS')}</span><b>${tr('КАРЬЕРА', 'CAREER')}</b><small>${tr('Ваше шоу против соперников карьеры: гонорары, новые бойцы и карты.', 'Your show against the career rivals: fees, new fighters and cards.')}</small></span>
          <span class="ent-go" aria-hidden="true">${UI_ICONS.next}</span>
        </button>
-       <button class="ent-card league" data-e="league">
+       <button class="ent-card ec-league" data-e="league">
          <span class="ent-ico">${rankEmblem(3, null, 46)}</span>
          <span class="ent-txt"><span class="ent-kick">${tr('РЕЙТИНГ · РАНГИ · СЕЗОН', 'RANKING · RANKS · SEASON')}</span><b>PRIME LEAGUE</b><small>${tr('Дуэли с сохранёнными составами других продюсеров: RP, ранги, сезон.', 'Duels against other producers’ saved line-ups: RP, ranks, the season.')}</small></span>
          <span class="ent-go" aria-hidden="true">${UI_ICONS.next}</span>
@@ -372,8 +383,12 @@ export class LeagueScreen implements Screen {
       banner += `<div class="lg-card lg-report"><div class="lg-k">${tr('ПОКА ТЕБЯ НЕ БЫЛО В ЭФИРЕ', 'WHILE YOU WERE OFF AIR')}</div><div class="lg-report-row"><span><b>${r.matches}</b> ${tr(plural(r.matches, ['матч', 'матча', 'матчей']), r.matches === 1 ? 'match' : 'matches')}</span><span class="w"><b>${r.wins}</b> ${tr(plural(r.wins, ['победа', 'победы', 'побед']), r.wins === 1 ? 'win' : 'wins')}</span><span class="l"><b>${r.losses}</b> ${tr(plural(r.losses, ['поражение', 'поражения', 'поражений']), r.losses === 1 ? 'loss' : 'losses')}</span>${r.tokens ? `<span class="t"><b>+${r.tokens}</b> TOKENS</span>` : ''}</div><small>${tr('RP за защиту не меняется.', 'Defence never changes RP.')}</small><button class="btn ghost" data-act="tab" data-v="defense">${tr('Подробнее', 'Details')}</button></div>`;
     }
     const ch = me.challenge;
+    // 1.9.2: the start button lives inside «ВАШ БОЕЦ» (fighter → deck → on air); the qualifier's card goes above it
+    const challengeCard = ch
+      ? `<div class="lg-card lg-challenge">${rankEmblem(ch.to, 'III', 54)}<div><div class="lg-k gold">PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}</div><b>${esc(rankName(ch.to))}</b><p>${tr('3 победы до 2 поражений. Провал не отнимет текущий ранг.', '3 wins before 2 losses. Failing never takes your current rank.')}</p><div class="lg-pips">${[0, 1, 2].map((i) => `<i class="${i < ch.wins ? 'w' : ''}"></i>`).join('')}<em></em>${[0, 1].map((i) => `<i class="${i < ch.losses ? 'l' : ''}"></i>`).join('')}</div></div></div>`
+      : '';
     const cta = ch
-      ? `<div class="lg-card lg-challenge">${rankEmblem(ch.to, 'III', 54)}<div><div class="lg-k gold">PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}</div><b>${esc(rankName(ch.to))}</b><p>${tr('3 победы до 2 поражений. Провал не отнимет текущий ранг.', '3 wins before 2 losses. Failing never takes your current rank.')}</p><div class="lg-pips">${[0, 1, 2].map((i) => `<i class="${i < ch.wins ? 'w' : ''}"></i>`).join('')}<em></em>${[0, 1].map((i) => `<i class="${i < ch.losses ? 'l' : ''}"></i>`).join('')}</div></div></div><button class="btn big wide lg-cta gold" data-act="duel" data-mode="challenge" ${me.active ? 'disabled' : ''}><span class="shine"></span>${tr('Квалификационный бой', 'Qualifier fight')}</button>`
+      ? `<button class="btn big wide lg-cta gold" data-act="duel" data-mode="challenge" ${me.active ? 'disabled' : ''}><span class="shine"></span>${tr('Квалификационный бой', 'Qualifier fight')}</button>`
       : `<button class="btn big wide lg-cta" data-act="duel" data-mode="duel" ${me.active ? 'disabled' : ''}><span class="shine"></span>PRIME DUEL — ${tr('в эфир', 'go on air')}</button>`;
     const picks = own.map((id) => `<button class="lg-fpick ${id === this.pick ? 'on' : ''}" data-act="pick" data-f="${id}" aria-pressed="${id === this.pick}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('') + lockedPicks(g);
     const own4 = deckOf(g, this.pick);
@@ -386,14 +401,14 @@ export class LeagueScreen implements Screen {
       : '';
     const sq = me.series.find((x) => x.kind === 'squad' || x.kind === 'rush');
     const squadOk = own.length >= LEAGUE.squad.size;
-    return `${this.rankCard(me)}${banner}
+    return `${this.rankCard(me)}${banner}${challengeCard}
       <div class="lg-card lg-duel">
         <div class="lg-k">${tr('ВАШ БОЕЦ', 'YOUR FIGHTER')}</div>
         <div class="lg-fpicks">${picks}</div>
         <div class="lg-deck"><span>${leagueDeck ? tr('Колода лиги', 'League deck') : tr('Колода из карьеры', 'Career deck')}:</span>${deck}${this.deckDraft ? '' : `<button class="lg-mini" data-act="deck-edit">${UI_ICONS.pencil} ${tr('Колода для лиги', 'League deck')}</button>`}</div>${deckEditor}
         <small class="muted">${esc(f.name)} ${tr('сражается сам — вы командуете картами, как в карьере.', 'fights on its own — you command the cards, as in the career.')}</small>
+        ${cta}
       </div>
-      ${cta}
       <div class="lg-modes">
         <div class="lg-mode squad">
           <div class="lg-mode-head"><span class="lg-mode-ico" aria-hidden="true">${SQUAD_ICON}</span><div><div class="lg-k">PRIME SQUAD</div><div class="lg-mode-chips"><span>${LEAGUE.squad.size} ${tr('бойца', 'fighters')}</span><span>${LEAGUE.squad.toWin} ${tr('из', 'of')} ${LEAGUE.squad.size}</span><span>RP</span></div></div></div>

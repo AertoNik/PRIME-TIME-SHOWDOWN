@@ -5,6 +5,22 @@ import type { PerkId } from '../config/modes.config';
 
 const S = (body: string, vb = '0 0 64 64') => `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${body}</svg>`;
 
+/**
+ * Alpha 1.9.2 — CLASSIC DUEL: two gloves meeting head-on (the player's orange, the rival's violet) and the spark of
+ * the hit between them. Solid fills like every mode sign; readable at 22–44 px.
+ */
+const GLOVE = (main: string, light: string, ink: string, cuff: string) =>
+  `<path d="M5 37.5 V47 a3 3 0 0 0 3 3 H17 a3 3 0 0 0 3 -3 V37.5 Z" fill="${cuff}"/><rect x="5" y="40.5" width="15" height="3" fill="${main}"/>` +
+  `<path d="M6.5 38 C3.5 30.5 4.5 19 12 14 C19 9.5 28.5 11.5 31 18.5 C33 24 31.5 30.5 26.5 33.5 C23.5 35.5 20.5 37 18.5 38 Z" fill="${main}" stroke="${ink}" stroke-width="1.8" stroke-linejoin="round"/>` +
+  `<path d="M11.5 18.5 C15 14.5 21.5 14 25 16.5" stroke="${light}" stroke-width="2.6" fill="none" stroke-linecap="round"/>` +
+  `<path d="M9.5 31 C14 28 20.5 28.5 23.5 32.5" stroke="${ink}" stroke-width="1.7" fill="none" stroke-linecap="round" opacity=".75"/>`;
+export const DUEL_EMBLEM = S(
+  `<g transform="translate(-1 3)">${GLOVE('#ff7a1a', '#ffc08a', '#7a2e00', '#fff1e0')}</g>` +
+    `<g transform="translate(65 3) scale(-1 1)">${GLOVE('#8c6eff', '#c8baff', '#2e1a7a', '#efe9ff')}</g>` +
+    `<path d="M32 3.5 L34.6 11 L42 9.6 L37 15.6 L41 22 L33.6 19.6 L30.4 26.5 L29.6 19 L22.4 18.2 L28.6 14 L26 7.4 L31 10.6 Z" fill="#ffd23a" stroke="#7a4a00" stroke-width="1.3" stroke-linejoin="round"/>`,
+  '2 2 60 54', // the art's own box: no empty band under the gloves
+);
+
 export const MODE_ICONS = {
   /** Classic Duel: two crossed beams with a VS spark. */
   classic: S(
