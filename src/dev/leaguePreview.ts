@@ -9,6 +9,7 @@ import type { CardId, FighterId } from '../config/types';
 import type { Game } from '../game/Game';
 import type { LeagueBoard, LeagueHistory, LeagueMatch, LeagueMe, LeagueRank, LeagueSlot } from '../net/LeagueApi';
 import { PrimeApiError } from '../net/PrimeApi';
+import { leagueArenaCatalog, leagueArenasAt } from '../meta/LeagueArenas';
 
 type State = 'data' | 'empty' | 'new' | 'guest' | 'preseason';
 const DAY = 86400000;
@@ -64,6 +65,9 @@ function fixtures(state: State, now: number) {
     tokens: empty ? 0 : 136,
     challenge: null,
     defenseOn: true,
+    // 1.9.3: the sets a 1.9.3 server would open now (the same catalogue and rule as lib/league.js arenasAt)
+    arenas: leagueArenasAt(leagueArenaCatalog(), now),
+    arenaUntil: Object.fromEntries(leagueArenaCatalog().flatMap((a) => (a.windows ?? []).filter((w) => now >= Date.parse(w.from) && now < Date.parse(w.until)).map((w) => [a.id, Date.parse(w.until)]))),
     stats: {},
     place: empty ? null : 3,
     track: { tiers, claimed: empty ? [] : [1, 2] },

@@ -1,7 +1,11 @@
+import { isArenaId, type ArenaId } from '../config/arenas.config';
+import { FIGHTERS } from '../config/fighters';
 import { LEAGUE } from '../config/league.config';
+import { LOOKS } from '../config/looks';
+import type { FighterId } from '../config/types';
 import type { LeagueInput } from '../league/replay';
 import { SIM_VERSION } from '../league/simVersion';
-import { LeagueApi, type LeagueFinish, type LeagueMatch, type LeagueMe } from '../net/LeagueApi';
+import { LeagueApi, type LeagueArenaPref, type LeagueFinish, type LeagueMatch, type LeagueMe } from '../net/LeagueApi';
 import { PrimeApiError } from '../net/PrimeApi';
 import type { Game } from './Game';
 
@@ -34,6 +38,48 @@ export function rememberEntry(v: FightEntry): void {
   } catch {
     /* this page only */
   }
+}
+
+/** 1.9.3: the league's permanent sets (league_rules.arenas) — all a server without a set list offers. */
+export const LEAGUE_ARENAS: ArenaId[] = LEAGUE.arenas.filter((a) => isArenaId(a));
+
+/**
+ * 1.9.3: the sets the player may pick now — exactly the server's list (`me.arenas`, by the server's clock: permanent sets
+ * plus a seasonal one while its event runs), in the catalogue's order; a set this game does not know is left out. A
+ * server that sends no list (before 1.9.3) has the permanent sets only.
+ */
+export function leagueArenaList(me: LeagueMe | null | undefined): ArenaId[] {
+  return Array.isArray(me?.arenas) ? me.arenas.filter((a): a is ArenaId => isArenaId(a)) : LEAGUE_ARENAS.slice();
+}
+
+/** 1.9.3: the set last chosen before a league fight (this browser only; RANDOM until one is chosen). */
+const ARENA_KEY = 'primetime-league-arena-v1';
+export function lastLeagueArena(): LeagueArenaPref {
+  try {
+    const v = localStorage.getItem(ARENA_KEY);
+    // (whether it is open right now is the pre-start window's question: it offers the server's list)
+    return isArenaId(v) ? v : 'random';
+  } catch {
+    return 'random';
+  }
+}
+export function rememberLeagueArena(v: LeagueArenaPref): void {
+  try {
+    localStorage.setItem(ARENA_KEY, v);
+  } catch {
+    /* this page only */
+  }
+}
+
+/**
+ * 1.9.3: the look a league fighter is drawn in. A skin from the server is honoured only when this game knows it and it
+ * is made for that very fighter; anything else (a newer skin, old data, a forged value) is the fighter's own look —
+ * a picture is never allowed to break a fight (looks are rendering only, the server judges the fight without them).
+ */
+export function leagueLook(fighter: FighterId, look: string | null | undefined): string {
+  const own = FIGHTERS[fighter]?.look ?? 'ray';
+  if (!look || !LOOKS[look]) return own;
+  return (LOOKS[look].base ?? look) === fighter ? look : own;
 }
 
 export type LeagueAccess =

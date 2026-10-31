@@ -1,3 +1,4 @@
+import { ARENAS, isArenaId, type ArenaId } from '../../config/arenas.config';
 import { CARDS, UNIVERSAL_CARDS } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import { LEAGUE, LEAGUE_FIGHTERS, LEAGUE_RULES_VERSION, RANKS, TACTICS, TACTIC_ORDER, type TacticId } from '../../config/league.config';
@@ -6,12 +7,13 @@ import { SKINS } from '../../config/shop.config';
 import type { CardId, FighterId } from '../../config/types';
 import type { MatchResultData } from '../../combat/types';
 import type { Game } from '../../game/Game';
-import { lastEntry, rememberEntry } from '../../game/LeagueRuntime';
+import { lastEntry, lastLeagueArena, leagueArenaList, leagueLook, rememberEntry, rememberLeagueArena } from '../../game/LeagueRuntime';
 import { lang } from '../../i18n/lang';
 import { ownsPaid } from '../../meta/entitlements';
 import { inRoster } from '../../meta/roster';
-import { newOp, type LeagueBoard, type LeagueFinish, type LeagueHistory, type LeagueMatch, type LeagueMe, type LeagueSeries, type LeagueSlot } from '../../net/LeagueApi';
+import { defenseBase, newOp, type LeagueApi, type LeagueArenaPref, type LeagueBoard, type LeagueFinish, type LeagueHistory, type LeagueMatch, type LeagueMe, type LeagueSeries, type LeagueSlot } from '../../net/LeagueApi';
 import { PrimeApiError } from '../../net/PrimeApi';
+import { ARENA_ART } from '../arenaArt';
 import { cardHTML, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
@@ -56,6 +58,9 @@ const ERR: Record<string, [string, string]> = {
   defense_tactic: ['Неизвестная тактика.', 'Unknown tactic.'],
   defense_slots: ['В защите от 1 до 5 бойцов.', 'A defence holds 1 to 5 fighters.'],
   no_challenge: ['Квалификация ещё не открыта.', 'The qualifier is not open yet.'],
+  defense_changed: ['Защиту успели изменить на другом устройстве — показана актуальная версия. Повторите изменение.', 'The defence was changed on another device — the current one is shown. Make your change again.'],
+  no_series: ['Серия уже завершена.', 'The series is over already.'],
+  arena_unavailable: ['Этот сезонный павильон уже закрыт: событие закончилось. Список обновлён — выберите другой.', 'This seasonal set has closed: its event is over. The list is updated — pick another.'],
 };
 function errText(e: unknown): string {
   const code = e instanceof PrimeApiError ? e.code : '';
@@ -97,6 +102,18 @@ function allowedCards(g: Game, id: FighterId): CardId[] {
 function skinOf(id: FighterId): string | null {
   for (const s of Object.values(SKINS)) if (s.fighter === id && ownsPaid('skin_' + s.id)) return s.id;
   return null;
+}
+/**
+ * 1.9.3: the skin a fighter wears in the wardrobe, when it is bought (the server checks the same right when the defence
+ * is saved) — a new defender goes on air in it. Null: the fighter's own look.
+ */
+function wornSkinOf(g: Game, id: FighterId): string | null {
+  const w = g.shop.skinFor(id);
+  return w && ownsPaid('skin_' + w) ? w : null;
+}
+/** The skin's name for a saved look id (empty for the fighter's own look). */
+function skinName(look: string | null | undefined): string {
+  return look && look in SKINS ? SKINS[look as keyof typeof SKINS].name : '';
 }
 
 /**
@@ -211,6 +228,9 @@ export class LeagueScreen implements Screen {
   private history: LeagueHistory | null = null;
   private historyErr = '';
   private draft: DraftSlot[] | null = null;
+  /** 1.9.3: the saved studio the draft started from — as drawn (JSON) and as the server fingerprints it (defenseBase). */
+  private draftKey = '';
+  private draftBase = '';
   private editSlot = -1;
   private pick: FighterId;
   private squadPick: FighterId[] = [];
@@ -439,8 +459,15 @@ export class LeagueScreen implements Screen {
   private defense(me: LeagueMe): string {
     const g = this.g;
     const own = myFighters(g);
-    const slots: DraftSlot[] = this.draft ?? me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck.slice(), tactic: d.tactic, look: d.look, enabled: d.enabled }));
-    this.draft = slots;
+    // the draft: the saved studio while nothing was touched (it follows another device's save), the edits once made
+    const saved = JSON.stringify(me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck, tactic: d.tactic, look: d.look, enabled: d.enabled })));
+    if (this.draft && saved !== this.draftKey && JSON.stringify(this.draft) === this.draftKey) this.draft = null;
+    if (!this.draft) {
+      this.draft = me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck.slice(), tactic: d.tactic, look: d.look, enabled: d.enabled }));
+      this.draftKey = saved;
+      this.draftBase = defenseBase(me.defense);
+    }
+    const slots: DraftSlot[] = this.draft;
     const rep = me.report;
     const report = rep.matches
       ? `<div class="lg-card lg-report"><div class="lg-k">${tr('ПОКА ТЕБЯ НЕ БЫЛО В ЭФИРЕ', 'WHILE YOU WERE OFF AIR')}</div>
@@ -453,22 +480,29 @@ export class LeagueScreen implements Screen {
         const f = FIGHTERS[s.fighter];
         const t = TACTICS[s.tactic];
         const stat = me.defense.find((d) => d.slot === s.slot && d.fighter === s.fighter);
-        const problem = stat?.problem ? `<div class="lg-slot-warn">${esc(stat.problem === 'fighter_not_owned' ? tr('Боец больше не в вашем ростере — этот защитник не выходит в бой. Замените его.', 'This fighter is no longer in your roster — the defender sits out. Replace it.') : errText(new PrimeApiError('invalid', stat.problem, 400)))}</div>` : '';
+        // 1.9.3: a skin no longer owned only takes the skin away — the defender still defends, in its own look
+        const lookGone = stat?.problem === 'defense_look' && stat.look === s.look;
+        const problem = stat?.problem ? `<div class="lg-slot-warn ${lookGone ? 'soft' : ''}">${esc(stat.problem === 'fighter_not_owned' ? tr('Боец больше не в вашем ростере — этот защитник не выходит в бой. Замените его.', 'This fighter is no longer in your roster — the defender sits out. Replace it.') : lookGone ? tr('Облик больше недоступен — защитник выходит в бой в стандартном облике.', 'The look is no longer available — the defender fights in its standard look.') : errText(new PrimeApiError('invalid', stat.problem, 400)))}</div>` : '';
         const open = this.editSlot === i;
         const deck = deckRow(s.deck);
         const editor = open ? this.slotEditor(s, i, slots) : '';
+        // the look opponents will see: the slot's skin (as the server will check it), else the fighter's own
+        const look = leagueLook(s.fighter, lookGone ? null : s.look);
+        const worn = !s.look ? wornSkinOf(g, s.fighter) : null;
+        const lookLine = s.look && !lookGone ? `<span class="lg-slot-look">✦ ${esc(skinName(s.look))}</span>` : worn ? `<button class="lg-mini lg-slot-wear" data-act="slot-wear" data-i="${i}">✦ ${tr('В облике', 'Wear')} ${esc(skinName(worn))}</button>` : '';
         return `<div class="lg-slot ${s.enabled ? '' : 'off'} ${open ? 'open' : ''}">
-            <div class="lg-slot-top">${portraitHTML(g.portraitOf(s.fighter), f.theme.main, f.theme.dark)}
-              <div class="lg-slot-main"><b>${esc(f.name)}</b><span class="lg-tac">${tacticIcon(s.tactic, 16)} ${esc(t.name)}</span><div class="lg-deck">${deck}</div>${stat ? `<small>${tr('Защиты', 'Defences')}: ${stat.wins}–${stat.losses}${stat.draws ? `–${stat.draws}` : ''}</small>` : ''}</div>
+            <div class="lg-slot-top">${portraitHTML(g.portraitFor(look), f.theme.main, f.theme.dark)}
+              <div class="lg-slot-main"><b>${esc(f.name)}</b><span class="lg-tac">${tacticIcon(s.tactic, 16)} ${esc(t.name)}</span>${lookLine}<div class="lg-deck">${deck}</div></div>
               <div class="lg-slot-act"><button class="switch ${s.enabled ? 'on' : ''}" data-act="slot-toggle" data-i="${i}" role="switch" aria-checked="${s.enabled}" aria-label="${tr('Участвует', 'Active')}"></button><button class="icon-btn" data-act="slot-edit" data-i="${i}" aria-label="${tr('Изменить', 'Edit')}">${UI_ICONS.pencil}</button></div>
-            </div>${problem}${editor}</div>`;
+            </div>
+            <div class="lg-slot-foot"><small>${stat ? `${tr('Защиты', 'Defences')}: ${stat.wins}–${stat.losses}${stat.draws ? `–${stat.draws}` : ''}` : tr('Новый защитник · ещё не сохранён', 'New defender · not saved yet')}</small><button class="lg-slot-x" data-act="slot-drop" data-i="${i}" aria-label="${tr('Убрать из защиты', 'Remove from the defence')}: ${esc(f.name)}" ${this.busy ? 'disabled' : ''}>${X_ICON}<span>${tr('Убрать', 'Remove')}</span></button></div>${problem}${editor}</div>`;
       })
       .join('');
     const free = own.filter((id) => !slots.some((s) => s.fighter === id));
-    const live = me.defense.filter((d) => d.enabled && !d.problem);
+    const live = me.defense.filter((d) => d.enabled && (!d.problem || d.problem === 'defense_look'));
     const nick = this.g.account?.view().kind === 'account' ? (this.g.account.view() as { nickname: string }).nickname : '';
     const preview = live.length
-      ? `<div class="lg-card lg-preview"><div class="lg-k">${tr('ТАК ВАС УВИДЯТ СОПЕРНИКИ', 'HOW OPPONENTS SEE YOU')}</div><div class="lg-preview-row">${producerSVG(this.g.producer.shown(), 40)}<b>${esc(nick || 'PRIME')}</b>${rankEmblem(me.rank.index, me.rank.division, 22)}<span>${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · ${me.rp} RP</span></div><div class="lg-preview-f">${live.map((d) => `<span>${portraitHTML(g.portraitOf(d.fighter), FIGHTERS[d.fighter].theme.main, FIGHTERS[d.fighter].theme.dark)}<b>${esc(FIGHTERS[d.fighter].name)}</b><small>${esc(TACTICS[d.tactic].name)}</small></span>`).join('')}</div><small class="muted">${tr('Для каждого боя сервер выбирает одного из включённых защитников (в SQUAD — троих). Соперник видит бойца, колоду и тактику — так же, как вы видите чужие.', 'For each fight the server picks one of the enabled defenders (three in SQUAD). The opponent sees the fighter, deck and tactic — just as you see theirs.')}</small></div>`
+      ? `<div class="lg-card lg-preview"><div class="lg-k">${tr('ТАК ВАС УВИДЯТ СОПЕРНИКИ', 'HOW OPPONENTS SEE YOU')}</div><div class="lg-preview-row">${producerSVG(this.g.producer.shown(), 40)}<b>${esc(nick || 'PRIME')}</b>${rankEmblem(me.rank.index, me.rank.division, 22)}<span>${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · ${me.rp} RP</span></div><div class="lg-preview-f">${live.map((d) => `<span>${portraitHTML(g.portraitFor(leagueLook(d.fighter, d.problem ? null : d.look)), FIGHTERS[d.fighter].theme.main, FIGHTERS[d.fighter].theme.dark)}<b>${esc(FIGHTERS[d.fighter].name)}</b><small>${esc(TACTICS[d.tactic].name)}</small></span>`).join('')}</div><small class="muted">${tr('Для каждого боя сервер выбирает одного из включённых защитников (в SQUAD — троих). Соперник видит бойца в выбранном облике, колоду и тактику — так же, как вы видите чужие. Павильон боя выбирает нападающий (или RANDOM сервера).', 'For each fight the server picks one of the enabled defenders (three in SQUAD). The opponent sees the fighter in its chosen look, the deck and the tactic — just as you see theirs. The attacker picks the set (or the server’s RANDOM).')}</small></div>`
       : '';
     const dirty = JSON.stringify(slots) !== JSON.stringify(me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck, tactic: d.tactic, look: d.look, enabled: d.enabled })));
     return `${report}
@@ -484,13 +518,13 @@ export class LeagueScreen implements Screen {
     const allowed = allowedCards(this.g, s.fighter);
     const cards = allowed.map((c) => pickCard(c, s.deck.includes(c), 'slot-card', `data-i="${i}"`)).join('');
     const tactics = TACTIC_ORDER.map((t) => `<button class="lg-tacpick ${s.tactic === t ? 'on' : ''}" data-act="slot-tactic" data-i="${i}" data-t="${t}" aria-pressed="${s.tactic === t}">${tacticIcon(t)}<b>${esc(TACTICS[t].name)}</b><span>${esc(lang() === 'en' ? TACTICS[t].en : TACTICS[t].ru)}</span><small>${esc(lang() === 'en' ? TACTICS[t].descEn : TACTICS[t].descRu)}</small></button>`).join('');
-    const skin = skinOf(s.fighter);
+    const skin = s.look && skinName(s.look) ? s.look : (wornSkinOf(this.g, s.fighter) ?? skinOf(s.fighter));
     return `<div class="lg-editor">
         <div class="lg-k">${tr('КОЛОДА', 'DECK')} · ${s.deck.length}/4</div><div class="lg-cardgrid">${cards}</div>
         <div class="lg-k">${tr('ТАКТИКА ИИ-РЕЖИССЁРА', 'AI DIRECTOR TACTIC')}</div><div class="lg-tacgrid">${tactics}</div>
         <small class="muted">${tr('Тактика меняет только выбор карт. Движение, меткость, урон и скорость бойца — те же, что у всех.', 'A tactic changes only the choice of cards. Movement, aim, damage and speed stay the same for everyone.')}</small>
         ${skin ? `<label class="lg-agree"><input type="checkbox" data-act="slot-look" data-i="${i}" ${s.look ? 'checked' : ''}/> <span>${tr('Облик', 'Look')}: ${esc(SKINS[skin as keyof typeof SKINS].name)} <small>(${tr('только внешний вид', 'looks only')})</small></span></label>` : ''}
-        <div class="lg-editor-act"><button class="btn ghost" data-act="slot-remove" data-i="${i}" ${slots.length <= 1 ? 'disabled' : ''}>${tr('Убрать из защиты', 'Remove')}</button><button class="btn teal" data-act="slot-edit" data-i="-1">${tr('Готово', 'Done')}</button></div>
+        <div class="lg-editor-act"><button class="btn ghost" data-act="slot-drop" data-i="${i}" ${this.busy ? 'disabled' : ''}>${tr('Убрать из защиты', 'Remove')}</button><button class="btn teal" data-act="slot-edit" data-i="-1">${tr('Готово', 'Done')}</button></div>
       </div>`;
   }
 
@@ -580,6 +614,90 @@ export class LeagueScreen implements Screen {
     if (this.g.ui.current === 'league') this.render();
   }
 
+  /**
+   * 1.9.3: «Убрать» — the defender leaves the Defense Studio at once, on the server (the fighter stays in the roster and
+   * the collection, a bought skin stays bought). Started fights against it finish by their snapshots. The last
+   * defender cannot leave (1–5 is the rule): «no defence» is the «Защита в эфире» switch.
+   */
+  private dropSlot(i: number): void {
+    const g = this.g;
+    const api = g.league.api();
+    const me = g.league.me;
+    const slots = this.draft ?? [];
+    const s = slots[i];
+    if (!s || !api || !me || this.busy) return;
+    const name = FIGHTERS[s.fighter].name;
+    const rest = slots.filter((_, k) => k !== i);
+    // added here and never saved: there is nothing on the server to change
+    if (!me.defense.some((d) => d.slot === s.slot && d.fighter === s.fighter)) {
+      this.draft = rest;
+      this.editSlot = -1;
+      this.render();
+      return;
+    }
+    if (!rest.length) {
+      g.confirm(
+        tr('Последний защитник', 'The last defender'),
+        tr('В защите должен оставаться хотя бы один боец. Чтобы ваши составы не попадали в новые матчи, выключите «Защита в эфире» — начатые бои доиграются по своим снимкам.', 'At least one fighter stays in the defence. To keep your line-ups out of new matches, switch «Defence on air» off — started fights finish by their snapshots.'),
+        me.defenseOn ? tr('Выключить защиту', 'Switch the defence off') : tr('Понятно', 'Got it'),
+        () => {
+          if (!me.defenseOn) return;
+          void this.run(async () => {
+            await api.toggleDefense(false);
+            await g.league.refresh();
+            this.notice = tr('Защита выключена: ваши составы не попадут в новые матчи.', 'The defence is off: your line-ups join no new match.');
+          });
+        },
+      );
+      return;
+    }
+    const others = JSON.stringify(rest) !== JSON.stringify((JSON.parse(this.draftKey || '[]') as DraftSlot[]).filter((d) => !(d.slot === s.slot && d.fighter === s.fighter)));
+    g.confirm(
+      tr(`Убрать бойца ${esc(name)} из защиты?`, `Remove ${esc(name)} from the defence?`),
+      tr(`Боец останется в вашем ростере и коллекции${skinName(s.look) ? ', купленный облик — тоже' : ''}. Новые матчи пойдут без этого защитника; уже начатые бои доиграются как были.`, `The fighter stays in your roster and collection${skinName(s.look) ? ', and so does the bought look' : ''}. New matches go without this defender; started fights finish as they were.`) + (others ? ' ' + tr('Другие несохранённые изменения защиты сохранятся вместе с этим.', 'Your other unsaved defence changes are saved with it.') : ''),
+      tr('Убрать', 'Remove'),
+      () => this.saveSlots(rest, tr(`Боец ${name} убран из защиты. Новые матчи пойдут без него.`, `${name} left the defence. New matches go without them.`)),
+    );
+  }
+
+  /** Saves the Defense Studio as drawn (the server checks it all again); a stale picture of it is refused, never forced. */
+  private saveSlots(slots: DraftSlot[], notice: string): void {
+    const g = this.g;
+    const api = g.league.api();
+    if (!api) return;
+    const bad = slots.find((s) => s.deck.length !== 4);
+    if (bad) {
+      this.err = tr(`В колоде ${FIGHTERS[bad.fighter].name} должно быть 4 карты.`, `${FIGHTERS[bad.fighter].name}’s deck needs 4 cards.`);
+      this.render();
+      return;
+    }
+    const body = slots.map((s) => ({ ...s, look: s.look ?? '' }));
+    const base = this.draftBase;
+    // an earlier «saved» never stands next to this attempt's outcome
+    this.notice = '';
+    void this.run(async () => {
+      let r: { defense: LeagueSlot[] };
+      try {
+        r = await api.saveDefense(body, base);
+      } catch (e) {
+        // another device saved first: show what the server holds now (this edit is not applied)
+        if (e instanceof PrimeApiError && e.code === 'defense_changed') {
+          this.draft = null;
+          this.editSlot = -1;
+          await g.league.refresh().catch(() => null);
+        }
+        throw e;
+      }
+      // the server's answer IS the saved studio: shown at once, the rest of the profile catches up in the background
+      if (g.league.me) g.league.me.defense = r.defense;
+      this.draft = null;
+      this.editSlot = -1;
+      this.notice = notice;
+      g.audio.ui('confirm');
+      void g.league.refresh().catch(() => null);
+    });
+  }
+
   private onClick(e: Event): void {
     const t = e.target as HTMLElement;
     const b = t.closest('[data-act],[data-tab]') as HTMLElement | null;
@@ -630,7 +748,11 @@ export class LeagueScreen implements Screen {
           g.audio.ui('confirm');
           this.tab = 'defense';
           this.notice = tr('Добро пожаловать в эфир! Выставьте первого защитника — пока вас нет, он будет защищать ваше шоу.', 'Welcome on air! Field your first defender — it defends your show while you are away.');
-          if (!g.league.me!.defense.length) this.draft = [{ slot: 1, fighter: g.save.data.selected, deck: deckOf(g, g.save.data.selected), tactic: 'balance', look: null, enabled: true }];
+          if (!g.league.me!.defense.length) {
+            this.draft = [{ slot: 1, fighter: g.save.data.selected, deck: deckOf(g, g.save.data.selected), tactic: 'balance', look: wornSkinOf(g, g.save.data.selected), enabled: true }];
+            this.draftKey = '[]';
+            this.draftBase = '';
+          }
         });
         return;
       case 'pick':
@@ -673,39 +795,44 @@ export class LeagueScreen implements Screen {
         this.render();
         return;
       }
-      case 'duel':
+      // 1.9.3: every start opens the pre-start window first (the set, ×/ESC) — the match is made only on «В эфир!»
+      case 'duel': {
         if (!api) return;
-        void this.run(async () => {
-          const mode = b.dataset.mode === 'challenge' ? 'challenge' : 'duel';
-          const r = await api.start(mode, this.pick, deckOf(g, this.pick), newOp());
-          showPoster(g, r.match);
-        });
+        const mode = b.dataset.mode === 'challenge' ? 'challenge' : 'duel';
+        const fighter = this.pick;
+        const deck = deckOf(g, fighter);
+        openPrestart(g, { kind: mode, fighters: [fighter], deck, go: (arena, op) => api.start(mode, fighter, deck, op, arena) });
         return;
+      }
       case 'resume':
         if (me?.active) g.league.begin(me.active);
         return;
-      case 'squad':
-        if (!api) return;
-        void this.run(async () => {
-          const r = await api.seriesStart('squad', this.squadPick.map((f) => ({ fighter: f, deck: deckOf(g, f) })), newOp());
-          this.squadPick = [];
-          showPoster(g, r.match, r.series);
+      case 'squad': {
+        if (!api || this.squadPick.length !== LEAGUE.squad.size) return;
+        const lineup = this.squadPick.map((f) => ({ fighter: f, deck: deckOf(g, f) }));
+        openPrestart(g, {
+          kind: 'squad',
+          fighters: lineup.map((x) => x.fighter),
+          go: (arena, op) => api.seriesStart('squad', lineup, op, arena),
+          started: () => {
+            this.squadPick = [];
+          },
         });
         return;
-      case 'rush':
+      }
+      case 'rush': {
         if (!api) return;
-        void this.run(async () => {
-          const r = await api.seriesStart('rush', [{ fighter: this.pick, deck: deckOf(g, this.pick) }], newOp());
-          showPoster(g, r.match, r.series);
-        });
+        const fighter = this.pick;
+        const deck = deckOf(g, fighter);
+        openPrestart(g, { kind: 'rush', fighters: [fighter], deck, go: (arena, op) => api.seriesStart('rush', [{ fighter, deck }], op, arena) });
         return;
-      case 'series-next':
+      }
+      case 'series-next': {
         if (!api) return;
-        void this.run(async () => {
-          const r = await api.seriesNext(b.dataset.k as 'rush' | 'squad');
-          showPoster(g, r.match, r.series);
-        });
+        const kind = b.dataset.k as 'rush' | 'squad';
+        openPrestart(g, nextDuel(api, kind, (me?.series.find((x) => x.kind === kind)?.state ?? {}) as SeriesState));
         return;
+      }
       case 'series-abandon':
         if (!api) return;
         g.confirm(tr('Завершить серию?', 'End the series?'), tr('Сыгранные дуэли засчитаются; в PRIME SQUAD несыгранные дуэли засчитаются как поражения.', 'Played duels count; in PRIME SQUAD the unplayed duels count as losses.'), tr('Завершить', 'End'), () => {
@@ -733,7 +860,8 @@ export class LeagueScreen implements Screen {
         const f = b.dataset.f as FighterId;
         const used = new Set((this.draft ?? []).map((s) => s.slot));
         const slot = [1, 2, 3, 4, 5].find((n) => !used.has(n)) ?? 1;
-        this.draft = [...(this.draft ?? []), { slot, fighter: f, deck: deckOf(g, f), tactic: 'balance', look: null, enabled: true }];
+        // 1.9.3: a new defender goes on air in the skin the fighter wears in the wardrobe (when bought)
+        this.draft = [...(this.draft ?? []), { slot, fighter: f, deck: deckOf(g, f), tactic: 'balance', look: wornSkinOf(g, f), enabled: true }];
         this.editSlot = this.draft.length - 1;
         this.render();
         return;
@@ -742,10 +870,12 @@ export class LeagueScreen implements Screen {
         this.editSlot = Number(b.dataset.i);
         this.render();
         return;
-      case 'slot-remove': {
-        const i = Number(b.dataset.i);
-        this.draft = (this.draft ?? []).filter((_, k) => k !== i);
-        this.editSlot = -1;
+      case 'slot-drop':
+        this.dropSlot(Number(b.dataset.i));
+        return;
+      case 'slot-wear': {
+        const s = this.draft?.[Number(b.dataset.i)];
+        if (s) s.look = wornSkinOf(g, s.fighter);
         this.render();
         return;
       }
@@ -772,29 +902,14 @@ export class LeagueScreen implements Screen {
       }
       case 'slot-look': {
         const s = this.draft?.[Number(b.dataset.i)];
-        if (s) s.look = (t as HTMLInputElement).checked ? skinOf(s.fighter) : null;
+        if (s) s.look = (t as HTMLInputElement).checked ? (wornSkinOf(g, s.fighter) ?? skinOf(s.fighter)) : null;
         this.render();
         return;
       }
-      case 'def-save': {
-        if (!api || !this.draft) return;
-        const bad = this.draft.find((s) => s.deck.length !== 4);
-        if (bad) {
-          this.err = tr(`В колоде ${FIGHTERS[bad.fighter].name} должно быть 4 карты.`, `${FIGHTERS[bad.fighter].name}’s deck needs 4 cards.`);
-          this.render();
-          return;
-        }
-        const slots = this.draft.map((s) => ({ ...s, look: s.look ?? '' }));
-        void this.run(async () => {
-          await api.saveDefense(slots);
-          this.draft = null;
-          this.editSlot = -1;
-          await g.league.refresh();
-          this.notice = tr('Защита сохранена. Новые матчи пойдут уже с ней.', 'Defence saved. New matches use it.');
-          g.audio.ui('confirm');
-        });
+      case 'def-save':
+        if (!this.draft) return;
+        this.saveSlots(this.draft, tr('Защита сохранена. Новые матчи пойдут уже с ней.', 'Defence saved. New matches use it.'));
         return;
-      }
       case 'claim':
         if (!api) return;
         void this.run(async () => {
@@ -814,6 +929,224 @@ export class LeagueScreen implements Screen {
   }
 }
 
+/**
+ * 1.9.3: Tab and Shift+Tab stay inside a league window (the pre-start window, the bill): the keyboard never reaches the
+ * screen behind it, where Enter would press a button the player cannot see. Gone with the window.
+ */
+function keepFocusIn(root: HTMLElement): void {
+  const onKey = (e: KeyboardEvent) => {
+    if (!root.isConnected) return document.removeEventListener('keydown', onKey, true);
+    if (e.key !== 'Tab') return;
+    const f = [...root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+    if (!f.length) return e.preventDefault();
+    const at = document.activeElement;
+    const inside = !!at && root.contains(at);
+    if (e.shiftKey && (!inside || at === f[0])) {
+      e.preventDefault();
+      f[f.length - 1].focus();
+    } else if (!e.shiftKey && (!inside || at === f[f.length - 1])) {
+      e.preventDefault();
+      f[0].focus();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+}
+
+/** 1.9.3: the close cross of the pre-start window and the «Убрать» of a defender. */
+const X_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5 L17.5 17.5 M17.5 6.5 L6.5 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" fill="none"/></svg>`;
+
+type PrestartKind = 'duel' | 'challenge' | 'rush' | 'squad';
+/** What the pre-start window prepares — and the ONE request that makes the match. */
+interface Prestart {
+  kind: PrestartKind;
+  /** The player's fighter(s), in the order they fight (SQUAD: three). */
+  fighters: FighterId[];
+  /** The deck of the one fighter (DUEL, CHALLENGE, RUSH). */
+  deck?: CardId[];
+  /** The next duel of an open series: its set was fixed when the series started — no choice here. */
+  next?: { round: number; arena: LeagueArenaPref; line: string };
+  /** Makes the match (the window sends it once; a retry after an error reuses the same `op`). */
+  go: (arena: LeagueArenaPref, op: string) => Promise<{ match: LeagueMatch; series?: LeagueSeries }>;
+  /** The server made it (before the bill is shown). */
+  started?: () => void;
+}
+
+/** A series' state as the server keeps it (me.series[].state) or shows it (LeagueSeries). */
+type SeriesState = { lineup?: { fighter: FighterId; deck: CardId[] }[]; round?: number; wins?: number; losses?: number; arena?: unknown };
+
+/** The pre-start window of a series' next duel (its fighter, its fixed set, the score so far). */
+function nextDuel(api: LeagueApi, kind: 'rush' | 'squad', st: SeriesState): Prestart {
+  const round = st.round ?? 0;
+  const lineup = st.lineup ?? [];
+  const who = (kind === 'squad' ? lineup[round] : lineup[0]) ?? lineup[0];
+  // the series' own set (a seasonal one too, after its event ended — the server keeps it to the series' end)
+  const arena: LeagueArenaPref = isArenaId(st.arena) ? st.arena : 'random';
+  const w = st.wins ?? 0;
+  const l = st.losses ?? 0;
+  const line = kind === 'squad' ? `${tr('Счёт отряда', 'Squad score')} ${w}–${l}` : `${tr('Серия', 'Run')}: ${w} ${tr(plural(w, ['победа', 'победы', 'побед']), w === 1 ? 'win' : 'wins')}, ${l}/${LEAGUE.rush.lives}`;
+  return { kind, fighters: who ? [who.fighter] : [], deck: who?.deck, next: { round: round + 1, arena, line }, go: () => api.seriesNext(kind) };
+}
+
+/** One set of the picker: the career's own preview art and name (RANDOM first). */
+function arenaTile(id: LeagueArenaPref, on: boolean, fixed = false): string {
+  const def = id === 'random' ? null : ARENAS[id];
+  const tag = def?.availability.kind === 'seasonal' ? `<i class="lg-arena-tag season">${tr('сезон', 'season')}</i>` : def?.covers?.length ? `<i class="lg-arena-tag">${tr('укрытия', 'cover')}</i>` : '';
+  const inner = `<span class="lg-arena-art">${ARENA_ART[id]}${tag}</span><span class="lg-arena-n">${def ? esc(def.name) : tr('СЛУЧАЙНЫЙ ПАВИЛЬОН', 'RANDOM SET')}</span><span class="lg-arena-ok" aria-hidden="true">${UI_ICONS.check}</span>`;
+  if (fixed) return `<span class="lg-arena ${id === 'random' ? 'rnd' : ''} on">${inner}</span>`;
+  return `<button class="lg-arena ${id === 'random' ? 'rnd' : ''} ${on ? 'on' : ''}" data-arena="${id}" role="radio" aria-checked="${on}">${inner}</button>`;
+}
+
+/**
+ * What the chosen set means for this fight (the same set for both fighters; only the cemetery has cover). `open`: the
+ * sets open now (RANDOM draws among those open when each match is made); `until`: when an open seasonal set closes.
+ */
+function arenaDetail(id: LeagueArenaPref, series: boolean, next: boolean, open: number, until?: number): string {
+  if (id === 'random') {
+    const text = next || series ? tr(`Сервер выбирает павильон для каждой дуэли серии — среди открытых в момент дуэли (сейчас ${open}).`, `The server picks a set for each duel of the series — among those open at that moment (now ${open}).`) : tr(`Сервер выберет один из ${open} павильонов, открытых сейчас, когда создаст матч.`, `The server picks one of the ${open} sets open now when it makes the match.`);
+    return `<b>${tr('СЛУЧАЙНЫЙ ПАВИЛЬОН', 'RANDOM SET')}</b><small>${text}</small>`;
+  }
+  const def = ARENAS[id];
+  const cover = def.covers?.length ? `<span class="chip cover">${tr('Разрушаемые укрытия для обоих бойцов', 'Destructible cover for both fighters')}</span>` : `<span class="chip teal">${tr('Только оформление', 'Looks only')}</span>`;
+  const av = def.availability;
+  // a seasonal set: open while its event runs (no seasonal bonus in the league); a series keeps it to its end
+  const season =
+    av.kind === 'seasonal'
+      ? `<span class="chip orange">${tr('Сезонная', 'Seasonal')} · ${esc(av.event)}${!next && until ? ` · ${tr('до', 'until')} ${esc(new Date(until).toLocaleString(lang() === 'en' ? 'en-GB' : 'ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }))}` : ''}</span><small>${next ? tr('Серия начата на сезонном павильоне — он остаётся до конца серии, даже если событие уже закончилось.', 'The series started on a seasonal set — it stays to the end of the series, even after the event.') : series ? tr('Если событие закончится посреди серии, серия доиграется на этом павильоне. Сезонных наград в лиге нет.', 'If the event ends mid-series, the series still finishes on this set. The league pays no seasonal rewards.') : tr('Открыт, пока идёт событие. Сезонных наград в лиге нет.', 'Open while the event runs. The league pays no seasonal rewards.')}</small>`
+      : '';
+  return `<b>${esc(def.name)}</b><span class="lg-pre-show">${esc(def.show)}</span><small>${esc(def.description)}</small>${cover}${season}`;
+}
+
+/**
+ * 1.9.3: the window before a league fight. Nothing exists on the server while it is open: closing it (×, «Отмена»,
+ * Esc, a tap beside it) changes nothing — no match, no attempt used, no RP. «В эфир!» sends the ONE start request
+ * (a double tap is ignored, a retry after an error reuses its op); from then on the match is real, and the bill that
+ * follows can no longer be dismissed — an unfinished fight is settled by the server as before.
+ */
+function openPrestart(g: Game, p: Prestart): void {
+  const series = p.kind === 'rush' || p.kind === 'squad';
+  // the sets the server has open right now (a seasonal one only while its event runs)
+  let list = leagueArenaList(g.league.me);
+  const until = () => (pick !== 'random' ? g.league.me?.arenaUntil?.[pick] : undefined);
+  const remembered = lastLeagueArena();
+  let pick: LeagueArenaPref = p.next ? p.next.arena : remembered !== 'random' && list.includes(remembered) ? remembered : 'random';
+  let busy = false;
+  const op = newOp();
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const kind = (p.kind === 'challenge' ? `PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}` : p.kind === 'squad' ? 'PRIME SQUAD' : p.kind === 'rush' ? 'PRIME RUSH' : 'PRIME DUEL') + (p.next ? ` · ${tr('дуэль', 'duel')} ${p.next.round}${p.kind === 'squad' ? `/${LEAGUE.squad.size}` : ''}` : '');
+  const title = p.next ? tr('Следующая дуэль', 'The next duel') : series ? tr('Старт серии', 'Start the series') : tr('Перед эфиром', 'Before the broadcast');
+  const team = p.fighters
+    .map((id, i) => `<span class="lg-pre-f">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}${p.fighters.length > 1 ? `<i>${i + 1}</i>` : ''}<b>${esc(FIGHTERS[id].name)}</b></span>`)
+    .join('');
+  const tiles = () => (['random', ...list] as LeagueArenaPref[]).map((id) => arenaTile(id, id === pick)).join('');
+  const arenas = p.next ? `<div class="lg-arenas fixed">${arenaTile(p.next.arena, true, true)}</div>` : `<div class="lg-arenas" role="radiogroup" aria-label="${tr('Павильон эфира', 'Broadcast set')}">${tiles()}</div>`;
+  const rule = p.next
+    ? tr('Павильон серии выбран при её старте и не меняется.', 'The series’ set was chosen when it started and stays.')
+    : series
+      ? tr('Павильон выбирается один раз на всю серию — после старта его не изменить.', 'The set is chosen once for the whole series — it cannot change after the start.')
+      : tr('Один павильон для обоих бойцов; сервер закрепит его в матче до начала боя.', 'One set for both fighters; the server fixes it in the match before the fight.');
+  g.ui.modal(
+    `<div class="lg-pre" role="dialog" aria-modal="true" aria-labelledby="lg-pre-t">
+       <button class="lg-pre-x" data-a="close" aria-label="${tr('Закрыть', 'Close')}">${X_ICON}</button>
+       <div class="lg-poster-k">${onAir()} ${kind}</div>
+       <div class="h1" id="lg-pre-t">${title}</div>
+       <div class="lg-pre-who ${p.fighters.length > 1 ? 'team' : ''}">${team}${p.deck && p.fighters.length === 1 ? deckRow(p.deck) : ''}</div>
+       ${p.next ? `<div class="lg-poster-ser">${esc(p.next.line)}</div>` : ''}
+       <div class="lg-k lg-pre-k">${tr('ПАВИЛЬОН ЭФИРА', 'BROADCAST SET')}</div>
+       ${arenas}
+       <div class="lg-pre-sel" aria-live="polite">${arenaDetail(pick, series, !!p.next, list.length, until())}</div>
+       <small class="lg-pre-rule">${rule}</small>
+       <p class="lg-pre-note">${p.next ? tr('До нажатия «В эфир!» следующая дуэль не создаётся: ничего не списывается, счёт серии не меняется. Серия остаётся открытой.', 'Until «On air!» the next duel does not exist: nothing is used up, the series score stays. The series stays open.') : tr('До нажатия «В эфир!» матч не создаётся: ничего не списывается, RP и награды не меняются. Соперника выберет сервер после подтверждения.', 'Until «On air!» no match exists: nothing is used up, RP and rewards stay. The server picks the opponent once you confirm.')}</p>
+       <div class="lg-pre-act">
+         <div class="lg-pre-err" role="alert"></div>
+         <button class="btn big wide lg-cta ${p.kind === 'challenge' ? 'gold' : ''}" data-a="go"><span class="shine"></span><span class="lg-pre-go">${tr('В эфир!', 'On air!')}</span></button>
+         <button class="btn ghost wide" data-a="close">${tr('Отмена', 'Cancel')}</button>
+       </div>
+     </div>`,
+    (root, close) => {
+      const err = root.querySelector('.lg-pre-err') as HTMLElement;
+      const goLabel = root.querySelector('.lg-pre-go') as HTMLElement;
+      const setBusy = (v: boolean) => {
+        busy = v;
+        root.querySelector('.lg-pre')?.classList.toggle('busy', v);
+        root.querySelectorAll<HTMLButtonElement>('button').forEach((x) => {
+          x.disabled = v;
+        });
+        root.querySelector('[data-a="go"]')?.setAttribute('aria-busy', String(v));
+        goLabel.textContent = v ? tr('Выходим в эфир…', 'Going on air…') : tr('В эфир!', 'On air!');
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (!root.isConnected) return document.removeEventListener('keydown', onKey);
+        if (e.key !== 'Escape' || busy) return;
+        e.preventDefault();
+        cancel();
+      };
+      const cancel = () => {
+        document.removeEventListener('keydown', onKey);
+        g.audio.ui('click');
+        close();
+        if (opener?.isConnected) opener.focus({ preventScroll: true });
+      };
+      document.addEventListener('keydown', onKey);
+      keepFocusIn(root);
+      root.addEventListener('click', (e) => {
+        if (e.target === root) {
+          if (!busy) cancel();
+          return;
+        }
+        const t = e.target as HTMLElement;
+        const tile = t.closest('[data-arena]') as HTMLElement | null;
+        if (tile) {
+          if (busy || p.next) return;
+          pick = tile.dataset.arena as LeagueArenaPref;
+          root.querySelectorAll<HTMLElement>('[data-arena]').forEach((x) => {
+            const on = x === tile;
+            x.classList.toggle('on', on);
+            x.setAttribute('aria-checked', String(on));
+          });
+          (root.querySelector('.lg-pre-sel') as HTMLElement).innerHTML = arenaDetail(pick, series, false, list.length, until());
+          g.audio.ui('click');
+          return;
+        }
+        const act = (t.closest('[data-a]') as HTMLElement | null)?.dataset.a;
+        if (act === 'close') {
+          if (!busy) cancel();
+          return;
+        }
+        if (act !== 'go' || busy) return;
+        setBusy(true);
+        err.textContent = '';
+        p.go(pick, op).then(
+          (r) => {
+            document.removeEventListener('keydown', onKey);
+            if (!p.next) rememberLeagueArena(pick);
+            p.started?.();
+            g.audio.ui('confirm');
+            // the match exists now: the bill replaces this window (and cannot be dismissed)
+            showPoster(g, r.match, r.series);
+          },
+          (x) => {
+            setBusy(false);
+            err.textContent = errText(x);
+            // the chosen seasonal set closed meanwhile: the server's current list replaces the tiles, RANDOM is chosen
+            if (x instanceof PrimeApiError && x.code === 'arena_unavailable' && Array.isArray(x.data.arenas)) {
+              list = (x.data.arenas as unknown[]).filter((a): a is ArenaId => isArenaId(a));
+              pick = 'random';
+              const box = root.querySelector('.lg-arenas[role="radiogroup"]');
+              if (box) box.innerHTML = tiles();
+              (root.querySelector('.lg-pre-sel') as HTMLElement).innerHTML = arenaDetail(pick, series, false, list.length);
+            }
+            g.audio.ui('deny');
+            // the screen behind shows what the server holds (an unfinished broadcast, an open series)
+            void g.league.refresh().catch(() => null);
+          },
+        );
+      });
+      (root.querySelector('.lg-arena.on, [data-a="go"]') as HTMLElement | null)?.focus({ preventScroll: true });
+    },
+    false,
+  );
+}
+
 /** The bill before a fight: the two fighters, the opponent's public card and an honest note on how it plays. */
 function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
   const a = FIGHTERS[m.attacker.fighter];
@@ -826,6 +1159,10 @@ function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
   const me = g.league.me;
   const myLine = me ? `${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · ${me.rp} RP` : '';
   const kind = m.mode === 'challenge' ? `PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}` : m.mode === 'squad' ? `PRIME SQUAD · ${tr('дуэль', 'duel')} ${m.round + 1}/3` : m.mode === 'rush' ? `PRIME RUSH · ${tr('дуэль', 'duel')} ${m.round + 1}` : 'PRIME DUEL';
+  // 1.9.3: the set the server fixed in this match (and whether it was the player's choice or RANDOM)
+  const arenaId = isArenaId(m.arena) ? m.arena : 'original';
+  const chosen = m.arenaPick && m.arenaPick !== 'random';
+  const arenaWhy = (chosen ? (m.series ? tr('павильон серии', 'the series’ set') : tr('ваш выбор', 'your choice')) : tr('RANDOM · выбор сервера', 'RANDOM · the server’s pick')) + (ARENAS[arenaId].availability.kind === 'seasonal' ? ` · ${tr('сезонный', 'seasonal')}` : '');
   g.ui.modal(
     `<div class="lg-poster">
        <div class="lg-poster-k">${onAir()} ${kind}${m.ranked ? '' : ` · ${tr('без RP', 'no RP')}`}</div>
@@ -834,15 +1171,21 @@ function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
          <div class="lg-vs-mark">VS</div>
          <div class="lg-prod foe">${o.kind === 'system' ? systemProducerSVG(92) : producerSVG(o.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 92)}<b>${esc(o.name)}</b><small>${esc(who)}</small></div>
        </div>
-       <div class="lg-fighters"><span class="me">${portraitHTML(g.portraitFor(g.fighterLook(m.attacker.fighter)), a.theme.main, a.theme.dark)}<b>${esc(a.name)}</b></span><i>${tr('бойцы эфира', 'on-air fighters')}</i><span class="foe"><b>${esc(d.name)}</b>${portraitHTML(g.portraitFor(m.defender.look ?? d.look) ?? g.portraitOf(d.id), d.theme.main, d.theme.dark)}</span></div>
+       <div class="lg-fighters"><span class="me">${portraitHTML(g.portraitFor(g.fighterLook(m.attacker.fighter)), a.theme.main, a.theme.dark)}<b>${esc(a.name)}</b></span><i>${tr('бойцы эфира', 'on-air fighters')}</i><span class="foe"><b>${esc(d.name)}</b>${portraitHTML(g.portraitFor(leagueLook(d.id, m.defender.look)), d.theme.main, d.theme.dark)}</span></div>
+       ${skinName(m.defender.look) && leagueLook(d.id, m.defender.look) === m.defender.look ? `<div class="lg-poster-look">✦ ${esc(d.name)}: ${esc(skinName(m.defender.look))}</div>` : ''}
+       <div class="lg-poster-arena"><span class="lg-pa-art">${ARENA_ART[arenaId]}</span><span><b>${esc(ARENAS[arenaId].name)}</b><small>${arenaWhy}${ARENAS[arenaId].covers?.length ? ` · ${tr('разрушаемые укрытия', 'destructible cover')}` : ''}</small></span></div>
        ${t ? `<div class="lg-poster-tac">${tacticIcon(t.id)} <span><b>${esc(t.name)}</b> · ${esc(lang() === 'en' ? t.en : t.ru)}</span></div>` : ''}
        <p class="lg-poster-note">${o.kind === 'system' ? tr('Состав студии PRIME NETWORK: им управляет ИИ-режиссёр.', 'A PRIME NETWORK studio line-up, run by the AI director.') : tr('Соперник может быть офлайн: его сохранёнными картами управляет ИИ-режиссёр по выбранной тактике.', 'The opponent may be offline: the AI director plays its saved cards by the chosen tactic.')}</p>
        ${series ? `<div class="lg-poster-ser">${series.kind === 'squad' ? `${tr('Счёт отряда', 'Squad score')} ${series.wins}–${series.losses}` : `${tr('Серия', 'Run')}: ${series.wins} ${tr(plural(series.wins, ['победа', 'победы', 'побед']), series.wins === 1 ? 'win' : 'wins')}, ${series.losses}/${LEAGUE.rush.lives}`}</div>` : ''}
-       <button class="btn big wide lg-cta" data-a="go"><span class="shine"></span>${tr('В эфир!', 'On air!')}</button>
-       <small class="muted">${tr('Эфир уже начался: соперник выбран сервером.', 'The broadcast has begun: the server chose the opponent.')}</small>
+       <button class="btn big wide lg-cta" data-a="go"><span class="shine"></span>${tr('Начать бой', 'Start the fight')}</button>
+       <small class="muted">${tr('Эфир уже начался: соперник и павильон выбраны сервером, отменить матч нельзя.', 'The broadcast has begun: the server chose the opponent and the set — the match can no longer be called off.')}</small>
      </div>`,
     (root, close) => {
-      root.querySelector('[data-a="go"]')?.addEventListener('click', () => {
+      // 1.9.3: the match exists — the keyboard stays on the bill (no way to the screen behind it)
+      keepFocusIn(root);
+      const go = root.querySelector('[data-a="go"]') as HTMLElement | null;
+      go?.focus({ preventScroll: true });
+      go?.addEventListener('click', () => {
         close();
         g.audio.ui('confirm');
         g.league.begin(m);
@@ -899,22 +1242,13 @@ export class LeagueResultScreen implements Screen {
       if (act === 'lobby') g.goto('league');
       else if (act === 'retry') void this.confirm();
       else if (act === 'again' && api && this.view) {
+        // 1.9.3: the same pre-start window as in the lobby (the set, a way back) — nothing is made before «В эфир!»
         const v = this.view;
-        b.setAttribute('disabled', '');
-        api
-          .start(g.league.me?.challenge ? 'challenge' : 'duel', v.attacker.fighter, v.attacker.deck, newOp())
-          .then((r) => showPoster(g, r.match))
-          .catch((e) => {
-            this.err = errText(e);
-            this.render();
-          });
+        const mode = g.league.me?.challenge ? 'challenge' : 'duel';
+        openPrestart(g, { kind: mode, fighters: [v.attacker.fighter], deck: v.attacker.deck, go: (arena, op) => api.start(mode, v.attacker.fighter, v.attacker.deck, op, arena) });
       } else if (act === 'next' && api && this.view) {
         const kind = this.view.mode as 'rush' | 'squad';
-        b.setAttribute('disabled', '');
-        api
-          .seriesNext(kind)
-          .then((r) => showPoster(g, r.match, r.series))
-          .catch(() => g.goto('league'));
+        openPrestart(g, nextDuel(api, kind, (this.res?.series ?? g.league.me?.series.find((x) => x.kind === kind)?.state ?? {}) as SeriesState));
       }
     });
   }

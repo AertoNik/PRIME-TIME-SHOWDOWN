@@ -7,7 +7,10 @@
 //      touched; «now» from a test clock file, PRIME_SERVER_ROLE=dev only): joining, Defense Studio, matchmaking, the
 //      server's replay (a client cannot send a result), forged and rewritten taps, two finishes at once, one active
 //      match, expiry, changed rules, defence rewards and caps, PRIME CHALLENGE, a season change, the season track,
-//      PRIME SQUAD and PRIME RUSH, upgrades behind their flag, the league switched off.
+//      PRIME SQUAD and PRIME RUSH, upgrades behind their flag, the league switched off;
+//   4. Alpha 1.9.3 (same server): the set chosen before the start in every mode (RANDOM, forged ids, fixed per series,
+//      the replay on it), one start per tap, «Убрать» in the Defense Studio (base, two devices, frozen matches) and a
+//      paid skin seen by another player (two synthetic accounts: its owner and a rival), revoked → the fighter's own look.
 //
 // All accounts here are test data on 127.0.0.1. Taps are made by the headless bot of scripts/bots.ts.
 
@@ -25,6 +28,14 @@ import { leagueRulesSource, leagueSim, producerRulesSource, simVersionSource } f
 import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, defaultLook } from '../src/config/producer.config';
 import { producerSVG } from '../src/ui/producerArt';
 import { comboBot, type BotState } from './bots';
+import { availableArenas } from '../src/meta/ArenaSelection';
+import { EventManager } from '../src/meta/EventManager';
+import { leagueArenaCatalog, leagueArenasAt } from '../src/meta/LeagueArenas';
+import { EVENTS } from '../src/config/events.config';
+import { ARENAS, ARENA_ORDER } from '../src/config/arenas.config';
+import type { SaveSystem } from '../src/meta/SaveSystem';
+import { LEAGUE_ARENAS, leagueLook } from '../src/game/LeagueRuntime';
+import { defenseBase, type LeagueSlot } from '../src/net/LeagueApi';
 import { LEGACY_CHECK_ENV, MIGRATIONS, PB_BIN, ROOT, binariesReady, dbFingerprint, ensurePortsFree, ownServerStarted, registrationExtras, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { cp, crypto, fs, nodeModule, os, path, proc, sleep } from './lib/node';
 
@@ -44,6 +55,8 @@ function section(t: string): void {
 const req = nodeModule.createRequire(path.join(ROOT, 'backend', 'pb_hooks', 'lib', 'x.js'));
 const LM = req('./league_math.js');
 const SIM = req('./league_sim.js');
+// 1.9.3: the server's own set rules (pure functions of lib/league.js: no PocketBase needed for them)
+const LS = req('./league.js');
 
 // ---------------------------------------------------------------- the player's taps
 /** Plays the snapshot with the deliberate bot (reaction `react`), returns its taps. */
@@ -83,6 +96,35 @@ function rulesChecks(): void {
   check('league_rules.js is generated from league.config.ts and up to date (npm run backend:rules)', fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/league_rules.js'), 'utf8') === leagueRulesSource());
   check('league_sim.js (the fight the server replays) is built from today\'s src/combat and up to date', fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/league_sim.js'), 'utf8') === leagueSim().code);
   check(`the game and the server carry the same SIM_VERSION (${SIM_VERSION})`, SIM.SIM_VERSION === SIM_VERSION && fs.readFileSync(path.join(ROOT, 'src/league/simVersion.ts'), 'utf8') === simVersionSource());
+  check('1.9.3: the fight rules are those of 1.9.0 — SIM_VERSION 76236bbb2e281ec4 unchanged (the set choice lives outside the fight code)', SIM_VERSION === '76236bbb2e281ec4');
+  const LR = req('./league_rules.js');
+  check('1.9.3: the permanent sets are the four of 1.9.0, CURSED CEMETERY included all year', JSON.stringify(LR.arenas) === JSON.stringify(['original', 'casino', 'backlot', 'graveyard']) && JSON.stringify(LEAGUE_ARENAS) === JSON.stringify(LR.arenas) && availableArenas('none').includes('graveyard'));
+  const cat = leagueArenaCatalog();
+  const hw = cat.find((a) => a.id === 'haunted');
+  check('1.9.3: the seasonal sets come from the game\'s own catalogue and calendar (no second list): HAUNTED with the dated Halloween events; a theme without a dated event (WINTER GALA preview) opens nothing', JSON.stringify(LR.arenaCatalog) === JSON.stringify(cat) && !!hw && hw.windows!.every((w) => EVENTS.some((e) => e.id === w.event && e.themeId === 'halloween' && e.start === w.from && e.end === w.until)) && cat.filter((a) => a.windows).every((a) => a.windows!.length > 0) && cat.length === 5, JSON.stringify(cat));
+  // the game's own calendar (EventManager, auto mode) at the same moments as the server's rule
+  const clientSets = (t: number) => {
+    const em = new EventManager({ data: defaultSave(), save() {} } as unknown as SaveSystem, { clock: () => t, settings: { mode: 'auto', forcedEventId: 'none' } });
+    return availableArenas(em.themeId).filter((id) => cat.some((a) => a.id === id));
+  };
+  const moments = ['2026-10-19T23:59:59.999Z', '2026-10-20T00:00:00Z', '2026-10-31T12:00:00Z', '2026-11-03T23:59:59.999Z', '2026-11-04T00:00:00Z', '2026-12-31T23:00:00Z', new Date().toISOString()];
+  const parity = moments.map((m) => {
+    const t = Date.parse(m);
+    const sv = LS.arenasAt(t).join();
+    return { m, ok: sv === leagueArenasAt(cat, t).join() && sv === clientSets(t).join(), sv };
+  });
+  check(`1.9.3: the server, the game's set list and the game's event calendar agree at ${moments.length} moments (window edges included): ${parity.map((x) => `${x.m.slice(5, 16)}→${x.sv.includes('haunted') ? '+HAUNTED' : '4'}`).join(' ')}`, parity.every((x) => x.ok), JSON.stringify(parity.filter((x) => !x.ok)));
+  const T = (d: string) => Date.parse(d);
+  // a FUTURE season (no code change): a made-up New Year set + a dated winter event — the catalogue picks it up, the
+  // server's rule opens it inside the event only, exactly as the game's; the permanent sets stay as they are
+  {
+    const winterSet = { ...ARENAS.casino, id: 'newyear_gala' as any, name: 'NEW YEAR GALA SET', availability: { kind: 'seasonal' as const, themeId: 'winter' as const, event: 'New Year Gala' } };
+    const nyEvent = { ...EVENTS[1], id: 'newyear-2027', start: '2026-12-25T00:00:00Z', end: '2027-01-10T00:00:00Z' };
+    const fut = leagueArenaCatalog({ ...ARENAS, newyear_gala: winterSet } as any, [...ARENA_ORDER, 'newyear_gala'], [...EVENTS, nyEvent]);
+    const at = (d: string) => LS.arenasIn(fut, T(d)).join();
+    check('1.9.3: a future seasonal set (made-up NEW YEAR GALA + a dated winter event) needs no league code: catalogued from the set and the calendar, open only inside its event, the same rule on both sides', at('2026-12-24T23:59:59Z') === 'original,casino,backlot,graveyard' && at('2026-12-31T12:00:00Z') === 'original,casino,backlot,graveyard,newyear_gala' && at('2027-01-10T00:00:00Z') === 'original,casino,backlot,graveyard' && ['2026-10-25T00:00:00Z', '2026-12-31T12:00:00Z'].every((d) => LS.arenasIn(fut, T(d)).join() === leagueArenasAt(fut, T(d)).join()), at('2026-12-31T12:00:00Z'));
+  }
+  check('1.9.3: HAUNTED is a choice only inside its event (before / after → «closed», 409 arena_unavailable); forged ids stay RANDOM', LS.arenaChoice('haunted', T('2026-10-25T00:00:00Z')) === 'haunted' && LS.arenaChoice('haunted', T('2026-11-04T00:00:00Z')) === null && LS.arenaChoice('haunted', T('2026-10-19T00:00:00Z')) === null && LS.arenaChoice('moon', T('2026-10-25T00:00:00Z')) === 'random' && LS.arenaChoice('graveyard', T('2027-03-01T00:00:00Z')) === 'graveyard');
   check('8 major ranks in rising order, III → II → I inside each, the last without divisions', RANKS.length === 8 && RANKS.every((r, i) => i === 0 || r.base > RANKS[i - 1].base) && LM.rankOf(0).division === 'III' && LM.rankOf(299).division === 'I' && LM.rankOf(4200).division === null);
   const p = { rp: LM.targetRp(1000), mmr: 1000, games: 40, floor: 300 };
   check('equal opponents at the RP the skill belongs at: a win +20, a loss −20 (no drift from the number of matches)', LM.rpDelta(p, 1000, 'win') === 20 && LM.rpDelta(p, 1000, 'loss') === -20);
@@ -303,6 +345,31 @@ async function serverChecks(): Promise<void> {
   const generic = await Promise.all(['league_profiles', 'league_matches', 'league_ledger', 'league_defense'].map((c) => fetch(`${API}/api/collections/${c}/records`, { headers: { Authorization: A.token } }).then((r) => r.status)));
   check('no league table is readable or writable through the generic API', generic.every((s) => s === 403 || s === 404));
 
+  section('Alpha 1.9.3: сезонный павильон, пока идёт событие (часы сервера — Halloween Premiere)');
+  // the test clock starts on 3 Nov 2026, 21:00 UTC — the last hours of Halloween Premiere (ends 4 Nov 00:00 UTC)
+  const H1 = await register('HauntShow', 'h1@league.test');
+  await giveSave(H1, ['ray', 'vega'], []);
+  await call(H1, 'POST', '/api/prime/league/join', { accept: true, rules: 1 });
+  const meH = await call(H1, 'GET', '/api/prime/league/me');
+  check(`the server opens HAUNTED PRIME SET while Halloween runs (${new Date(clock).toISOString().slice(0, 16)}): 5 sets, its closing time 4 Nov 00:00 UTC`, meH.j.arenas?.join() === 'original,casino,backlot,haunted,graveyard' && meH.j.arenaUntil?.haunted === Date.parse('2026-11-04T00:00:00Z'), JSON.stringify({ a: meH.j.arenas, u: meH.j.arenaUntil }));
+  const startH = (body: any = {}) => call(H1, 'POST', '/api/prime/league/match/start', { mode: 'duel', fighter: 'vega', deck: FIGHTERS.vega.defaultDeck, sim: SIM_VERSION, op: op(), ...body });
+  const mh = (await startH({ arena: 'haunted' })).j.match;
+  const th = botTaps(snapFrom(mh), 0.3);
+  const fh = await play(H1, mh, th);
+  check(`a duel on HAUNTED: the set of the match, replayed by the server bit-exactly (hash ${fh.r.j.match.result?.hash} = the game's ${fh.out.hash})`, mh.arena === 'haunted' && mh.arenaPick === 'haunted' && fh.r.j.match.result?.hash === fh.out.hash && fh.r.j.match.outcome === fh.out.outcome);
+  check('no seasonal reward in the league for a seasonal set: the duel pays the league\'s own tokens / air only (no event currency in its answer)', !JSON.stringify(fh.r.j).includes('pumpkin') && !('event' in (fh.r.j.match.result ?? {})));
+  const rh: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = await startH();
+    rh.push(r.j.match.arena);
+    await call(H1, 'POST', `/api/prime/league/match/${r.j.match.id}/finish`, { inputs: [[0, -1]] });
+  }
+  check(`RANDOM draws among the sets open at that moment (the 5 incl. HAUNTED): ${rh.join(', ')}`, rh.every((a) => meH.j.arenas.includes(a)));
+  const hr = await call(H1, 'POST', '/api/prime/league/series/start', { kind: 'rush', sim: SIM_VERSION, op: op(), lineup: [{ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck }], arena: 'haunted' });
+  check('PRIME RUSH started on HAUNTED during the event (its first duel there)', hr.status === 200 && hr.j.series.arena === 'haunted' && hr.j.match.arena === 'haunted');
+  await call(H1, 'POST', `/api/prime/league/match/${hr.j.match.id}/finish`, { inputs: [[0, -1]] });
+  // (the run stays open — its next duel is played after the event, in the 1.9.3 section below)
+
   section('Сервер: Defense Studio');
   const put = (u: User, slots: any[]) => call(u, 'PUT', '/api/prime/league/defense', { slots });
   const sl = (slot: number, fighter: FighterId, tactic = 'balance', deck = FIGHTERS[fighter].defaultDeck, enabled = true, look?: string) => ({ slot, fighter, deck, tactic, enabled, look });
@@ -347,7 +414,7 @@ async function serverChecks(): Promise<void> {
   const idor = [await call(B, 'GET', `/api/prime/league/match/${m1.id}`), await call(B, 'POST', `/api/prime/league/match/${m1.id}/finish`, { inputs: [[0, -1]] }), await call(B, 'POST', `/api/prime/league/match/${m1.id}/inputs`, { inputs: [] })];
   check('another account cannot read, checkpoint or finish someone else\'s match (404, nothing changes)', idor.every((r) => r.status === 404));
   check('the duel answer never carries the opponent\'s hidden MMR or account', !JSON.stringify(s1.j).includes('mmr') && !JSON.stringify(s1.j).includes('defOwner') && !JSON.stringify(s1.j).includes('oppMmr'));
-  check('a duel starts: the server\'s seed and set, BRUNO/KAI/RINA of DefenseKing with the saved deck and tactic', s1.status === 200 && typeof m1.seed === 'number' && LEAGUE.arenas.includes(m1.arena) && m1.opponent.kind === 'player' && m1.opponent.name === 'DefenseKing' && ['bruno', 'kai', 'rina'].includes(m1.defender.fighter) && !!TACTICS[m1.defender.tactic as TacticId]);
+  check('a duel starts: the server\'s seed and set, BRUNO/KAI/RINA of DefenseKing with the saved deck and tactic', s1.status === 200 && typeof m1.seed === 'number' && LS.arenasAt(clock).includes(m1.arena) && m1.opponent.kind === 'player' && m1.opponent.name === 'DefenseKing' && ['bruno', 'kai', 'rina'].includes(m1.defender.fighter) && !!TACTICS[m1.defender.tactic as TacticId]);
   check('the opponent card shows a nickname, rank and RP — never an account id, email or age group', !JSON.stringify(s1.j).includes(B.id) && !JSON.stringify(s1.j).includes('b@league.test') && !/14-17|18\+/.test(JSON.stringify(s1.j)));
   check('one active match per account: a second start → 409 match_active (with the match to resume)', (await startA()).j?.code === 'match_active');
   const taps1 = botTaps(snapFrom(m1));
@@ -645,6 +712,208 @@ async function serverChecks(): Promise<void> {
   }
   const ruRow = (await admin.collection('league_series').getFullList({ filter: `owner = "${A.id}" && kind = "rush"` }))[0];
   check(`the run ended at ${LEAGUE.rush.lives} losses; RUSH moves no RP (rpFactor ${LEAGUE.rush.rpFactor})`, ruRow.status === 'done' && ruRow.state.losses === LEAGUE.rush.lives && (await prof(A)).rp === rpRu);
+
+  section('Alpha 1.9.3: павильон до старта, отмена, «Убрать» из защиты, облик у соперника');
+  // two new synthetic accounts: OWN — buys and wears a skin, puts its fighters in defence; RIV — attacks it.
+  // DefenseKing's defence is switched off for this section so RIV meets OWN (restored at the end).
+  await call(B, 'POST', '/api/prime/league/defense/toggle', { on: false });
+  const OWN = await register('SkinOwner', 'own193@league.test');
+  const RIV = await register('SkinRival', 'riv193@league.test');
+  await giveSave(OWN, ['ray', 'bruno', 'nika'], []);
+  await giveSave(RIV, ['ray', 'bruno', 'vega'], []);
+  for (const u of [OWN, RIV]) await call(u, 'POST', '/api/prime/league/join', { accept: true, rules: 1 });
+  tick(25 * 3600000);
+  const HOUR_MS = 3600000;
+  const startR = (body: any = {}) => call(RIV, 'POST', '/api/prime/league/match/start', { mode: 'duel', fighter: 'ray', deck: FIGHTERS.ray.defaultDeck, sim: SIM_VERSION, op: op(), ...body });
+  const quit = async (u: User, m: any) => (await call(u, 'POST', `/api/prime/league/match/${m.id}/finish`, { inputs: [[0, -1]] })).j;
+  const putO = (slots: any[], base?: string) => call(OWN, 'PUT', '/api/prime/league/defense', { slots, ...(base !== undefined ? { base } : {}) });
+  const defO = async (): Promise<LeagueSlot[]> => (await call(OWN, 'GET', '/api/prime/league/me')).j.defense;
+  const own3 = [sl(1, 'ray', 'assault'), sl(2, 'bruno', 'fortress'), sl(3, 'nika', 'counter')];
+  check('OWN puts three defenders (RAY, BRUNO, NIKA) — the starting point', (await putO(own3)).j?.defense?.length === 3);
+
+  // --- the set, chosen before the start: DUEL in every set of the league
+  const when = new Date(clock).toISOString().slice(0, 10);
+  const byArena: string[] = [];
+  for (const id of LEAGUE.arenas) {
+    const r = await startR({ arena: id });
+    byArena.push(`${id}→${r.j.match?.arena}/${r.j.match?.arenaPick}`);
+    if (r.j.match) await quit(RIV, r.j.match);
+  }
+  check(`PRIME DUEL: each of the 4 sets chosen before the start is the set of the match (${byArena.join(' ')})`, byArena.every((x) => { const [want, got] = x.split('→'); return got === `${want}/${want}`; }));
+  check(`CURSED CEMETERY is playable on ${when} — outside Halloween — and pays nothing seasonal (the league has no seasonal set bonus)`, byArena.some((x) => x.startsWith('graveyard→graveyard/')) && !/^10-/.test(when.slice(5)));
+  tick(HOUR_MS + 60000);
+  // RANDOM: an old game sends nothing, a new one sends «random»
+  const rnd: string[] = [];
+  let rndPick = true;
+  for (let i = 0; i < 12; i++) {
+    const r = await startR(i % 2 ? { arena: 'random' } : {});
+    rnd.push(r.j.match.arena);
+    rndPick = rndPick && r.j.match.arenaPick === 'random' && LEAGUE.arenas.includes(r.j.match.arena);
+    await quit(RIV, r.j.match);
+  }
+  check(`RANDOM (no field from an old game, or «random»): the server draws among its 4 sets — ${[...new Set(rnd)].join(', ')} in 12 starts`, rndPick && new Set(rnd).size >= 2);
+  tick(HOUR_MS + 60000);
+  // forged or unknown sets: never in a fight — the server's RANDOM instead
+  const forged: any[] = ['moon', '__proto__', 'constructor', 123, { id: 'graveyard' }, '', 'GRAVEYARD', null, 'toString'];
+  const fz: string[] = [];
+  for (const f of forged) {
+    const r = await startR({ arena: f });
+    fz.push(`${JSON.stringify(f)}→${r.j.match?.arena}/${r.j.match?.arenaPick}`);
+    if (r.j.match) await quit(RIV, r.j.match);
+  }
+  check('a forged set (unknown ids, «__proto__», «toString», a number, an object, wrong case) never reaches a fight: RANDOM among the sets open now', fz.every((x) => /→(original|casino|backlot|graveyard)\/random$/.test(x)), fz.join(' '));
+  // after Halloween: the seasonal set is closed for new fights — and kept where it was fixed before
+  const meAfter = await call(RIV, 'GET', '/api/prime/league/me');
+  check(`after the event (${when}) the server opens the 4 permanent sets only`, meAfter.j.arenas?.join() === 'original,casino,backlot,graveyard' && Object.keys(meAfter.j.arenaUntil ?? {}).length === 0);
+  const closedDuel = await startR({ arena: 'haunted' });
+  const seriesBefore = (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}"` })).length;
+  const closedRush = await call(RIV, 'POST', '/api/prime/league/series/start', { kind: 'rush', sim: SIM_VERSION, op: op(), lineup: [{ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck }], arena: 'haunted' });
+  check('HAUNTED after its event: a new duel or series on it → 409 arena_unavailable with the sets open now; no match, no series made', closedDuel.status === 409 && closedDuel.j.code === 'arena_unavailable' && closedDuel.j.arenas.join() === 'original,casino,backlot,graveyard' && closedRush.j?.code === 'arena_unavailable' && (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}"` })).length === seriesBefore && !(await call(RIV, 'GET', '/api/prime/league/me')).j.active);
+  const hNext = await call(H1, 'POST', '/api/prime/league/series/next', { kind: 'rush' });
+  check('the run started on HAUNTED during Halloween goes on there after the event (fixed in the series)', hNext.status === 200 && hNext.j.match.arena === 'haunted' && hNext.j.series.arena === 'haunted');
+  const hNextDone = await call(H1, 'POST', `/api/prime/league/match/${hNext.j.match.id}/finish`, { inputs: [[0, -1]] });
+  check('…and settles as before (the run ends at 2 losses)', hNextDone.j.series?.status === 'done');
+  check('the Halloween duel keeps its set and result after the event', (await call(H1, 'GET', `/api/prime/league/match/${mh.id}`)).j.match.arena === 'haunted' && (await call(H1, 'GET', `/api/prime/league/match/${mh.id}`)).j.match.result?.hash === fh.out.hash);
+  tick(HOUR_MS + 60000);
+
+  // --- the fight on the chosen set: the server replays it there, bit-exactly (the set really is part of the proof)
+  const mg = (await startR({ arena: 'graveyard', fighter: 'vega', deck: FIGHTERS.vega.defaultDeck })).j.match;
+  const tg = botTaps(snapFrom(mg));
+  const fg = await play(RIV, mg, tg);
+  const onOriginal = replayLeague({ ...snapFrom(mg), arena: 'original' }, tg);
+  check(`the server replayed the CURSED CEMETERY fight on that set: hash ${fg.r.j.match.result?.hash} = the game's ${fg.out.hash} (the same taps on another set: ${onOriginal.hash})`, fg.r.j.match.arena === 'graveyard' && fg.r.j.match.result?.hash === fg.out.hash && fg.r.j.match.outcome === fg.out.outcome && onOriginal.hash !== fg.out.hash);
+  const mc = (await startR({ arena: 'casino' })).j.match;
+  const tc = botTaps(snapFrom(mc), 0.3);
+  const fc = await play(RIV, mc, tc);
+  check(`…and the LUXURY CASINO fight: hash ${fc.r.j.match.result?.hash} = ${fc.out.hash}`, fc.r.j.match.arena === 'casino' && fc.r.j.match.result?.hash === fc.out.hash);
+  const rowG = await admin.collection('league_matches').getOne(mg.id);
+  check('the set is fixed in the match record before the fight (arena + the choice in its snapshot) — the finish request cannot change it', rowG.arena === 'graveyard' && rowG.snapshot.arenaPick === 'graveyard');
+  // a match from before 1.9.3 (no choice in its snapshot) reads as RANDOM — as it was
+  const { arenaPick: _ap, ...oldSnap } = rowG.snapshot;
+  await admin.collection('league_matches').update(mg.id, { snapshot: oldSnap });
+  check('an older match without the choice is shown as RANDOM, its set and result unchanged', (await call(RIV, 'GET', `/api/prime/league/match/${mg.id}`)).j.match.arenaPick === 'random' && (await call(RIV, 'GET', `/api/prime/league/match/${mg.id}`)).j.match.arena === 'graveyard');
+
+  // --- one start per tap: the same request twice (a double tap, a retry after a lost answer) makes ONE match
+  const same1 = op();
+  const dbl = await Promise.all([startR({ op: same1, arena: 'backlot' }), startR({ op: same1, arena: 'backlot' })]);
+  const dblRows = await admin.collection('league_matches').getFullList({ filter: `attacker = "${RIV.id}" && op = "${same1}"` });
+  check('a double tap sends the same op twice: one match, the second answer is that match again (duplicate) — never two', dbl.every((r) => r.status === 200 || r.j?.code === 'match_active') && dblRows.length === 1 && dbl.filter((r) => r.status === 200).every((r) => r.j.match.id === dblRows[0].id));
+  const dblRetry = await startR({ op: same1, arena: 'casino' });
+  check('a retry of that request (the answer was lost) gets the same match and set — a new set cannot be smuggled in', dblRetry.j.duplicate === true && dblRetry.j.match.id === dblRows[0].id && dblRetry.j.match.arena === 'backlot');
+  const rivBefore = await prof(RIV);
+  await quit(RIV, dblRetry.j.match);
+  check('after a match exists there is no free way out: leaving it is a loss settled by the server (RP moved)', (await prof(RIV)).games === rivBefore.games + 1);
+  tick(HOUR_MS + 60000);
+
+  // --- PRIME CHALLENGE on a chosen set
+  const pR = await prof(RIV);
+  await admin.collection('league_profiles').update(pR.id, { challenge: { to: 1, wins: 0, losses: 0, since: clock } });
+  const chm = await startR({ mode: 'challenge', arena: 'backlot' });
+  check('PRIME CHALLENGE (the qualifier) takes the chosen set too (BACKLOT) — no set is tied to it', chm.status === 200 && chm.j.match.mode === 'challenge' && chm.j.match.arena === 'backlot' && chm.j.match.arenaPick === 'backlot');
+  await quit(RIV, chm.j.match);
+  await admin.collection('league_profiles').update(pR.id, { challenge: null });
+
+  // --- PRIME RUSH: one setting for the whole run, never changed mid-run
+  const ser = (u: User, kind: string, lineup: any[], extra: any = {}) => call(u, 'POST', '/api/prime/league/series/start', { kind, sim: SIM_VERSION, op: op(), lineup, ...extra });
+  const ru1 = await ser(RIV, 'rush', [{ fighter: 'bruno', deck: FIGHTERS.bruno.defaultDeck }], { arena: 'backlot' });
+  check('PRIME RUSH started on BACKLOT: the series keeps the set, its first duel is there', ru1.status === 200 && ru1.j.series.arena === 'backlot' && ru1.j.match.arena === 'backlot');
+  await quit(RIV, ru1.j.match);
+  const ru2 = await call(RIV, 'POST', '/api/prime/league/series/next', { kind: 'rush', arena: 'casino' });
+  check('the next duel of the run stays on BACKLOT — a set sent mid-run is ignored', ru2.status === 200 && ru2.j.match.arena === 'backlot' && ru2.j.series.arena === 'backlot');
+  await quit(RIV, ru2.j.match);
+  const ru3 = await ser(RIV, 'rush', [{ fighter: 'vega', deck: FIGHTERS.vega.defaultDeck }]);
+  check('a run started by an older game (no set): RANDOM for each duel', ru3.status === 200 && ru3.j.series.arena === 'random' && ru3.j.match.arenaPick === 'random' && LEAGUE.arenas.includes(ru3.j.match.arena));
+  // a series opened before 1.9.3 (its state has no set) goes on with RANDOM
+  const ruRow3 = (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}" && kind = "rush" && status = "active"` }))[0];
+  const { arena: _sa, ...oldState } = ruRow3.state;
+  await admin.collection('league_series').update(ruRow3.id, { state: oldState });
+  await quit(RIV, ru3.j.match);
+  const ru4 = await call(RIV, 'POST', '/api/prime/league/series/next', { kind: 'rush' });
+  check('a run from before 1.9.3 (no set in its state) goes on: RANDOM', ru4.status === 200 && ru4.j.series.arena === 'random' && ru4.j.match.arenaPick === 'random');
+  await quit(RIV, ru4.j.match);
+  tick(25 * 3600000);
+
+  // --- PRIME SQUAD against OWN's three defenders on CURSED CEMETERY
+  const sq1 = await ser(RIV, 'squad', [{ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck }, { fighter: 'bruno', deck: FIGHTERS.bruno.defaultDeck }, { fighter: 'vega', deck: FIGHTERS.vega.defaultDeck }], { arena: 'graveyard' });
+  check('PRIME SQUAD against SkinOwner\'s three defenders, the squad\'s set CURSED CEMETERY', sq1.status === 200 && sq1.j.match.opponent.name === 'SkinOwner' && sq1.j.match.arena === 'graveyard' && sq1.j.series.arena === 'graveyard');
+  await quit(RIV, sq1.j.match);
+  const sq2 = await call(RIV, 'POST', '/api/prime/league/series/next', { kind: 'squad', arena: 'original' });
+  check('the squad\'s second duel: the same set (a change sent mid-squad is ignored)', sq2.status === 200 && sq2.j.match.arena === 'graveyard' && sq2.j.match.round === 1);
+  await quit(RIV, sq2.j.match);
+  check('two lost duels end the squad as before (settled once)', (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}" && kind = "squad"` }))[0].status === 'done');
+  tick(25 * 3600000);
+
+  // --- «Убрать» in the Defense Studio: the server holds it, a second device and a new sign-in see it
+  const seen0 = await defO();
+  const base0 = defenseBase(seen0);
+  const drop = await putO([sl(1, 'ray', 'assault'), sl(2, 'bruno', 'fortress')], base0);
+  const rowsAfterDrop = await admin.collection('league_defense').getFullList({ filter: `owner = "${OWN.id}"` });
+  check('«Убрать» NIKA: saved on the server (2 defenders), the other two slots untouched (their versions)', drop.status === 200 && drop.j.defense.length === 2 && !rowsAfterDrop.some((r: any) => r.fighter === 'nika') && drop.j.defense.every((d: any) => d.version === seen0.find((x) => x.fighter === d.fighter)!.version));
+  const ownLeft = await admin.collection('saves').getFullList({ filter: `owner = "${OWN.id}"` });
+  check('NIKA stays OWN\'s fighter: the cloud save still has her signed (only the defence line-up changed)', JSON.parse(ownLeft[0].data).fighters.nika.unlocked === true);
+  const second = new PocketBase(API);
+  await second.collection('users').authWithPassword('own193@league.test', PW);
+  const OWN2: User = { id: OWN.id, token: second.authStore.token, email: OWN.email };
+  const meNew = await call(OWN2, 'GET', '/api/prime/league/me');
+  check('a new sign-in (another device) sees the defence without NIKA', meNew.j.defense.length === 2 && !meNew.j.defense.some((d: any) => d.fighter === 'nika'));
+  const staleSave = await call(OWN2, 'PUT', '/api/prime/league/defense', { slots: own3, base: base0 });
+  check('a device that still shows the old studio cannot silently bring NIKA back: 409 defense_changed with the studio as it is', staleSave.status === 409 && staleSave.j.code === 'defense_changed' && staleSave.j.defense.length === 2 && (await defO()).length === 2);
+  check('a forged base (not text) → 400, nothing saved', (await putO(own3, 123 as any)).j?.code === 'defense_base' && (await defO()).length === 2);
+  check('zero defenders is not a save (1–5 stays the rule; «no defence» is the defence switch) → 400 defense_slots', (await putO([], defenseBase(await defO()))).j?.code === 'defense_slots' && (await defO()).length === 2);
+  const restore = await putO(own3, defenseBase(await defO()));
+  check('NIKA back in defence from the current studio (restore) → 200, three defenders', restore.status === 200 && restore.j.defense.length === 3);
+  const legacy = await putO(own3);
+  check('an older game (no base) saves exactly as before', legacy.status === 200 && legacy.j.defense.length === 3);
+  const b3 = defenseBase(await defO());
+  const raceO = await Promise.all([putO([sl(1, 'ray', 'assault'), sl(2, 'bruno', 'fortress')], b3), putO([sl(1, 'ray', 'assault'), sl(3, 'nika', 'counter')], b3)]);
+  const after = await defO();
+  check('two devices remove two different defenders at the same moment: one wins (200), the other is refused (409) — never a mixed or empty studio', raceO.filter((r) => r.status === 200).length === 1 && raceO.filter((r) => r.j?.code === 'defense_changed').length === 1 && after.length === 2, raceO.map((r) => r.status).join(','));
+  await putO(own3, defenseBase(after));
+
+  // --- a frozen match keeps the defender it was made with
+  const mf = (await startR({ arena: 'original' })).j.match;
+  const df = mf.defender.fighter;
+  const keep = own3.filter((x) => x.fighter !== df);
+  await putO(keep, defenseBase(await defO()));
+  const tf = botTaps(snapFrom(mf), 0.3);
+  const ff = await play(RIV, mf, tf);
+  check(`a fight already made against ${df.toUpperCase()} finishes as it was made after ${df.toUpperCase()} left the defence (server hash = the game's)`, ff.r.status === 200 && ff.r.j.match.status === 'done' && ff.r.j.match.defender.fighter === df && ff.r.j.match.result?.hash === ff.out.hash);
+  const fresh: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const r = await startR();
+    fresh.push(r.j.match.opponent.kind === 'player' ? r.j.match.defender.fighter : 'system');
+    await quit(RIV, r.j.match);
+  }
+  check(`new matches use the updated defence: ${df.toUpperCase()} no longer defends (${fresh.join(', ')})`, !fresh.includes(df) && fresh.some((x) => x !== 'system'));
+  tick(25 * 3600000);
+
+  // --- a paid skin seen by the other player
+  const skinB = 'bruno_casino_boss';
+  check('without the right: BRUNO in CASINO BOSS → defense_look (a skin is never put on from the browser)', (await putO([sl(2, 'bruno', 'fortress', FIGHTERS.bruno.defaultDeck, true, skinB)])).j?.code === 'defense_look');
+  // OWN buys it (a test-env right, as the payment would write it) and wears it — the wardrobe choice is in the cloud save
+  await admin.collection('shop_entitlements').create({ user: OWN.id, sku: 'skin_' + skinB, item: skinB, kind: 'skin', source: 'support', env: 'test', status: 'active', grantedAt: clock });
+  check('with the right: BRUNO defends in CASINO BOSS (saved, shown in the studio)', (await putO([sl(2, 'bruno', 'fortress', FIGHTERS.bruno.defaultDeck, true, skinB)])).j?.defense?.[0]?.look === skinB);
+  check('a skin made for another fighter (NEON RUNNER on BRUNO) or never bought (NEON RUNNER on RAY) → defense_look', (await putO([sl(2, 'bruno', 'fortress', FIGHTERS.bruno.defaultDeck, true, 'ray_neon_runner')])).j?.code === 'defense_look' && (await putO([sl(1, 'ray', 'assault', FIGHTERS.ray.defaultDeck, true, 'ray_neon_runner')])).j?.code === 'defense_look');
+  const ms = await startR({ arena: 'casino' });
+  const msm = ms.j.match;
+  check('the rival\'s match against that defence carries BRUNO in CASINO BOSS — the look the rival\'s game draws (poster, fight)', msm.opponent.name === 'SkinOwner' && msm.defender.fighter === 'bruno' && msm.defender.look === skinB && leagueLook(msm.defender.fighter, msm.defender.look) === skinB);
+  check('the skin is the owner\'s cosmetic only — the rival gets no right to it (its own defence with it → defense_look)', (await call(RIV, 'PUT', '/api/prime/league/defense', { slots: [sl(1, 'bruno', 'balance', FIGHTERS.bruno.defaultDeck, true, skinB)] })).j?.code === 'defense_look');
+  await putO([sl(2, 'bruno', 'fortress')]);
+  const ms2 = (await call(RIV, 'GET', `/api/prime/league/match/${msm.id}`)).j.match;
+  check('the look is frozen in the match: OWN takes the skin off after the start — the rival\'s match still shows CASINO BOSS', ms2.defender.look === skinB);
+  const ts = botTaps(snapFrom(msm), 0.3);
+  const fs2 = await play(RIV, msm, ts);
+  check('looks only: the server\'s result with the skin = the game\'s replay without it (same hash)', fs2.r.j.match.result?.hash === fs2.out.hash && replayLeague({ ...snapFrom(msm), defender: { ...msm.defender, look: undefined } }, ts).hash === fs2.out.hash);
+  await putO([sl(2, 'bruno', 'fortress', FIGHTERS.bruno.defaultDeck, true, skinB)]);
+  const ent = (await admin.collection('shop_entitlements').getFullList({ filter: `user = "${OWN.id}" && sku = "skin_${skinB}"` }))[0];
+  await admin.collection('shop_entitlements').update(ent.id, { status: 'revoked', revokedAt: clock, revokeReason: 'test_refund' });
+  const meRev = await call(OWN, 'GET', '/api/prime/league/me');
+  const mr = (await startR()).j.match;
+  check('the right revoked (a refund): the studio says so (defense_look), BRUNO still defends — in his own look', meRev.j.defense[0].problem === 'defense_look' && mr.opponent.kind === 'player' && mr.defender.fighter === 'bruno' && !mr.defender.look && leagueLook('bruno', mr.defender.look) === 'bruno');
+  await quit(RIV, mr);
+  check('the rival\'s game falls back to the fighter\'s own look for a skin it does not know or that is not the fighter\'s', leagueLook('bruno', 'bruno_future_skin') === 'bruno' && leagueLook('bruno', 'ray_neon_runner') === 'bruno' && leagueLook('ray', null) === 'ray' && leagueLook('ray', 'ray_neon_runner') === 'ray_neon_runner');
+  check('the attacker\'s side carries no look at all — the attacker\'s own game draws its own wardrobe', !('look' in msm.attacker));
+  await call(B, 'POST', '/api/prime/league/defense/toggle', { on: true });
 
   section('Сервер: улучшения бойцов (флаг) и выключенная лига');
   check('upgrades are off by default (404 upgrades_off) — no level counts in a fight', (await call(A, 'POST', '/api/prime/league/upgrade', { fighter: 'ray', op: op() })).j?.code === 'upgrades_off');

@@ -54,7 +54,7 @@ import { isBlockedLandscape, onLandscapeChange } from '../ui/viewport';
 import { ACCOUNTS_BUILD, buildBootProfile, networkConfig } from '../net/build';
 import { AccountRuntime } from './AccountRuntime';
 import { DailyRuntime } from './DailyRuntime';
-import { LeagueRuntime } from './LeagueRuntime';
+import { LeagueRuntime, leagueLook } from './LeagueRuntime';
 import { ProducerRuntime } from './ProducerRuntime';
 import { LeagueResultScreen, LeagueScreen } from '../ui/screens/LeagueScreen';
 
@@ -894,8 +894,9 @@ export class Game {
     this.timeFx.slowmo = 0;
     this.timeFx.slowScale = 1;
     this.showcase.hide();
-    // looks are rendering only: the player's worn skin, the defender's chosen one (or its own)
-    this.battleView.setup(match, [this.fighterLook(view.attacker.fighter), view.defender.look ?? null]);
+    // looks are rendering only: the player's worn skin, the defender's chosen one (or its own — 1.9.3: also for a
+    // skin this game does not know or that is not the fighter's)
+    this.battleView.setup(match, [this.fighterLook(view.attacker.fighter), leagueLook(view.defender.fighter, view.defender.look)]);
     this.hud.setup(match, mode, { stage: switched || stage !== 'original', halloween: false });
     this.cam.setMode('battle', 1.9);
     this.cam.finishShift = 0.04;

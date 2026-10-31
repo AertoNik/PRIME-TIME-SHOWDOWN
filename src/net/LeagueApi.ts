@@ -1,4 +1,5 @@
 import type { LeagueSide } from '../combat/league';
+import type { ArenaId } from '../config/arenas.config';
 import type { CardId, FighterId } from '../config/types';
 import type { TacticId } from '../config/league.config';
 import type { ProducerLook } from '../config/producer.config';
@@ -8,6 +9,9 @@ import type { PrimeApi } from './PrimeApi';
 
 // Alpha 1.9.0 PRIME LEAGUE — what the game reads from /api/prime/league/*. The server decides everything here; the game
 // only shows it (and plays the fight the server fixed).
+
+/** 1.9.3: a set the server lists for the league (league_rules.arenas), or RANDOM. */
+export type LeagueArenaPref = ArenaId | 'random';
 
 export interface LeagueRank {
   index: number;
@@ -77,6 +81,8 @@ export interface LeagueMatch {
   sim: string;
   seed: number;
   arena: string;
+  /** 1.9.3: the set the player asked for before the start ('random' — also every match made before 1.9.3). */
+  arenaPick?: LeagueArenaPref;
   started: number;
   expires: number;
   attacker: LeagueSide;
@@ -105,6 +111,8 @@ export interface LeagueSeries {
   losses: number;
   draws: number;
   lineup: { fighter: FighterId; deck: CardId[] }[];
+  /** 1.9.3: the series' studio set, fixed when it started ('random': the server draws one for each duel). */
+  arena?: LeagueArenaPref;
   done: { won: boolean; rp: number; rpAfter?: number; tokens: number; air: number; cancelled?: boolean } | null;
 }
 
@@ -115,6 +123,10 @@ export interface LeagueMe {
   season: { number: number; start: number; end: number | null; now: number; length?: number };
   rules?: number;
   rulesAccepted?: number;
+  /** 1.9.3: the sets open right now by the server's clock (permanent + seasonal while their event runs). */
+  arenas?: string[];
+  /** 1.9.3: when each open seasonal set closes (ms). */
+  arenaUntil?: Record<string, number>;
   rp: number;
   rank: LeagueRank;
   floor: number;
@@ -163,6 +175,17 @@ export interface LeagueFinish {
   expired?: boolean;
 }
 
+/**
+ * 1.9.3: the same fingerprint of a Defense Studio the server makes (lib/league.js defenseBase): slot, fighter, version
+ * and content of each slot — never the defence results.
+ */
+export function defenseBase(slots: readonly LeagueSlot[]): string {
+  return slots
+    .map((d) => [d.slot, d.fighter, d.version, JSON.stringify(d.deck), d.tactic, d.look ?? '', d.enabled ? 1 : 0].join(':'))
+    .sort()
+    .join('|');
+}
+
 export function newOp(): string {
   const a = new Uint8Array(12);
   crypto.getRandomValues(a);
@@ -182,8 +205,9 @@ export class LeagueApi {
   join(rules: number): Promise<LeagueMe> {
     return this.api.league<LeagueMe>('POST', '/join', { accept: true, rules });
   }
-  saveDefense(slots: { slot: number; fighter: FighterId; deck: CardId[]; tactic: TacticId; look?: string | null; enabled: boolean }[]): Promise<{ ok: boolean; defense: LeagueSlot[] }> {
-    return this.api.league('PUT', '/defense', { slots });
+  /** `base`: the studio the edit started from (defenseBase) — a server that knows it refuses a stale save (409 defense_changed). */
+  saveDefense(slots: { slot: number; fighter: FighterId; deck: CardId[]; tactic: TacticId; look?: string | null; enabled: boolean }[], base?: string): Promise<{ ok: boolean; defense: LeagueSlot[] }> {
+    return this.api.league('PUT', '/defense', { slots, ...(base !== undefined ? { base } : {}) });
   }
   toggleDefense(on: boolean): Promise<{ ok: boolean; defenseOn: boolean }> {
     return this.api.league('POST', '/defense/toggle', { on });
@@ -191,8 +215,9 @@ export class LeagueApi {
   seen(what: 'report' | 'ceremony'): Promise<{ ok: boolean }> {
     return this.api.league('POST', '/report/seen', { what });
   }
-  start(mode: 'duel' | 'challenge', fighter: FighterId, deck: CardId[], op: string): Promise<{ match: LeagueMatch; duplicate?: boolean }> {
-    return this.api.league('POST', '/match/start', { mode, fighter, deck, op, sim: SIM_VERSION });
+  /** `arena`: the set chosen before the start (a server before 1.9.3 ignores it and draws one, as before). */
+  start(mode: 'duel' | 'challenge', fighter: FighterId, deck: CardId[], op: string, arena: LeagueArenaPref = 'random'): Promise<{ match: LeagueMatch; duplicate?: boolean }> {
+    return this.api.league('POST', '/match/start', { mode, fighter, deck, op, arena, sim: SIM_VERSION });
   }
   match(id: string): Promise<{ match: LeagueMatch }> {
     return this.api.league('GET', `/match/${id}`);
@@ -216,8 +241,8 @@ export class LeagueApi {
   claim(tier: number): Promise<{ ok: boolean; tokens?: number; duplicate?: boolean }> {
     return this.api.league('POST', '/track/claim', { tier });
   }
-  seriesStart(kind: 'rush' | 'squad', lineup: { fighter: FighterId; deck: CardId[] }[], op: string): Promise<{ series: LeagueSeries; match: LeagueMatch }> {
-    return this.api.league('POST', '/series/start', { kind, lineup, op, sim: SIM_VERSION });
+  seriesStart(kind: 'rush' | 'squad', lineup: { fighter: FighterId; deck: CardId[] }[], op: string, arena: LeagueArenaPref = 'random'): Promise<{ series: LeagueSeries; match: LeagueMatch }> {
+    return this.api.league('POST', '/series/start', { kind, lineup, op, arena, sim: SIM_VERSION });
   }
   seriesNext(kind: 'rush' | 'squad'): Promise<{ series: LeagueSeries; match: LeagueMatch }> {
     return this.api.league('POST', '/series/next', { kind });
