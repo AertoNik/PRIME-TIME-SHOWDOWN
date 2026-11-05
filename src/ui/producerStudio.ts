@@ -1,4 +1,4 @@
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, type ProducerLook } from '../config/producer.config';
+import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, avatarById, offeredAvatars, type ProducerLook } from '../config/producer.config';
 import type { Game } from '../game/Game';
 import { lang } from '../i18n/lang';
 import { esc } from './dom';
@@ -24,8 +24,10 @@ export function openProducerStudio(g: Game): void {
   const html = () => {
     const can = pr.canSave();
     const dirty = JSON.stringify(draft) !== JSON.stringify(pick3(pr.shown()));
-    const ava = free(PRODUCER_AVATARS)
-      .map((a) => `<button class="ps-pick ${draft.avatar === a.id ? 'on' : ''}" data-k="avatar" data-v="${a.id}" aria-pressed="${draft.avatar === a.id}" aria-label="${esc(nm(a))}" title="${esc(nm(a))}">${producerSVG({ avatar: a.id, frame: 'studio', backdrop: draft.backdrop }, 64)}</button>`)
+    // 1.9.4: the 3D portraits; a legacy vector producer the account already wears stays first, so keeping it is one tap
+    const worn = avatarById(pick3(pr.shown()).avatar);
+    const ava = [...(worn?.legacy ? [worn] : []), ...offeredAvatars()]
+      .map((a) => `<button class="ps-pick ${draft.avatar === a.id ? 'on' : ''}" data-k="avatar" data-v="${a.id}" aria-pressed="${draft.avatar === a.id}" aria-label="${esc(nm(a))}" title="${esc(nm(a))}">${producerSVG({ avatar: a.id, frame: 'studio', backdrop: draft.backdrop }, 64)}${a.legacy ? `<span>${tr('Классика', 'Classic')}</span>` : ''}</button>`)
       .join('');
     const frames = free(PRODUCER_FRAMES)
       .map((f) => `<button class="ps-pick sm ${draft.frame === f.id ? 'on' : ''}" data-k="frame" data-v="${f.id}" aria-pressed="${draft.frame === f.id}">${producerSVG({ ...draft, frame: f.id }, 52)}<span>${esc(nm(f))}</span></button>`)

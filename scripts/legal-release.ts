@@ -5,6 +5,9 @@
 //       → docs/legal-drafts/site-preview/ru/*.html — the six pages filled from docs/legal-drafts/seller.json
 //         and src/config/shop.config.ts, for reading in a browser (private: docs/legal-drafts never reaches
 //         the publication); lists every detail and decision still missing.
+//   npm run legal:release -- --candidate --date=YYYY-MM-DD
+//       → 1.9.4: docs/legal-drafts/site-candidate/ru/*.html — the six pages EXACTLY as --approved would install them on
+//         that day (same bytes, same SHA-256), for the owner's approval; private; public/ and the decisions untouched.
 //   npm run legal:release -- --approved --date=YYYY-MM-DD [--replace-unpublished]
 //       → public/legal/ru/{offer,refunds,seller,shop,terms,privacy}.html and src/config/seller.config.ts (the
 //         seller's line under the game and in PRIME SHOP); prints the offer's SHA-256 for offer.config.ts and the
@@ -20,7 +23,7 @@
 // Nothing is published by this command: the site changes only with the usual publish:sync + commit + Sync.
 
 import { SHOP_OFFERS } from '../src/config/offer.config';
-import { SHOP_ITEMS, SHOP_PRICES_APPROVED_ON, approvedPriceRub, formatRub } from '../src/config/shop.config';
+import { SHOP_ITEMS, SHOP_PRICES_APPROVED_LATER, SHOP_PRICES_APPROVED_ON, approvedPriceRub, formatRub, type ShopSku } from '../src/config/shop.config';
 import { ROOT } from './lib/backendKit';
 import { crypto, fs, path, proc } from './lib/node';
 
@@ -35,6 +38,7 @@ const stop = (msg: string): never => {
 
 const args = proc.argv.slice(2);
 const approved = args.includes('--approved');
+const candidate = !approved && args.includes('--candidate');
 const dateArg = (args.find((a) => a.startsWith('--date=')) ?? '').slice(7);
 // the newest revision is registered but NOT published yet (e.g. a new date): its text may be replaced, nothing archived
 const replaceUnpublished = args.includes('--replace-unpublished');
@@ -88,7 +92,7 @@ if (!phone && decided('phone') === 'not_published') {
 const city = seller.city.trim();
 if (!city) warnings.push('Город не указан (решение владельца). Robokassa рекомендует указывать адрес; для самозанятого обычно достаточно города — риск низкий.');
 if (pending.length) (approved ? problems : warnings).push('не утверждены условия документов (docs/legal-drafts/decisions.json): ' + pending.join('; '));
-if (approved && !/^\d{4}-\d{2}-\d{2}$/.test(dateArg)) problems.push('дата публикации: --date=ГГГГ-ММ-ДД (дата фактической публикации на сайте)');
+if ((approved || candidate) && !/^\d{4}-\d{2}-\d{2}$/.test(dateArg)) problems.push('дата: --date=ГГГГ-ММ-ДД (день вступления в силу — не раньше фактической публикации на сайте)');
 
 // a phone or a city appears only when it is filled in — never a stub, never «не указан»
 const vals: Record<string, string> = {
@@ -97,17 +101,34 @@ const vals: Record<string, string> = {
   INN: esc(seller.inn),
   NPD_SINCE: dayText(seller.npdSince),
   EMAIL: esc(seller.email),
-  DATE: approved ? dayText(dateArg) : '<mark class="todo">[дата фактической публикации]</mark>',
-  PRICES_DATE: dayText(SHOP_PRICES_APPROVED_ON),
+  DATE: approved || candidate ? dayText(dateArg) : '<mark class="todo">[дата фактической публикации]</mark>',
+  // 1.9.4: a price approved on another day is named with its own date (LUCIEN: 05.11.2026, the six: 23.10.2026)
+  PRICES_DATE: [dayText(SHOP_PRICES_APPROVED_ON), ...Object.entries(SHOP_PRICES_APPROVED_LATER).filter(([s]) => approvedPriceRub(s as ShopSku) !== null).map(([s, d]) => `${esc(SHOP_ITEMS.find((i) => i.sku === s)!.name)} — ${dayText(d!)}`)].join('; '),
 };
 vals.CONTACT_INLINE = `<a href="mailto:${vals.EMAIL}">${vals.EMAIL}</a>${phoneOk ? ` · тел. ${esc(phone)}` : ''}`;
 vals.EXTRA_REQUISITES = `${city ? `<br />Город: ${esc(city)}` : ''}${phoneOk ? `<br />Телефон: ${esc(phone)}` : ''}`;
 vals.EXTRA_ROWS = `${city ? `\n  <tr><th>Город</th><td>${esc(city)}</td></tr>` : ''}${phoneOk ? `\n  <tr><th>Телефон</th><td>${esc(phone)}</td></tr>` : ''}`;
 vals.FOOTER = `Продавец: ${vals.NAME}, самозанятый (налог на профессиональный доход), ИНН ${vals.INN}${city ? `, г. ${esc(city)}` : ''} · <a href="mailto:${vals.EMAIL}">${vals.EMAIL}</a>${phoneOk ? ` · тел. ${esc(phone)}` : ''}`;
-// the catalog: only what is really sold for money — approved price, never a fighter (LUCIEN: tokens only)
-const sold = SHOP_ITEMS.filter((i) => !(i.fighter && !i.skin) && approvedPriceRub(i.sku) !== null);
-vals.CATALOG = sold.map((i) => `  <tr><td><b>${esc(i.name)}</b><br /><small>${esc(i.kind)}</small></td><td>${esc(i.desc)}</td><td>${esc(formatRub(approvedPriceRub(i.sku)!))}</td></tr>`).join('\n');
-if (sold.length !== 6) problems.push(`в каталоге ${sold.length} предметов вместо шести утверждённых`);
+// the catalog: only what is really sold for money — an approved price. 1.9.4: a playable character too (offer № 4 sells
+// one; its row says what the purchase opens and that a character opened for the event's tokens is never sold again)
+const sold = SHOP_ITEMS.filter((i) => approvedPriceRub(i.sku) !== null);
+const isFighter = (i: (typeof SHOP_ITEMS)[number]) => !!i.fighter && !i.skin;
+const what = (i: (typeof SHOP_ITEMS)[number]) => (isFighter(i) ? `${i.desc} Покупка открывает персонажа в составе бойцов учётной записи PRIME ID. Во время своего события персонаж открывался за жетоны события; учётной записи, открывшей его за жетоны, он повторно не продаётся.` : i.desc);
+vals.CATALOG = sold.map((i) => `  <tr><td><b>${esc(i.name)}</b><br /><small>${esc(i.kind)}</small></td><td>${esc(what(i))}</td><td>${esc(formatRub(approvedPriceRub(i.sku)!))}</td></tr>`).join('\n');
+if (sold.length !== 7) problems.push(`в каталоге ${sold.length} предметов вместо семи утверждённых`);
+
+/**
+ * 1.9.4: a page whose text is the installed one but for its date keeps the installed file byte for byte — an unchanged
+ * document is never re-dated (privacy v5 stays «от 30 октября», refunds № 2 «действует с 30 октября»).
+ */
+function keepUnchanged(page: string, out: string): string {
+  const live = path.join(ROOT, 'public', 'legal', 'ru', `${page}.html`);
+  if (!fs.existsSync(live) || !/^\d{4}-\d{2}-\d{2}$/.test(dateArg)) return out;
+  const was = fs.readFileSync(live, 'utf8') as string;
+  const day = /\d{1,2} (января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря) \d{4} года/;
+  const oldDay = day.exec(was)?.[0];
+  return oldDay && out.split(dayText(dateArg)).join('\u0000') === was.split(oldDay).join('\u0000') ? was : out;
+}
 
 function fill(page: string): string {
   const tpl = fs.readFileSync(path.join(DRAFTS, 'site', 'ru', `${page}.html`), 'utf8') as string;
@@ -116,12 +137,31 @@ function fill(page: string): string {
     return vals[k];
   });
   if (/\{\{[A-Z_]+\}\}/.test(out)) stop(`${page}.html: остались незаполненные поля`);
-  if (approved && /class="todo"|ЧЕРНОВИК|\[⚑/.test(out)) stop(`${page}.html: в тексте осталась пометка черновика`);
+  if ((approved || candidate) && /class="todo"|ЧЕРНОВИК|\[⚑/.test(out)) stop(`${page}.html: в тексте осталась пометка черновика`);
   return out;
 }
 
 log(`Реквизиты (docs/legal-drafts/seller.json): ${seller.name}, ИНН указан, НПД с ${vals.NPD_SINCE}, ${seller.email}; телефон: ${phone ? 'указан' : 'не публикуется'}; город: ${city ? 'указан' : 'не указывается'}`);
 for (const w of warnings) log('ВНИМАНИЕ: ' + w);
+if (candidate) {
+  // everything but the owner's approval: the details and a date must be there; what waits for the owner is listed
+  const missing = problems.filter((p) => !p.startsWith('не утверждены условия'));
+  if (missing.length) stop('не хватает данных:\n  • ' + missing.join('\n  • '));
+  const dir = path.join(DRAFTS, 'site-candidate', 'ru');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'public', 'legal', 'legal.css'), path.join(DRAFTS, 'site-candidate', 'legal.css'));
+  const pages = Object.fromEntries(PAGES.map((p) => [p, keepUnchanged(p, fill(p))])) as Record<string, string>;
+  for (const p of PAGES) fs.writeFileSync(path.join(dir, `${p}.html`), pages[p]);
+  const kept = PAGES.filter((p) => fs.existsSync(path.join(ROOT, 'public', 'legal', 'ru', `${p}.html`)) && pages[p] === fs.readFileSync(path.join(ROOT, 'public', 'legal', 'ru', `${p}.html`), 'utf8'));
+  if (kept.length) log(`Без изменений (как на сайте, с прежней датой): ${kept.join(', ')}`);
+  const rev = Number(/<meta name="prime-doc" content="offer" data-version="(\d+)"/.exec(pages.offer)?.[1] ?? 0);
+  const sha = crypto.createHash('sha256').update(pages.offer).digest('hex') as string;
+  log(`Кандидат (действует с ${dayText(dateArg)}): docs/legal-drafts/site-candidate/ru/ — ${PAGES.length} страниц; приватно, public/ не изменён.`);
+  log(`Оферта, редакция № ${rev}: SHA-256 ${sha}`);
+  log(`   { revision: ${rev}, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '${dateArg}', sha256: '${sha}' }`);
+  if (pending.length) log('Ожидает одобрения владельца (до него --approved не установит страницы): ' + pending.join('; '));
+  proc.exit(0);
+}
 if (!approved) {
   const dir = path.join(DRAFTS, 'site-preview', 'ru');
   fs.mkdirSync(dir, { recursive: true });
@@ -137,7 +177,7 @@ if (problems.length) stop('не хватает данных или решени�
 const target = path.join(ROOT, 'public', 'legal', 'ru');
 const sha256 = (b: Uint8Array | string) => crypto.createHash('sha256').update(b).digest('hex') as string;
 // the offer: its revision number comes from the template; a registered revision's text is kept, never overwritten
-const pages = Object.fromEntries(PAGES.map((p) => [p, fill(p)])) as Record<string, string>;
+const pages = Object.fromEntries(PAGES.map((p) => [p, keepUnchanged(p, fill(p))])) as Record<string, string>;
 const revision = Number(/<meta name="prime-doc" content="offer" data-version="(\d+)"/.exec(pages.offer)?.[1] ?? 0);
 if (!revision || !pages.offer.includes(`Редакция № ${revision} `)) stop('offer.html: номер редакции в data-version и в строке «Редакция № …» должен совпадать');
 const archived: string[] = [];

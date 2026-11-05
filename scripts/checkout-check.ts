@@ -152,7 +152,7 @@ function modelChecks(): void {
     return buildCheckout({ ...base, sku: it.sku, state: lw.shop.state(it), paymentsReady: approved, consentTicked: true });
   };
   const ev = EVENTS.find((e) => e.fighters?.some((f) => f.fighter === 'lucien'))!;
-  check(`LUCIEN (EventManager calendar ${(ev.start ?? "").slice(0, 10)} – ${(ev.end ?? "").slice(0, 10)}): before and during the season — tokens only; opened — owned; after the season — the paid way (today: price not approved)`, ls('2026-10-10T12:00:00Z').block === 'seasonal_only' && ls('2026-10-25T12:00:00Z').block === 'seasonal_only' && ls('2026-10-25T12:00:00Z', true).block === 'owned' && ls('2026-11-10T12:00:00Z', true).block === 'owned' && ls('2026-11-10T12:00:00Z').block === null && ls('2026-11-10T12:00:00Z', false, false).block === 'price_pending');
+  check(`LUCIEN (EventManager calendar ${(ev.start ?? "").slice(0, 10)} – ${(ev.end ?? "").slice(0, 10)}): before and during the season — tokens only; opened — owned; after the season — the paid way (1.9.4: 249 ₽ approved; the window takes the SERVER's charge — none while the offer in force sells no characters → «not for sale yet»)`, ls('2026-10-10T12:00:00Z').block === 'seasonal_only' && ls('2026-10-25T12:00:00Z').block === 'seasonal_only' && ls('2026-10-25T12:00:00Z', true).block === 'owned' && ls('2026-11-10T12:00:00Z', true).block === 'owned' && ls('2026-11-10T12:00:00Z').block === null && !ls('2026-11-10T12:00:00Z', false, false).canPay && buildCheckout({ ...open(), sku: 'fighter_lucien', state: world('2026-11-10T12:00:00Z').shop.state(SHOP_ITEMS.find((i) => i.sku === 'fighter_lucien')!), priceRub: null, paymentsReady: true, consentTicked: true }).block === 'price_pending');
   check('email shown masked (never the full address): ' + maskEmail('player@example.test'), maskEmail('player@example.test') === 'pl•••@example.test' && maskEmail('x@y.z') === 'x•••@y.z' && maskEmail('bad') === '');
   // Shop.requestPurchase uses the same rules
   check('Shop.requestPurchase (stage 2) now follows the same rules: today every item is refused', SKUS.every((s) => w.shop.requestPurchase(s, true).ok === false && w.shop.requestPurchase(s, false).ok === false));
@@ -257,7 +257,18 @@ function safetyChecks(): void {
   // the owner's decisions (24.10.2026): email is the only public contact — no phone or city written into a page,
   // no made-up number; a phone or a city would appear only from seller.json, through legal:release
   check('the release pages carry no phone number or stub of their own (contacts come only from seller.json)', tpl.every((t) => !/\+7[\s(-]*\d|тел\.\s*\{|\{\{(PHONE|CITY)\}\}|\[(не указан|телефон)/i.test(t)));
-  check('the offer and the catalog sell exactly what the shop sells: LUCIEN is named only as NOT sold for money', /3\.4\.[^<]*не продаются[^<]*LUCIEN/.test(tpl[0].replace(/<\/?b>/g, '')) && !/Открытие игрового персонажа[^<]*(может быть предложен|за плату он)/.test(tpl[0]) && /LUCIEN: THE NIGHT STAR открывается только за жетоны/.test(tpl[3]));
+  // 1.9.4: the next offer (revision 4, the template) sells what the shop sells — the cosmetics AND the playable characters
+  // of Appendix 1 (LUCIEN 249 ₽); the seasonal rule; no exclusive rights; 14–17: still no characters
+  const t0 = tpl[0].replace(/<\/?b>/g, '');
+  check('1.9.4 the offer template is revision 4: characters of Appendix 1 are sold (3.2), §3.4 no longer excludes LUCIEN, the seasonal rule (3.5: tokens during the event, roubles after it, kept without a second purchase), «only for roubles» (3.6), no exclusive rights (3.8), what is bought is shown before the order (6.1), 14–17: every category, 500 ₽ an order, 2 000 ₽ over 30 days, no limits for adults (5.1, 5.3), balance changes keep access (8.4), one consent per revision (16.1), the receipt names a character', /data-version="4"/.test(tpl[0]) && /Редакция № 4 /.test(tpl[0]) && /href="offer-r3\.html"/.test(tpl[0]) && /3\.2\.[^<]*Игровые персонажи/.test(t0) && !/3\.4\.[^<]*LUCIEN/.test(t0) && /3\.5\.[^<]*сезонную игровую валюту[^<]*за рубли[^<]*без повторной покупки/.test(t0) && /3\.6\.[^<]*только за рубли/.test(t0) && /3\.8\.[^<]*Исключительные права[^<]*не передаются/.test(t0) && /6\.1\.[^<]*До подтверждения Заказа[^<]*что именно предоставляется[^<]*актуальная цена/.test(t0) && /5\.3\.[^<]*всех категорий[^<]*Игровые персонажи[^<]*не более 500 ₽[^<]*не более 2 000 ₽/.test(t0) && /5\.1\.[^<]*18 лет и старше ограничения п\. 5\.3 не применяются/.test(t0) && /8\.4\.[^<]*Доступ к приобретённому персонажу при этом сохраняется/.test(t0) && /16\.1\.[^<]*повторно для каждого Заказа оно не запрашивается/.test(t0) && !/299|1 500/.test(t0) && /Открытие игрового персонажа/.test(t0));
+  check('1.9.4 the catalog page names LUCIEN as sold after his event (tokens during it, never sold again to who opened him); the agreement (version 6) no longer says characters are never sold', /LUCIEN: THE NIGHT STAR во время Halloween Premiere открывался за PUMPKIN TOKENS, а после события продаётся в PRIME SHOP/.test(tpl[3]) && /с 14 до 18 лет — товары всех категорий, не дороже 500 ₽ за заказ и не больше 2 000 ₽ за 30 дней/.test(tpl[3]) && /data-version="6"/.test(tpl[4]) && !/Игровые персонажи[^<]*за деньги не продаются/.test(tpl[4]));
+  // …and revision 4 is NOT registered nor installed until the owner approves its text and its day (Р-17): the business
+  // conditions Р-13…Р-16 are the owner's (06.11.2026); the candidate pages are private and byte-exact
+  const dec = JSON.parse(read('docs/legal-drafts/decisions.json')) as Record<string, { status?: string; on?: string }>;
+  const cand = 'docs/legal-drafts/site-candidate';
+  const candOffer = fs.existsSync(path.join(ROOT, cand, 'ru/offer.html')) ? read(`${cand}/ru/offer.html`) : '';
+  check('1.9.4 revision 4: Р-13…Р-16 approved by the owner (06.11.2026), Р-17 (text and day) awaits the owner — legal:release --approved refuses; SHOP_OFFERS ends at revision 3; the site\'s offer.html is still revision 3', ['R13_offer4_fighters', 'R14_fighter_balance', 'R15_minors_fighters', 'R16_terms_v6'].every((k) => dec[k]?.status === 'approved' && dec[k]?.on === '2026-11-06') && dec.R17_offer4_text_and_date?.status === 'awaiting_owner' && SHOP_OFFERS[SHOP_OFFERS.length - 1].revision === 3 && /data-version="3"/.test(read('public/legal/ru/offer.html')));
+  check('1.9.4 the candidate (docs/legal-drafts/site-candidate, private): offer № 4 complete — no field, mark or old limit left; unchanged documents (privacy, refunds, seller) byte for byte as published; Agreement v6 RU/EN and «Parents» v4 RU/EN with the new limits', /data-version="4"/.test(candOffer) && !/\{\{|class="todo"|ЧЕРНОВИК|299|1 500/.test(candOffer) && ['privacy', 'refunds', 'seller'].every((p) => read(`${cand}/ru/${p}.html`) === read(`public/legal/ru/${p}.html`)) && /data-version="6"/.test(read(`${cand}/ru/terms.html`)) && /data-version="6"/.test(read(`${cand}/en/terms.html`)) && /500 ₽ per order and 2,000 ₽/.test(read(`${cand}/en/terms.html`)) && ['ru', 'en'].every((l) => /data-version="4"/.test(read(`${cand}/${l}/parents.html`)) && !/299|1 500|1,500/.test(read(`${cand}/${l}/parents.html`))));
   const rel = read('scripts/legal-release.ts');
   check('legal:release never installs pages while a condition of decisions.json is «proposed», the name/ИНН is not allowed, or an empty phone has no recorded decision — and it prints the Robokassa phone risk', /decisions\.json/.test(rel) && /\(approved \? problems : warnings\)\.push\('не утверждены условия/.test(rel) && /decided\('publishNameAndInn'\) !== true/.test(rel) && /decided\('phone'\) !== 'not_published'/.test(rel) && /Страницы этому требованию НЕ соответствуют/.test(rel));
   // the production build (after npm run build)
@@ -313,6 +324,7 @@ async function http(method: string, url: string, token = '', body?: unknown): Pr
 
 const H1 = crypto.createHash('sha256').update('test offer, revision 1').digest('hex');
 const H2 = crypto.createHash('sha256').update('test offer, revision 2').digest('hex');
+const H3 = crypto.createHash('sha256').update('test offer, revision 3').digest('hex');
 const realRules = (): any => {
   const m = { exports: {} as any };
   // the generated file is CommonJS: evaluate it as such (it is plain data)
@@ -420,7 +432,23 @@ async function serverChecks(): Promise<void> {
   check('accepting revision 2 keeps the history (rows for 1 and 2)', a2.j.accepted === 2 && historyA.join() === '1,2');
   const lucA = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fighter_lucien' });
   const lucB = await http('POST', '/api/prime/shop/checkout', B.tok, { sku: 'fighter_lucien' });
-  check('after the season: LUCIEN already opened for tokens → owned (never sold again); not opened → the paid way goes on to its next check', lucA.j.code === 'owned' && lucB.j.code === 'offer_consent_required' && lucB.j.quote.priceRub === 299);
+  const st2B = (await http('GET', '/api/prime/shop/status', B.tok)).j;
+  check('1.9.4 after the season, live, an approved price but an offer that does not sell characters: LUCIEN opened for tokens → owned; not opened → not_in_offer (no order), no charge in the status, the list price stays', lucA.j.code === 'owned' && lucB.status === 409 && lucB.j.code === 'not_in_offer' && st2B.prices.fighter_lucien === null && st2B.listPrices.fighter_lucien === 29900 && !(st2B.orders ?? []).some((o: any) => o.sku === 'fighter_lucien'));
+  await stopPb();
+
+  // phase 2b (1.9.4): the same, under an offer revision that sells playable characters (`fighters: true`)
+  testHooks(rulesWith({ prices: true, salesOpen: true, offers: [offer(1, H1), offer(2, H2, '2026-02-01'), { ...offer(3, H3, '2026-02-02'), fighters: true }], seasonEnd: '2026-03-01T00:00:00Z' }));
+  await startPb({ PRIME_SHOP_SALES: 'open' });
+  const lucA3 = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fighter_lucien' });
+  const lucB3 = await http('POST', '/api/prime/shop/checkout', B.tok, { sku: 'fighter_lucien' });
+  const st3B = (await http('GET', '/api/prime/shop/status', B.tok)).j;
+  check('1.9.4 …under a revision that sells characters: opened for tokens → still owned (never sold twice); not opened → the paid way goes on to its next check (consent), at the server\'s price', lucA3.j.code === 'owned' && lucB3.j.code === 'offer_consent_required' && lucB3.j.quote.priceRub === 299 && st3B.prices.fighter_lucien === 29900);
+  const futureF = rulesWith({ prices: true, salesOpen: true, offers: [offer(1, H1), { ...offer(2, H2, '2099-01-01'), fighters: true }], seasonEnd: '2026-03-01T00:00:00Z' });
+  await stopPb();
+  // a revision that sells characters but is not in force yet changes nothing
+  testHooks(futureF);
+  await startPb({ PRIME_SHOP_SALES: 'open' });
+  check('1.9.4 …a revision that sells characters but takes effect later: not_in_offer until its day', (await http('POST', '/api/prime/shop/checkout', B.tok, { sku: 'fighter_lucien' })).j.code === 'not_in_offer');
   await stopPb();
 
   // phase 3: the release would open sales, but this server's administrator has not (no PRIME_SHOP_SALES)
@@ -549,7 +577,7 @@ async function mobileChecks(): Promise<void> {
   const goFn = ui.slice(ui.indexOf('private goToPayment(start: CheckoutStart): void {'), ui.indexOf('/** Robokassa\'s form (hidden fields'));
   check('the same order out of tries is never sent again from the purchase itself either (closing and reopening the window): the order screen instead', /if \(this\.triesLeft\(start\.order\.inv\) <= 0\) \{[\s\S]*?this\.orderIssue = 'leave_failed';[\s\S]*?return;/.test(goFn) && goFn.indexOf('triesLeft(start.order.inv) <= 0') < goFn.indexOf('form.submit()'));
   // 1.8.9.5: the refusals for buyers under 18 have their own words (the window and the order screen)
-  check('1.8.9.5: minor_item / minor_limit / adult_only → their own blocks and texts (limits from shop.config), never «оплата не подключена»', /minor_item: 'minor_item'/.test(ui) && /minor_limit: 'minor_limit'/.test(ui) && /case 'minor_item':[\s\S]{0,80}только с 18 лет/.test(ui) && /MINOR_PURCHASES\.per30DaysRub/.test(ui) && issueOfError('forbidden', 'minor_limit') === 'refused' && /лимит покупок до 18 лет/i.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_limit' })).text) && /недорогие косметические/.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_item' })).text));
+  check('1.8.9.5 / 1.9.4: minor_item / minor_limit / adult_only → their own blocks and texts (the limits the SERVER reports for the offer in force, else revisions 1–3), never «оплата не подключена»', /minor_item: 'minor_item'/.test(ui) && /minor_limit: 'minor_limit'/.test(ui) && /case 'minor_item': \{[\s\S]{0,400}только с 18 лет/.test(ui) && /this\.server\?\.minors \?\? \{ orderKop: MINOR_PURCHASES\.itemMaxRub \* 100/.test(ui) && /this\.minorLimits\(\)\.per30DaysKop/.test(ui) && issueOfError('forbidden', 'minor_limit') === 'refused' && /лимит покупок до 18 лет/i.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_limit' })).text) && /превышает ограничения действующей оферты/.test(orderBanner(V({ issue: 'refused', issueCode: 'minor_item' })).text));
   check('back from Robokassa / a reload: the order is followed again from the server (pageshow, visibility, ?prime_pay=…), the try count kept in sessionStorage', /addEventListener\('pageshow', this\.onPageShow\)/.test(ui) && /addEventListener\('visibilitychange', this\.onVisible\)/.test(ui) && /noteTry\(sessionStore\(\), inv\)/.test(ui));
 }
 

@@ -169,7 +169,7 @@ export async function clientChecks(check: Check, section: (t: string) => void): 
   ws.shop.setServer(null);
   const s0 = ws.shop.state(rayItem);
   const lucienItem = SHOP_ITEMS.find((i) => i.sku === 'fighter_lucien')!;
-  check('no word from the server → the APPROVED price of this release (RAY 99 ₽), not for sale, «ПОКА НЕ В ПРОДАЖЕ»; LUCIEN (only proposed) has no price', ws.shop.priceKop('skin_ray_neon_runner') === 9900 && s0.price === '99 ₽' && !ws.shop.selling('skin_ray_neon_runner') && s0.status === 'soon' && s0.chip === 'ПОКА НЕ В ПРОДАЖЕ' && ws.shop.priceNote() === 'Продажи не открыты' && ws.shop.priceKop('fighter_lucien') === null && ws.shop.testPayLine('skin_ray_neon_runner') === null);
+  check('no word from the server → the APPROVED price of this release (RAY 99 ₽), not for sale, «ПОКА НЕ В ПРОДАЖЕ»; LUCIEN (1.9.4: approved 249 ₽) not for sale without the server either', ws.shop.priceKop('skin_ray_neon_runner') === 9900 && s0.price === '99 ₽' && !ws.shop.selling('skin_ray_neon_runner') && s0.status === 'soon' && s0.chip === 'ПОКА НЕ В ПРОДАЖЕ' && ws.shop.priceNote() === 'Продажи не открыты' && ws.shop.priceKop('fighter_lucien') === 24900 && !ws.shop.selling('fighter_lucien') && ws.shop.testPayLine('skin_ray_neon_runner') === null);
   const official = Object.fromEntries(Object.keys(SHOP_PRICES_RUB).map((k) => [k, k === 'fighter_lucien' ? null : rubToKop(SHOP_PRICES_RUB[k as keyof typeof SHOP_PRICES_RUB])]));
   const tenRub = Object.fromEntries(Object.keys(SHOP_PRICES_RUB).map((k) => [k, 1000]));
   ws.shop.setServer({ selling: true, env: 'test', pricesKop: official, chargeKop: tenRub });

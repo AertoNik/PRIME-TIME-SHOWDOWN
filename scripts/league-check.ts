@@ -25,7 +25,7 @@ import { canonicalJSON } from '../src/net/cloudSave';
 import { leagueConfig, replayLeague, type LeagueInput, type LeagueSnapshot } from '../src/league/replay';
 import { SIM_VERSION } from '../src/league/simVersion';
 import { leagueRulesSource, leagueSim, producerRulesSource, simVersionSource } from './backend';
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, defaultLook } from '../src/config/producer.config';
+import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, PRODUCER_PORTRAITS, avatarById, defaultLook, isPortrait, offeredAvatars } from '../src/config/producer.config';
 import { producerSVG } from '../src/ui/producerArt';
 import { comboBot, type BotState } from './bots';
 import { availableArenas } from '../src/meta/ArenaSelection';
@@ -130,9 +130,24 @@ function rulesChecks(): void {
   check('equal opponents at the RP the skill belongs at: a win +20, a loss −20 (no drift from the number of matches)', LM.rpDelta(p, 1000, 'win') === 20 && LM.rpDelta(p, 1000, 'loss') === -20);
   check('beating a stronger opponent gives more, losing to one costs less', LM.rpDelta(p, 1200, 'win') > 20 && -LM.rpDelta(p, 1200, 'loss') < 20);
   check('a beginner (variant C: the first 25 games) loses half — game 24 too, game 25 the full amount', LEAGUE.rp.newcomerGames === 25 && -LM.rpDelta({ ...p, games: 24 }, 1000, 'loss') === 10 && -LM.rpDelta({ ...p, games: 25 }, 1000, 'loss') === 20);
-  check('producer_rules.js is generated from producer.config.ts and up to date; 14 avatars, 4 frames, 4 backdrops, all free', fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/producer_rules.js'), 'utf8') === producerRulesSource() && PRODUCER_AVATARS.length >= 12 && PRODUCER_FRAMES.length >= 4 && PRODUCER_BACKDROPS.length >= 4 && [...PRODUCER_AVATARS, ...PRODUCER_FRAMES, ...PRODUCER_BACKDROPS].every((x) => x.access === 'free'));
-  const svgs = PRODUCER_AVATARS.map((a) => producerSVG({ avatar: a.id, frame: 'studio', backdrop: 'violet' }, 48));
-  check('every avatar is its own drawing (14 different SVGs), vector only — no external image, URL or script', new Set(svgs.map((x) => x.replace(/id="[^"]+"|url\(#[^)]+\)/g, ''))).size === PRODUCER_AVATARS.length && svgs.every((x) => !/<image|href=|https?:|<script/i.test(x)));
+  check('producer_rules.js is generated from producer.config.ts and up to date; 19 portraits + 14 legacy avatars, 4 frames, 4 backdrops, all free', fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/producer_rules.js'), 'utf8') === producerRulesSource() && PRODUCER_AVATARS.length >= 12 && PRODUCER_FRAMES.length >= 4 && PRODUCER_BACKDROPS.length >= 4 && [...PRODUCER_AVATARS, ...PRODUCER_FRAMES, ...PRODUCER_BACKDROPS].every((x) => x.access === 'free'));
+  const vectors = PRODUCER_AVATARS.filter((a) => !isPortrait(a));
+  const svgs = vectors.map((a) => producerSVG({ avatar: a.id, frame: 'studio', backdrop: 'violet' }, 48));
+  check('every legacy avatar is its own drawing (14 different SVGs), vector only — no external image, URL or script', vectors.length === 14 && vectors.every((a) => a.legacy) && new Set(svgs.map((x) => x.replace(/id="[^"]+"|url\(#[^)]+\)/g, ''))).size === 14 && svgs.every((x) => !/<image|href=|https?:|<script/i.test(x)));
+  // 1.9.4 — 3D PORTRAITS
+  const ids = PRODUCER_AVATARS.map((a) => a.id);
+  check('1.9.4 the catalogue: 19 portraits portrait_01…19 (avatar-01…19.png), unique ids, none of the 1.9.0 ids reused, catalogue version 2', PRODUCER_PORTRAITS.length === 19 && PRODUCER_PORTRAITS.every((p, i) => p.id === `portrait_${String(i + 1).padStart(2, '0')}` && p.image === `avatar-${String(i + 1).padStart(2, '0')}.png` && !p.legacy) && new Set(ids).size === ids.length && ids.length === 33 && JSON.parse(fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/producer_rules.js'), 'utf8').replace(/^[\s\S]*?module\.exports = /, '').replace(/;\s*$/, '')).version === 2);
+  const png = (f: string) => { const b = fs.readFileSync(f); return { sig: b.subarray(1, 4).toString() === 'PNG', w: b.readUInt32BE(16), h: b.readUInt32BE(20), rgba: b[25] === 6 }; };
+  check('1.9.4 every portrait ships as a 128 px and a 256 px RGBA PNG in public/producers/; the 1254 px originals stay in producer-avatars-new/', PRODUCER_PORTRAITS.every((p) => [128, 256].every((n) => { const f = path.join(ROOT, `public/producers/${n}/${p.image}`); if (!fs.existsSync(f)) return false; const x = png(f); return x.sig && x.w === n && x.h === n && x.rgba; }) && (() => { const o = path.join(ROOT, `producer-avatars-new/${p.image}`); const x = fs.existsSync(o) && png(o); return !!x && x.w === 1254 && x.rgba; })()));
+  const psvg = PRODUCER_PORTRAITS.map((p) => producerSVG({ avatar: p.id, frame: 'prime', backdrop: 'night' }, 48));
+  check('1.9.4 a portrait badge: backdrop + the picture + frame; the picture is only a relative producers/ path (no URL, no script); 128 px up to 72 px badges, 256 px above', psvg.every((x, i) => x.includes(`href="./producers/128/${PRODUCER_PORTRAITS[i].image}"`) && (x.match(/<image/g) ?? []).length === 1 && !/https?:|<script|javascript:/i.test(x)) && producerSVG({ avatar: 'portrait_05', frame: 'studio', backdrop: 'violet' }, 132).includes('producers/256/avatar-05.png') && producerSVG({ avatar: 'portrait_05', frame: 'studio', backdrop: 'violet' }, 72).includes('producers/128/'));
+  const fr = PRODUCER_FRAMES.map((f) => producerSVG({ avatar: 'portrait_09', frame: f.id, backdrop: 'cyan' }, 64).replace(/id="[^"]+"|url\(#[^)]+\)/g, ''));
+  const bd = PRODUCER_BACKDROPS.map((b) => producerSVG({ avatar: 'portrait_09', frame: 'neon', backdrop: b.id }, 64).replace(/id="[^"]+"|url\(#[^)]+\)/g, ''));
+  check('1.9.4 frame and backdrop stay independent of the portrait: 4 frames × 4 backdrops all differ around the same picture', new Set(fr).size === 4 && new Set(bd).size === 4);
+  const seeds = Array.from({ length: 2000 }, (_, i) => 'acc' + i.toString(36).padStart(12, '0'));
+  const dflt = new Set(seeds.map((x) => defaultLook(x).avatar));
+  check('1.9.4 a default is always a portrait (never legacy) and the 2000 sample accounts spread over all 19; the studio offers exactly the 19', seeds.every((x) => isPortrait(avatarById(defaultLook(x).avatar)!)) && dflt.size === 19 && offeredAvatars().length === 19 && offeredAvatars().every(isPortrait));
+  check('1.9.4 a saved legacy look keeps its face: «diva», «veteran» and «director» still resolve and draw their own vector portrait', ['diva', 'veteran', 'director'].every((id) => avatarById(id)?.legacy === true) && producerSVG({ avatar: 'diva', frame: 'neon', backdrop: 'sunset' }, 48).includes('Дива') && !producerSVG({ avatar: 'diva', frame: 'neon', backdrop: 'sunset' }, 48).includes('<image'));
   check('RP below the skill climbs faster, above it slower', LM.rpDelta({ ...p, rp: 100 }, 1000, 'win') > LM.rpDelta({ ...p, rp: 1600 }, 1000, 'win'));
   check('the floor: once reached, a major rank is never lost to RP in the season', LM.applyRp(310, 300, -40).rp === 300);
   const a = LM.applyRp(690, 300, 30);
@@ -499,6 +514,7 @@ async function serverChecks(): Promise<void> {
   const g0 = await pget(A);
   const dA = defaultLook(A.id);
   check('AV-01/02 an account that never chose: a stable default derived from its id (the same as the game draws), not chosen', g0.status === 200 && g0.j.look.avatar === dA.avatar && g0.j.look.backdrop === dA.backdrop && g0.j.look.rev === 0 && g0.j.look.chosen === false && (await pget(A)).j.look.avatar === dA.avatar);
+  check('1.9.4 the server\'s default is a 3D portrait for every test account — the same one the game computes (never a legacy avatar)', [A, B, C].every((u) => isPortrait(avatarById(defaultLook(u.id).avatar)!)) && (await pget(B)).j.look.avatar === defaultLook(B.id).avatar && (await pget(C)).j.look.avatar === defaultLook(C.id).avatar);
   check('AV-07 a guest neither reads nor writes a look (401); an unconfirmed account cannot save (403)', (await pget(null)).status === 401 && (await pput(null, { avatar: 'diva', frame: 'neon', backdrop: 'sunset', rev: 0 })).status === 401 && (await pput(late, { avatar: 'diva', frame: 'neon', backdrop: 'sunset', rev: 0 })).j?.code === 'not_verified');
   const bad = await Promise.all([
     { avatar: 'nope', frame: 'neon', backdrop: 'sunset' },
@@ -522,6 +538,12 @@ async function serverChecks(): Promise<void> {
   const now = (await pget(A)).j.look;
   check('AV-05 two tabs save at once: exactly one wins, the other gets look_changed; the stored look is exactly the winner\'s', won.length === 1 && race.some((r) => r.j?.code === 'look_changed') && now.rev === 2 && now.avatar === won[0].j.look.avatar && now.frame === won[0].j.look.frame && now.backdrop === won[0].j.look.backdrop);
   check('AV-06 another account keeps its own (default) look — nothing leaks between accounts', (await pget(B)).j.look.avatar === defaultLook(B.id).avatar);
+  const sp = await pput(A, { avatar: 'portrait_17', frame: 'prime', backdrop: 'sunset', rev: now.rev });
+  const A3 = { ...A, token: (await (async () => { const c = new PocketBase(API); await c.collection('users').authWithPassword(A.email, PW); return c.authStore.token; })()) };
+  const g3 = (await pget(A3)).j.look;
+  check('1.9.4 AV-P1 a 3D portrait is saved with its frame and backdrop and comes back after a new sign-in (another session)', sp.status === 200 && g3.avatar === 'portrait_17' && g3.frame === 'prime' && g3.backdrop === 'sunset' && g3.rev === now.rev + 1);
+  const lg = await pput(A3, { avatar: 'diva', frame: 'onair', backdrop: 'night', rev: g3.rev });
+  check('1.9.4 AV-P2 a legacy avatar is still accepted (an old look re-saved with a new frame keeps its face); a made-up portrait id is refused', lg.status === 200 && lg.j.look.avatar === 'diva' && lg.j.look.frame === 'onair' && (await pput(A3, { avatar: 'portrait_20', frame: 'onair', backdrop: 'night', rev: lg.j.look.rev })).j?.code === 'look_not_allowed' && (await pput(A3, { avatar: 'portrait_1', frame: 'onair', backdrop: 'night', rev: lg.j.look.rev })).status === 400);
   const lookB = { avatar: 'veteran', frame: 'onair', backdrop: 'night' };
   await pput(B, { ...lookB, rev: 0 });
   // the league: the table shows each producer's public look; a match freezes the opponent's look
@@ -537,13 +559,13 @@ async function serverChecks(): Promise<void> {
   let limited = false;
   let rev = (await pget(C)).j.look.rev;
   for (let i = 0; i < 32 && !limited; i++) {
-    const r = await pput(C, { avatar: PRODUCER_AVATARS[i % 14].id, frame: 'studio', backdrop: 'violet', rev });
+    const r = await pput(C, { avatar: PRODUCER_AVATARS[i % PRODUCER_AVATARS.length].id, frame: 'studio', backdrop: 'violet', rev });
     if (r.status === 429) limited = true;
     else rev = r.j.look.rev;
   }
   check('rate limit: at most 30 saves in 10 minutes per account → 429 too_many_changes', limited && rev === 30);
   const cfgP = await call(null, 'GET', '/api/prime/config');
-  check('the server announces PRIME PRODUCER AVATARS (catalogue version 1) — independent of the league switch', cfgP.j.producer === 1);
+  check('the server announces PRIME PRODUCER AVATARS (catalogue version 2: the 3D portraits) — independent of the league switch', cfgP.j.producer === 2);
 
   section('Сервер: защита, лимиты, отчёт');
   // C (no fights against B yet) gives up at once against B twice: B's defence wins; it is paid ONCE per attacker and day

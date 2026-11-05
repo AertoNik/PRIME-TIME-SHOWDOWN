@@ -26,7 +26,8 @@ import type { CameraRig } from './CameraRig';
 import { CardVisuals } from './CardVisuals';
 import { dashBurst, dashColor, victoryCelebration, type DashFx, type VictoryFx } from './cosmeticFx';
 import { defaultInput, type AnimInput } from './FighterAnimator';
-import type { CachedFighter, ModelCache } from './ModelCache';
+import type { CachedFighter, ModelCache, RigCopy } from './ModelCache';
+import { LOOKS } from '../config/looks';
 import { NightFX } from './NightFX';
 import type { Renderer } from './Renderer';
 import { glowTexture, shadowTexture, streakTexture, teamRingTexture } from './textures';
@@ -120,6 +121,8 @@ export class BattleView {
   private match: Match | null = null;
   /** Alpha 1.8.8: the look each side is shown in (a PRIME SHOP skin of the player's fighter). */
   private looks: string[] = [];
+  /** 1.9.4: the rig copy of each side (1 for side 1 when both sides wear the same look — ModelCache RigCopy). */
+  private copies: RigCopy[] = [0, 0];
   private t = 0;
   private finishTimer = -1;
   /** Side whose DIRECTOR'S CUT line is on screen (-1 = none). */
@@ -181,11 +184,19 @@ export class BattleView {
   setup(match: Match, looks: readonly (string | null)[] = []): void {
     this.teardown();
     this.match = match;
-    this.looks = match.fighters.map((f, i) => looks[i] ?? f.look);
+    // 1.9.4: a look this game cannot build (old data, a newer skin) never breaks a fight: the fighter's own look instead
+    this.looks = match.fighters.map((f, i) => {
+      const want = looks[i] ?? f.look;
+      if (LOOKS[want]) return want;
+      console.warn(`PRIME TIME: unknown look «${want}» — drawn as ${f.look}`);
+      return f.look;
+    });
+    // 1.9.4: the same look on both sides (a league mirror match) → the second fighter gets its own copy of the rig
+    this.copies = [0, this.looks[1] === this.looks[0] ? 1 : 0];
     this.arena.resetProps();
     this.finishTimer = -1;
     for (const f of match.fighters) {
-      const model = this.models.get(this.looks[f.side]);
+      const model = this.models.get(this.looks[f.side], this.copies[f.side]);
       this.root.add(model.rig.root);
       model.anim.reset(f.facing);
       model.rig.root.visible = true;
@@ -1195,7 +1206,7 @@ export class BattleView {
         const look = this.looks[e.side];
         // Alpha 1.6: a HOLO DECOY uses its own twin, so it can stand next to a PHANTOM STEP decoy
         const kind = m.decoys.find((x) => x.id === e.id)?.kind ?? 'phantom';
-        const holo = this.models.getHolo(look, kind === 'holo' ? 1 : 0);
+        const holo = this.models.getHolo(look, kind === 'holo' ? 1 : 0, this.copies[e.side]);
         // Alpha 1.6.1: the HOLO DECOY reads as a projection (cyan), not as the fighter's own PHANTOM double
         if (kind === 'holo') holo.rig.holoMat?.uniforms.uColor.value.set(0x5cf2ff);
         holo.anim.reset(m.fighters[e.side].facing);
@@ -1354,7 +1365,7 @@ export class BattleView {
         const s = this.slots[e.side];
         const f = m.fighters[e.side];
         if (this.ghost) this.root.remove(this.ghost.model.rig.root);
-        const g = this.models.getGhost(this.looks[f.side]);
+        const g = this.models.getGhost(this.looks[f.side], this.copies[f.side]);
         g.anim.reset(f.facing);
         g.rig.root.position.set(e.x, 0, e.z);
         this.root.add(g.rig.root);
@@ -1488,7 +1499,7 @@ export class BattleView {
         const col = _c.set(0xff7ad9);
         // a tape-rewind ghost stays where the fighter was, a scanline trail runs to where it goes
         if (this.ghost) this.root.remove(this.ghost.model.rig.root);
-        const g = this.models.getGhost(this.looks[f.side]);
+        const g = this.models.getGhost(this.looks[f.side], this.copies[f.side]);
         g.anim.reset(f.facing);
         g.rig.root.position.set(e.fromX, 0, e.fromZ);
         this.root.add(g.rig.root);
@@ -1549,7 +1560,7 @@ export class BattleView {
         this.root.remove(old.model.rig.root);
         this.echoes.delete(id);
       }
-      const ghost = this.models.getHolo(this.looks[f.side], 2);
+      const ghost = this.models.getHolo(this.looks[f.side], 2, this.copies[f.side]);
       const yaw = o ? Math.atan2(o.dirX, o.dirZ) : f.facing;
       ghost.anim.reset(yaw);
       ghost.rig.root.position.set(e.x, 0, e.z);

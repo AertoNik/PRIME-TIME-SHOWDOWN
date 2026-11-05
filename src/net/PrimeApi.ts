@@ -246,6 +246,8 @@ export interface ShopServerStatus {
   listKop: Record<string, number | null> | null;
   /** This account's open (unpaid) orders. */
   orders: ServerOrder[];
+  /** 1.9.4: the limits for buyers aged 14–17 under the offer revision in force (null: an older server). */
+  minors: { orderKop: number; per30DaysKop: number; characters: boolean } | null;
 }
 
 /** 1.8.8 stage 4: POST /api/prime/shop/checkout once everything passed — the order and Robokassa's page. */
@@ -586,6 +588,7 @@ export class PrimeApi {
       pricesKop: r.prices && typeof r.prices === 'object' ? kopMap(r.prices) : null,
       listKop: r.listPrices && typeof r.listPrices === 'object' ? kopMap(r.listPrices) : null,
       orders: Array.isArray(r.orders) ? r.orders.map(orderOf).filter((o): o is ServerOrder => o !== null) : [],
+      minors: r.minors && typeof r.minors === 'object' ? { orderKop: int((r.minors as Rec).orderKop), per30DaysKop: int((r.minors as Rec).per30DaysKop), characters: (r.minors as Rec).characters === true } : null,
     };
   }
 

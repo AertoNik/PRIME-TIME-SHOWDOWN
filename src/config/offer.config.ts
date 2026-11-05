@@ -25,6 +25,18 @@ export interface OfferRevision {
    * it the server sells only to 18+, whatever PRIME_SHOP_MINORS says (shop.config.ts MINOR_PURCHASES).
    */
   minors?: boolean;
+  /**
+   * Alpha 1.9.4: this revision's text sells playable characters for money (LUCIEN after his season) — its list of
+   * goods names them and their price. Without it the server never charges for a fighter in live mode
+   * (lib/payments.js fightersOffered): revisions 1–3 say the opposite (§3.4).
+   */
+  fighters?: boolean;
+  /**
+   * Alpha 1.9.4: this revision's own limits for buyers aged 14–17 (its section 5): at most `orderMaxRub` an order, at most
+   * `per30DaysRub` over any 30 days, `characters` — playable characters too. Absent: the limits of revisions 1–3
+   * (shop.config.ts MINOR_PURCHASES — cosmetics only). The server applies the limits of the revision in force.
+   */
+  minorLimits?: { orderMaxRub: number; per30DaysRub: number; characters: boolean };
 }
 
 /**
@@ -35,6 +47,8 @@ export interface OfferRevision {
  *     --date=2026-10-24`. If the site goes out on another day, re-run it with that date and copy the date and
  *     SHA-256 here before publishing.
  */
+// 1.9.4: revision 4 (sells playable characters: `fighters: true`) is prepared in docs/legal-drafts and registered here
+// only after the owner approves its text and publishes it — with the real date and the SHA-256 legal:release prints.
 export const SHOP_OFFERS: OfferRevision[] = [
   { revision: 1, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r1.html', effectiveFrom: '2026-10-24', sha256: '2a6de21c5ed0452ce65667db792c1fc39c21675b0ac761ae785fb3b9a26b4625' },
   { revision: 2, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r2.html', effectiveFrom: '2026-10-24', sha256: 'a8ae91f4be0a99336180823e5dfc8c0bc168b103ccbc3f10a3f98c41996a76c2' },

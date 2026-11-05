@@ -12,7 +12,9 @@ import {
   SHOP_ITEMS,
   SHOP_PRICES_RUB,
   SHOP_PRICE_STATUS,
+  SHOP_PRICES_APPROVED_LATER,
   approvedPriceRub,
+  rubToKop,
   SHOP_SALES_OPEN,
   SKINS,
   SKU_OF_COSMETIC,
@@ -87,8 +89,8 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check('catalog: skins point to existing fighters, cosmetics to PRIME SHOP items in the collection, LUCIEN to the seasonal star', SHOP_ITEMS.every((i) => (i.skin ? SKINS[i.skin].fighter === i.fighter && i.category === 'skins' : i.cosmetic ? COSMETICS[i.cosmetic].paid === true && COSMETICS[i.cosmetic].source === 'shop' && i.category === 'effects' : i.fighter === 'lucien' && !!FIGHTERS.lucien.seasonal)));
   check('catalog: each sku sells one thing (lookups both ways)', PAID.every((c) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_COSMETIC[c])?.cosmetic === c) && Object.values(SKINS).every((s) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_SKIN[s.id])?.skin === s.id));
   // 1.8.8 final: the owner approved six prices on 23.10.2026 (item by item); LUCIEN's stays only proposed
-  check('prices: approved by the owner item by item — RAY 99, BRUNO 149, PRIME BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49 ₽', ALL_SKUS.map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,299' && ALL_SKUS.filter((s) => s !== 'fighter_lucien').every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s]));
-  check('prices: LUCIEN 299 ₽ is only PROPOSED — never shown as a price, never charged (a seasonal fighter: sold only after his event AND the owner\'s decision)', SHOP_PRICE_STATUS.fighter_lucien === 'proposed' && approvedPriceRub('fighter_lucien') === null);
+  check('prices: approved by the owner item by item — RAY 99, BRUNO 149, PRIME BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49 ₽', ALL_SKUS.map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,249' && ALL_SKUS.filter((s) => s !== 'fighter_lucien').every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s]));
+  check('prices: LUCIEN 249 ₽ APPROVED by the owner on 05.11.2026 (1.9.4) — the documents name that day apart from the six of 23.10.2026; sold only after his event and under an offer that sells characters (the server checks)', SHOP_PRICE_STATUS.fighter_lucien === 'approved' && approvedPriceRub('fighter_lucien') === 249 && SHOP_PRICES_APPROVED_LATER.fighter_lucien === '2026-11-05');
   check('this release may sell (1.8.9: the server\'s LIVE mode and PRIME_SHOP_SALES decide) and the offer link points to the real installed page (public/legal/ru/offer.html)', SHOP_SALES_OPEN === true && SHOP_OFFERS.every((o) => fs.existsSync(path.join(ROOT, 'public', o.url.replace(/^https:\/\/primetimeshowdown\.online\//, '')))) && (currentOffer() === null || /\/legal\/ru\/offer(-r\d+)?\.html$/.test(currentOffer()!.url)));
   const w = world('2026-10-22T12:00:00Z');
   check('prices: the shop shows the approved price («99 ₽», «149 ₽», «49 ₽») — and «ПОКА НЕ В ПРОДАЖЕ» while real sales are closed', SHOP_ITEMS.filter((i) => !i.fighter || i.skin).every((i) => w.shop.state(i).price === `${SHOP_PRICES_RUB[i.sku]} ₽` && w.shop.state(i).status === 'soon' && w.shop.state(i).chip === 'ПОКА НЕ В ПРОДАЖЕ'), SHOP_ITEMS.map((i) => w.shop.state(i).price).join('|'));
@@ -371,8 +373,29 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check('LUCIEN after the season, opened: still «ПОЛУЧЕН», still in the roster, no second offer', w.shop.state(lucien).status === 'received' && w.events.ownsFighter('lucien') && w.events.fighterVisible('lucien') && w.shop.requestPurchase('fighter_lucien', true).code === 'owned');
   const late = world('2026-11-04T00:00:01Z');
   const ls = late.shop.state(lucien);
-  check('LUCIEN after the season, not opened: a future paid way («ПОКА НЕ В ПРОДАЖЕ», price not approved, not sold now)', ls.status === 'after_season' && ls.chip === 'ПОКА НЕ В ПРОДАЖЕ' && ls.price === 'Цена уточняется' && late.shop.requestPurchase('fighter_lucien', true).code === 'not_on_sale');
+  // 1.9.4: no server answer here (offline, no PRIME NETWORK): the approved price is shown, nothing is on sale — only the
+  // server sells (it prices him only under an offer that sells characters)
+  check('LUCIEN after the season, not opened, no server: «ПОКА НЕ В ПРОДАЖЕ» with the approved 249 ₽; a purchase never starts without the server', ls.status === 'after_season' && ls.chip === 'ПОКА НЕ В ПРОДАЖЕ' && ls.price === '249 ₽' && !late.shop.selling('fighter_lucien') && late.shop.requestPurchase('fighter_lucien', true).ok === false);
   check('LUCIEN: no second fighter id — the shop item is the same «lucien»', lucien.fighter === 'lucien' && Object.keys(FIGHTERS).filter((k) => k.includes('lucien')).length === 1);
+  // 1.9.4 — what PRODUCTION answers today (live, sales open, LUCIEN without a price): the card says why, not «sales closed»
+  const cos = Object.fromEntries(ALL_SKUS.map((k) => [k, k === 'fighter_lucien' ? null : rubToKop(approvedPriceRub(k))]));
+  late.shop.setServer({ selling: true, env: 'live', pricesKop: cos, chargeKop: cos });
+  const ll = late.shop.state(lucien);
+  check('1.9.4 LUCIEN after the season on a live server of 1.9.3 (no price for him): «ПОКА НЕ В ПРОДАЖЕ», «Цена уточняется», the note names his price and terms — never «sales are closed»', ll.status === 'after_season' && ll.price === 'Цена уточняется' && /утвердят цену и условия/.test(ll.note) && !/Продажи PRIME SHOP пока не открыты/.test(ll.note) && !late.shop.selling('fighter_lucien'));
+  // …once the owner approved his price AND an offer that sells characters is in force, the server sends a charge for him
+  const withL = { ...cos, fighter_lucien: 24900 };
+  late.shop.setServer({ selling: true, env: 'live', pricesKop: withL, chargeKop: withL });
+  const lo = late.shop.state(lucien);
+  check('1.9.4 …the server prices him (249 ₽ once approved): «В ПРОДАЖЕ 249 ₽», the paid way through PRIME CHECKOUT', lo.status === 'on_sale' && lo.chip === 'В ПРОДАЖЕ' && lo.price === '249 ₽' && late.shop.selling('fighter_lucien'));
+  // …the list price without a charge (approved, but the offer in force does not sell characters): still not on sale
+  late.shop.setServer({ selling: true, env: 'live', pricesKop: withL, chargeKop: cos });
+  check('1.9.4 …an approved price but no charge (the offer in force does not sell characters yet — the 1.9.4 server today): 249 ₽ shown, not on sale, the note says the offer revision opens it', late.shop.state(lucien).status === 'after_season' && late.shop.state(lucien).price === '249 ₽' && !late.shop.selling('fighter_lucien') && /вступит в силу редакция оферты/.test(late.shop.state(lucien).note));
+  // an account that opened him for tokens, or bought him, is never offered him again — whatever the server prices
+  const opened = world('2026-11-04T00:00:01Z');
+  opened.store.data.fighters.lucien.unlocked = true;
+  opened.shop.setServer({ selling: true, env: 'live', pricesKop: withL, chargeKop: withL });
+  check('1.9.4 …opened for PUMPKIN TOKENS: «ПОЛУЧЕН» at any server price — no second sale', opened.shop.state(lucien).status === 'received' && opened.shop.requestPurchase('fighter_lucien', true).code === 'owned');
+  late.shop.setServer(null);
   setEntitlements(['fighter_lucien']);
   // 1.8.8 stage 4: the paid way is wired — the server's right opens him, the save never holds it
   check('LUCIEN: a paid right (confirmed by the server) opens him in the roster — never written into the save', late.events.ownsFighter('lucien') && late.store.data.fighters.lucien.unlocked === false);

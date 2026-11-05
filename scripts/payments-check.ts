@@ -144,7 +144,7 @@ function protocolChecks(): void {
   check('the same Receipt signed in live mode: the LIVE Password#1, no IsTest — a test form can never pass for a live one', !('IsTest' in fLive) && fLive.SignatureValue === H.sha256(`${LOGIN}:99.00:10000000123:${rcRay}:${LIVE_P1}:Shp_a=x:Shp_order=ord000000000001`) && fLive.SignatureValue !== fRc.SignatureValue);
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
-  check('nomenclature: every item on sale gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum; LUCIEN has no price — never a receipt', sold.length === 6 && !sold.includes('fighter_lucien') && sold.every((k: string) => {
+  check('nomenclature: every item on sale gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249)', sold.length === 7 && sold.includes('fighter_lucien') && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
     return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
@@ -369,9 +369,12 @@ const realRules = (): any => {
   return m.exports;
 };
 const OFFER_H = crypto.createHash('sha256').update('payments-check offer 1').digest('hex');
-function rulesWith(o: { seasonEnded?: boolean; live?: boolean; testPrice?: number }): any {
+// 1.9.4: an offer revision that sells playable characters (the published 1–3 do not) — what offer № 4 will be
+const OFFER_F = { revision: 4, title: 'Тестовая оферта с персонажами', url: 'https://primetimeshowdown.online/legal/ru/offer-test-r4.html', effectiveFrom: '2026-01-02', sha256: crypto.createHash('sha256').update('payments-check offer 4').digest('hex'), fighters: true };
+function rulesWith(o: { seasonEnded?: boolean; live?: boolean; testPrice?: number; fighters?: boolean }): any {
   const r = JSON.parse(JSON.stringify(realRules()));
   if (o.seasonEnded) r.seasons.fighter_lucien.end = '2026-01-01T00:00:00Z';
+  if (o.fighters) r.offers = [...r.offers, OFFER_F];
   if (o.live) {
     r.prices = { skin_ray_neon_runner: 149, skin_bruno_casino_boss: 149, fx_prime_broadcast: 79, fx_phantom_dash: 79, fx_golden_confetti: 99, fx_vhs_card_frame: 49.5, fighter_lucien: 199 };
     r.salesOpen = true;
@@ -389,7 +392,8 @@ async function serverChecks(): Promise<void> {
   }
   await ensurePortsFree([PORTS.api, PORTS.smtp, PORTS.mailUi]);
   const SU = { email: 'payments-admin@payments.test', pw: rnd() };
-  testHooks(rulesWith({ seasonEnded: true }));
+  // 1.9.4: phase 1 rehearses a staging server once an offer that sells characters is in force (LUCIEN on test payments)
+  testHooks(rulesWith({ seasonEnded: true, fighters: true }));
   upsertSuperuser(dataDir, SU.email, SU.pw, PORTS);
   await startPb(TEST_ENV);
   const su = (await http('POST', '/api/collections/_superusers/auth-with-password', '', { identity: SU.email, password: SU.pw })).j.token as string;
@@ -400,7 +404,7 @@ async function serverChecks(): Promise<void> {
   await http('PATCH', '/api/settings', su, { rateLimits: { enabled: true, rules: strict.rules.map((r: any) => ({ ...r, maxRequests: r.maxRequests * 1000 })) } });
   const cfg = (await http('GET', '/api/prime/config')).j;
   check('the server tells the game it has PRIME PAYMENTS (config shop.payments = 1)', cfg.shop?.checkout === 1 && cfg.shop?.payments === 1);
-  check('the public config carries the catalog\'s truth: selling, the mode, the OFFICIAL prices (RAY 99 ₽; LUCIEN not approved) apart from what a test payment asks (10 ₽)', cfg.shop.selling === true && cfg.shop.env === 'test' && cfg.shop.prices.skin_ray_neon_runner === 9900 && cfg.shop.prices.fighter_lucien === null && cfg.shop.charge.skin_ray_neon_runner === 1000 && cfg.shop.charge.fighter_lucien === 1000 && cfg.shop.demoUntil === '', JSON.stringify(cfg.shop));
+  check('the public config carries the catalog\'s truth: selling, the mode, the OFFICIAL prices (RAY 99 ₽; LUCIEN 249 ₽) apart from what a test payment asks (10 ₽)', cfg.shop.selling === true && cfg.shop.env === 'test' && cfg.shop.prices.skin_ray_neon_runner === 9900 && cfg.shop.prices.fighter_lucien === 24900 && cfg.shop.charge.skin_ray_neon_runner === 1000 && cfg.shop.charge.fighter_lucien === 1000 && cfg.shop.demoUntil === '', JSON.stringify(cfg.shop));
   check('the start log names the role and the payment mode — and no password', pbLog.some((l) => /PRIME: server role dev, payments test \(Robokassa, sha256\)/.test(l)) && !pbLog.some((l) => SECRETS.some((s) => l.includes(s))));
   const cols = (await http('GET', '/api/collections?perPage=200', su)).j.items as any[];
   const col = (n: string) => cols.find((c) => c.name === n);
@@ -839,8 +843,9 @@ async function serverChecks(): Promise<void> {
   for (const d of ['terms', 'consent']) await http('POST', '/api/collections/consents/records', su, { user: M.id, doc: d, version: cfg.legal[d].v, lang: 'ru', action: 'register' });
   await http('POST', '/api/collections/consents/records', su, { user: M.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '13-17' });
   const realCfg = (await http('GET', '/api/prime/config')).j.shop;
-  const realPrices = { skin_ray_neon_runner: 9900, skin_bruno_casino_boss: 14900, fx_prime_broadcast: 4900, fx_phantom_dash: 4900, fx_golden_confetti: 4900, fx_vhs_card_frame: 4900, fighter_lucien: null };
-  check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽; LUCIEN none)', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === v), JSON.stringify(realCfg));
+  const realPrices = { skin_ray_neon_runner: 9900, skin_bruno_casino_boss: 14900, fx_prime_broadcast: 4900, fx_phantom_dash: 4900, fx_golden_confetti: 4900, fx_vhs_card_frame: 4900, fighter_lucien: 24900 };
+  // 1.9.4: LUCIEN's price is approved (249 ₽, shown) but nothing is charged for him while offer № 3 is in force
+  check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽); LUCIEN 249 ₽ shown, no charge under offer № 3', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === (k === 'fighter_lucien' ? null : v)), JSON.stringify(realCfg));
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
   // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
   const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom + 'T00:00:00Z') <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
@@ -859,7 +864,9 @@ async function serverChecks(): Promise<void> {
   check('…then a REAL order: 49 ₽ from the server catalog (the request\'s price / IsTest / Receipt ignored), a LIVE invoice number, env live, no IsTest', pb1.status === 200 && pb1.j.order.amountKop === 4900 && pf.OutSum === '49.00' && pb1.j.order.env === 'live' && pb1.j.order.inv >= PAYJS.invFloor('live', Date.now() - 60000) && pb1.j.order.inv < 500000000000000 && !('IsTest' in pf), JSON.stringify(pb1.j).slice(0, 200));
   check('…SHA256 over "login:49.00:InvId:Receipt:<LIVE Password#1>:Shp_order=…"; the Receipt is {name = the receipt name, quantity 1, sum 49, tax none}', pf.SignatureValue === H.sha256(`${LOGIN}:49.00:${pb1.j.order.inv}:${pf.Receipt}:${LIVE_P1}:Shp_order=${pId}`) && !!pRc && Object.keys(pRc.items[0]).join() === 'name,quantity,sum,tax' && pRc.items[0].sum === 49 && pRc.items[0].name === 'Цифровой предмет оформления PRIME BROADCAST для игры PRIME TIME: SHOWDOWN' && pRc.items[0].tax === 'none');
   const realLucien = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
-  check('…LUCIEN is never sold for roubles (seasonal_only during his season, price_pending after it), no order', realLucien.status === 409 && ['seasonal_only', 'price_pending'].includes(realLucien.j.code) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
+  // 1.9.4: after his season the live server answers not_in_offer first (offer № 3 does not sell characters), price_pending
+  // only once a revision does and his price is still not approved
+  check('…LUCIEN is not sold for roubles under offer № 3: not_in_offer (after his season; seasonal_only during it), no order', realLucien.status === 409 && ['seasonal_only', 'not_in_offer'].includes(realLucien.j.code) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
   const pInv = pb1.j.order.inv;
   const pForged = [
     await notify(signedNote(pInv, '49.000000', pId, TEST_P2, 'sha256')),
@@ -985,12 +992,64 @@ async function serverChecks(): Promise<void> {
   const adultBig = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
   check('…an adult is not limited (300 ₽ goes through for 18+)', adultBig.status === 200 && adultBig.j.order.amountKop === 30000, String(adultBig.j.code ?? adultBig.status));
   await stopPb();
+  // 1.9.4: an offer that sells characters but sets no limits of its own keeps the limits of revisions 1–3 — no character
+  const minorsF = rulesMinors(true);
+  testHooks({ ...minorsF, offers: [...minorsF.offers, { ...OFFER_F, minors: true }] });
+  await startPb(MIN_ENV);
+  const kLuc = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fighter_lucien' });
+  const aLuc = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
+  check('1.9.4 an offer selling characters without limits of its own (the rules of revisions 1–3): a 14–17 PRIME ID is refused LUCIEN (403 minor_item), no order; an adult goes on to the next check', kLuc.status === 403 && kLuc.j.code === 'minor_item' && sqlite(`select count(*) from shop_orders where user='${K.id}' and sku='fighter_lucien';`) === '0' && aLuc.status === 409 && aLuc.j.code === 'offer_consent_required' && aLuc.j.quote?.priceKop === 24900, `${kLuc.j.code} / ${aLuc.j.code}`);
+  await stopPb();
+  // 1.9.4 — revision 4's own limits for 14–17 (minorLimits): every category, 500 ₽ an order, 2 000 ₽ over 30 days
+  const R4 = { ...OFFER_F, revision: 4, minors: true, minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true } };
+  const rules4 = JSON.parse(JSON.stringify(realRules()));
+  rules4.offers = [...rules4.offers.map((o: any) => ({ ...o, minors: true })), R4];
+  rules4.prices.skin_ray_neon_runner = 501;
+  rules4.prices.skin_bruno_casino_boss = 500;
+  testHooks(rules4);
+  await startPb(MIN_ENV);
+  const Kr4 = await kid('teen-rules4@payments.test', '14-17');
+  const Kr5 = await kid('teen-r4b@payments.test', '14-17');
+  for (const who of [Kr4, Kr5, P]) await http('POST', '/api/prime/shop/offer/accept', who.tok, { revision: 4, sha256: R4.sha256 });
+  const st4 = (await http('GET', '/api/prime/shop/status', Kr4.tok)).j;
+  check('1.9.4 R4-01 the status names the limits of the revision in force: 500 ₽ an order, 2 000 ₽ over 30 days, characters too', st4.offer?.revision === 4 && st4.minors?.orderKop === 50000 && st4.minors?.per30DaysKop === 200000 && st4.minors?.characters === true, JSON.stringify(st4.minors));
+  const kL4 = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'fighter_lucien' });
+  check('1.9.4 R4-02 a 14–17 PRIME ID may buy LUCIEN (249 ₽, a live order at the server\'s price)', kL4.status === 200 && kL4.j.order?.amountKop === 24900 && kL4.j.order?.env === 'live', `${kL4.status} ${kL4.j.code ?? ''}`);
+  const k500 = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'skin_bruno_casino_boss' });
+  const k501 = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'skin_ray_neon_runner' });
+  check('1.9.4 R4-03 an order of exactly 500 ₽ is allowed; 501 ₽ → 403 minor_item, no order', k500.status === 200 && k500.j.order?.amountKop === 50000 && k501.status === 403 && k501.j.code === 'minor_item' && sqlite(`select count(*) from shop_orders where user='${Kr4.id}' and sku='skin_ray_neon_runner';`) === '0', `${k500.status}/${k501.status} ${k501.j.code}`);
+  // the 30-day total: 249 + 500 waiting (reserved) + a synthetic history of 1 202 ₽ paid = 1 951 ₽; one 49 ₽ item fits exactly
+  await past(Kr4, 120200, 'fulfilled');
+  const kTo2000 = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'fx_prime_broadcast' });
+  const kOver4 = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'fx_phantom_dash' });
+  check('1.9.4 R4-04 the 30-day total: exactly 2 000 ₽ is allowed (249 + 500 + 1 202 + 49), one more item → 403 minor_limit, no order', kTo2000.status === 200 && kOver4.status === 403 && kOver4.j.code === 'minor_limit' && sqlite(`select count(*) from shop_orders where user='${Kr4.id}' and sku='fx_phantom_dash';`) === '0', `${kTo2000.status} ${kTo2000.j.code ?? ''} / ${kOver4.status} ${kOver4.j.code}`);
+  const kRetry = await http('POST', '/api/prime/shop/checkout', Kr4.tok, { sku: 'fighter_lucien' });
+  check('1.9.4 R4-05 a retry of a waiting order reuses it and is not counted twice (still within 2 000 ₽)', kRetry.status === 200 && kRetry.j.reused === true && kRetry.j.order.inv === kL4.j.order.inv, `${kRetry.status} ${kRetry.j.code ?? ''}`);
+  // two orders at once that fit only one by one: 1 600 ₽ history + 249 + 500 would be 2 349 — exactly one of the two passes
+  await past(Kr5, 160000, 'fulfilled');
+  const par4 = await Promise.all([http('POST', '/api/prime/shop/checkout', Kr5.tok, { sku: 'fighter_lucien' }), http('POST', '/api/prime/shop/checkout', Kr5.tok, { sku: 'skin_bruno_casino_boss' })]);
+  check('1.9.4 R4-06 two simultaneous orders cannot pass the 30-day limit together: one created, the other minor_limit', par4.filter((r) => r.status === 200).length === 1 && par4.some((r) => r.j?.code === 'minor_limit'), par4.map((r) => `${r.status} ${r.j?.code ?? ''}`).join(' / '));
+  const pBig = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
+  check('1.9.4 R4-07 an adult has no age limits (501 ₽ goes through)', pBig.status === 200 && pBig.j.order?.amountKop === 50100, `${pBig.status} ${pBig.j.code ?? ''}`);
+  await stopPb();
+  // …and before revision 4 takes effect (registered, its day not come) the limits of revision 3 still apply
+  const rules4later = JSON.parse(JSON.stringify(rules4));
+  rules4later.offers = rules4later.offers.map((o: any) => (o.revision === 4 ? { ...o, effectiveFrom: '2099-01-01' } : o));
+  testHooks(rules4later);
+  await startPb(MIN_ENV);
+  const stLater = (await http('GET', '/api/prime/shop/status', Kr5.tok)).j;
+  check('1.9.4 R4-08 revision 4 registered ahead of its day: the limits of revision 3 still apply (299 ₽, 1 500 ₽, cosmetics only) — a server deployed early never applies terms not yet in force', stLater.offer?.revision === 3 && stLater.minors?.orderKop === 29900 && stLater.minors?.per30DaysKop === 150000 && stLater.minors?.characters === false, JSON.stringify(stLater.minors));
+  await stopPb();
   testHooks(null);
   await startPb(TEST_ENV);
   const tOffer = (await http('GET', '/api/prime/shop/offer', K.tok)).j.offer;
   await http('POST', '/api/prime/shop/offer/accept', K.tok, { revision: tOffer.revision, sha256: tOffer.sha256 });
   const kTest = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_golden_confetti' });
   check('TEST mode (staging) applies the same age rule: without PRIME_SHOP_MINORS a 14–17 test purchase → 403 adult_only', kTest.status === 403 && kTest.j.code === 'adult_only', String(kTest.j.code ?? kTest.status));
+  // 1.9.4: a staging server rehearses what production would sell — no character before an offer that sells one
+  const pLuc = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
+  const tCfg = (await http('GET', '/api/prime/config')).j.shop;
+  check('1.9.4 TEST mode (staging) with this release\'s offers (1–3 sell no characters): LUCIEN → not_in_offer, no test charge for him, his 249 ₽ shown; cosmetics keep their 10 ₽ test charge', pLuc.status === 409 && pLuc.j.code === 'not_in_offer' && tCfg.env === 'test' && tCfg.charge.fighter_lucien === null && tCfg.prices.fighter_lucien === 24900 && tCfg.charge.fx_golden_confetti === 1000 && sqlite(`select count(*) from shop_orders where user='${P.id}' and sku='fighter_lucien';`) === '0', String(pLuc.j.code ?? pLuc.status));
   await stopPb();
   await startPb({ ...TEST_ENV, PRIME_SHOP_MINORS: 'on' });
   const kTestOn = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fx_golden_confetti' });

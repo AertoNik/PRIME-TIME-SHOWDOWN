@@ -46,6 +46,8 @@ export interface LookDef {
   /**
    * Alpha 1.9.1: the whole head (face, hair, cap, headphones) drawn a touch smaller, scaled about the neck.
    * Visual only — the skeleton, hitbox and fight simulation never read it.
+   * 1.9.4: the same touch for KAI (0.93, as DEX) and the slim bodies NIKA (0.92: the buns add volume), VEGA, RINA and
+   * ZOE (0.93) — their heads read largest next to the 1.9.1 RAY; the heavy bodies, LUCIEN and VALE stay as they are.
    */
   headScale?: number;
 }
@@ -132,6 +134,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x2a2140,
     glow: 0xff4fd8,
     rim: 0xff9af2,
+    headScale: 0.92,
   },
   dex: {
     id: 'dex',
@@ -193,6 +196,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x101215,
     glow: 0x2bff88,
     rim: 0x9affc8,
+    headScale: 0.93,
   },
   // Alpha 1.2.5 — Vega: white racing jacket, platinum high ponytail with icy tips,
   // flip-up visor; the same slim build as Nika so she sits naturally in the roster.
@@ -215,6 +219,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x1a2a42,
     glow: 0x5fd8ff,
     rim: 0xa8ecff,
+    headScale: 0.93,
   },
   // Alpha 1.5 — Kai «Trickshot»: early-2000s showman. Cropped navy track jacket with a
   // turquoise yoke and copper piping, a popped collar, late-90s curtain hair with copper
@@ -240,6 +245,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x1c2433,
     glow: 0x3df0dc,
     rim: 0x8ff7ec,
+    headScale: 0.93,
   },
   // Alpha 1.5 — Rina «Mirage»: cropped cream moto jacket with coral panels and an
   // asymmetric zip, graphite joggers, a sharp asymmetric bob with a coral streak,
@@ -263,6 +269,7 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x17181d,
     glow: 0xff7a6a,
     rim: 0xffb8a8,
+    headScale: 0.93,
   },
   // Alpha 1.7 — LUCIEN «The Night Star»: a young vampire guest star. Tall and lean, pale noble skin,
   // dark hair swept back from a widow's peak, crimson eyes, narrow brows, sharp cheekbones and two

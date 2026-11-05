@@ -3,7 +3,7 @@
 //   ?preview=league&pstate=data|empty|new|guest|preseason
 // and the league screens draw made-up but realistic data — no server, no account, no sign-in. Actions answer
 // locally (a fight cannot start: the server is the only judge of a fight).
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, type ProducerLook } from '../config/producer.config';
+import { PRODUCER_BACKDROPS, PRODUCER_FRAMES, offeredAvatars, type ProducerLook } from '../config/producer.config';
 import { DIVISIONS, LEAGUE, RANKS } from '../config/league.config';
 import type { CardId, FighterId } from '../config/types';
 import type { Game } from '../game/Game';
@@ -32,7 +32,7 @@ function rankOf(rp: number): LeagueRank {
   const progress = divNext === null ? 1 : (rp - divBase) / Math.max(1, divNext - divBase);
   return { index: i, id: r.id, ru: r.ru, en: r.en, color: r.color, division, base: r.base, next, divBase, divNext, progress } as LeagueRank;
 }
-const look = (i: number): ProducerLook => ({ avatar: PRODUCER_AVATARS[i % PRODUCER_AVATARS.length].id, frame: PRODUCER_FRAMES[i % PRODUCER_FRAMES.length].id, backdrop: PRODUCER_BACKDROPS[(i + 1) % PRODUCER_BACKDROPS.length].id });
+const look = (i: number): ProducerLook => ({ avatar: offeredAvatars()[i % offeredAvatars().length].id, frame: PRODUCER_FRAMES[i % PRODUCER_FRAMES.length].id, backdrop: PRODUCER_BACKDROPS[(i + 1) % PRODUCER_BACKDROPS.length].id });
 const side = (fighter: FighterId, deck: CardId[]) => ({ fighter, deck, tactic: 'balance', look: null, level: 0 }) as unknown as LeagueMatch['attacker'];
 
 function fixtures(state: State, now: number) {

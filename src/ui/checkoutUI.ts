@@ -83,6 +83,8 @@ const SERVER_BLOCK: Record<string, CheckoutBlock> = {
   owned: 'owned',
   seasonal_only: 'seasonal_only',
   price_pending: 'price_pending',
+  // 1.9.4: a character under terms that do not sell one (the server's check) — the same «not for sale yet» window
+  not_in_offer: 'price_pending',
   sales_closed: 'sales_closed',
   offer_missing: 'offer_missing',
   offer_unavailable: 'offer_missing',
@@ -996,11 +998,19 @@ export class PrimeCheckout {
       </article>`;
   }
 
+  /** 1.9.4: the limits for 14–17 under the terms in force — the server's, else those of offer revisions 1–3. */
+  private minorLimits(): { orderKop: number; per30DaysKop: number; characters: boolean } {
+    return this.server?.minors ?? { orderKop: MINOR_PURCHASES.itemMaxRub * 100, per30DaysKop: MINOR_PURCHASES.per30DaysRub * 100, characters: false };
+  }
+
   /**
    * The price: the official one; in Robokassa's test mode also what the test payment asks («деньги не списываются»)
    * — the item's real price is never replaced by a test amount without saying so.
    */
   private priceHTML(v: CheckoutView, it: ShopItemDef): string {
+    // 1.9.4: an official price but nothing to charge yet (LUCIEN before offer № 4) — the same 249 ₽ as on the card
+    const listNow = v.priceRub === null && !DEV_PREVIEW ? (this.server?.listKop ? (this.server.listKop[it.sku] ?? null) : null) : null;
+    if (listNow !== null) return `<div class="pco-price"><span>Цена товара</span><b>${esc(formatKop(listNow))}</b><small>пока не продаётся</small></div>`;
     if (DEV_PREVIEW || !isTestPay(this.payEnv()) || v.priceRub === null) {
       return `<div class="pco-price"><span>Итого</span><b>${esc(v.priceText)}</b>${v.priceRub !== null ? `<small>${DEV_PREVIEW ? 'тестовая цена' : 'RUB'}</small>` : ''}</div>`;
     }
@@ -1029,7 +1039,10 @@ export class PrimeCheckout {
           ? { tone: 'lock', title: 'Откроется в сезонном событии', text: 'Люсьен открывается за PUMPKIN TOKENS во время Halloween Premiere. За рубли он сейчас не продаётся.' }
           : { tone: 'lock', title: 'Только за PUMPKIN TOKENS', text: 'Во время Halloween Premiere Люсьен открывается только за сезонные жетоны в разделе события. За рубли он сейчас не продаётся.' };
       case 'price_pending':
-        return { tone: 'wait', title: 'Продажи пока не открыты', text: 'Цена этого предмета ещё не утверждена, купить его сейчас нельзя. Примерить можно бесплатно.' };
+        // 1.9.4: LUCIEN after his season — his price and the terms for selling a character are not in force yet
+        return v.item?.fighter && !v.item.skin
+          ? { tone: 'wait', title: 'Люсьен пока не продаётся за рубли', text: 'Halloween Premiere завершён. Покупка Люсьена откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает продажу персонажей. Уже открытый Люсьен остаётся в вашем составе.' }
+          : { tone: 'wait', title: 'Продажи пока не открыты', text: 'Цена этого предмета ещё не утверждена, купить его сейчас нельзя. Примерить можно бесплатно.' };
       case 'sales_closed':
         return { tone: 'wait', title: 'Покупки сейчас недоступны', text: 'Новые покупки в PRIME SHOP сейчас не принимаются. Уже оформленные заказы сохраняются и подтверждаются. Примерить предмет можно бесплатно.' };
       case 'offer_missing':
@@ -1050,10 +1063,15 @@ export class PrimeCheckout {
         return { tone: 'warn', title: 'Примите документы PRIME ID', text: 'Перед покупками нужно принять актуальные документы PRIME ID — это займёт минуту.' };
       case 'adult_only':
         return { tone: 'lock', title: 'Покупки — только с 18 лет', text: 'По условиям оферты покупки в PRIME SHOP доступны только совершеннолетним владельцам PRIME ID. Примерить предмет можно бесплатно.' };
-      case 'minor_item':
-        return { tone: 'lock', title: 'Этот предмет — только с 18 лет', text: `До 18 лет в PRIME SHOP можно купить косметические предметы до ${MINOR_PURCHASES.itemMaxRub} ₽. Примерить предмет можно бесплатно.` };
+      case 'minor_item': {
+        // 1.9.4: the numbers of the offer revision in force, as the server reports them (an older server: revisions 1–3)
+        const lim = this.minorLimits();
+        return lim.characters
+          ? { tone: 'lock', title: 'Этот заказ — только с 18 лет', text: `До 18 лет в PRIME SHOP можно оформить заказ не дороже ${formatKop(lim.orderKop)}. Примерить предмет можно бесплатно.` }
+          : { tone: 'lock', title: 'Этот предмет — только с 18 лет', text: `До 18 лет в PRIME SHOP можно купить косметические предметы до ${formatKop(lim.orderKop)}. Примерить предмет можно бесплатно.` };
+      }
       case 'minor_limit':
-        return { tone: 'wait', title: 'Лимит покупок до 18 лет', text: `До 18 лет покупки в PRIME SHOP — не больше ${MINOR_PURCHASES.per30DaysRub} ₽ за 30 дней. Новая покупка станет доступна позже; уже купленные предметы остаются с вами.` };
+        return { tone: 'wait', title: 'Лимит покупок до 18 лет', text: `До 18 лет покупки в PRIME SHOP — не больше ${formatKop(this.minorLimits().per30DaysKop)} за 30 дней. Новая покупка станет доступна позже; уже купленные предметы остаются с вами.` };
       case 'session_elsewhere':
         return { tone: 'warn', title: 'PRIME ID открыт на другом устройстве', text: 'Продолжите игру здесь, чтобы оформить покупку на этом устройстве.' };
       case 'account_changed':

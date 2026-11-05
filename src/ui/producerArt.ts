@@ -1,9 +1,17 @@
-import { PRODUCER_AVATARS, avatarById, type ProducerAvatar, type ProducerLook } from '../config/producer.config';
+import { PRODUCER_AVATARS, avatarById, isPortrait, type ProducerAvatar, type ProducerLook, type ProducerPortrait } from '../config/producer.config';
 
 // Alpha 1.9.0 — PRIME PRODUCER AVATARS: original vector portraits of the show's producers (head and shoulders, one camera,
 // one light), drawn here from the catalogue in src/config/producer.config.ts — no photos, no external images, crisp at any
 // size (Retina included). Pure strings: the same code renders the game, the preview sheet and tests. A producer is a
 // persona, never a fighter: fighters keep their own 3D portraits.
+// Alpha 1.9.4 — the catalogue is 3D portraits now (transparent PNG busts in public/producers/): the backdrop and the frame
+// stay this file's vector layers around the picture, so any portrait wears any backdrop and frame. The vector producers
+// above remain for looks saved with them (legacy).
+
+/** The page's base (Vite `base: './'`); scripts run without Vite and get the same relative path. */
+const BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? './';
+/** The file of a portrait for a badge of `size` px: 128 px up to 72 px badges (Retina included), else 256 px. */
+export const portraitUrl = (p: ProducerPortrait, size: number) => `${BASE}producers/${size > 72 ? 256 : 128}/${p.image}`;
 
 let uid = 0;
 
@@ -227,7 +235,16 @@ function frame(id: string, k: string, hex: boolean): string {
 
 const HEX = 'M60 4L108.5 32V88L60 116L11.5 88V32Z';
 
-/** The producer's badge: backdrop + portrait + frame, at `size` px (any size; vector). */
+function vector(a: ProducerAvatar, k: string): string {
+  return `<g transform="translate(60 63) scale(1.2) translate(-60 -60)">${hairBack(a)}${outfit(a)}${head(a, k)}${face(a)}${facialHair(a)}${hairFront(a)}${accessories(a, k)}</g>`;
+}
+
+/** The bust stands on the badge's lower edge; the hair keeps a margin under the top of the circle and of the hexagon. */
+function portrait(a: ProducerPortrait, size: number): string {
+  return `<image href="${portraitUrl(a, size)}" x="8" y="14" width="104" height="104" preserveAspectRatio="xMidYMax meet"/>`;
+}
+
+/** The producer's badge: backdrop + portrait + frame, at `size` px (any size). */
 export function producerSVG(look: ProducerLook, size = 64, cls = ''): string {
   const a = avatarById(look.avatar) ?? PRODUCER_AVATARS[0];
   const k = 'p' + ++uid;
@@ -235,7 +252,7 @@ export function producerSVG(look: ProducerLook, size = 64, cls = ''): string {
   const clip = hex ? `<path d="${HEX}"/>` : '<circle cx="60" cy="60" r="54"/>';
   return `<svg class="pr-ava ${cls}" width="${size}" height="${size}" viewBox="0 0 120 120" role="img" aria-label="${a.ru}">
     <defs><clipPath id="c${k}">${clip}</clipPath></defs>
-    <g clip-path="url(#c${k})">${backdrop(look.backdrop, k)}<g transform="translate(60 63) scale(1.2) translate(-60 -60)">${hairBack(a)}${outfit(a)}${head(a, k)}${face(a)}${facialHair(a)}${hairFront(a)}${accessories(a, k)}</g></g>
+    <g clip-path="url(#c${k})">${backdrop(look.backdrop, k)}${isPortrait(a) ? portrait(a, size) : vector(a, k)}</g>
     ${frame(look.frame, k, hex)}
   </svg>`;
 }

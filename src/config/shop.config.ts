@@ -203,8 +203,11 @@ export type PriceStatus = 'proposed' | 'approved';
 /**
  * The owner's decision about each price, item by item (docs/PRIME_PRICES.md): 'approved' — confirmed by the owner
  * (`npm run backend:rules` gives it to the server); 'proposed' — NOT approved: the shop shows «Цена уточняется»,
- * the server's rules carry no price, nothing can be charged. Approved 23.10.2026: the six cosmetics. LUCIEN stays
- * proposed (a seasonal fighter: never sold for money before his event ends AND the owner decides).
+ * the server's rules carry no price, nothing can be charged. Approved 23.10.2026: the six cosmetics.
+ * Alpha 1.9.4: his event ended 04.11.2026 — the shop said «Цена уточняется» because LUCIEN's status was never changed
+ * (the paid way after the season works as built). The owner approved 249 ₽ on 05.11.2026. A fighter is still sold
+ * only under an offer revision that sells playable characters (offer.config.ts `fighters`; offer № 3 §3.4 excludes
+ * LUCIEN) — the server checks that itself (lib/payments.js fightersOffered). docs/ALPHA_1_9_4_LUCIEN.md: the steps.
  */
 export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   skin_ray_neon_runner: 'approved',
@@ -213,16 +216,18 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   fx_phantom_dash: 'approved',
   fx_golden_confetti: 'approved',
   fx_vhs_card_frame: 'approved',
-  fighter_lucien: 'proposed',
+  fighter_lucien: 'approved',
 };
 
 /** When the owner approved the approved prices (shown nowhere in the game; for the documents and checks). */
 export const SHOP_PRICES_APPROVED_ON = '2026-10-23';
+/** 1.9.4: prices approved on another day than SHOP_PRICES_APPROVED_ON (the documents name both days). */
+export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = { fighter_lucien: '2026-11-05' };
 
 /**
  * Prices in roubles. Approved 23.10.2026 by the owner: RAY: NEON RUNNER 99, BRUNO: CASINO BOSS 149, PRIME
- * BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49. LUCIEN 299 — proposed only. Whole
- * roubles; no VAT (the seller pays НПД).
+ * BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49. LUCIEN 249 — approved 05.11.2026 (1.9.4).
+ * Whole roubles; no VAT (the seller pays НПД).
  */
 export const SHOP_PRICES_RUB: Record<ShopSku, number> = {
   skin_ray_neon_runner: 99,
@@ -231,7 +236,7 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number> = {
   fx_phantom_dash: 49,
   fx_golden_confetti: 49,
   fx_vhs_card_frame: 49,
-  fighter_lucien: 299,
+  fighter_lucien: 249,
 };
 
 /** The price the shop may show and the server may charge: the approved one — null while only proposed. */
@@ -306,6 +311,7 @@ export const SHOP_SALES_OPEN = true;
  * section 5): a ceiling for the catalogue, not the price of any item — and not a statement that every purchase within
  * it is a small everyday transaction.
  */
+// 1.9.4: the limits of offer revisions without their own (1–3); a revision may carry its own (offer.config.ts minorLimits)
 export const MINOR_PURCHASES = { itemMaxRub: 299, per30DaysRub: 1500 } as const;
 
 // (1.8.8 stage 3: the public offer moved to src/config/offer.config.ts — revisions with their date

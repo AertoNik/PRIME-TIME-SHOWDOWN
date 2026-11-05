@@ -266,7 +266,14 @@ export class Shop {
         status: open ? 'on_sale' : 'after_season',
         chip: open ? 'В ПРОДАЖЕ' : 'ПОКА НЕ В ПРОДАЖЕ',
         price: this.priceOf(item.sku),
-        note: open ? `${season.event.title} завершён — Люсьена можно открыть в PRIME SHOP.` : `${season.event.title} завершён. Продажи PRIME SHOP пока не открыты.`,
+        // 1.9.4: the shop may well be selling — what is missing then is LUCIEN's own price and terms, not «sales»
+        note: open
+          ? `${season.event.title} завершён — Люсьена можно открыть в PRIME SHOP.`
+          : SHOP_ITEMS.some((i) => i.sku !== item.sku && this.selling(i.sku))
+            ? this.priceKop(item.sku) !== null
+              ? `${season.event.title} завершён. Покупка Люсьена за ${this.priceOf(item.sku)} откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает продажу персонажей.`
+              : `${season.event.title} завершён. Открыть Люсьена за рубли можно будет, когда для него утвердят цену и условия покупки персонажа.`
+            : `${season.event.title} завершён. Продажи PRIME SHOP пока не открыты.`,
         owned: false,
       };
     }

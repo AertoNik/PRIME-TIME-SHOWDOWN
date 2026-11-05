@@ -237,6 +237,17 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
   check('KO beats show reactions: no dodge hop or trick-shot flourish on a knocked-out fighter', Math.abs(rig.spine.rotation.y - before) < 0.02);
 }
 
+// Alpha 1.9.4 — a PRIME LEAGUE mirror match (RAY against another producer's RAY): each side its own rig copy. One shared
+// copy made a fighter vanish (both sides moved one model) and turned the other one the wrong way.
+{
+  const a = models.get('ray');
+  const b = models.get('ray', 1);
+  check('1.9.4: the same look on both sides gives two different rigs (copy 0 and copy 1), each reused on the next fight', a !== b && a.rig.root !== b.rig.root && models.get('ray', 1) === b && models.get('ray') === a);
+  check('1.9.4: hologram twins, afterimages and echoes are per side too (no decoy steals the other side\'s copy)', models.getHolo('ray', 0) !== models.getHolo('ray', 0, 1) && models.getHolo('ray', 2) !== models.getHolo('ray', 2, 1) && models.getGhost('ray') !== models.getGhost('ray', 1));
+  check('1.9.4: the portrait studio has its own copy (a fighter on stage is never moved or turned by a portrait)', models.get('ray', 'studio') !== a && models.get('ray', 'studio') !== b);
+  check('1.9.4: a skin copy is a rig of the same skeleton (bones, dims) — looks only', JSON.stringify(models.get('ray_neon_runner', 1).rig.dims) === JSON.stringify(models.get('ray_neon_runner').rig.dims));
+}
+
 let ok = true;
 for (const [name, pass] of checks) {
   console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`);

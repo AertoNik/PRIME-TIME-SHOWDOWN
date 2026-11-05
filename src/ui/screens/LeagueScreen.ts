@@ -11,10 +11,11 @@ import { lastEntry, lastLeagueArena, leagueArenaList, leagueLook, rememberEntry,
 import { lang } from '../../i18n/lang';
 import { ownsPaid } from '../../meta/entitlements';
 import { inRoster } from '../../meta/roster';
+import { gradeFor } from '../../meta/CareerSystem';
 import { defenseBase, newOp, type LeagueApi, type LeagueArenaPref, type LeagueBoard, type LeagueFinish, type LeagueHistory, type LeagueMatch, type LeagueMe, type LeagueSeries, type LeagueSlot } from '../../net/LeagueApi';
 import { PrimeApiError } from '../../net/PrimeApi';
 import { ARENA_ART } from '../arenaArt';
-import { cardHTML, el, esc, portraitHTML } from '../dom';
+import { cardHTML, countUp, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
 import { MODE_ICONS } from '../modeArt';
@@ -1147,6 +1148,11 @@ function openPrestart(g: Game, p: Prestart): void {
   );
 }
 
+/** The broadcast's line: PRIME DUEL, the qualifier, or the duel's place in a series. */
+function modeLabel(m: LeagueMatch): string {
+  return m.mode === 'challenge' ? `PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}` : m.mode === 'squad' ? `PRIME SQUAD · ${tr('дуэль', 'duel')} ${m.round + 1}/3` : m.mode === 'rush' ? `PRIME RUSH · ${tr('дуэль', 'duel')} ${m.round + 1}` : 'PRIME DUEL';
+}
+
 /** The bill before a fight: the two fighters, the opponent's public card and an honest note on how it plays. */
 function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
   const a = FIGHTERS[m.attacker.fighter];
@@ -1158,7 +1164,7 @@ function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
   const myNick = av && av.kind === 'account' ? av.nickname : tr('Вы', 'You');
   const me = g.league.me;
   const myLine = me ? `${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · ${me.rp} RP` : '';
-  const kind = m.mode === 'challenge' ? `PRIME CHALLENGE · ${tr('КВАЛИФИКАЦИЯ', 'QUALIFIER')}` : m.mode === 'squad' ? `PRIME SQUAD · ${tr('дуэль', 'duel')} ${m.round + 1}/3` : m.mode === 'rush' ? `PRIME RUSH · ${tr('дуэль', 'duel')} ${m.round + 1}` : 'PRIME DUEL';
+  const kind = modeLabel(m);
   // 1.9.3: the set the server fixed in this match (and whether it was the player's choice or RANDOM)
   const arenaId = isArenaId(m.arena) ? m.arena : 'original';
   const chosen = m.arenaPick && m.arenaPick !== 'random';
@@ -1231,6 +1237,10 @@ export class LeagueResultScreen implements Screen {
   private wait = 0;
   private cer = false;
   private stung = false;
+  /** 1.9.4: one confirmation request at a time (a double tap on «Повторить» never sends a second one). */
+  private busy = false;
+  /** 1.9.4: the RP counter runs once, when the server's result first appears. */
+  private counted = false;
 
   constructor(private readonly g: Game) {
     this.el = el('div', 'league-result');
@@ -1261,11 +1271,16 @@ export class LeagueResultScreen implements Screen {
     this.wait = 0;
     this.cer = false;
     this.stung = false;
+    this.busy = false;
+    this.counted = false;
     this.render();
     void this.confirm();
   }
 
   private async confirm(): Promise<void> {
+    // the server's answer is final: once it is here (or a request is under way) nothing is sent again
+    if (this.busy || this.res) return;
+    this.busy = true;
     this.err = '';
     this.render();
     try {
@@ -1277,18 +1292,46 @@ export class LeagueResultScreen implements Screen {
     } catch (e) {
       this.err = errText(e);
     }
+    this.busy = false;
     this.render();
   }
 
-  /** The producer who won this broadcast (only after the SERVER confirmed it) and the fighter that fought for them. */
-  private winnerBlock(v: LeagueMatch, outcome: string): string {
-    if (outcome === 'draw') return '';
-    const meWon = outcome === 'win';
+  /**
+   * 1.9.4 — the face-off: both producers and their fighters. Before the server confirmed the result it shows only who
+   * fought (no winner, no HP); afterwards the winner's side lights up and each side shows the HP the server replayed.
+   */
+  private faceOff(v: LeagueMatch, m: LeagueMatch | undefined): string {
+    const done = !!m && m.status === 'done' && !!m.outcome;
+    const hp = done ? m!.result?.hp : undefined;
     const av = this.g.account?.view();
     const myNick = av && av.kind === 'account' ? av.nickname : tr('Вы', 'You');
-    const f = FIGHTERS[meWon ? v.attacker.fighter : v.defender.fighter];
-    const ava = meWon ? producerSVG(this.g.producer.shown(), 72) : v.opponent.kind === 'system' ? systemProducerSVG(72) : producerSVG(v.opponent.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 72);
-    return `<div class="lg-winner ${meWon ? 'me' : 'foe'}">${ava}<div><span class="lg-k">${tr('ПОБЕДИТЕЛЬ ЭФИРА', 'BROADCAST WINNER')}</span><b>${esc(meWon ? myNick : v.opponent.name)}</b><small>${tr('боец', 'fighter')}: ${esc(f.name)}</small></div></div>`;
+    const side = (me: boolean) => {
+      const s = me ? v.attacker : v.defender;
+      const f = FIGHTERS[s.fighter];
+      const won = done && (me ? m!.outcome === 'win' : m!.outcome === 'loss');
+      const state = !done ? '' : m!.outcome === 'draw' ? 'draw' : won ? 'won' : 'lost';
+      const ava = me ? producerSVG(this.g.producer.shown(), 56) : v.opponent.kind === 'system' ? systemProducerSVG(56) : producerSVG(v.opponent.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 56);
+      const frac = hp ? Math.max(0, Math.min(1, hp[me ? 0 : 1])) : null;
+      const pct = frac === null ? 0 : frac > 0 ? Math.max(1, Math.round(frac * 100)) : 0;
+      const bar = frac === null ? '' : `<div class="lg-fo-hp" role="img" aria-label="HP ${pct}%"><i style="--hp:${pct / 100}"></i><span>${pct}%</span></div>`;
+      return `<div class="lg-fo-side ${me ? 'me' : 'foe'} ${state}">
+          ${won ? `<span class="lg-fo-crown">${tr('ПОБЕДИТЕЛЬ', 'WINNER')}</span>` : ''}
+          <div class="lg-fo-top">${ava}${portraitHTML(this.g.portraitFor(leagueLook(s.fighter, s.look)), f.theme.main, f.theme.dark, 'lg-fo-f')}</div>
+          <b>${esc(me ? myNick : v.opponent.name)}</b><small>${esc(f.name)}</small>${bar}
+        </div>`;
+    };
+    return `<div class="lg-fo">${side(true)}<div class="lg-fo-vs">VS</div>${side(false)}</div>`;
+  }
+
+  /** 1.9.4 — the fight in numbers: only what the server's replay returned (rating, time, cards, combos). */
+  private statTiles(m: LeagueMatch): string {
+    const r = m.result;
+    if (!r) return '';
+    const sec = Math.max(0, Math.round(r.duration));
+    const time = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    const grade = gradeFor(r.rating);
+    const tile = (k: string, v: string, cls = '') => `<div class="lg-st ${cls}"><b>${v}</b><span>${k}</span></div>`;
+    return `<div class="lg-stats">${tile(tr('РЕЙТИНГ ЭФИРА', 'SHOW RATING'), `${r.rating}<em class="g-${grade}">${grade}</em>`, 'rate')}${tile(tr('ВРЕМЯ БОЯ', 'FIGHT TIME'), time)}${tile(tr('КАРТЫ', 'CARDS'), String(r.cardsUsed))}${tile(tr('КОМБО', 'COMBOS'), String(r.combos))}</div>`;
   }
 
   /** RUSH / SQUAD: where the series stands after this duel — and, once it ended, its one settlement. */
@@ -1327,7 +1370,8 @@ export class LeagueResultScreen implements Screen {
       else this.g.audio.reaction(2);
     }
     let body: string;
-    if (this.err) body = `<div class="lg-state err">${esc(this.err)}<p class="muted">${tr('Нажатия сохранены. Если связь не вернётся, сервер подведёт итог сам по истечении срока матча.', 'Your taps are kept. If the connection does not return, the server settles the fight itself at its deadline.')}</p><button class="btn teal" data-act="retry">${tr('Повторить', 'Retry')}</button></div>`;
+    // 1.9.4: a way back to the lobby too — the server settles an unconfirmed fight itself at its deadline
+    if (this.err) body = `<div class="lg-state err">${esc(this.err)}<p class="muted">${tr('Нажатия сохранены. Если связь не вернётся, сервер подведёт итог сам по истечении срока матча.', 'Your taps are kept. If the connection does not return, the server settles the fight itself at its deadline.')}</p><button class="btn teal" data-act="retry">${tr('Повторить', 'Retry')}</button><button class="btn ghost" data-act="lobby">${tr('В лобби лиги', 'League lobby')}</button></div>`;
     else if (!m) body = `<div class="lg-state lg-verify">${onAir('REC')} ${tr('Сервер проверяет запись эфира…', 'The server checks the broadcast record…')}${this.wait ? `<small>${tr('Эфир ещё идёт в реальном времени', 'The broadcast still runs in real time')} (${Math.ceil(this.wait / 1000)} ${tr('с', 's')})</small>` : ''}</div>`;
     else if (m.status === 'void') body = `<div class="lg-card"><b>${tr('Матч аннулирован', 'Match void')}</b><p>${tr('Пока шёл бой, сервер обновил правила боя. Матч не засчитан: RP и награды не изменились.', 'The server updated the fight rules during the fight. The match does not count: RP and rewards unchanged.')}</p></div>`;
     else {
@@ -1337,10 +1381,10 @@ export class LeagueResultScreen implements Screen {
       const serDone = this.res?.series?.status === 'done';
       // the PRIME CHALLENGE milestone (paid by the server outside the daily match cap) — shown apart from the match's own tokens
       const bonus = m.result?.challengeTokens ?? 0;
-      const why = v.mode === 'rush' ? tr('PRIME RUSH не меняет RP: свой рекорд, эфирные очки и жетоны за серию.', 'PRIME RUSH never moves RP: your record, air points and tokens for the run.') : v.mode === 'squad' ? (serDone ? tr('Отряд завершён — его итог ниже.', 'The squad is over — its result below.') : tr('RP отряда начисляется один раз, когда отряд закончится.', 'Squad RP is settled once, when the squad ends.')) : atFloor ? tr('Ниже пола вашего ранга RP не опускается.', 'RP never drops below your rank\u2019s floor.') : !m.ranked ? tr('Тренировочный бой — без RP.', 'A training fight — no RP.') : v.mode === 'challenge' ? tr('В квалификации RP не меняется — считаются победы и поражения.', 'A qualifier moves no RP — wins and losses count.') : v.opponent.kind === 'system' ? tr('Соперник PRIME NETWORK: RP вдвое меньше.', 'A PRIME NETWORK opponent: half the RP.') : rp >= 0 ? tr('Чем сильнее соперник, тем больше RP за победу.', 'The stronger the opponent, the more RP a win brings.') : tr('Проигрыш сильному сопернику стоит меньше RP.', 'Losing to a stronger opponent costs less RP.');
-      body = `<div class="lg-res-rp ${rp > 0 ? 'up' : rp < 0 ? 'down' : ''}"><b>${rp > 0 ? '+' : ''}${rp}</b> RP</div>
+      const why = v.mode === 'rush' ? tr('PRIME RUSH не меняет RP: свой рекорд, эфирные очки и жетоны за серию.', 'PRIME RUSH never moves RP: your record, air points and tokens for the run.') : v.mode === 'squad' ? (serDone ? tr('Отряд завершён — его итог ниже.', 'The squad is over — its result below.') : tr('RP отряда начисляется один раз, когда отряд закончится.', 'Squad RP is settled once, when the squad ends.')) : atFloor ? tr('Ниже пола вашего ранга RP не опускается.', 'RP never drops below your rank\u2019s floor.') : !m.ranked ? tr('Тренировочный бой — без RP.', 'A training fight — no RP.') : v.mode === 'challenge' ? tr('В квалификации RP не меняется — считаются победы и поражения.', 'A qualifier moves no RP — wins and losses count.') : v.opponent.kind === 'system' ? tr('Соперник PRIME NETWORK: RP вдвое меньше.', 'A PRIME NETWORK opponent: half the RP.') : m.outcome === 'draw' ? tr('Ничья: с более сильным соперником RP немного растут, с более слабым — немного снижаются.', 'A draw: against a stronger opponent RP rise a little, against a weaker one they dip a little.') : rp >= 0 ? tr('Чем сильнее соперник, тем больше RP за победу.', 'The stronger the opponent, the more RP a win brings.') : tr('Проигрыш сильному сопернику стоит меньше RP.', 'Losing to a stronger opponent costs less RP.');
+      body = `${this.statTiles(m)}
+        <div class="lg-res-rp ${rp > 0 ? 'up' : rp < 0 ? 'down' : ''}"><b data-rp="${rp}">${rp > 0 ? '+' : ''}${rp}</b> RP</div>
         <div class="lg-res-why">${why}</div>
-        ${this.winnerBlock(v, m.outcome!)}
         ${me ? `<div class="lg-res-rank">${rankEmblem(me.rank.index, me.rank.division, 48)}<span>${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · <b>${me.rp}</b> RP</span></div>` : ''}
         <div class="lg-res-gain">${m.air ? `<span>+${m.air} ${tr('эфирных очков', 'air points')}</span>` : ''}${(m.tokens ?? 0) - bonus > 0 ? `<span>+${(m.tokens ?? 0) - bonus} TOKENS</span>` : ''}${bonus ? `<span class="lg-bonus">+${bonus} TOKENS ${tr('за PRIME CHALLENGE', 'for PRIME CHALLENGE')}</span>` : ''}</div>
         ${this.seriesBlock()}
@@ -1351,12 +1395,23 @@ export class LeagueResultScreen implements Screen {
     const acts = m
       ? `${seriesOpen ? `<button class="btn big wide lg-cta" data-act="next"><span class="shine"></span>${tr('Следующая дуэль', 'Next duel')}</button>` : v.mode === 'duel' || v.mode === 'challenge' ? `<button class="btn big wide lg-cta" data-act="again"><span class="shine"></span>${tr('Ещё дуэль', 'Another duel')}</button>` : ''}<button class="btn ghost wide" data-act="lobby">${tr('В лобби лиги', 'League lobby')}</button>`
       : '';
-    this.el.innerHTML = `<div class="lg-result panel ${outcome}" aria-live="polite">
-        <div class="lg-res-k">${onAir()} PRIME LEAGUE · VS ${esc(v.opponent.name)}</div>
-        <div class="lg-res-h">${head}</div><div class="lg-res-m">${method}</div>
+    // 1.9.4: the TV result — the network bug, the headline, the face-off, then the server's numbers
+    const arenaId = isArenaId(v.arena) ? v.arena : null;
+    const time = confirmed && m!.result ? ` · ${Math.floor(Math.round(m!.result.duration) / 60)}:${String(Math.round(m!.result.duration) % 60).padStart(2, '0')}` : '';
+    this.el.innerHTML = `<div class="lg-result panel scroll ${outcome}" aria-live="polite">
+        <div class="lg-res-k">${onAir()} PRIME LEAGUE · ${modeLabel(v)}</div>
+        <div class="lg-res-h"><span>${head}</span></div><div class="lg-res-m">${method}${time}${arenaId ? ` · ${esc(ARENAS[arenaId].name)}` : ''}</div>
+        ${m?.status === 'void' ? '' : this.faceOff(v, m)}
         ${body}
         <div class="lg-res-acts">${acts}</div>
       </div>`;
+    // the RP counter: once, from 0 to the server's number (the final number is in the markup from the start)
+    const rpEl = this.el.querySelector('[data-rp]') as HTMLElement | null;
+    if (rpEl && !this.counted) {
+      this.counted = true;
+      const to = Number(rpEl.dataset.rp) || 0;
+      if (to !== 0 && !matchMedia('(prefers-reduced-motion: reduce)').matches) countUp(rpEl, 0, to, 0.9, (n) => `${n > 0 ? '+' : ''}${Math.round(n)}`);
+    }
     const ch = this.res?.match.result?.ceremony?.find((c) => c.kind === 'rank');
     if (ch && !this.cer) {
       this.cer = true;

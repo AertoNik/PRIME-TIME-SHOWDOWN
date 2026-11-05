@@ -39,7 +39,10 @@ export function renderPortraits(r: Renderer, models: ModelCache, looks: string[]
   gl.shadowMap.enabled = false;
 
   for (const look of looks) {
-    const m = models.get(look);
+    // 1.9.4: the usual copy may be standing in a fight right now (a portrait drawn on first use by the HUD): the
+    // studio then poses its own copy — never resets, moves or turns a fighter on stage
+    const usual = models.get(look);
+    const m = usual.rig.root.parent ? models.get(look, 'studio') : usual;
     const rig = m.rig;
     const parent = rig.root.parent;
     const prevPos = rig.root.position.clone();
