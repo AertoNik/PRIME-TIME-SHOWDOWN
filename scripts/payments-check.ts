@@ -844,12 +844,13 @@ async function serverChecks(): Promise<void> {
   await http('POST', '/api/collections/consents/records', su, { user: M.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '13-17' });
   const realCfg = (await http('GET', '/api/prime/config')).j.shop;
   const realPrices = { skin_ray_neon_runner: 9900, skin_bruno_casino_boss: 14900, fx_prime_broadcast: 4900, fx_phantom_dash: 4900, fx_golden_confetti: 4900, fx_vhs_card_frame: 4900, fighter_lucien: 24900 };
-  // 1.9.4: LUCIEN's price is approved (249 ₽, shown) but nothing is charged for him while offer № 3 is in force
-  check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽); LUCIEN 249 ₽ shown, no charge under offer № 3', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === (k === 'fighter_lucien' ? null : v)), JSON.stringify(realCfg));
+  // 1.9.4: LUCIEN's price is approved (249 ₽, shown); he is charged only once offer № 4 (characters) is in force (07.11.2026)
+  const r4InForce = OFFERS.currentOffer()?.fighters === true;
+  check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽); LUCIEN 249 ₽ shown, no charge under offer № 3', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === (k === 'fighter_lucien' && !r4InForce ? null : v)), JSON.stringify(realCfg));
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
   // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
   const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom + 'T00:00:00Z') <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
-  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3].includes(liveOffer.revision), JSON.stringify(liveOffer));
+  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3, 4].includes(liveOffer.revision), JSON.stringify(liveOffer));
   const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
   check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
   await http('POST', '/api/prime/shop/offer/accept', M.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
@@ -866,7 +867,7 @@ async function serverChecks(): Promise<void> {
   const realLucien = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
   // 1.9.4: after his season the live server answers not_in_offer first (offer № 3 does not sell characters), price_pending
   // only once a revision does and his price is still not approved
-  check('…LUCIEN is not sold for roubles under offer № 3: not_in_offer (after his season; seasonal_only during it), no order', realLucien.status === 409 && ['seasonal_only', 'not_in_offer'].includes(realLucien.j.code) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
+  check(`…LUCIEN under the offer in force (revision ${OFFERS.currentOffer()?.revision}): ${r4InForce ? 'offered — the next check is the consent' : 'not sold for roubles — not_in_offer'}, no order`, realLucien.status === 409 && (r4InForce ? realLucien.j.code === 'offer_consent_required' : ['seasonal_only', 'not_in_offer'].includes(realLucien.j.code)) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
   const pInv = pb1.j.order.inv;
   const pForged = [
     await notify(signedNote(pInv, '49.000000', pId, TEST_P2, 'sha256')),
