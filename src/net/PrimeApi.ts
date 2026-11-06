@@ -194,10 +194,17 @@ export interface DailyStatus {
   willShield: boolean;
   next: DailyRewardInfo;
   upcoming: DailyRewardInfo[];
-  milestones: { day: number; money: number; title: string; short: string; reached: boolean; on: number }[];
+  milestones: { day: number; money: number; title: string; short: string; reached: boolean; on: number; cosmetic: string | null }[];
   nextMilestone: { day: number; title: string; short: string; money: number; left: number };
   /** ready: a miss of the next day would be forgiven; else it is ready again on game day readyOn. */
   shield: { ready: boolean; usedOn: number; readyOn: number; days: number };
+  /** 1.9.6 (an older server: [] / 0 / null): the exclusive items earned, the pause (missed days in a row forgiven), the
+   * checkpoint the streak keeps, the checkpoint a claim after a break goes on from, the last day that still continues. */
+  items: string[];
+  grace: number;
+  checkpoint: number;
+  returnTo: number | null;
+  lastChanceDay: number;
   history: { day: number; streakDay: number; money: number; kind: string; milestone: number }[];
 }
 
@@ -214,6 +221,9 @@ export interface DailyClaim {
   reset: boolean;
   /** The milestone reached for the first time ever. */
   first: boolean;
+  /** 1.9.6: the exclusive item that milestone gave (null: none / an older server); the checkpoint a break went back to. */
+  cosmetic: string | null;
+  from: number;
 }
 
 export interface DailyClaimResult {
@@ -342,11 +352,16 @@ export function dailyStatusOf(r: Rec): DailyStatus {
     milestones: Array.isArray(r.milestones)
       ? r.milestones.slice(0, 12).map((m) => {
           const x = (m ?? {}) as Rec;
-          return { day: int(x.day), money: int(x.money), title: str(x.title), short: str(x.short), reached: x.reached === true, on: int(x.on) };
+          return { day: int(x.day), money: int(x.money), title: str(x.title), short: str(x.short), reached: x.reached === true, on: int(x.on), cosmetic: typeof x.cosmetic === 'string' ? x.cosmetic : null };
         })
       : [],
     nextMilestone: { day: int(nm.day), title: str(nm.title), short: str(nm.short), money: int(nm.money), left: int(nm.left) },
     shield: { ready: sh.ready === true, usedOn: int(sh.usedOn), readyOn: int(sh.readyOn), days: int(sh.days) || 7 },
+    items: Array.isArray(r.items) ? r.items.filter((x): x is string => typeof x === 'string').slice(0, 20) : [],
+    grace: int(r.grace),
+    checkpoint: int(r.checkpoint),
+    returnTo: typeof r.returnTo === 'number' ? int(r.returnTo) : null,
+    lastChanceDay: int(r.lastChanceDay),
     history: Array.isArray(r.history)
       ? r.history.slice(0, 20).map((h) => {
           const x = (h ?? {}) as Rec;
@@ -566,6 +581,8 @@ export class PrimeApi {
         shield: c.shield === true,
         reset: c.reset === true,
         first: c.first === true,
+        cosmetic: typeof c.cosmetic === 'string' ? c.cosmetic : null,
+        from: int(c.from),
       },
       revision: int(r.revision),
       hash: str(r.hash),

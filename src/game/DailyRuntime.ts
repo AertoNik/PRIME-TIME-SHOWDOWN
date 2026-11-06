@@ -118,6 +118,8 @@ export class DailyRuntime {
   private take(s: DailyStatus | null): void {
     if (!s) return;
     this.status = s;
+    // 1.9.6: the streak's exclusive items the server names go into MY COLLECTION (added; a fresh one is put on in claim())
+    if (s.items.length && this.gate() === 'ok') this.g.grantEarned(s.items, 'daily', false);
     this.readAt = performance.now();
     // the next game day: read again shortly after the server's midnight (its clock, not this device's)
     if (this.rollover) clearTimeout(this.rollover);
@@ -137,6 +139,8 @@ export class DailyRuntime {
     this.emit();
     try {
       const r = await sync.claimDaily();
+      // 1.9.6: a milestone's exclusive item reached just now — into the collection and worn at once
+      if (r.ok && r.claim?.cosmetic) this.g.grantEarned([r.claim.cosmetic], 'daily', true);
       if (r.status) this.take(r.status);
       else if (r.ok || r.code === 'already_claimed') await this.doRefresh();
       return r;

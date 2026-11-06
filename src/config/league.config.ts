@@ -1,4 +1,5 @@
 import { FIGHTER_ORDER } from './fighters';
+import type { CosmeticId } from './cosmetics.config';
 import type { CardId, FighterId } from './types';
 
 // Alpha 1.9.0 — PRIME LEAGUE. The one source of every league number: the game shows them, `npm run backend:rules`
@@ -259,8 +260,13 @@ export const LEAGUE = {
   fans: FIGHT_FANS,
   /** PRIME TOKENS (PRIME_LEAGUE_TOKENS=on). Never roubles, never PRIME SHOP. */
   tokens: { win: 6, draw: 2, loss: 1, attackPerDay: 60, defenseWin: 3, defensePerDay: 15, challengeWin: 40 },
-  /** Air points (season progress, not a currency). */
-  air: { win: 10, draw: 6, loss: 4, defenseWin: 2, defensePerDay: 20, challengeWin: 25, rushWin: 6, squadWin: 30 },
+  /**
+   * Air points (season progress, not a currency). 1.9.6 (scripts/economy-model.ts): a loss 4 → 2 and a draw 6 → 5 — a fight
+   * thrown on purpose moves the track little; the fights of a game WEEK (Monday 00:00 Moscow time) give at most
+   * `attackPerWeek` (duels, CHALLENGE, RUSH and SQUAD together; a passed CHALLENGE's bonus and won defences count apart),
+   * so the track is a season goal and not a weekend's grind.
+   */
+  air: { win: 10, draw: 5, loss: 2, defenseWin: 2, defensePerDay: 20, challengeWin: 25, rushWin: 6, squadWin: 30, attackPerWeek: 220 },
   season: {
     /**
      * A SUGGESTED start for the model and the tests only. A real server takes the start from PRIME_LEAGUE_SEASON_START
@@ -273,19 +279,35 @@ export const LEAGUE = {
     rpCarry: 0.6,
     mmrCarry: 0.75,
   },
-  /** Season track: air points → reward (tokens; titles are league-only, shown in the league). */
+  /**
+   * Season track: air points → reward (tokens; titles are league-only, shown in the league). 1.9.6: the same ten tiers and
+   * rewards, the thresholds LOWERED (1 300 → 1 000 for the emblem) to fit the weekly cap: a player of ~5 fights on 5 days a
+   * week finishes near the season's end, an active one in about 3½ weeks. Only lowered — a tier already reached stays reached,
+   * the claims (season:tier) keep their meaning.
+   */
   track: [
-    { at: 40, tokens: 20 },
-    { at: 100, tokens: 30 },
-    { at: 180, title: 'ON AIR' },
-    { at: 280, tokens: 40 },
-    { at: 400, tokens: 50 },
-    { at: 540, title: 'ГОЛОС ЭФИРА' },
-    { at: 700, tokens: 60 },
-    { at: 880, tokens: 80 },
-    { at: 1080, title: 'ПРАЙМ-ТАЙМ' },
-    { at: 1300, emblem: true },
+    { at: 30, tokens: 20 },
+    { at: 75, tokens: 30 },
+    { at: 140, title: 'ON AIR' },
+    { at: 215, tokens: 40 },
+    { at: 310, tokens: 50 },
+    { at: 415, title: 'ГОЛОС ЭФИРА' },
+    { at: 540, tokens: 60 },
+    { at: 680, tokens: 80 },
+    { at: 830, title: 'ПРАЙМ-ТАЙМ' },
+    { at: 1000, emblem: true },
   ] as { at: number; tokens?: number; title?: string; emblem?: boolean }[],
+  /**
+   * 1.9.6 — the PRIME TOKENS EXCHANGE: league-only collection items for tokens (never roubles, never PRIME SHOP; no fight
+   * strength). Each item once per account (the ledger's unique row); the server writes the exchange and proves it to the
+   * cloud save (lib/earned.js). PRIME_LEAGUE_EXCHANGE=off switches it off. Prices from the season model: a regular player
+   * (~970 tokens a season) takes the first item in his first season, an active one (~3 100) all three.
+   */
+  exchange: [
+    { item: 'card_league_ranked', tokens: 500 },
+    { item: 'dash_league_arc', tokens: 900 },
+    { item: 'frame_league_arena', tokens: 1600 },
+  ] as { item: CosmeticId; tokens: number }[],
   /** Fighter levels for PRIME TOKENS (PRIME_LEAGUE_UPGRADES=on; off = every fighter fights at level 0). */
   upgrades: { maxLevel: 10, hpPerLevel: 0.006, dmgPerLevel: 0.006, costBase: 20, maxGap: 3, capByRank: [2, 3, 4, 5, 6, 8, 10, 10] },
   rush: { length: 5, lives: 2, rpFactor: 0 },

@@ -110,8 +110,9 @@ export class Collection {
    * Adds an item once (a second grant changes nothing and returns false). A newly
    * obtained item is equipped right away, as rewards always were. A personal item is
    * granted to `fighter` (once per fighter) and worn by that fighter. The caller saves.
+   * 1.9.6: `equip` false — added without being put on (an item the server names again after a reload, an older one).
    */
-  grant(id: CosmeticId, source: string, fighter?: FighterId): boolean {
+  grant(id: CosmeticId, source: string, fighter?: FighterId, equip = true): boolean {
     const c = this.c;
     const def = COSMETICS[id];
     // 1.8.8: the game never grants PRIME SHOP items (only a confirmed purchase does)
@@ -131,7 +132,7 @@ export class Collection {
     if (c.owned.includes(id)) return false;
     c.owned.push(id);
     c.history.push({ id, event: source.slice(0, 64), at: this.clock() });
-    c.equipped[def.slot] = id;
+    if (equip) c.equipped[def.slot] = id;
     return true;
   }
 

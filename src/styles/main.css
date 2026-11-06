@@ -16494,3 +16494,357 @@ button.lg-arena:active {
   background: rgba(30, 12, 2, 0.82);
   box-shadow: 0 0 0 1px rgba(255, 138, 31, 0.6);
 }
+
+/* =====================================================================
+   Alpha 1.9.6 — EARNED ITEMS: DAILY STREAK milestones + PRIME LEAGUE exchange
+   (looks only; the server proves the ownership — backend lib/earned.js)
+   ===================================================================== */
+
+/* ЕЖЕДНЕВНЫЙ ЭФИР (title, 7 days): a teal nameplate title with a blinking LIVE dot, a teal ribbon on the win screen */
+:root[data-title='daily-regular'] .plate-title {
+  color: #3ff0d0;
+}
+:root[data-title='daily-regular'] .plate-title::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: #ff4f5e;
+  box-shadow: 0 0 6px #ff4f5e;
+  animation: dailyBlink 1.6s ease-in-out infinite;
+}
+:root[data-title='daily-regular'] .champ-ribbon {
+  background: linear-gradient(90deg, #12b8a2, #3ff0d0 50%, #12b8a2);
+  color: #052420;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 18px rgba(63, 240, 208, 0.45);
+}
+@keyframes dailyBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ЭФИР БЕЗ ПЕРЕРЫВА (frame, 30 days): teal corners with a coral «day» square, calendar ticks along the top edge */
+:root[data-frame='daily'] .bc-frame,
+:root[data-frame='ranked'] .bc-frame {
+  display: block;
+  position: absolute;
+  inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
+  pointer-events: none !important;
+  z-index: 2;
+}
+:root[data-frame='daily'] .bc-frame {
+  background:
+    repeating-linear-gradient(90deg, rgba(63, 240, 208, 0.85) 0 2px, transparent 2px 24px) top / 100% 5px no-repeat,
+    linear-gradient(90deg, transparent, rgba(63, 240, 208, 0.6) 18%, rgba(255, 111, 97, 0.6) 82%, transparent) top / 100% 1.5px no-repeat,
+    linear-gradient(90deg, transparent, rgba(255, 111, 97, 0.55) 18%, rgba(63, 240, 208, 0.55) 82%, transparent) bottom / 100% 1.5px no-repeat;
+}
+:root[data-frame='daily'] .bc-frame i {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-top: 2.5px solid #3ff0d0;
+  border-left: 2.5px solid #3ff0d0;
+  border-radius: 7px 0 0 0;
+  filter: drop-shadow(0 0 5px rgba(63, 240, 208, 0.7));
+}
+:root[data-frame='daily'] .bc-frame i::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: #ff6f61;
+  box-shadow: 0 0 6px rgba(255, 111, 97, 0.85);
+}
+:root[data-frame='daily'] .bc-frame::before,
+:root[data-frame='ranked'] .bc-frame::before {
+  position: absolute;
+  top: 50%;
+  padding: 7px 2px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 7.5px;
+  letter-spacing: 0.2em;
+  opacity: 0.92;
+}
+:root[data-frame='daily'] .bc-frame::before {
+  content: 'ON AIR · DAILY';
+  left: -1px;
+  transform: translateY(-50%) rotate(180deg);
+  border-radius: 4px 0 0 4px;
+  color: #052420;
+  background: linear-gradient(180deg, #3ff0d0, #ff8a75);
+  box-shadow: 0 0 10px rgba(63, 240, 208, 0.5);
+}
+:root[data-frame='daily'] .timer-box {
+  background: linear-gradient(180deg, #06302c, #031513);
+  box-shadow: 0 0 0 1.5px #3ff0d0, 0 0 14px rgba(63, 240, 208, 0.4);
+}
+:root[data-frame='daily'] .timer-box .live {
+  background: linear-gradient(90deg, #ff6f61, #ff9a7a);
+  color: #2a0805;
+}
+:root[data-frame='daily'] .fighter-plate {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px #3ff0d0, 0 0 20px rgba(255, 111, 97, 0.25);
+}
+
+/* RANKED ARENA (frame, PRIME LEAGUE exchange): silver and cold blue, division chevrons in the corners, a RANKED tag */
+:root[data-frame='ranked'] .bc-frame {
+  background:
+    linear-gradient(90deg, transparent, #c9d6e8 14%, #6fb6ff 50%, #c9d6e8 86%, transparent) top / 100% 2px no-repeat,
+    linear-gradient(90deg, transparent, rgba(201, 214, 232, 0.55) 14%, rgba(111, 182, 255, 0.55) 50%, rgba(201, 214, 232, 0.55) 86%, transparent) bottom / 100% 1.5px no-repeat;
+}
+:root[data-frame='ranked'] .bc-frame i {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-top: 3px solid #d8e3f2;
+  border-left: 3px solid #d8e3f2;
+  filter: drop-shadow(0 0 4px rgba(111, 182, 255, 0.75));
+}
+:root[data-frame='ranked'] .bc-frame i::before,
+:root[data-frame='ranked'] .bc-frame i::after {
+  content: '';
+  position: absolute;
+  border-top: 2px solid #6fb6ff;
+  border-left: 2px solid #6fb6ff;
+}
+:root[data-frame='ranked'] .bc-frame i::before {
+  left: 4px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+}
+:root[data-frame='ranked'] .bc-frame i::after {
+  left: 9px;
+  top: 9px;
+  width: 5px;
+  height: 5px;
+  border-color: #d8e3f2;
+}
+:root[data-frame='daily'] .bc-frame .tl,
+:root[data-frame='ranked'] .bc-frame .tl {
+  left: 0;
+  top: 0;
+}
+:root[data-frame='daily'] .bc-frame .tr,
+:root[data-frame='ranked'] .bc-frame .tr {
+  right: 0;
+  top: 0;
+  transform: scaleX(-1);
+}
+:root[data-frame='daily'] .bc-frame .bl,
+:root[data-frame='ranked'] .bc-frame .bl {
+  left: 0;
+  bottom: 0;
+  transform: scaleY(-1);
+}
+:root[data-frame='daily'] .bc-frame .br,
+:root[data-frame='ranked'] .bc-frame .br {
+  right: 0;
+  bottom: 0;
+  transform: scale(-1, -1);
+}
+:root[data-frame='ranked'] .bc-frame::before {
+  content: 'RANKED';
+  right: -1px;
+  transform: translateY(-50%);
+  border-radius: 4px 0 0 4px;
+  color: #08111f;
+  background: linear-gradient(180deg, #e8f0fa, #8fc3ff);
+  box-shadow: 0 0 10px rgba(111, 182, 255, 0.5);
+}
+:root[data-frame='ranked'] .timer-box {
+  background: linear-gradient(180deg, #14213a, #070d1a);
+  box-shadow: 0 0 0 1.5px #a9c2e0, 0 0 14px rgba(111, 182, 255, 0.4);
+}
+:root[data-frame='ranked'] .timer-box .live {
+  background: linear-gradient(90deg, #6fb6ff, #c9d6e8);
+  color: #08111f;
+}
+:root[data-frame='ranked'] .fighter-plate {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px #c9d6e8, 0 0 20px rgba(111, 182, 255, 0.3);
+}
+
+/* RANKED CARDS (card style, PRIME LEAGUE exchange): dark steel, a silver edge, a blue rank stripe; text reads as before */
+:root[data-card-style='ranked'] .card {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px #c9d6e8,
+    inset 0 0 0 3.5px rgba(32, 52, 84, 0.95),
+    0 0 10px rgba(111, 182, 255, 0.3);
+}
+:root[data-card-style='ranked'] .card .art::before {
+  background:
+    linear-gradient(90deg, #6fb6ff, #e8f0fa 50%, #6fb6ff) top / 100% 3px no-repeat,
+    linear-gradient(180deg, rgba(8, 16, 32, 0.25), transparent 30%, transparent 64%, rgba(6, 12, 24, 0.55) 88%);
+}
+:root[data-card-style='ranked'] .card::before {
+  content: '';
+  position: absolute;
+  left: 7%;
+  top: 6%;
+  z-index: 2;
+  width: 12px;
+  height: 9px;
+  background: linear-gradient(#d8e3f2 0 2px, transparent 2px 3.5px, #d8e3f2 3.5px 5.5px, transparent 5.5px 7px, #6fb6ff 7px 9px);
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%);
+  filter: drop-shadow(0 0 2px rgba(111, 182, 255, 0.9));
+  pointer-events: none;
+}
+:root[data-card-style='ranked'] .card .nm {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 6px rgba(111, 182, 255, 0.5);
+}
+:root[data-card-style='ranked'] .hand-card.combo-ready {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 3px #ffe27a, 0 0 24px rgba(255, 210, 58, 0.85), 0 0 10px rgba(111, 182, 255, 0.5);
+}
+:root[data-card-style='ranked'] .card.exclusive {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #ffe27a, inset 0 0 0 3.5px rgba(32, 52, 84, 0.95), 0 0 14px rgba(255, 210, 58, 0.4);
+}
+:root[data-card-style='ranked'] .card.focus {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.5);
+}
+
+/* PRIME LEAGUE — the PRIME TOKENS exchange list */
+.lg-exchange .lg-k {
+  margin-bottom: 4px;
+}
+.lg-ex-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.lg-ex-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.lg-ex-item.owned {
+  box-shadow: inset 0 0 0 1px rgba(63, 240, 208, 0.45);
+}
+.lg-ex-what {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lg-ex-what b {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.lg-ex-what small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+.lg-ex-act .btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+.lg-ex-act .btn svg {
+  vertical-align: -3px;
+}
+.lg-ex-owned {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #3ff0d0;
+  white-space: nowrap;
+}
+.lg-ex-art {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #0b1424;
+  box-shadow: inset 0 0 0 1.5px #c9d6e8;
+  position: relative;
+  overflow: hidden;
+}
+.lg-ex-art[data-ex='card_league_ranked']::before {
+  content: '';
+  position: absolute;
+  inset: 8px 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6fb6ff, #e8f0fa 50%, #6fb6ff) top / 100% 3px no-repeat, linear-gradient(180deg, #1c2c48, #0b1424);
+  box-shadow: inset 0 0 0 1.5px #c9d6e8;
+}
+.lg-ex-art[data-ex='dash_league_arc']::before {
+  content: '';
+  position: absolute;
+  inset: 12px 6px;
+  background: linear-gradient(115deg, transparent 0 18%, #7cc0ff 18% 24%, transparent 24% 40%, #e6f2ff 40% 46%, transparent 46% 62%, #7cc0ff 62% 68%, transparent 68%);
+  filter: drop-shadow(0 0 4px #7cc0ff);
+}
+.lg-ex-art[data-ex='frame_league_arena']::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-top: 3px solid #d8e3f2;
+  border-left: 3px solid #d8e3f2;
+  box-shadow: inset 4px 4px 0 -2px #6fb6ff;
+}
+@media (max-width: 380px) {
+  .lg-ex-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .lg-ex-art {
+    width: 36px;
+    height: 36px;
+  }
+  .lg-ex-act {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}
+
+/* DAILY STREAK — the item badge on a milestone and the item line of the reveal */
+.dps-node.has-item b {
+  box-shadow: 0 0 0 1.5px rgba(255, 210, 58, 0.8), 0 0 10px rgba(255, 210, 58, 0.35);
+}
+.dps-node-item {
+  position: absolute;
+  top: -14px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe27a, #ff9a3c);
+  color: #2a1400;
+  box-shadow: 0 0 8px rgba(255, 170, 60, 0.6);
+}
+.dps-node-item[data-rarity='legendary'] {
+  background: linear-gradient(180deg, #ffb38a, #ff6f61);
+}
+.dps-reveal-item {
+  position: relative;
+  display: block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: #ffe27a;
+  animation: dpsRise 0.4s 0.6s ease both;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-title='daily-regular'] .plate-title::before,
+  .dps-reveal-item {
+    animation: none;
+  }
+}

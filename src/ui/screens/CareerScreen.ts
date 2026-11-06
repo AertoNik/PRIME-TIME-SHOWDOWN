@@ -1,3 +1,4 @@
+import { contractCost } from '../../config/careerPrices';
 import { CAREER_STAGES, GOALS, type GoalId, type StageId } from '../../config/career';
 import { COSMETICS } from '../../config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
@@ -126,8 +127,8 @@ export class CareerScreen implements Screen {
       else if (offer) {
         right = `<button class="btn ${g.events.tokens(offer.event) >= offer.cost ? '' : 'ghost'}" data-act="season">${offer.cost}<span class="eq-coin">${currencyIcon(offer.event)}</span></button>`;
         note = `Сезонная звезда · ${esc(offer.event.title)}`;
-      } else if (c.ok) right = `<button class="btn" data-act="contract" data-f="${id}"><span class="shine"></span>$${f.contract!.cost}</button>`;
-      else right = `<button class="btn ghost" data-act="contract" data-f="${id}">$${f.contract!.cost}</button>`;
+      } else if (c.ok) right = `<button class="btn" data-act="contract" data-f="${id}"><span class="shine"></span>$${contractCost(id)}</button>`;
+      else right = `<button class="btn ghost" data-act="contract" data-f="${id}">$${contractCost(id)}</button>`;
       return `<div class="contract">
         ${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark)}
         <div class="cm">

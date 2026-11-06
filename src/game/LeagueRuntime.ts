@@ -147,6 +147,7 @@ export class LeagueRuntime {
     const api = this.api();
     if (!api || this.access() !== 'ready') return null;
     this.me = await api.me();
+    this.takeEarned();
     this.emit();
     return this.me;
   }
@@ -154,7 +155,14 @@ export class LeagueRuntime {
   setMe(me: LeagueMe | undefined): void {
     if (!me) return;
     this.me = me;
+    this.takeEarned();
     this.emit();
+  }
+
+  /** 1.9.6: the exchange items the server holds for this account go into MY COLLECTION (an older server: none). */
+  private takeEarned(): void {
+    const owned = this.me?.exchange?.owned;
+    if (owned && owned.length) this.g.grantEarned(owned, 'league', false);
   }
 
   /** Starts showing a fight the server fixed (a new one, or one resumed after a reload with the taps it holds). */

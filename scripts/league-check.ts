@@ -939,6 +939,81 @@ async function serverChecks(): Promise<void> {
   check('the attacker\'s side carries no look at all — the attacker\'s own game draws its own wardrobe', !('look' in msm.attacker));
   await call(B, 'POST', '/api/prime/league/defense/toggle', { on: true });
 
+  section('Alpha 1.9.6: обмен PRIME TOKENS и недельный предел эфирных очков');
+  {
+    const pX = await prof(A);
+    const me0 = (await call(A, 'GET', '/api/prime/league/me')).j;
+    check('the profile shows the exchange: the three items at their price, none taken; the week\'s fight air with its cap', me0.flags.exchange === true && me0.exchange?.on === true && me0.exchange.items.map((x: any) => x.item + ':' + x.tokens).join(',') === LEAGUE.exchange.map((x) => x.item + ':' + x.tokens).join(',') && me0.exchange.owned.length === 0 && me0.airWeek?.cap === LEAGUE.air.attackPerWeek);
+    await admin.collection('league_profiles').update(pX.id, { tokens: 400 });
+    const short = await call(A, 'POST', '/api/prime/league/exchange', { item: 'card_league_ranked', op: op() });
+    check('not enough tokens → 409 not_enough_tokens with the price; nothing charged, nothing written', short.status === 409 && short.j.code === 'not_enough_tokens' && short.j.cost === 500 && (await prof(A)).tokens === 400 && (await admin.collection('league_ledger').getFullList({ filter: `owner = "${A.id}" && reason = "exchange"` })).length === 0);
+    check('an item that is not in the exchange (a PRIME SHOP effect) → 400 unknown_item', (await call(A, 'POST', '/api/prime/league/exchange', { item: 'frame_prime_broadcast', op: op() })).j.code === 'unknown_item');
+    check('a malformed request id → 400', (await call(A, 'POST', '/api/prime/league/exchange', { item: 'card_league_ranked', op: 'x' })).status === 400);
+    await admin.collection('league_profiles').update(pX.id, { tokens: 1450 });
+    const exOp = op();
+    const exs = await Promise.all([0, 1, 2].map(() => call(A, 'POST', '/api/prime/league/exchange', { item: 'card_league_ranked', op: exOp })));
+    check('three taps at once → exactly one exchange and one charge (1 450 → 950)', exs.filter((r) => r.j.ok && !r.j.duplicate).length === 1 && exs.every((r) => r.status === 200) && (await prof(A)).tokens === 950);
+    const again = await call(A, 'POST', '/api/prime/league/exchange', { item: 'card_league_ranked', op: op() });
+    check('the same item again (another request): «duplicate», never a second charge', again.j.ok && again.j.duplicate === true && (await prof(A)).tokens === 950);
+    const rows = await admin.collection('league_ledger').getFullList({ filter: `owner = "${A.id}" && reason = "exchange"` });
+    check('the ledger holds one exchange row: −500, ref = the item, the balance after it; the balance still equals the ledger\'s sum', rows.length === 1 && rows[0].delta === -500 && rows[0].ref === 'card_league_ranked' && rows[0].balance === 950);
+    const me1 = (await call(A, 'GET', '/api/prime/league/me')).j;
+    check('the profile lists it as taken', me1.exchange.owned.join(',') === 'card_league_ranked' && me1.exchange.items[0].owned === true && me1.exchange.items[1].owned === false);
+    const big = await call(A, 'POST', '/api/prime/league/exchange', { item: 'frame_league_arena', op: op() });
+    check('the dearest item with too few tokens (950 < 1 600) → 409; the balance never goes below zero', big.status === 409 && (await prof(A)).tokens === 950);
+    // the cloud save: the exchanged item is A's — B never took it
+    const putSave = async (u: User, mutate: (s: any) => void) => {
+      const key = crypto.randomBytes(16).toString('hex');
+      const c = await call(u, 'POST', '/api/prime/session/claim', { key, label: 'league-check', device: 'league-check' });
+      const me = await call(u, 'GET', '/api/prime/me');
+      const sv: any = defaultSave();
+      mutate(sv);
+      const text = canonicalJSON(sv);
+      return call(u, 'PUT', '/api/prime/save', { op: op(), base: me.j?.save?.revision ?? 0, reason: 'sync', data: text, hash: crypto.createHash('sha256').update(text).digest('hex'), session: { key, generation: c.j.generation }, client: 'league-check', device: 'league-check' });
+    };
+    const okA = await putSave(A, (sv) => {
+      sv.cosmetics.owned.push('card_league_ranked');
+      sv.cosmetics.equipped.cardStyle = 'card_league_ranked';
+    });
+    check('a cloud save of the account that exchanged it may hold and wear the item', okA.status === 200, JSON.stringify(okA.j).slice(0, 200));
+    const noB = await putSave(B, (sv) => sv.cosmetics.owned.push('card_league_ranked'));
+    check('another account cannot list it (400 «not earned»)', noB.status === 400 && JSON.stringify(noB.j).includes('not earned'), JSON.stringify(noB.j).slice(0, 200));
+    const noA2 = await putSave(A, (sv) => sv.cosmetics.owned.push('card_league_ranked', 'dash_league_arc'));
+    check('…nor A an item it did not take yet', noA2.status === 400 && JSON.stringify(noA2.j).includes('dash_league_arc not earned'));
+
+    // the week's cap of fight air points
+    const cap = LEAGUE.air.attackPerWeek;
+    const wk = LM.weekOf(clock);
+    const st0 = (await prof(A)).stats || {};
+    await admin.collection('league_profiles').update(pX.id, { stats: { ...st0, airWeek: { w: wk, n: cap - 1 } } });
+    const airBefore = (await prof(A)).air;
+    const mW = (await startA()).j.match;
+    const tW = botTaps(snapFrom(mW));
+    const oW = replayLeague(snapFrom(mW), tW);
+    tick(Math.ceil((oW.steps / 60) * 1000) + 1000);
+    const fW = await call(A, 'POST', `/api/prime/league/match/${mW.id}/finish`, { inputs: tW });
+    const pW = await prof(A);
+    check(`one point left of this week's ${cap}: the fight pays at most 1 air point (got ${fW.j.match?.air}); the week's sum reaches the cap`, fW.j.match?.status === 'done' && fW.j.match.air <= 1 && pW.air === airBefore + fW.j.match.air && pW.stats.airWeek.w === wk && pW.stats.airWeek.n <= cap);
+    const tokW = fW.j.match.tokens;
+    check('…the fight still pays its RP and PRIME TOKENS (the cap is on air points only)', typeof fW.j.match.rp === 'number' && tokW >= 0);
+    setClock(clock + 7 * 86400000);
+    const wk2 = LM.weekOf(clock);
+    const mN = (await startA()).j.match;
+    const tN = botTaps(snapFrom(mN));
+    const oN = replayLeague(snapFrom(mN), tN);
+    tick(Math.ceil((oN.steps / 60) * 1000) + 1000);
+    const fN = await call(A, 'POST', `/api/prime/league/match/${mN.id}/finish`, { inputs: tN });
+    const want = fN.j.match?.outcome === 'win' ? LEAGUE.air.win : fN.j.match?.outcome === 'draw' ? LEAGUE.air.draw : LEAGUE.air.loss;
+    check(`a new game week (Monday 00:00 Moscow time): the counter starts again — the fight pays its full ${want} points`, wk2 === wk + 1 && fN.j.match?.air === want && (await prof(A)).stats.airWeek.w === wk2 && (await prof(A)).stats.airWeek.n === want);
+    check('the weekly cap and the loss value come from the rules (loss ≤ ¼ of a win)', LEAGUE.air.loss * 4 <= LEAGUE.air.win && cap > 0);
+  }
+  await restart({ PRIME_LEAGUE_EXCHANGE: 'off' });
+  {
+    const off = await call(A, 'POST', '/api/prime/league/exchange', { item: 'dash_league_arc', op: op() });
+    const meOff = (await call(A, 'GET', '/api/prime/league/me')).j;
+    check('PRIME_LEAGUE_EXCHANGE=off: the exchange answers 404 exchange_off; the items already taken stay taken', off.status === 404 && off.j.code === 'exchange_off' && meOff.exchange.on === false && meOff.exchange.owned.join(',') === 'card_league_ranked');
+  }
+
   section('Сервер: улучшения бойцов (флаг) и выключенная лига');
   check('upgrades are off by default (404 upgrades_off) — no level counts in a fight', (await call(A, 'POST', '/api/prime/league/upgrade', { fighter: 'ray', op: op() })).j?.code === 'upgrades_off');
   await restart({ PRIME_LEAGUE_UPGRADES: 'on' });

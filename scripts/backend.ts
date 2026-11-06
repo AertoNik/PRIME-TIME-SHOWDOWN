@@ -18,7 +18,7 @@ import { ARENA_ORDER } from '../src/config/arenas.config';
 import { leagueArenaCatalog } from '../src/meta/LeagueArenas';
 import { CAREER_STAGES, GOALS } from '../src/config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../src/config/cards';
-import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS } from '../src/config/cosmetics.config';
+import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, isServerEarned } from '../src/config/cosmetics.config';
 import { DAILY } from '../src/config/daily.config';
 import { EVENTS } from '../src/config/events.config';
 import { seasonOf } from '../src/config/seasonal';
@@ -83,6 +83,10 @@ export function rulesSource(): string {
   // 1.9.5: a seasonal cosmetic sold in PRIME SHOP after its season is BOTH: owned through the save when obtained for
   // tokens (cosmetics), worn from save.shop.equip when owned only through its purchase (shopCosmetics)
   for (const it of SHOP_ITEMS) if (it.cosmetic && !COSMETICS[it.cosmetic].paid) shopCosmetics[it.cosmetic] = COSMETICS[it.cosmetic].slot;
+  // 1.9.6: items whose ownership the server proves (DAILY STREAK milestones, PRIME LEAGUE exchange): a save may list one
+  // only when lib/earned.js finds it for the account
+  const serverEarned: Record<string, string> = {};
+  for (const id of COSMETIC_ORDER) if (!COSMETICS[id].paid && isServerEarned(id)) serverEarned[id] = COSMETICS[id].source;
   const skins: Record<string, string> = {};
   for (const sk of Object.values(SKINS)) skins[sk.id] = sk.fighter;
   // 1.9.5: the seasonal exchanges and their end (UTC) — a cloud save may add an exchange purchase only while the event
@@ -98,6 +102,7 @@ export function rulesSource(): string {
     fighters,
     universalCards: UNIVERSAL_CARDS,
     shopCards: NEW_CARDS,
+    serverEarned,
     cosmetics,
     cosmeticSlots: COSMETIC_SLOTS,
     shopCosmetics,
@@ -191,6 +196,8 @@ export function dailyRulesSource(): string {
     jubileeEvery: DAILY.jubileeEvery,
     jubileeMoney: DAILY.jubileeMoney,
     shieldDays: DAILY.shieldDays,
+    checkpoints: DAILY.checkpoints,
+    graceDays: DAILY.graceDays,
     historyShown: DAILY.historyShown,
     upcoming: DAILY.upcoming,
   };

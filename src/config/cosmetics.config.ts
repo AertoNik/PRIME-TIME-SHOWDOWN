@@ -33,10 +33,23 @@ export type CosmeticId =
   | 'dash_glitch'
   | 'dash_comet'
   | 'frame_arcade'
-  | 'card_holo';
+  | 'card_holo'
+  // Alpha 1.9.6: DAILY STREAK milestones (earned — the PRIME NETWORK server confirms the milestone)
+  | 'title_daily_regular'
+  | 'frame_daily_live'
+  | 'victory_daily_sunrise'
+  // Alpha 1.9.6: PRIME LEAGUE exchange for PRIME TOKENS (earned — the server's token ledger confirms it)
+  | 'card_league_ranked'
+  | 'dash_league_arc'
+  | 'frame_league_arena';
 
-/** Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP). */
-export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop';
+/**
+ * Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP; 1.9.6: 'daily' — a DAILY STREAK
+ * milestone, 'league' — the PRIME LEAGUE exchange for PRIME TOKENS). 'daily' and 'league' items are never sold and never
+ * granted by the game alone: the server names them (DAILY status, league /me) and refuses a cloud save that lists one
+ * the account has not earned (lib/earned.js).
+ */
+export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop' | 'daily' | 'league';
 
 /**
  * Alpha 1.9.5 — the four tiers of rarity, the same for cosmetics and PRIME SHOP skins. Cosmetic only: a tier never
@@ -328,6 +341,86 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     sourceLabel: 'Карьера продюсера',
     howTo: 'Карьерный этап LEGENDARY PRODUCTION',
   },
+  // ------------------------------------------------ Alpha 1.9.6: DAILY STREAK milestones
+  title_daily_regular: {
+    id: 'title_daily_regular',
+    slot: 'title',
+    name: 'ЕЖЕДНЕВНЫЙ ЭФИР',
+    desc: 'Неделя эфиров подряд: бирюзовый титул с мигающей отметкой LIVE на табличке бойца и бирюзовая лента на экране победы.',
+    where: 'Меню и экран победы',
+    art: 'star',
+    rarity: 'uncommon',
+    eventId: 'daily',
+    source: 'daily',
+    sourceLabel: 'Ежедневный эфир',
+    howTo: 'Серия «Ежедневного эфира»: 7 дней',
+  },
+  frame_daily_live: {
+    id: 'frame_daily_live',
+    slot: 'broadcastFrame',
+    name: 'ЭФИР БЕЗ ПЕРЕРЫВА',
+    desc: 'Месяц в эфире: рамка трансляции с бирюзово-коралловыми уголками и делениями календаря, табло таймера «ON AIR · DAILY» и табличка бойца.',
+    where: 'Экран боя и табличка бойца',
+    art: 'frame',
+    rarity: 'epic',
+    eventId: 'daily',
+    source: 'daily',
+    sourceLabel: 'Ежедневный эфир',
+    howTo: 'Серия «Ежедневного эфира»: 30 дней',
+  },
+  victory_daily_sunrise: {
+    id: 'victory_daily_sunrise',
+    slot: 'victoryFx',
+    name: 'РАССВЕТ ПРАЙМ-ТАЙМА',
+    desc: 'Сто дней в эфире: над победителем поднимается коралловое солнце студии, расходятся кольца и лучи, сверху опускаются тёплые искры.',
+    where: 'Победа в бою',
+    art: 'victory',
+    rarity: 'legendary',
+    eventId: 'daily',
+    source: 'daily',
+    sourceLabel: 'Ежедневный эфир',
+    howTo: 'Серия «Ежедневного эфира»: 100 дней',
+  },
+  // ------------------------------------------------ Alpha 1.9.6: PRIME LEAGUE exchange (PRIME TOKENS)
+  card_league_ranked: {
+    id: 'card_league_ranked',
+    slot: 'cardStyle',
+    name: 'RANKED CARDS',
+    desc: 'Рамки карт рейтингового эфира: тёмная сталь, серебряная кромка и голубая полоса ранга. Название, стоимость и метки комбо читаются как прежде.',
+    where: 'Карты в бою и в колоде',
+    art: 'card',
+    rarity: 'rare',
+    eventId: 'league',
+    source: 'league',
+    sourceLabel: 'PRIME LEAGUE',
+    howTo: 'Обмен в PRIME LEAGUE: 500 PRIME TOKENS',
+  },
+  dash_league_arc: {
+    id: 'dash_league_arc',
+    slot: 'dashFx',
+    name: 'ARC SURGE',
+    desc: 'DASH оставляет серебристо-голубой след с электрическими разрядами вдоль пути. Только внешний вид: дальность и неуязвимость рывка не меняются.',
+    where: 'Рывок DASH в бою',
+    art: 'phantom',
+    rarity: 'epic',
+    eventId: 'league',
+    source: 'league',
+    sourceLabel: 'PRIME LEAGUE',
+    howTo: 'Обмен в PRIME LEAGUE: 900 PRIME TOKENS',
+  },
+  frame_league_arena: {
+    id: 'frame_league_arena',
+    slot: 'broadcastFrame',
+    name: 'RANKED ARENA',
+    desc: 'Рамка трансляции рейтингового финала: серебро и холодный синий, угловые метки дивизионов, табло таймера «RANKED» и табличка бойца.',
+    where: 'Экран боя и табличка бойца',
+    art: 'studio',
+    rarity: 'epic',
+    eventId: 'league',
+    source: 'league',
+    sourceLabel: 'PRIME LEAGUE',
+    howTo: 'Обмен в PRIME LEAGUE: 1 600 PRIME TOKENS',
+  },
 };
 
 /** Slot names for the collection cards. */
@@ -361,7 +454,20 @@ export const COSMETIC_ORDER: CosmeticId[] = [
   'dash_comet',
   'frame_arcade',
   'card_holo',
+  // Alpha 1.9.6: earned — shown in MY COLLECTION once the server confirms them
+  'title_daily_regular',
+  'frame_daily_live',
+  'victory_daily_sunrise',
+  'card_league_ranked',
+  'dash_league_arc',
+  'frame_league_arena',
 ];
+
+/** Alpha 1.9.6: items whose ownership the PRIME NETWORK server proves (a DAILY STREAK milestone or a PRIME LEAGUE exchange). */
+export function isServerEarned(id: CosmeticId): boolean {
+  const s = COSMETICS[id].source;
+  return s === 'daily' || s === 'league';
+}
 
 export const COSMETIC_SLOTS: CosmeticSlot[] = ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'];
 

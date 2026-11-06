@@ -1,3 +1,4 @@
+import { cardPrice, contractCost } from '../config/careerPrices';
 import { FAME_TIERS, GOALS, LEVEL_THRESHOLDS, LEVEL_TITLES, REWARDS, type GoalDef, type GoalId, type StageId } from '../config/career';
 import type { CosmeticId } from '../config/cosmetics.config';
 import { CARDS, COMBOS, NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
@@ -169,7 +170,9 @@ export class CareerSystem {
       const req = this.cardRequirement(card);
       return { ok: false, reason: `Откроется: ${req.charAt(0).toLowerCase()}${req.slice(1)}` };
     }
-    if (this.s.money < shop.price) return { ok: false, reason: `Не хватает $${shop.price - Math.floor(this.s.money)}` };
+    // 1.9.6: the career's progressive price (src/config/careerPrices.ts), not the fight file's base number
+    const price = cardPrice(card);
+    if (this.s.money < price) return { ok: false, reason: `Не хватает $${price - Math.floor(this.s.money)}` };
     return { ok: true, reason: '' };
   }
 
@@ -181,7 +184,7 @@ export class CareerSystem {
   buyCard(card: CardId): boolean {
     const c = this.canBuyCard(card);
     if (!c.ok) return false;
-    this.s.money -= CARDS[card].shop!.price;
+    this.s.money -= cardPrice(card);
     this.s.cards.owned = NEW_CARDS.filter((x) => x === card || this.s.cards.owned.includes(x));
     this.store.save();
     return true;
@@ -201,14 +204,15 @@ export class CareerSystem {
     if (p.unlocked) return { ok: false, reason: 'Контракт подписан' };
     if (!f.contract) return { ok: false, reason: '' };
     if (this.level().level < f.contract.level) return { ok: false, reason: `Нужен уровень продюсера ${f.contract.level}` };
-    if (this.s.money < f.contract.cost) return { ok: false, reason: `Не хватает $${f.contract.cost - Math.floor(this.s.money)}` };
+    const cost = contractCost(id);
+    if (this.s.money < cost) return { ok: false, reason: `Не хватает $${cost - Math.floor(this.s.money)}` };
     return { ok: true, reason: '' };
   }
 
   sign(id: FighterId): GoalId[] {
     const c = this.canSign(id);
     if (!c.ok) return [];
-    this.s.money -= FIGHTERS[id].contract!.cost;
+    this.s.money -= contractCost(id);
     this.s.fighters[id].unlocked = true;
     this.s.selected = id;
     const g = this.refreshGoals();
@@ -234,23 +238,26 @@ export class CareerSystem {
 
   computeRewards(r: MatchResultData, fighter: FighterId, diff: Difficulty, opts: MatchApplyOptions = {}): MatchRewards {
     const dm = DIFFICULTIES[diff].rewardMult;
+    // 1.9.6: the DOLLARS of a fight grow with the difficulty by the career's own table (src/config/career.ts
+    // REWARDS.difficultyMoney); fans and reputation keep the difficulty's multiplier (fighters.ts — part of the fight)
+    const dmm = REWARDS.difficultyMoney?.[diff] ?? dm;
     const fans = this.s.fighters[fighter].fans;
     const lines: RewardLine[] = [];
     const key = r.outcome;
-    const purse = Math.round(REWARDS.purse[key] * dm);
+    const purse = Math.round(REWARDS.purse[key] * dmm);
     lines.push({
       label: key === 'win' ? 'Гонорар за победу' : key === 'draw' ? 'Гонорар за ничью' : 'Гонорар за выход',
       value: purse,
       kind: 'money',
-      note: dm > 1 ? `×${dm} сложность` : undefined,
+      note: dmm > 1 ? `×${dmm} сложность` : undefined,
     });
     let money = purse;
     if (r.method === 'ko' && key === 'win') {
-      const b = Math.round(REWARDS.koBonus * dm);
+      const b = Math.round(REWARDS.koBonus * dmm);
       lines.push({ label: 'Бонус за нокаут', value: b, kind: 'money' });
       money += b;
     }
-    const ratingMoney = Math.round(r.rating * REWARDS.ratingMoney * dm);
+    const ratingMoney = Math.round(r.rating * REWARDS.ratingMoney * dmm);
     lines.push({ label: `Рейтинг шоу ${r.rating}`, value: ratingMoney, kind: 'money', note: 'реклама в эфире' });
     money += ratingMoney;
     const combos = Math.min(REWARDS.comboCap, r.combos);

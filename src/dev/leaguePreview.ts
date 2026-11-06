@@ -49,7 +49,7 @@ function fixtures(state: State, now: number) {
   const air = empty ? 0 : 214;
   const me: LeagueMe = {
     joined: state !== 'new',
-    flags: { league: true, tokens: true, upgrades: false, rules: 1, sim: 'preview' },
+    flags: { league: true, tokens: true, upgrades: false, exchange: true, rules: 1, sim: 'preview' },
     season,
     rules: 1,
     rulesAccepted: state === 'new' ? 0 : 1,
@@ -62,7 +62,7 @@ function fixtures(state: State, now: number) {
     losses: empty ? 0 : 7,
     draws: empty ? 0 : 1,
     air,
-    tokens: empty ? 0 : 136,
+    tokens: empty ? 0 : 1136,
     challenge: null,
     defenseOn: true,
     // 1.9.3: the sets a 1.9.3 server would open now (the same catalogue and rule as lib/league.js arenasAt)
@@ -72,6 +72,9 @@ function fixtures(state: State, now: number) {
     place: empty ? null : 3,
     track: { tiers, claimed: empty ? [] : [1, 2] },
     upgrades: {},
+    // 1.9.6: the PRIME TOKENS exchange and this week's fight air (made-up)
+    exchange: { on: true, items: LEAGUE.exchange.map((x) => ({ item: x.item, tokens: x.tokens, owned: false })), owned: [] },
+    airWeek: { got: empty ? 0 : 140, cap: LEAGUE.air.attackPerWeek },
     report: { since: now - DAY, matches: empty ? 0 : 3, wins: empty ? 0 : 2, losses: empty ? 0 : 1, draws: 0, tokens: empty ? 0 : 6, byFighter: {}, byTactic: {} },
     ceremony: null,
     active: null,
@@ -183,6 +186,15 @@ export function installLeaguePreview(g: Game): void {
     claim: (tier: number) => {
       f.me.track.claimed = [...f.me.track.claimed, tier];
       return wait({ ok: true, tokens: f.me.track.tiers[tier - 1]?.tokens ?? 0 });
+    },
+    exchange: (item: string) => {
+      const ex = f.me.exchange!;
+      const it = ex.items.find((x) => x.item === item)!;
+      if (it.owned) return wait({ ok: true, duplicate: true, item, tokens: f.me.tokens });
+      f.me.tokens -= it.tokens;
+      it.owned = true;
+      ex.owned = [...ex.owned, item];
+      return wait({ ok: true, item, cost: it.tokens, tokens: f.me.tokens });
     },
     start: noFight,
     match: noFight,

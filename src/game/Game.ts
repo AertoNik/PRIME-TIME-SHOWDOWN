@@ -1,3 +1,4 @@
+import { COSMETICS, isCosmeticId, isServerEarned, type CosmeticId } from '../config/cosmetics.config';
 import { arenaById, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
@@ -612,6 +613,24 @@ export class Game {
    */
   applyCosmetics(fighter: FighterId = this.save.data.selected): void {
     this.themes?.applyCosmetics(this.collection.effectiveEquipped(fighter));
+  }
+
+  /**
+   * Alpha 1.9.6: the DAILY STREAK / PRIME LEAGUE exchange items the PRIME NETWORK server names for this account go into
+   * MY COLLECTION (only those: the server refuses a cloud save that lists one it does not prove — lib/earned.js). `equip`:
+   * a fresh reward is put on at once; one named again after a reload is only added. Returns the items new here.
+   */
+  grantEarned(ids: readonly string[], source: 'daily' | 'league', equip = false): CosmeticId[] {
+    const fresh: CosmeticId[] = [];
+    for (const id of ids) {
+      if (!isCosmeticId(id) || !isServerEarned(id) || COSMETICS[id].source !== source) continue;
+      if (this.collection.grant(id, source === 'daily' ? 'daily-streak' : 'prime-league', undefined, equip)) fresh.push(id);
+    }
+    if (fresh.length) {
+      this.save.save();
+      this.applyCosmetics();
+    }
+    return fresh;
   }
 
   /** Re-fit the camera to the HUD after layout changes (rotation, address bar, window resize). */

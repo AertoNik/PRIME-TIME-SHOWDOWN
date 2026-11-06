@@ -1,3 +1,5 @@
+import { REWARDS } from '../../config/career';
+import { cardPrice } from '../../config/careerPrices';
 import { ARENA_ORDER, arenaById, type ArenaPref } from '../../config/arenas.config';
 import { CARDS, CARD_FAMILIES, COMBOS, NEW_CARDS, deckCombos } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
@@ -397,7 +399,7 @@ export class PrepScreen implements Screen {
       const open = g.career.cardOpen(c);
       buy = `<div class="cd-buy">
           <span class="cd-req ${open ? 'open' : ''}">${open ? UI_ICONS.check.replace('<svg', '<svg width="11" height="11"') + ' Открыта для покупки' : UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"') + ' ' + esc(g.career.cardRequirement(c))}</span>
-          <button class="btn small ${can.ok ? '' : 'disabled'}" data-act="buy" data-card="${c}">Купить · $${shop.price}</button>
+          <button class="btn small ${can.ok ? '' : 'disabled'}" data-act="buy" data-card="${c}">Купить · $${cardPrice(c)}</button>
           ${can.ok || !open ? '' : `<span class="cd-why">${esc(can.reason)}</span>`}
         </div>`;
     }
@@ -418,7 +420,7 @@ export class PrepScreen implements Screen {
       const items = cards
         .map((c) => {
           const open = g.career.cardOpen(c);
-          const price = CARDS[c].shop!.price;
+          const price = cardPrice(c);
           const tag = open ? `<span class="shop-tag ${g.save.data.money >= price ? 'ok' : ''}">$${price}</span>` : `<span class="shop-tag lock">${UI_ICONS.lock.replace('<svg', '<svg width="10" height="10"')} УР. ${CARDS[c].shop!.level}</span>`;
           return `<div data-act="shop" data-card="${c}" class="shop-item ${open ? 'open' : 'locked'}">${cardHTML(c, `${this.focus === c ? 'focus' : ''} ${open ? 'buyable' : 'sealed'}`, false)}${tag}</div>`;
         })
@@ -460,7 +462,7 @@ export class PrepScreen implements Screen {
       const unlocked = g.career.difficultyUnlocked(d);
       return `<button data-act="diff" data-d="${d}" class="${this.diff === d ? 'on' : ''} ${unlocked ? '' : 'locked'}">
         ${unlocked ? '' : UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')}${def.label}
-        <small>${unlocked ? `награда ×${def.rewardMult}` : `уровень ${def.unlockLevel}`}</small>
+        <small>${unlocked ? `гонорар ×${String(REWARDS.difficultyMoney?.[d] ?? def.rewardMult).replace('.', ',')}` : `уровень ${def.unlockLevel}`}</small>
       </button>`;
     }).join('');
 

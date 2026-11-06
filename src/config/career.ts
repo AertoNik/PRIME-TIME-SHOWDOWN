@@ -1,5 +1,6 @@
 // Producer career: economy, levels, goals. Kept intentionally small and readable.
 import type { CosmeticId } from './cosmetics.config';
+import type { Difficulty } from './types';
 
 export const CAREER_START = {
   orgName: 'NEON NIGHT PRODUCTIONS',
@@ -23,22 +24,47 @@ export const LEVEL_TITLES = [
   'Легенда ТВ',
 ];
 
-export const REWARDS = {
+export const REWARDS: {
+  purse: { win: number; draw: number; loss: number };
+  koBonus: number;
+  ratingMoney: number;
+  comboMoney: number;
+  comboCap: number;
+  starPowerK: number;
+  starPowerCap: number;
+  fans: { win: number; draw: number; loss: number };
+  fansRatingBase: number;
+  fansRatingK: number;
+  rep: { win: number; draw: number; loss: number };
+  repRatingDiv: number;
+  /** 1.9.6: the money multiplier of each difficulty (absent: the difficulty's own rewardMult, as before 1.9.6). */
+  difficultyMoney?: Partial<Record<Difficulty, number>>;
+} = {
   purse: { win: 150, draw: 80, loss: 50 },
   koBonus: 40,
   /** Money per point of final show rating. */
   ratingMoney: 2.2,
   comboMoney: 25,
   comboCap: 5,
-  /** Star power: sponsor money scales with the fighter's fame. */
+  /**
+   * Star power: sponsor money scales with the fighter's fame. 1.9.6: capped at 160 (was 240) — the cap only touches a
+   * fighter past ~16 000 fans (a veteran), never a beginner's (scripts/economy-model.ts).
+   */
   starPowerK: 1.25,
-  starPowerCap: 240,
+  starPowerCap: 160,
   fans: { win: 220, draw: 120, loss: 70 },
   /** fans multiplier = base + rating/100 * k */
   fansRatingBase: 0.35,
   fansRatingK: 1.65,
   rep: { win: 14, draw: 7, loss: 4 },
   repRatingDiv: 8,
+  /**
+   * 1.9.6 — the dollars of a fight by difficulty (was the difficulty's ×1 / ×1.6 / ×2.4, which made a skilled player's
+   * fights pay 2–2.5 times a beginner's). «Новичок» pays as before; harder fights still pay more, only less steeply. Fans
+   * and reputation keep ×1.6 / ×2.4. Together with the progressive prices (src/config/careerPrices.ts) the purchases of a
+   * career stretch for every kind of player about alike, a beginner's a little less (docs/ALPHA_1_9_6_FINAL_STAGING_REPORT.md).
+   */
+  difficultyMoney: { rookie: 1, pro: 1.3, champion: 1.6 },
 };
 
 export type GoalId =

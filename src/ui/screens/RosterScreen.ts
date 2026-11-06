@@ -1,3 +1,4 @@
+import { contractCost } from '../../config/careerPrices';
 import { CARDS, PASSIVES } from '../../config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
@@ -257,7 +258,7 @@ export class RosterScreen implements Screen {
       const c = g.career.canSign(id);
       const lvl = g.career.level().level;
       const needLvl = f.contract!.level;
-      const cost = f.contract!.cost;
+      const cost = contractCost(id);
       const lvlOk = lvl >= needLvl;
       const moneyOk = s.money >= cost;
       action = `<div class="req-list">

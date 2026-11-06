@@ -18,6 +18,7 @@ import { ARENA_ART } from '../arenaArt';
 import { cardHTML, countUp, el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
+import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
 import { MODE_ICONS } from '../modeArt';
 import { onAir, rankEmblem, tacticIcon } from '../leagueArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
@@ -561,11 +562,32 @@ export class LeagueScreen implements Screen {
         <div class="lg-k">${tr('ПУТЬ ЭФИРА · СЕЗОН', 'ROAD OF THE BROADCAST · SEASON')} ${me.season.number}</div>
         <div class="lg-air"><b>${me.air}</b> ${tr('эфирных очков', 'air points')}</div>
         <div class="lg-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-        <small class="muted">${next ? `${tr('До следующей ступени', 'To the next step')}: <b>${toNext}</b>. ` : `${tr('Все ступени сезона пройдены.', 'Every step of the season is reached.')} `}${tr('Очки — за каждый бой лиги (победа 10, поражение 4) и победы защиты; это не валюта.', 'Points come from every league fight (win 10, loss 4) and won defences; not a currency.')}</small>
+        <small class="muted">${next ? `${tr('До следующей ступени', 'To the next step')}: <b>${toNext}</b>. ` : `${tr('Все ступени сезона пройдены.', 'Every step of the season is reached.')} `}${tr(`Очки — за каждый бой лиги (победа ${LEAGUE.air.win}, поражение ${LEAGUE.air.loss}) и победы защиты; это не валюта.`, `Points come from every league fight (win ${LEAGUE.air.win}, loss ${LEAGUE.air.loss}) and won defences; not a currency.`)}${me.airWeek && me.airWeek.cap ? ` ${tr('За бои этой недели', 'Fights this week')}: <b>${me.airWeek.got} / ${me.airWeek.cap}</b>${me.airWeek.got >= me.airWeek.cap ? tr(' — предел недели набран, бои дают RP и жетоны.', ' — the week\u2019s limit is reached; fights still give RP and tokens.') : '.'}` : ''}</small>
       </div>
       <ol class="lg-road">${steps}</ol>
       <div class="lg-card lg-wallet"><span class="lg-wallet-coin" aria-hidden="true">${tokenCoin(44)}</span><div><div class="lg-k">PRIME TOKENS</div><div class="lg-air"><b>${me.tokens}</b></div>
-        <small class="muted">${me.flags.tokens ? tr(`Жетоны пока копятся — тратить их нельзя, обмен и применение появятся в следующих версиях. За победы — до ${LEAGUE.tokens.attackPerDay} в день, +${LEAGUE.tokens.challengeWin} за пройденный PRIME CHALLENGE сверх предела. Не продаются за рубли.`, `Tokens accumulate for now — they cannot be spent yet; exchange and use come in later versions. Wins give up to ${LEAGUE.tokens.attackPerDay} a day, +${LEAGUE.tokens.challengeWin} for a passed PRIME CHALLENGE on top. Never sold for money.`) : tr('Начисление PRIME TOKENS включится позже.', 'PRIME TOKENS start later.')}</small></div></div>`;
+        <small class="muted">${me.flags.tokens ? (me.exchange?.on ? tr(`За победы — до ${LEAGUE.tokens.attackPerDay} в день, +${LEAGUE.tokens.challengeWin} за пройденный PRIME CHALLENGE сверх предела. Тратятся только в обмене ниже; не продаются и не покупаются за рубли.`, `Wins give up to ${LEAGUE.tokens.attackPerDay} a day, +${LEAGUE.tokens.challengeWin} for a passed PRIME CHALLENGE on top. Spent only in the exchange below; never sold or bought for money.`) : tr(`Жетоны пока копятся — тратить их нельзя, обмен и применение появятся в следующих версиях. За победы — до ${LEAGUE.tokens.attackPerDay} в день, +${LEAGUE.tokens.challengeWin} за пройденный PRIME CHALLENGE сверх предела. Не продаются за рубли.`, `Tokens accumulate for now — they cannot be spent yet; exchange and use come in later versions. Wins give up to ${LEAGUE.tokens.attackPerDay} a day, +${LEAGUE.tokens.challengeWin} for a passed PRIME CHALLENGE on top. Never sold for money.`)) : tr('Начисление PRIME TOKENS включится позже.', 'PRIME TOKENS start later.')}</small></div></div>${this.exchangeView(me)}`;
+  }
+
+  /** 1.9.6: the PRIME TOKENS exchange — league-only collection items, each once; never roubles, no fight strength. */
+  private exchangeView(me: LeagueMe): string {
+    const ex = me.exchange;
+    if (!me.flags.tokens || !ex || !ex.on || !ex.items.length) return '';
+    const rows = ex.items
+      .map((x) => {
+        const def = isCosmeticId(x.item) ? COSMETICS[x.item] : null;
+        if (!def) return '';
+        const owned = x.owned;
+        const short = me.tokens < x.tokens;
+        const act = owned
+          ? `<span class="lg-ex-owned">${tr('В коллекции', 'In your collection')}</span>`
+          : `<button class="btn ${short ? 'ghost' : 'teal'} lg-ex-buy" data-act="exchange" data-item="${esc(x.item)}"${short ? ' disabled' : ''}>${tokenCoin(16)} ${x.tokens.toLocaleString('ru-RU')}</button>`;
+        return `<li class="lg-ex-item${owned ? ' owned' : ''}" data-rarity="${def.rarity}"><span class="lg-ex-art" data-ex="${esc(x.item)}" aria-hidden="true"></span><span class="lg-ex-what"><b>${esc(def.name)}</b><small>${esc(SLOT_LABELS[def.slot])} · ${esc(RARITY_LABEL[def.rarity])}</small><small class="muted">${esc(def.desc)}</small></span><span class="lg-ex-act">${act}</span></li>`;
+      })
+      .join('');
+    return `<div class="lg-card lg-exchange"><div class="lg-k">${tr('ОБМЕН PRIME TOKENS', 'PRIME TOKENS EXCHANGE')}</div>
+      <small class="muted">${tr('Предметы только этой лиги — в MY COLLECTION. Каждый можно взять один раз; на силу бойца они не влияют.', 'League-only items for MY COLLECTION. Each can be taken once; they never change a fighter\u2019s strength.')}</small>
+      <ul class="lg-ex-list">${rows}</ul></div>`;
   }
 
   /** 1.9.1: the history as a feed of real fights — result, opponent with their look, fighters, what it gave. */
@@ -920,6 +942,29 @@ export class LeagueScreen implements Screen {
           g.audio.ui('confirm');
         });
         return;
+      case 'exchange': {
+        if (!api) return;
+        const item = String(b.dataset.item || '');
+        const def = isCosmeticId(item) ? COSMETICS[item] : null;
+        const me = g.league.me;
+        const cost = me?.exchange?.items.find((x) => x.item === item)?.tokens ?? 0;
+        if (!def || !me || !cost) return;
+        g.confirm(
+          tr('Обмен PRIME TOKENS', 'PRIME TOKENS exchange'),
+          tr(`«${def.name}» за ${cost.toLocaleString('ru-RU')} PRIME TOKENS. Предмет останется в MY COLLECTION навсегда; жетоны вернуть нельзя.`, `«${def.name}» for ${cost} PRIME TOKENS. The item stays in MY COLLECTION for good; tokens cannot be returned.`),
+          tr('Обменять', 'Exchange'),
+          () =>
+            void this.run(async () => {
+              const r = await api.exchange(item, 'ex_' + item + '_' + Date.now().toString(36));
+              // the item is the server's now: into the collection and worn at once (a repeat: only added)
+              g.grantEarned([item], 'league', !r.duplicate);
+              await g.league.refresh();
+              this.notice = r.duplicate ? tr('Этот предмет уже ваш.', 'This item is already yours.') : tr(`«${def.name}» — в MY COLLECTION`, `«${def.name}» is in MY COLLECTION`);
+              g.audio.ui('confirm');
+            }),
+        );
+        return;
+      }
       case 'board-retry':
         void this.loadBoard();
         return;

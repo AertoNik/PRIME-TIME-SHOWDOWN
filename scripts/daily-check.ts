@@ -11,10 +11,13 @@
 // The «devices» are the game's own classes (SaveSystem, SessionManager, SyncManager, PrimeApi) with an in-memory
 // localStorage each. Real phones and a real network are NOT simulated. All accounts and money here are test data.
 
+import type { FighterId } from '../src/config/types';
+import { cardPrice, contractCost } from '../src/config/careerPrices';
 import PocketBase, { BaseAuthStore } from 'pocketbase';
-import { DAILY, dailyReward, nextMilestone } from '../src/config/daily.config';
+import { DAILY, checkpointOf, dailyReward, nextMilestone } from '../src/config/daily.config';
+import { COSMETICS, type CosmeticId } from '../src/config/cosmetics.config';
 import { FIGHTERS } from '../src/config/fighters';
-import { CARDS, NEW_CARDS } from '../src/config/cards';
+import { NEW_CARDS } from '../src/config/cards';
 import { CareerSystem } from '../src/meta/CareerSystem';
 import { SaveSystem, defaultSave, sanitize, type SaveData } from '../src/meta/SaveSystem';
 import { readSync, userProfile } from '../src/net/accountStore';
@@ -43,6 +46,8 @@ function section(t: string): void {
 const req = nodeModule.createRequire(path.join(ROOT, 'backend', 'pb_hooks', 'lib', 'x.js'));
 const D = req('./daily.js');
 const RULES = req('./daily_rules.js');
+// the 1.8.9 shield rules (no pause, no checkpoints) — the legacy path of lib/daily.js stays covered
+const L = { ...RULES, graceDays: 0, checkpoints: false };
 const V = req('./validate.js');
 const DAY = 86400000;
 
@@ -66,25 +71,26 @@ function rulesChecks(): void {
   const a2 = D.apply(st, T + 1);
   check('the next day: day 2, $100', a2.claim.streakDay === 2 && a2.claim.money === DAILY.week[1] && !a2.claim.shield && !a2.claim.reset);
   st = a2.state;
+  // the 1.8.9 shield (rules without graceDays / checkpoints — kept working for an older rules file):
   // one missed day (T+2): forgiven on T+3 — no reward for the missed day, the counter just goes on
-  check('one missed day: the status says the shield will save the streak', D.view(st, T + 3, 0, []).willShield && D.view(st, T + 3, 0, []).streak === 2);
-  const a3 = D.apply(st, T + 3);
+  check('one missed day: the status says the shield will save the streak', D.view(st, T + 3, 0, [], L).willShield && D.view(st, T + 3, 0, [], L).streak === 2);
+  const a3 = D.apply(st, T + 3, L);
   check('one missed day is forgiven by the free shield: day 3 (not 4 — the missed day pays nothing), shield spent on the missed day', a3.claim.streakDay === 3 && a3.claim.shield && a3.state.shieldDay === T + 2 && a3.state.claims === 3);
   st = a3.state;
-  const v3 = D.view(st, T + 3, 0, []);
+  const v3 = D.view(st, T + 3, 0, [], L);
   check('after using it, the shield is recharging (ready again 7 days after the forgiven day)', !v3.shield.ready && v3.shield.readyOn === T + 2 + DAILY.shieldDays);
-  st = D.apply(st, T + 4).state; // day 4
+  st = D.apply(st, T + 4, L).state; // day 4
   // a second miss within 7 days (T+5 missed, claim T+6): the streak starts again, the record stays
-  const r = D.apply(st, T + 6);
+  const r = D.apply(st, T + 6, L);
   check('a second miss within 7 days: the streak starts again from day 1, the record (4) and everything paid stay', r.claim.streakDay === 1 && r.claim.reset && !r.claim.shield && r.state.best === 4 && r.state.total === st.total + DAILY.week[0]);
-  check('the status before such a claim says honestly that the streak broke', D.view(st, T + 6, 0, []).willReset && D.view(st, T + 6, 0, []).streak === 0);
+  check('the status before such a claim says honestly that the streak broke', D.view(st, T + 6, 0, [], L).willReset && D.view(st, T + 6, 0, [], L).streak === 0);
   st = r.state;
   // two days missed at once: never forgiven
-  const two = D.apply({ ...st, shieldDay: 0 }, T + 9);
+  const two = D.apply({ ...st, shieldDay: 0 }, T + 9, L);
   check('two days missed in a row: the streak starts again even with the shield ready', two.claim.streakDay === 1 && two.claim.reset && !two.claim.shield);
   // the shield is ready again 7 days after the last forgiven day
   let s7 = { ...D.emptyState(), streak: 10, best: 10, lastDay: 1000, shieldDay: 994, claims: 10 };
-  check('the shield forgives again once 7 calendar days passed since the last forgiven day (and not one day sooner)', D.apply(s7, 1002).claim.shield === true && D.apply({ ...s7, shieldDay: 995 }, 1002).claim.reset === true);
+  check('the shield forgives again once 7 calendar days passed since the last forgiven day (and not one day sooner)', D.apply(s7, 1002, L).claim.shield === true && D.apply({ ...s7, shieldDay: 995 }, 1002, L).claim.reset === true);
 
   // a long streak, every day: milestones 7 / 14 / 30 / 60 / 100 and on after day 100
   let ls = D.emptyState();
@@ -102,11 +108,41 @@ function rulesChecks(): void {
   check('the milestones reached are remembered with their day', [7, 14, 30, 60, 100, 200].every((n) => ls.achieved[String(n)] > 0));
   // a broken streak keeps every achievement; reaching 7 again pays again but is not a new achievement
   let br = { ...ls, lastDay: ls.lastDay };
-  br = D.apply(br, ls.lastDay + 5).state; // reset
-  for (let i = 1; i < 7; i++) br = D.apply(br, ls.lastDay + 5 + i).state;
+  br = D.apply(br, ls.lastDay + 5, L).state; // reset (1.8.9 rules)
+  for (let i = 1; i < 7; i++) br = D.apply(br, ls.lastDay + 5 + i, L).state;
   check('a new streak reaching day 7 again: the milestone pays again, it is not a new achievement, the record stays 205', br.streak === 7 && br.best === 205 && br.achieved['7'] === ls.achieved['7'] && br.total === ls.total + [1, 2, 3, 4, 5, 6].reduce((t, n) => t + dailyReward(n).money, 0) + m(7));
   const vv = D.view(ls, ls.lastDay, 0, []);
   check('the status: claimed today, the next 7 rewards from tomorrow, the next milestone and how far', vv.claimedToday && !vv.canClaim && vv.upcoming.length === 7 && vv.upcoming[0].day === 206 && vv.nextMilestone.day === 300 && vv.nextMilestone.left === 95);
+
+  // ------------------------------------------------ 1.9.6: the pause, the checkpoints, the exclusive items
+  check('1.9.6 rules are on: a pause of 2 missed days, checkpoints, three milestone items', RULES.graceDays === 2 && RULES.checkpoints === true && RULES.milestones.filter((q: any) => q.cosmetic).map((q: any) => q.day + ':' + q.cosmetic).join(',') === '7:title_daily_regular,30:frame_daily_live,100:victory_daily_sunrise');
+  let p = D.apply(D.emptyState(), 40000).state;
+  const g1 = D.apply(p, 40002); // one day missed
+  const g2 = D.apply(g1.state, 40005); // two days missed in a row
+  check('a pause: one missed day and then two missed days in a row are both forgiven — the streak counts claims (1 → 2 → 3)', g1.claim.streakDay === 2 && g1.claim.shield && !g1.claim.reset && g2.claim.streakDay === 3 && g2.claim.shield && !g2.claim.reset);
+  check('the pause is forgiven EVERY time (no weekly recharge) — a 5-of-7 week builds a streak', (() => { let q = D.emptyState(); let d = 50000; for (let w = 0; w < 4; w++) for (const on of [1, 1, 0, 1, 1, 1, 0]) { if (on) q = D.apply(q, d).state; d++; } return q.streak === 20 && q.best === 20; })());
+  const vp = D.view(g2.state, 40007, 0, []);
+  check('the status during a pause: the streak is alive (3), nothing breaks, the window can say until when', vp.canClaim && !vp.willReset && vp.streak === 3 && vp.grace === 2 && vp.lastChanceDay === 40005 + 3);
+  const far = D.apply(g2.state, 40009); // three missed days
+  check('three missed days in a row: a break — under 7 days there is no checkpoint, day 1 again; the record stays 3', far.claim.reset && far.claim.streakDay === 1 && far.claim.from === 0 && far.state.best === 3);
+  const s23 = { ...D.emptyState(), streak: 23, best: 23, lastDay: 41000, claims: 23, achieved: { '7': 1, '14': 1 } };
+  const vb = D.view(s23, 41004, 0, []);
+  const cb = D.apply(s23, 41004);
+  check('a break after 23 days: the status says the streak goes on from the checkpoint 14 — and the claim pays day 15', vb.willReset && vb.returnTo === 14 && vb.streak === 14 && cb.claim.reset && cb.claim.from === 14 && cb.claim.streakDay === 15 && cb.claim.money === dailyReward(15).money && cb.state.best === 23);
+  check('checkpoints: 6 → 0, 7 → 7, 29 → 14, 30 → 30, 99 → 60, 100 → 100, 250 → 200', [[6, 0], [7, 7], [29, 14], [30, 30], [99, 60], [100, 100], [250, 200]].every(([n, c]) => D.checkpointOf(n) === c && checkpointOf(n) === c));
+  // a milestone is never reached twice: after a break the streak goes on ABOVE its checkpoint
+  let cp = { ...D.emptyState() };
+  let day = 60000;
+  const pays: number[] = [];
+  for (let i = 0; i < 40; i++) {
+    const x = D.apply(cp, day);
+    if (x.claim.milestone) pays.push(x.claim.milestone);
+    cp = x.state;
+    day += i === 20 ? 5 : 1; // one long break after day 21
+  }
+  check('a long break never pays a milestone twice (7, 14, 30 — each once)', pays.join(',') === '7,14,30');
+  check('the exclusive items: the claim of day 7 names the title, day 30 the frame; the status lists what was earned', (() => { let q = D.emptyState(); const got: string[] = []; for (let i = 0; i < 30; i++) { const x = D.apply(q, 70000 + i); if (x.claim.cosmetic) got.push(x.claim.streakDay + ':' + x.claim.cosmetic); q = x.state; } return got.join(',') === '7:title_daily_regular,30:frame_daily_live' && D.view(q, 70029, 0, []).items.join(',') === 'title_daily_regular,frame_daily_live'; })());
+  check('an older streak that reached day 7 before 1.9.6 gets its item too (the status reads the milestones reached)', D.itemsOf({ ...D.emptyState(), achieved: { '7': 123 } }).join(',') === 'title_daily_regular');
 }
 
 function balanceChecks(): void {
@@ -115,14 +151,16 @@ function balanceChecks(): void {
   const win = career.computeRewards({ outcome: 'win', method: 'ko', rating: 72, combos: 2, perfects: 1 } as any, 'ray', 'rookie').money;
   const week = Array.from({ length: 7 }, (_, i) => dailyReward(i + 1).money).reduce((a, b) => a + b, 0);
   const month = Array.from({ length: 30 }, (_, i) => dailyReward(i + 1).money).reduce((a, b) => a + b, 0);
-  const contracts = Object.values(FIGHTERS).reduce((t, f) => t + (f.contract?.cost ?? 0), 0);
-  const cards = NEW_CARDS.reduce((t, c) => t + (CARDS[c].shop?.price ?? 0), 0);
+  // 1.9.6: what the career charges (progressive prices, src/config/careerPrices.ts)
+  const contracts = (Object.keys(FIGHTERS) as FighterId[]).reduce((t, f) => t + contractCost(f), 0);
+  const cards = NEW_CARDS.reduce((t, c) => t + cardPrice(c), 0);
   console.log(`      typical rookie KO win $${win}; week of visits $${week}; first 30 days $${month}; all contracts $${contracts}; all shop cards $${cards}`);
   check(`a full week of visits ($${week}) is about two and a half rookie wins — under 3 wins`, week <= 3 * win && week >= 2 * win);
   check('a week of visits buys about one contract — never most of the roster or the card collection (< 25% of each)', week < contracts * 0.25 && week < cards * 0.25);
   check(`the first month ($${month}) stays well under half of everything there is to buy (contracts + cards $${contracts + cards})`, month < (contracts + cards) * 0.5);
   check('an ordinary day pays less than half a rookie win, the weekly gift less than one; milestones from about one win (day 7) to six (day 100)', Array.from({ length: 6 }, (_, i) => dailyReward(i + 1).money).every((x) => x < win / 2) && dailyReward(21).money < win && DAILY.milestones.every((q) => q.money >= win * 0.9 && q.money <= win * 6));
-  check('only dollars: no new currency, no PRIME TOKENS, no paid items in the daily table', !/token|sku|skin|cosmetic/i.test(JSON.stringify(RULES)));
+  // 1.9.6: dollars and three EXCLUSIVE collection items — never a currency, PRIME TOKENS, a PRIME SHOP item or a skin
+  check('only dollars and the three earned items: no other currency, no PRIME TOKENS, no PRIME SHOP item, no skin', !/token|sku|skin/i.test(JSON.stringify(RULES)) && RULES.milestones.every((q: any) => !q.cosmetic || (COSMETICS[q.cosmetic as CosmeticId] && COSMETICS[q.cosmetic as CosmeticId].source === 'daily' && !COSMETICS[q.cosmetic as CosmeticId].paid)));
 }
 
 function saveChecks(): void {
@@ -332,19 +370,24 @@ async function serverChecks(): Promise<void> {
   const onMac = await pm.sync.claimDaily();
   check('the active device claims day 4 ($100); the first one, coming back, sees «received» and cannot take it again', onMac.ok && onMac.claim.streakDay === 4 && (await new Page(phone, uid).api.dailyStatus()).claimedToday);
 
-  section('Сервер: пропуски и защита серии');
+  section('Сервер: пропуски — пауза до 2 дней и контрольные точки (1.9.6)');
   setDay(5); // day 4 (game) missed
   const sk = await pm.api.dailyStatus();
-  check('one missed day: the status promises the shield (the streak is still 4, not broken)', sk.canClaim && sk.willShield && !sk.willReset && sk.streak === 4);
+  check('one missed day: the status says the pause keeps the streak (still 4, not broken)', sk.canClaim && sk.willShield && !sk.willReset && sk.streak === 4 && sk.grace === 2);
   const sh = await pm.sync.claimDaily();
-  check('the reward after a missed day: the shield forgave it — day 5 ($150), not a reset; the missed day paid nothing', sh.ok && sh.claim.shield && sh.claim.streakDay === 5 && sh.claim.money === 150 && (await claimsOf(uid)).length === 5);
+  check('the reward after a missed day: forgiven — day 5 ($150), not a reset; the missed day paid nothing', sh.ok && sh.claim.shield && sh.claim.streakDay === 5 && sh.claim.money === 150 && (await claimsOf(uid)).length === 5);
   const after = await pm.api.dailyStatus();
-  check('the shield is recharging now: the window says when it is ready again', !after.shield.ready && after.shield.readyOn === after.today - 1 + DAILY.shieldDays);
-  setDay(7); // missed again within 7 days
+  check('the pause has no recharge: the next miss is forgiven as well', after.shield.ready);
+  setDay(7); // missed again (day 6) — within the same week
   const rs = await pm.api.dailyStatus();
-  check('a second miss while the shield recharges: the status says the streak starts again, the record 5 stays', rs.willReset && rs.streak === 0 && rs.best === 5);
+  check('a second miss in the same week: forgiven again (1.8.9 would have broken the streak) — still 5', rs.canClaim && rs.willShield && !rs.willReset && rs.streak === 5);
+  const r6 = await pm.sync.claimDaily();
+  check('…day 6 ($125)', r6.ok && r6.claim.shield && r6.claim.streakDay === 6 && r6.claim.money === 125);
+  setDay(11); // three days missed in a row (8, 9, 10)
+  const rb = await pm.api.dailyStatus();
+  check('three missed days in a row: a break — below 7 days no checkpoint, the status says so; the record 6 stays', rb.willReset && rb.returnTo === 0 && rb.streak === 0 && rb.best === 6);
   const rc = await pm.sync.claimDaily();
-  check('…and the reward is day 1 of a new streak; everything paid before stays in the save', rc.ok && rc.claim.reset && rc.claim.streakDay === 1 && pm.save.data.money === before + 175 + 125 + 100 + 150 + 75);
+  check('…and the reward is day 1 again; everything paid before stays in the save', rc.ok && rc.claim.reset && rc.claim.streakDay === 1 && rc.claim.from === 0 && pm.save.data.money === before + 175 + 125 + 100 + 150 + 125 + 75);
 
   section('Сервер: рубежи 7 / 14 / 30 / 60 / 100 и после 100');
   const walker = new Browser('Pixel');
@@ -374,6 +417,34 @@ async function serverChecks(): Promise<void> {
   check('the server\'s total equals the table (no rounding, nothing extra) and the save holds every dollar', fin.total === sum && pw.save.data.money === defaultSave().money + sum && (await cloudMoney(pw.api)) === pw.save.data.money);
   check('every day the device stayed byte-for-byte in step with the cloud (no conflict, no reload)', synced && pw.sync.status === 'synced');
   check('the milestones reached are on the track with their day', fin.milestones.every((q) => q.reached && q.on > 0) && fin.best === 106 && fin.nextMilestone.day === 200);
+
+  section('Сервер: эксклюзивные предметы серии (1.9.6)');
+  check('the claims of days 7, 30 and 100 named their exclusive item (14 and 60 — dollars only)', got[7]?.cosmetic === 'title_daily_regular' && got[30]?.cosmetic === 'frame_daily_live' && got[100]?.cosmetic === 'victory_daily_sunrise' && !got[14]?.cosmetic && !got[60]?.cosmetic && !got[8]?.cosmetic);
+  check('the status lists the three items reached', fin.items.join(',') === 'title_daily_regular,frame_daily_live,victory_daily_sunrise' && fin.milestones.filter((q) => q.cosmetic).length === 3);
+  const rawPut = async (token: string, data: any, base: number, extra: Record<string, unknown>) => {
+    const text = canonicalJSON(data);
+    const r = await fetch(`${API}/api/prime/save`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: token }, body: JSON.stringify({ base, data: text, hash: crypto.createHash('sha256').update(text).digest('hex'), op: 'dailyitems' + crypto.randomBytes(6).toString('hex'), device: pw.save.meta.device, reason: 'sync', client: 'daily-check', ...extra }) });
+    return { status: r.status, j: (await r.json().catch(() => ({}))) as any };
+  };
+  {
+    const cur = (await pw.api.getSave())!;
+    const data = JSON.parse(cur.text);
+    data.cosmetics.owned = [...data.cosmetics.owned, 'title_daily_regular', 'frame_daily_live', 'victory_daily_sunrise'];
+    data.cosmetics.equipped.broadcastFrame = 'frame_daily_live';
+    const okPut = await rawPut(walker.token, data, cur.revision, (pw.api as any).sessionBody());
+    check('a cloud save of the account that reached them may hold and wear the three items', okPut.status === 200, JSON.stringify(okPut.j).slice(0, 200));
+    await pw.sync.reconcile(); // this device takes the newer cloud copy (the later sections go on from it)
+    // the account of the first section never reached day 7: the same items are refused, nothing stored
+    const mine = (await pm.api.getSave())!;
+    const fake = JSON.parse(mine.text);
+    fake.cosmetics.owned = [...fake.cosmetics.owned, 'title_daily_regular'];
+    const bad = await rawPut(mac.token, fake, mine.revision, (pm.api as any).sessionBody());
+    check('an account that never reached day 7 cannot list the 7-day title (400, «not earned»); its cloud save stays as it was', bad.status === 400 && JSON.stringify(bad.j).includes('not earned') && (await pm.api.getSave())!.revision === mine.revision, JSON.stringify(bad.j).slice(0, 200));
+    const fake2 = JSON.parse(mine.text);
+    fake2.cosmetics.owned = [...fake2.cosmetics.owned, 'card_league_ranked'];
+    const bad2 = await rawPut(mac.token, fake2, mine.revision, (pm.api as any).sessionBody());
+    check('…nor a PRIME LEAGUE exchange item it never took', bad2.status === 400 && JSON.stringify(bad2.j).includes('not earned'));
+  }
 
   section('Сервер: обрыв соединения');
   setDay(300);

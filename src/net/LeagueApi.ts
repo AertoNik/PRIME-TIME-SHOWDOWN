@@ -118,7 +118,7 @@ export interface LeagueSeries {
 
 export interface LeagueMe {
   joined: boolean;
-  flags: { league: boolean; tokens: boolean; upgrades: boolean; rules: number; sim: string };
+  flags: { league: boolean; tokens: boolean; upgrades: boolean; exchange?: boolean; rules: number; sim: string };
   /** `end` null: the pre-season with no season start fixed yet. */
   season: { number: number; start: number; end: number | null; now: number; length?: number };
   rules?: number;
@@ -143,6 +143,9 @@ export interface LeagueMe {
   place: number | null;
   track: { tiers: { tier: number; at: number; tokens: number; title: string | null; emblem: boolean }[]; claimed: number[] };
   upgrades: Record<string, number>;
+  /** 1.9.6 (absent on an older server): the PRIME TOKENS exchange and this game week's fight air points. */
+  exchange?: { on: boolean; items: { item: string; tokens: number; owned: boolean }[]; owned: string[] };
+  airWeek?: { got: number; cap: number };
   report: LeagueReport;
   ceremony: LeagueCeremony | null;
   active: LeagueMatch | null;
@@ -240,6 +243,10 @@ export class LeagueApi {
   }
   claim(tier: number): Promise<{ ok: boolean; tokens?: number; duplicate?: boolean }> {
     return this.api.league('POST', '/track/claim', { tier });
+  }
+  /** 1.9.6: one PRIME TOKENS exchange item (once per account; `op` makes a repeat harmless). */
+  exchange(item: string, op: string): Promise<{ ok: boolean; item: string; cost?: number; tokens: number; duplicate?: boolean }> {
+    return this.api.league('POST', '/exchange', { item, op });
   }
   seriesStart(kind: 'rush' | 'squad', lineup: { fighter: FighterId; deck: CardId[] }[], op: string, arena: LeagueArenaPref = 'random'): Promise<{ series: LeagueSeries; match: LeagueMatch }> {
     return this.api.league('POST', '/series/start', { kind, lineup, op, arena, sim: SIM_VERSION });

@@ -1,5 +1,6 @@
 // Headless checks for Alpha 1.5: MY COLLECTION (the single owner of cosmetics) and the
 // producer career stages (npm run collection). In-memory save, fake clock, no browser.
+import { contractCost } from '../src/config/careerPrices';
 import { CAREER_STAGES } from '../src/config/career';
 import { COSMETICS, COSMETIC_ORDER } from '../src/config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../src/config/fighters';
@@ -200,7 +201,15 @@ function result(p: Partial<MatchResultData>): MatchResultData {
   store.data.reputation = 5000;
   check('contracts: with the level and the money Kai and Rina can be signed', career.canSign('kai').ok && career.canSign('rina').ok);
   career.sign('rina');
-  check('contracts: signing Rina charges the fee once and selects her', store.data.fighters.rina.unlocked && store.data.money === 99999 - rina.cost && store.data.selected === 'rina' && !career.canSign('rina').ok);
+  // 1.9.6: the fee is the career's progressive price (base × the tier of level 5), charged once
+  check(`contracts: signing Rina charges the career's fee once (${contractCost('rina')} $ = base ${rina.cost} × tier) and selects her`, store.data.fighters.rina.unlocked && store.data.money === 99999 - contractCost('rina') && contractCost('rina') > rina.cost && store.data.selected === 'rina' && !career.canSign('rina').ok);
+  {
+    const st2 = new MemSave();
+    const c2 = new CareerSystem(st2 as unknown as SaveSystem);
+    st2.data.reputation = 5000;
+    st2.data.money = contractCost('kai') - 1;
+    check('contracts: one dollar short of the career fee → refused, nothing charged, the reason names the missing $1', !c2.canSign('kai').ok && c2.canSign('kai').reason.includes('$1') && c2.sign('kai').length === 0 && st2.data.money === contractCost('kai') - 1 && !st2.data.fighters.kai.unlocked);
+  }
 }
 
 // ------------------------------------------------------------ Alpha 1.5.5: personal rewards

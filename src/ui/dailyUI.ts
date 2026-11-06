@@ -1,3 +1,4 @@
+import { COSMETICS, RARITY_LABEL, isCosmeticId } from '../config/cosmetics.config';
 import { DAILY, dailyReward, nextMilestone } from '../config/daily.config';
 import { plural } from '../config/events.config';
 import { formatMoney } from '../core/math';
@@ -57,7 +58,10 @@ function trackHTML(streak: number, reached: Record<number, boolean>): string {
   const nodes = DAILY.milestones
     .map((m) => {
       const cls = streak >= m.day ? 'passed' : reached[m.day] ? 'reached' : '';
-      return `<span class="dps-node ${cls}" style="left:${trackPos(m.day)}%"><b>${m.day}</b><small>${money(m.money)}</small></span>`;
+      // 1.9.6: a milestone with an exclusive collection item wears its badge
+      const item = m.cosmetic ? COSMETICS[m.cosmetic] : null;
+      const badge = item ? `<i class="dps-node-item" data-rarity="${item.rarity}" title="${esc(item.name)}">${icon(UI_ICONS.gift, 11)}</i>` : '';
+      return `<span class="dps-node ${cls}${item ? ' has-item' : ''}" style="left:${trackPos(m.day)}%">${badge}<b>${m.day}</b><small>${money(m.money)}</small></span>`;
     })
     .join('');
   const goal = streak >= DAILY.milestones[DAILY.milestones.length - 1].day ? `Юбилей ${nm.day} дней — ещё ${left} ${plural(left, DAYS)}` : `До рубежа «${esc(nm.short)}» — ${left} ${plural(left, DAYS)}`;
@@ -94,6 +98,14 @@ function gateHTML(g: Game): string {
 function shieldHTML(s: DailyStatus): string {
   let cls = 'ready';
   let text = 'Защита серии готова: один пропущенный день будет прощён.';
+  // 1.9.6: the pause — up to `grace` missed days in a row never break the streak (an older server: the weekly shield)
+  if (s.grace > 0) {
+    cls = s.willShield ? 'used' : 'ready';
+    text = s.willShield
+      ? 'Пауза прощена — серия продолжается с того же дня.'
+      : `Пауза до ${s.grace} ${plural(s.grace, DAYS)} подряд серию не прерывает. После долгого перерыва серия продолжится с последнего пройденного рубежа${s.checkpoint ? ` (${s.checkpoint} ${plural(s.checkpoint, DAYS)})` : ''}.`;
+    return `<div class="dps-shield ${cls}">${icon(UI_ICONS.shieldMini, 18)}<span>${text}</span></div>`;
+  }
   if (s.willShield) {
     cls = 'used';
     text = 'Вчерашний пропуск прощён защитой — серия продолжается!';
@@ -130,7 +142,11 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean): string {
   if (ready) foot = `<button type="button" class="btn big wide dps-claim" data-dps="claim"><span class="shine"></span><span class="dps-claim-text">Забрать награду</span></button>`;
   else if (claimed) foot = `<button type="button" class="btn wide dps-done" disabled>${icon(UI_ICONS.check, 16)} Получено</button><div class="dps-next">Следующий подарок через <b data-dps-timer>—</b></div>`;
   else foot = `<div class="dps-next">PRIME NETWORK сверяет часы — попробуйте чуть позже.</div>`;
-  const warn = s.willReset ? `<div class="dps-warn">Серия прервалась — сегодня начинается новая. Рекорд ${s.best} ${plural(s.best, DAYS)} сохранён.</div>` : '';
+  const warn = s.willReset
+    ? s.returnTo
+      ? `<div class="dps-warn">Был долгий перерыв — серия продолжится с рубежа ${s.returnTo} ${plural(s.returnTo, DAYS)}. Полученные награды и предметы остаются у вас.</div>`
+      : `<div class="dps-warn">Серия прервалась — сегодня начинается новая. Рекорд ${s.best} ${plural(s.best, DAYS)} сохранён.</div>`
+    : '';
   return `${headHTML()}
     <div class="dps-stats">
       <div class="dps-stat streak"><span>Серия</span><b class="${bump ? 'bump' : ''}">${s.streak}</b><small>${plural(s.streak, DAYS)} подряд</small></div>
@@ -172,7 +188,11 @@ function reveal(g: Game, host: HTMLElement, c: DailyClaim, done: () => void): vo
   const sparks = calm ? '' : Array.from({ length: big ? 16 : 10 }, (_, i) => `<i style="--a:${(360 / (big ? 16 : 10)) * i}deg;--d:${0.08 * (i % 4)}s"></i>`).join('');
   const confetti = calm || !big ? '' : Array.from({ length: 18 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 6) * 0.07}s;--r:${(i * 47) % 360}deg"></i>`).join('');
   const headline = big ? esc(c.label) : `День ${c.streakDay} в эфире`;
-  const extra = c.shield ? '<small class="dps-reveal-note">Защита серии сохранила серию</small>' : c.reset ? '<small class="dps-reveal-note">Новая серия началась</small>' : '';
+  // 1.9.6: the milestone's exclusive item, the checkpoint a break went back to
+  const item = c.cosmetic && isCosmeticId(c.cosmetic) ? COSMETICS[c.cosmetic] : null;
+  const extra =
+    (item ? `<small class="dps-reveal-item" data-rarity="${item.rarity}">Новый предмет в MY COLLECTION: <b>${esc(item.name)}</b> · ${esc(RARITY_LABEL[item.rarity])}</small>` : '') +
+    (c.shield ? '<small class="dps-reveal-note">Пауза прощена — серия продолжается</small>' : c.reset ? `<small class="dps-reveal-note">${c.from ? `Серия продолжилась с рубежа ${c.from} ${plural(c.from, DAYS)}` : 'Новая серия началась'}</small>` : '');
   const ov = document.createElement('div');
   ov.className = `dps-reveal ${big ? 'big' : ''} ${calm ? 'calm' : ''}`;
   ov.setAttribute('role', 'status');

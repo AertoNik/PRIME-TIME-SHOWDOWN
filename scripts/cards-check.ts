@@ -3,6 +3,7 @@
 // between fights, the boss rules, the card shop and the save. In-memory save, no browser.
 // Alpha 1.6.1 — CARD REFINEMENT: SECOND TAKE (replaces SIDE CAM), the FREEZE FRAME ring that
 // follows its fighter, STAGE BARRIER placement at every distance, the FRAME CATCH parry.
+import { cardPrice } from '../src/config/careerPrices';
 import { CARD_TUNING, COMBO_TUNING, MATCH } from '../src/config/balance';
 import { CARDS, COMBOS, NEW_CARDS, TAKE_CARDS, UNIVERSAL_CARDS, comboFor, deckCombos } from '../src/config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../src/config/fighters';
@@ -971,8 +972,8 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
   store.data.money = 1000;
   check('shop: level 2 opens the first five cards', NEW_CARDS.filter((c) => career.cardOpen(c)).length === 5);
   const before = store.data.money;
-  check('shop: buying SPOTLIGHT TAG takes its price once', career.buyCard('spotlight_tag') && store.data.money === before - CARDS.spotlight_tag.shop!.price);
-  check('shop: a second purchase of the same card is refused and costs nothing', !career.buyCard('spotlight_tag') && store.data.money === before - CARDS.spotlight_tag.shop!.price);
+  check('shop: buying SPOTLIGHT TAG takes its price once', career.buyCard('spotlight_tag') && store.data.money === before - cardPrice('spotlight_tag'));
+  check('shop: a second purchase of the same card is refused and costs nothing', !career.buyCard('spotlight_tag') && store.data.money === before - cardPrice('spotlight_tag'));
   check('shop: a bought card is available to every fighter, the deck is not changed', FIGHTER_ORDER.every((f) => career.availableCards(f).includes('spotlight_tag')) && !store.data.fighters.ray.deck.includes('spotlight_tag'));
   check('shop: not enough money is refused', (() => {
     store.data.money = 10;
