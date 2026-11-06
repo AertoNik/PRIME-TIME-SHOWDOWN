@@ -26,10 +26,25 @@ export type CosmeticId =
   | 'frame_prime_broadcast'
   | 'dash_prime_phantom'
   | 'victory_golden_confetti'
-  | 'card_vhs';
+  | 'card_vhs'
+  // Alpha 1.9.5: PRIME SHOP effects, part 1
+  | 'victory_studio_spotlights'
+  | 'victory_neon_fireworks'
+  | 'dash_glitch'
+  | 'dash_comet'
+  | 'frame_arcade'
+  | 'card_holo';
 
 /** Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP). */
 export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop';
+
+/**
+ * Alpha 1.9.5 — the four tiers of rarity, the same for cosmetics and PRIME SHOP skins. Cosmetic only: a tier never
+ * changes a fighter, a card, a reward or a price.
+ */
+export type Rarity = 'uncommon' | 'rare' | 'epic' | 'legendary';
+export const RARITY_ORDER: Rarity[] = ['uncommon', 'rare', 'epic', 'legendary'];
+export const RARITY_LABEL: Record<Rarity, string> = { uncommon: 'Необычный', rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
 
 export interface CosmeticDef {
   id: CosmeticId;
@@ -40,7 +55,7 @@ export interface CosmeticDef {
   where: string;
   /** Preview art key (ui/eventArt.ts). */
   art: 'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio';
-  rarity: 'rare' | 'epic' | 'legendary';
+  rarity: Rarity;
   /** Event (or game mode) that awards it (for the collection's history). */
   eventId: string;
   /** Seasonal event, BOSS FIGHT or the producer career (Alpha 1.5). */
@@ -84,7 +99,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'DASH вашего бойца оставляет фиолетовый призрачный след и зелёные искры.',
     where: 'Рывок DASH в бою',
     art: 'phantom',
-    rarity: 'epic',
+    rarity: 'rare',
     eventId: 'halloween-2026',
     source: 'season',
     sourceLabel: 'Halloween Premiere 2026',
@@ -97,7 +112,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'Рамка трансляции в стиле Halloween Special: уголки эфира, плашка LIVE и табличка бойца в меню.',
     where: 'Экран боя и табличка бойца',
     art: 'frame',
-    rarity: 'epic',
+    rarity: 'rare',
     eventId: 'halloween-2026',
     source: 'season',
     sourceLabel: 'Halloween Premiere 2026',
@@ -166,7 +181,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'Премиальная рамка трансляции PRIME NETWORK: фиолетово-бирюзовые неоновые линии, угловые метки и плашка ON AIR.',
     where: 'Рамка трансляции в бою',
     art: 'frame',
-    rarity: 'epic',
+    rarity: 'rare',
     eventId: 'prime-shop',
     source: 'shop',
     sourceLabel: 'PRIME SHOP',
@@ -180,7 +195,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'Рывок оставляет фиолетовый голографический след с бирюзовым послесвечением и мягко тающими частицами.',
     where: 'Рывок DASH в бою',
     art: 'phantom',
-    rarity: 'epic',
+    rarity: 'rare',
     eventId: 'prime-shop',
     source: 'shop',
     sourceLabel: 'PRIME SHOP',
@@ -194,7 +209,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'Победу бойца встречает торжественный залп золотого конфетти и золотое кольцо света.',
     where: 'Победа в бою',
     art: 'victory',
-    rarity: 'legendary',
+    rarity: 'rare',
     eventId: 'prime-shop',
     source: 'shop',
     sourceLabel: 'PRIME SHOP',
@@ -215,6 +230,91 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     howTo: 'PRIME SHOP',
     paid: true,
   },
+  // ------------------------------------------------ Alpha 1.9.5: PRIME SHOP effects, part 1 (paid)
+  victory_studio_spotlights: {
+    id: 'victory_studio_spotlights',
+    slot: 'victoryFx',
+    name: 'STUDIO SPOTLIGHTS',
+    desc: 'Победу встречают прожекторы студии: четыре луча сходятся на бойце, на полу загорается световой круг, вокруг щёлкают вспышки фотокамер.',
+    where: 'Победа в бою',
+    art: 'victory',
+    rarity: 'epic',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  victory_neon_fireworks: {
+    id: 'victory_neon_fireworks',
+    slot: 'victoryFx',
+    name: 'NEON FIREWORKS',
+    desc: 'Три неоновых салюта — розовый, бирюзовый и фиолетовый — взлетают над победителем и рассыпаются медленно гаснущими искрами.',
+    where: 'Победа в бою',
+    art: 'victory',
+    rarity: 'epic',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  dash_glitch: {
+    id: 'dash_glitch',
+    slot: 'dashFx',
+    name: 'GLITCH DASH',
+    desc: 'Рывок как сбой трансляции: силуэт двоится в розовом и бирюзовом, мигают помехи, на пути остаются цифровые «пиксели».',
+    where: 'Рывок DASH в бою',
+    art: 'phantom',
+    rarity: 'rare',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  dash_comet: {
+    id: 'dash_comet',
+    slot: 'dashFx',
+    name: 'COMET TRAIL',
+    desc: 'Рывок кометой: яркая вспышка в точке прибытия, сужающийся огненный шлейф и тёплые искры, медленно оседающие на пол.',
+    where: 'Рывок DASH в бою',
+    art: 'phantom',
+    rarity: 'rare',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  frame_arcade: {
+    id: 'frame_arcade',
+    slot: 'broadcastFrame',
+    name: 'ARCADE CABINET',
+    desc: 'Рамка трансляции в стиле игрового автомата 80-х: пиксельные углы, табло PLAYER 1 и тёплый неон. HUD и бойцы не перекрываются.',
+    where: 'Рамка трансляции в бою',
+    art: 'frame',
+    rarity: 'rare',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
+  card_holo: {
+    id: 'card_holo',
+    slot: 'cardStyle',
+    name: 'HOLO FOIL',
+    desc: 'Рамки карт с переливающейся голографической фольгой и бликом по краю. Название, стоимость и метки комбо читаются как прежде.',
+    where: 'Карты в бою и в колоде',
+    art: 'card',
+    rarity: 'uncommon',
+    eventId: 'prime-shop',
+    source: 'shop',
+    sourceLabel: 'PRIME SHOP',
+    howTo: 'PRIME SHOP',
+    paid: true,
+  },
   frame_legendary: {
     id: 'frame_legendary',
     slot: 'broadcastFrame',
@@ -222,7 +322,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     desc: 'Золотая студийная рамка трансляции: золотые уголки эфира, табло таймера и табличка бойца в меню.',
     where: 'Экран боя и табличка бойца',
     art: 'studio',
-    rarity: 'legendary',
+    rarity: 'rare',
     eventId: 'career',
     source: 'career',
     sourceLabel: 'Карьера продюсера',
@@ -254,6 +354,13 @@ export const COSMETIC_ORDER: CosmeticId[] = [
   'dash_prime_phantom',
   'victory_golden_confetti',
   'card_vhs',
+  // Alpha 1.9.5
+  'victory_studio_spotlights',
+  'victory_neon_fireworks',
+  'dash_glitch',
+  'dash_comet',
+  'frame_arcade',
+  'card_holo',
 ];
 
 export const COSMETIC_SLOTS: CosmeticSlot[] = ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'];

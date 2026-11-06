@@ -1,12 +1,16 @@
+import { RARITY_LABEL } from '../../config/cosmetics.config';
 import { CARDS } from '../../config/cards';
 import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosmetics.config';
 import type { EventDef } from '../../config/events.config';
 import { FIGHTERS } from '../../config/fighters';
+import { LOOKS } from '../../config/looks';
+import { SKINS, type SkinId } from '../../config/shop.config';
 import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { ICONS, REWARD_ART } from '../eventArt';
+import { serverTimeKnown } from '../../meta/serverClock';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
@@ -28,7 +32,8 @@ export function currencyIcon(e: EventDef | null): string {
   return kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
 }
 
-const RARITY: Record<CosmeticDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
+// 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
+const RARITY = RARITY_LABEL;
 const CARDS_NAME = (id: keyof typeof CARDS) => CARDS[id].name;
 
 /**
@@ -130,6 +135,19 @@ export class EventsScreen implements Screen {
         this.bumpWallet();
         this.celebrateStar(id);
         if (fresh.length) setTimeout(() => g.ui.toast('Цель карьеры выполнена — заберите награду!', true), 1200);
+      } else {
+        g.audio.ui('deny');
+        g.ui.toast(r.reason);
+      }
+    } else if (act === 'buyskin') {
+      // Alpha 1.9.5: a PRIME SHOP skin in the season's exchange (once, for the event's currency — saved at once)
+      const id = t.dataset.skin as SkinId;
+      const r = em.buySkin(id);
+      if (r.ok) {
+        g.audio.ui('coin');
+        g.ui.toast(`${FIGHTERS[SKINS[id].fighter].name}: ${SKINS[id].name} — в вашей коллекции`, true);
+        this.render();
+        this.bumpWallet();
       } else {
         g.audio.ui('deny');
         g.ui.toast(r.reason);
@@ -242,6 +260,43 @@ export class EventsScreen implements Screen {
           <div class="es-name">${esc(f.name)}</div>
           <div class="es-title">${esc(f.nickname)}</div>
           ${compact ? '' : `<div class="es-desc">${esc(f.style)} · дальний бой тростью-бластером, уколы вблизи и укус BAT BITE. Открывается один раз и остаётся у вас навсегда.</div>`}
+          ${prog}
+        </div>
+        <div class="es-side">${side}</div>
+      </div>`;
+  }
+
+  /**
+   * Alpha 1.9.5: a PRIME SHOP skin in the season's exchange — the look's portrait, the price in the event's currency
+   * and the open button (ПОЛУЧЕН once owned — for tokens or by a purchase: never sold twice).
+   */
+  private skinCard(e: EventDef | null, id: SkinId, cost: number | null): string {
+    const g = this.g;
+    const em = g.events;
+    const sk = SKINS[id];
+    const f = FIGHTERS[sk.fighter];
+    const look = LOOKS[sk.look];
+    const hexOf = (n: number) => '#' + n.toString(16).padStart(6, '0');
+    const owned = g.shop.ownsSkin(id);
+    const tokens = e ? em.tokens(e) : 0;
+    const icon = currencyIcon(e);
+    const live = cost !== null && !!e && em.playable;
+    const can = live && tokens >= (cost ?? 0);
+    const side = owned
+      ? `<span class="chip teal es-open">${UI_ICONS.check.replace('<svg', '<svg width="10" height="10"')} ПОЛУЧЕН</span>`
+      : live
+        ? `<button class="btn es-buy ${can ? '' : 'short'}" data-act="buyskin" data-skin="${id}">${can ? '<span class="shine"></span>' : ''}${cost}<span class="eq-coin">${icon}</span></button>`
+        : `<span class="er-lock">${ICONS.lock} Во время события</span>`;
+    const prog =
+      owned || cost === null
+        ? `<div class="es-own">${owned ? 'В «Моей коллекции» навсегда · облик выбирается в «Облики бойцов»' : ''}</div>`
+        : `<div class="es-prog"><div class="progress gold"><i style="transform:scaleX(${Math.min(1, tokens / cost)})"></i></div><span>${Math.min(tokens, cost)}/${cost}<span class="eq-coin">${icon}</span></span></div>`;
+    return `<div class="ev-star ev-skin ${owned ? 'owned' : ''} ${can && !owned ? 'ready' : ''}">
+        <div class="es-art">${portraitHTML(g.portraitFor(sk.look, true), hexOf(look.top.accent), hexOf(look.top.main), 'es-portrait')}</div>
+        <div class="es-main">
+          <div class="es-kind">Сезонный облик · ${esc(f.name)}</div>
+          <div class="es-name">${esc(sk.name)}</div>
+          <div class="es-desc">Только внешний вид: характеристики, карты и анимации бойца не меняются. Получается один раз и остаётся у вас навсегда.</div>
           ${prog}
         </div>
         <div class="es-side">${side}</div>
@@ -393,8 +448,15 @@ export class EventsScreen implements Screen {
     const items = e.shop.map((s) => this.rewardCard(COSMETICS[s.cosmetic], s.cost, e));
     if (e.grandPrize) items.push(this.rewardCard(COSMETICS[e.grandPrize.cosmetic], null, e));
     // Alpha 1.7: the season's star leads the exchange
-    const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost)).join('');
-    return `${stars}<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на награды сезона. Боец и предметы остаются у вас после окончания события; предметы надеваются и снимаются в «Моей коллекции».</div>
+    const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost)).join('') + (e.skins ?? []).map((x) => this.skinCard(e, x.skin, x.cost)).join('');
+    // 1.9.5: a PRIME ID player without a connection to PRIME CLOUD — an exchange made now is kept on this device, and the
+    // cloud takes it only within 72 hours after the event ends (by the server's clock): said plainly, before buying
+    const offline = !!this.g.account?.api?.sessionRecord && !serverTimeKnown();
+    const endDay = e.end ? new Date(Date.parse(e.end)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) : '';
+    const warn = offline
+      ? `<div class="ev-hint ev-offline">Нет связи с PRIME CLOUD. Обмен без подключения сохранится на этом устройстве; в облако он попадёт, только если вы подключитесь не позднее чем через 72 часа после окончания события${endDay ? ` (${esc(endDay)})` : ''}. Позже облако такой обмен не примет.</div>`
+      : '';
+    return `${stars}${warn}<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на награды сезона. Боец и предметы остаются у вас после окончания события; предметы надеваются и снимаются в «Моей коллекции».</div>
       <div class="ev-rewards">${items.join('')}</div>
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }
@@ -417,7 +479,10 @@ export class EventsScreen implements Screen {
     const season = active ?? em.upcoming;
     const ownedHere = season ? [...season.shop.map((x) => x.cosmetic), ...(season.grandPrize ? [season.grandPrize.cosmetic] : [])].filter((id) => em.owns(id)) : [];
     // Alpha 1.7: a star opened in this season stays in the roster (shown here, never offered once the event is over)
-    const starsHere = season ? (season.fighters ?? []).filter((x) => em.ownsFighter(x.fighter)).map((x) => this.starCard(season, x.fighter, null)).join('') : '';
+    const starsHere = season
+      ? (season.fighters ?? []).filter((x) => em.ownsFighter(x.fighter)).map((x) => this.starCard(season, x.fighter, null)).join('') +
+        (season.skins ?? []).filter((x) => this.g.shop.ownsSkin(x.skin)).map((x) => this.skinCard(season, x.skin, null)).join('')
+      : '';
     const lineup = ownedHere.map((id) => this.rewardCard(COSMETICS[id], null, season!)).join('');
     return `${top}${lineup || starsHere ? `<div class="section-title ev-coll-title"><span class="h2">Ваши награды сезона</span><span class="label">${esc(season!.title)}</span></div>${starsHere}${lineup ? `<div class="ev-rewards">${lineup}</div>` : ''}` : ''}
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;

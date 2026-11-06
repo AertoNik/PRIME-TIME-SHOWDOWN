@@ -23,7 +23,8 @@ import {
   type SkinId,
 } from '../src/config/shop.config';
 import { Rng } from '../src/core/math';
-import { SHOP_OFFERS, currentOffer } from '../src/config/offer.config';
+import { GOODS_R5, SHOP_OFFERS, currentOffer, offerSells } from '../src/config/offer.config';
+import { RARITY_LABEL, RARITY_ORDER } from '../src/config/cosmetics.config';
 import { devGrant, ownsPaid, paidSource, setEntitlements } from '../src/meta/entitlements';
 import { EventManager } from '../src/meta/EventManager';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
@@ -73,27 +74,51 @@ function world(at: string, data?: SaveData) {
   const shop = new Shop(store as unknown as SaveSystem, events, events.collection);
   return { store, events, shop, col: events.collection, setNow: (iso: string) => ((now = T(iso)), events.refresh()) };
 }
+// the seven items sold since 1.8.8 / 1.9.4 (approved prices) …
 const ALL_SKUS: ShopSku[] = ['skin_ray_neon_runner', 'skin_bruno_casino_boss', 'fx_prime_broadcast', 'fx_phantom_dash', 'fx_golden_confetti', 'fx_vhs_card_frame', 'fighter_lucien'];
+// … and Alpha 1.9.5 Part 1: two skins, six effects (prices PROPOSED) and three Halloween items sold after their season
+const NEW_SKINS_195: ShopSku[] = ['skin_nika_stage_idol', 'skin_vega_star_pilot'];
+const NEW_FX_195: ShopSku[] = ['fx_studio_spotlights', 'fx_neon_fireworks', 'fx_glitch_dash', 'fx_comet_trail', 'fx_arcade_frame', 'fx_holo_foil'];
+const SEASON_195: ShopSku[] = ['season_halloween_cards', 'season_spooky_broadcast', 'season_pumpkin_victory'];
+const NEW_195: ShopSku[] = [...NEW_SKINS_195, ...NEW_FX_195, ...SEASON_195];
+const CATALOG_ORDER: ShopSku[] = ['skin_ray_neon_runner', 'skin_bruno_casino_boss', ...NEW_SKINS_195, 'fx_prime_broadcast', 'fx_phantom_dash', 'fx_golden_confetti', 'fx_vhs_card_frame', ...NEW_FX_195, ...SEASON_195, 'fighter_lucien'];
 const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'victory_golden_confetti', 'card_vhs'];
 
 // ------------------------------------------------------------------ the catalog
 {
-  check('catalog: exactly the seven approved items', SHOP_ITEMS.length === 7 && SHOP_ITEMS.map((i) => i.sku).join() === ALL_SKUS.join());
-  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 7);
+  check('catalog: the seven approved items and the eleven of 1.9.5 Part 1, in catalog order', SHOP_ITEMS.length === 18 && SHOP_ITEMS.map((i) => i.sku).join() === CATALOG_ORDER.join());
+  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 18);
   check(
-    'catalog: the approved names',
-    SHOP_ITEMS.map((i) => i.name).join('|') === 'RAY: NEON RUNNER|BRUNO: CASINO BOSS|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|LUCIEN: THE NIGHT STAR',
+    'catalog: the names',
+    SHOP_ITEMS.map((i) => i.name).join('|') ===
+      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR',
   );
+  // 1.9.5: one item, one id — the Halloween items sold after the season are the exchange's own cosmetics
+  const exch = new Set(EVENTS.flatMap((e) => e.shop.map((x) => x.cosmetic)));
+  check('1.9.5 catalog: the seasonal effects are the exchange\'s own items (same cosmetic ids, source «season») — no copy, no second id', SEASON_195.every((s) => { const c = SHOP_ITEMS.find((i) => i.sku === s)!.cosmetic!; return exch.has(c) && COSMETICS[c].source === 'season' && !COSMETICS[c].paid; }) && new Set(SHOP_ITEMS.map((i) => i.cosmetic).filter(Boolean)).size === SHOP_ITEMS.filter((i) => i.cosmetic).length);
+  // 1.9.5 (Р-18, Р-19 — the owner, 06.11.2026): the eleven prices APPROVED; sold only under an offer revision that lists them
+  check('1.9.5 prices: the eleven new items APPROVED by the owner on 06.11.2026 — NIKA 149, VEGA 149, SPOTLIGHTS 69, FIREWORKS 69, GLITCH 59, COMET 59, ARCADE 49, HOLO 49, HALLOWEEN CARD 49, SPOOKY 49, PUMPKIN VICTORY 59 ₽', NEW_195.every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s] && SHOP_PRICES_APPROVED_LATER[s] === '2026-11-06') && NEW_195.map((s) => SHOP_PRICES_RUB[s]).join() === '149,149,69,69,59,59,49,49,49,49,59');
+  // (Р-20 approved 06.11.2026: revision 5 registered for 08.11.2026 09:00 Moscow time — the exact moment)
+  check('1.9.5 the new items are in no revision 1–4 (Appendix 1) — only in revision 5 (GOODS_R5 = the whole catalog), in force from 2026-11-08T06:00:00Z; the seven of № 4 keep their prices', SHOP_OFFERS.filter((o) => o.revision <= 4).every((o) => NEW_195.every((s) => !offerSells(o, s))) && SHOP_OFFERS.find((o) => o.revision === 4)!.items!.join() === ALL_SKUS.join() && GOODS_R5.join() === CATALOG_ORDER.join() && SHOP_OFFERS.find((o) => o.revision === 5)?.items === GOODS_R5 && SHOP_OFFERS.find((o) => o.revision === 5)?.effectiveFrom === '2026-11-08T06:00:00Z' && ALL_SKUS.map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,249');
+  check('1.9.5 PURPLE PHANTOM is not in PRIME SHOP (an exclusive Halloween reward), PHANTOM DASH unchanged (49 ₽, its own id)', !SHOP_ITEMS.some((i) => i.cosmetic === 'dash_phantom') && SHOP_ITEMS.find((i) => i.sku === 'fx_phantom_dash')!.cosmetic === 'dash_prime_phantom' && SHOP_PRICES_RUB.fx_phantom_dash === 49);
   check('catalog: three categories (skins, effects, fighters), every item in one of them, none empty', SHOP_CATEGORIES.map((c) => c.id).join() === 'skins,effects,fighters' && SHOP_ITEMS.every((i) => SHOP_CATEGORIES.some((c) => c.id === i.category)) && SHOP_CATEGORIES.every((c) => SHOP_ITEMS.some((i) => i.category === c.id)));
   check('catalog: every card has a type line, a description and what changes', SHOP_ITEMS.every((i) => i.kind && i.desc.length > 40 && i.highlights.length >= 3));
-  check('catalog: skins point to existing fighters, cosmetics to PRIME SHOP items in the collection, LUCIEN to the seasonal star', SHOP_ITEMS.every((i) => (i.skin ? SKINS[i.skin].fighter === i.fighter && i.category === 'skins' : i.cosmetic ? COSMETICS[i.cosmetic].paid === true && COSMETICS[i.cosmetic].source === 'shop' && i.category === 'effects' : i.fighter === 'lucien' && !!FIGHTERS.lucien.seasonal)));
+  check('catalog: skins point to existing fighters, cosmetics to PRIME SHOP items (or 1.9.5: an exchange\'s seasonal item) in the collection, LUCIEN to the seasonal star', SHOP_ITEMS.every((i) => (i.skin ? SKINS[i.skin].fighter === i.fighter && i.category === 'skins' : i.cosmetic ? ((COSMETICS[i.cosmetic].paid === true && COSMETICS[i.cosmetic].source === 'shop') || (exch.has(i.cosmetic) && COSMETICS[i.cosmetic].source === 'season')) && i.category === 'effects' : i.fighter === 'lucien' && !!FIGHTERS.lucien.seasonal)));
   check('catalog: each sku sells one thing (lookups both ways)', PAID.every((c) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_COSMETIC[c])?.cosmetic === c) && Object.values(SKINS).every((s) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_SKIN[s.id])?.skin === s.id));
   // 1.8.8 final: the owner approved six prices on 23.10.2026 (item by item); LUCIEN's stays only proposed
   check('prices: approved by the owner item by item — RAY 99, BRUNO 149, PRIME BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49 ₽', ALL_SKUS.map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,249' && ALL_SKUS.filter((s) => s !== 'fighter_lucien').every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s]));
   check('prices: LUCIEN 249 ₽ APPROVED by the owner on 05.11.2026 (1.9.4) — the documents name that day apart from the six of 23.10.2026; sold only after his event and under an offer that sells characters (the server checks)', SHOP_PRICE_STATUS.fighter_lucien === 'approved' && approvedPriceRub('fighter_lucien') === 249 && SHOP_PRICES_APPROVED_LATER.fighter_lucien === '2026-11-05');
   check('this release may sell (1.8.9: the server\'s LIVE mode and PRIME_SHOP_SALES decide) and the offer link points to the real installed page (public/legal/ru/offer.html)', SHOP_SALES_OPEN === true && SHOP_OFFERS.every((o) => fs.existsSync(path.join(ROOT, 'public', o.url.replace(/^https:\/\/primetimeshowdown\.online\//, '')))) && (currentOffer() === null || /\/legal\/ru\/offer(-r\d+)?\.html$/.test(currentOffer()!.url)));
   const w = world('2026-10-22T12:00:00Z');
-  check('prices: the shop shows the approved price («99 ₽», «149 ₽», «49 ₽») — and «ПОКА НЕ В ПРОДАЖЕ» while real sales are closed', SHOP_ITEMS.filter((i) => !i.fighter || i.skin).every((i) => w.shop.state(i).price === `${SHOP_PRICES_RUB[i.sku]} ₽` && w.shop.state(i).status === 'soon' && w.shop.state(i).chip === 'ПОКА НЕ В ПРОДАЖЕ'), SHOP_ITEMS.map((i) => w.shop.state(i).price).join('|'));
+  check('prices: the shop shows the approved price («99 ₽», «149 ₽», «49 ₽») — and «ПОКА НЕ В ПРОДАЖЕ» while real sales are closed', SHOP_ITEMS.filter((i) => (!i.fighter || i.skin) && ALL_SKUS.includes(i.sku)).every((i) => w.shop.state(i).price === `${SHOP_PRICES_RUB[i.sku]} ₽` && w.shop.state(i).status === 'soon' && w.shop.state(i).chip === 'ПОКА НЕ В ПРОДАЖЕ'), SHOP_ITEMS.map((i) => w.shop.state(i).price).join('|'));
+  check('1.9.5 an approved new item waiting for its revision: its approved price, «ПОКА НЕ В ПРОДАЖЕ», not selling — and not listed on the official site (Shop.listed)', [...NEW_SKINS_195, ...NEW_FX_195].every((s) => { const it = SHOP_ITEMS.find((i) => i.sku === s)!; const st = w.shop.state(it); return st.price === `${SHOP_PRICES_RUB[s]} ₽` && st.status === 'soon' && st.chip === 'ПОКА НЕ В ПРОДАЖЕ' && !w.shop.selling(s) && w.shop.awaitsOffer(it) && !w.shop.listed(it); }));
+  // …a server that sells everything else, with no charge for them (the 1.9.5 server under revision 4): the note names the revision
+  const live = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, rubToKop(approvedPriceRub(i.sku))]));
+  const charge = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, offerSells(currentOffer(), i.sku) ? rubToKop(approvedPriceRub(i.sku)) : null]));
+  w.shop.setServer({ selling: true, env: 'live', pricesKop: live, chargeKop: charge });
+  const nk = w.shop.state(SHOP_ITEMS.find((i) => i.sku === 'skin_nika_stage_idol')!);
+  check('1.9.5 …on a live server selling the rest: «ПОКА НЕ В ПРОДАЖЕ 149 ₽», the note says the offer revision with this item opens it — never «sales are closed»', nk.status === 'soon' && nk.price === '149 ₽' && /вступит в силу редакция оферты PRIME SHOP с этим товаром/.test(nk.note) && !/Продажи PRIME SHOP пока не открыты/.test(nk.note), nk.note);
+  w.shop.setServer(null);
   // no fake payment: a purchase request never succeeds, never grants, never creates anything
   const before = JSON.stringify(w.store.data);
   const refusals = ALL_SKUS.flatMap((s) => [w.shop.requestPurchase(s, false), w.shop.requestPurchase(s, true)]);
@@ -110,8 +135,9 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   // visual mappings — no event exchange, career stage, boss reward or achievement names them
   const walk = (dir: string): string[] => fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((e: any) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.ts$/.test(e.name) ? [path.join(dir, e.name)] : []));
   const srcFiles = walk('src');
-  const paidIds = /frame_prime_broadcast|dash_prime_phantom|victory_golden_confetti|card_vhs|skin_ray_neon_runner|skin_bruno_casino_boss|fx_prime_broadcast|fx_phantom_dash|fx_golden_confetti|fx_vhs_card_frame/;
-  const allowed = ['src/config/cosmetics.config.ts', 'src/config/shop.config.ts', 'src/game/ThemeManager.ts', 'src/render/cosmeticFx.ts'];
+  // (1.9.5: and the six new PRIME SHOP cosmetics and skins; shopArt.ts maps frames / card styles to their CSS for the previews)
+  const paidIds = /frame_prime_broadcast|dash_prime_phantom|victory_golden_confetti|card_vhs|skin_ray_neon_runner|skin_bruno_casino_boss|fx_prime_broadcast|fx_phantom_dash|fx_golden_confetti|fx_vhs_card_frame|frame_arcade|card_holo|dash_glitch|dash_comet|victory_studio_spotlights|victory_neon_fireworks|skin_nika_stage_idol|skin_vega_star_pilot|fx_studio_spotlights|fx_neon_fireworks|fx_glitch_dash|fx_comet_trail|fx_arcade_frame|fx_holo_foil/;
+  const allowed = ['src/config/cosmetics.config.ts', 'src/config/shop.config.ts', 'src/config/offer.config.ts', 'src/game/ThemeManager.ts', 'src/render/cosmeticFx.ts', 'src/ui/shopArt.ts'];
   const leaks = srcFiles.filter((f) => paidIds.test(read(f)) && !allowed.includes(f.split(path.sep).join('/')));
   check('no reward path names a paid item (events, career, boss, achievements, modes)', leaks.length === 0, leaks.join());
   const setters = srcFiles.filter((f) => /setEntitlements\(|devGrant\(/.test(read(f).replace(/^\s*(\/\/|\*).*$/gm, '')) && !/entitlements\.ts$|Shop\.ts$/.test(f));
@@ -140,7 +166,8 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   setEntitlements([]);
   const w = world('2026-10-22T12:00:00Z');
   const ray = SHOP_ITEMS[0];
-  check('guest: sees all seven items with an honest state', w.shop.states().length === 7 && w.shop.states().every((s) => s.chip && s.price && s.note));
+  // 1.9.5: the catalog lists the approved items and the seasonal ones; a proposed item only in development / on staging
+  check('guest: sees the ten listed items (seven approved + three seasonal) with an honest state — proposed new items are not listed outside dev / staging', w.shop.states().length === 10 && w.shop.states().every((s) => s.chip && s.price && s.note) && w.shop.states().every((s) => ALL_SKUS.includes(s.item.sku) || SEASON_195.includes(s.item.sku)));
   check('guest: no card says «Приобретено», «НАДЕТО» or «В КОЛЛЕКЦИИ» without real ownership', w.shop.states().every((s) => !s.owned && s.price !== 'Приобретено' && s.chip !== 'НАДЕТО' && s.chip !== 'В КОЛЛЕКЦИИ'));
   check('not owned: a skin cannot be worn, the fighter keeps the standard look', !w.shop.setSkin('ray', 'ray_neon_runner') && w.shop.lookFor('ray') === 'ray' && w.store.saves === 0);
   check('not owned: a shop cosmetic cannot be worn or granted by the collection', !w.col.setEquipped('card_vhs', true) && !w.col.grant('card_vhs', 'prime-shop') && w.col.equipped('cardStyle') === null);
@@ -164,7 +191,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   const ow = world('2026-10-22T12:00:00Z');
   check('a confirmed purchase is «Приобретено»; worn it is «НАДЕТО»', paidSource('skin_ray_neon_runner') === 'purchase' && ow.shop.state(ray).price === 'Приобретено' && ow.shop.state(ray).chip === 'В КОЛЛЕКЦИИ');
   check('owned skin: worn, saved once, shown everywhere through lookFor', ow.shop.setSkin('ray', 'ray_neon_runner') && ow.store.saves === 1 && ow.shop.lookFor('ray') === 'ray_neon_runner' && ow.shop.state(ray).status === 'equipped' && ow.shop.state(ray).chip === 'НАДЕТО');
-  check('a development test grant is never shown as a purchase (the shop and the collection say «тестовый доступ (dev)»)', /const source = paidSource\(item\.sku\);/.test(read('src/meta/Shop.ts')) && /source === 'dev' \? 'Тестовый доступ \(dev\)'/.test(read('src/meta/Shop.ts')) && /const src = paidSource\(SKU_OF_SKIN\[id\]\);/.test(read('src/ui/screens/CollectionScreen.ts')) && /src === 'dev' \? 'Тест \(dev\)'/.test(read('src/ui/screens/CollectionScreen.ts')));
+  check('a development test grant is never shown as a purchase (the shop and the collection say «тестовый доступ (dev)»)', /const source = paidSource\(item\.sku\);/.test(read('src/meta/Shop.ts')) && /source === 'dev' \? 'Тестовый доступ \(dev\)'/.test(read('src/meta/Shop.ts')) && /const src = g\.shop\.skinSource\(id\);/.test(read('src/ui/screens/CollectionScreen.ts')) && /paidSource\(SKU_OF_SKIN\[id\]\) \?\?/.test(read('src/meta/Shop.ts')) && /src === 'dev' \? 'Тест \(dev\)'/.test(read('src/ui/screens/CollectionScreen.ts')));
   setEntitlements(['skin_ray_neon_runner', 'fx_vhs_card_frame'], true, 'test');
   check('a right from Robokassa\'s TEST mode (staging, the demonstration) is «Тестовая покупка», never «Приобретено» — in the shop and in the collection', paidSource('skin_ray_neon_runner') === 'test' && ow.shop.state(ray).price === 'Тестовая покупка' && /не покупка/.test(ow.shop.state(ray).note) && /src === 'test' \? 'Тестовая покупка'/.test(read('src/ui/screens/CollectionScreen.ts')));
   setEntitlements(['skin_ray_neon_runner', 'fx_vhs_card_frame']);
@@ -223,12 +250,12 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
     const d = sanitize(JSON.parse(JSON.stringify(raw)));
     const w = world('2026-10-22T12:00:00Z', d);
     const looksOk = (Object.keys(FIGHTERS) as (keyof typeof FIGHTERS)[]).every((f) => w.shop.lookFor(f) === FIGHTERS[f].look);
-    if (JSON.stringify(d.shop) !== '{"skins":{},"equip":{}}' || !looksOk || w.shop.states().length !== 7) bad.push(name);
+    if (JSON.stringify(d.shop) !== '{"skins":{},"equip":{}}' || !looksOk || w.shop.states().length !== 10) bad.push(name);
   }
   check(`old saves (schemas 1–11 and the rich 1.7.6 career): load with an empty wardrobe, every fighter in the standard look, the shop works`, bad.length === 0, bad.join());
   const rich = sanitize(JSON.parse(JSON.stringify(save176())));
   const rw = world('2026-10-22T12:00:00Z', rich);
-  check('old saves: earned seasonal items, LUCIEN and the career stay as they were', rw.events.ownsFighter('lucien') && rw.shop.state(SHOP_ITEMS[6]).status === 'received' && rich.cosmetics.owned.length === sanitize(JSON.parse(JSON.stringify(save176()))).cosmetics.owned.length && rich.money === save176().money);
+  check('old saves: earned seasonal items, LUCIEN and the career stay as they were', rw.events.ownsFighter('lucien') && rw.shop.state(SHOP_ITEMS.find((i) => i.sku === 'fighter_lucien')!).status === 'received' && rich.cosmetics.owned.length === sanitize(JSON.parse(JSON.stringify(save176()))).cosmetics.owned.length && rich.money === save176().money);
 
   // PRIME CLOUD: the wardrobe goes up and comes back; a forged paid claim in the cloud text is cleaned
   const mine = defaultSave();
@@ -266,6 +293,42 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   } else check('live 1.8.4 server bundle present for the compatibility check (server-bundle/prime-server-1.8.4-alpha.tar.gz)', false);
 }
 
+// ------------------------------------------------------------------ 1.9.5: four tiers of rarity
+{
+  check('rarity: four tiers in order — НЕОБЫЧНЫЙ, РЕДКИЙ, ЭПИЧЕСКИЙ, ЛЕГЕНДАРНЫЙ', RARITY_ORDER.join() === 'uncommon,rare,epic,legendary' && RARITY_ORDER.map((r) => RARITY_LABEL[r]).join() === 'Необычный,Редкий,Эпический,Легендарный');
+  check('rarity: one item, one tier — a PRIME SHOP cosmetic shows the tier of its MY COLLECTION item', SHOP_ITEMS.every((i) => !i.cosmetic || i.rarity === COSMETICS[i.cosmetic].rarity));
+  // the owner's honest classification (06.11.2026, docs/ALPHA_1_9_5_PART1_PRE_STAGING_REPORT.md, section 3): by the real
+  // visual, items sold before included — prices, rights and fighters unchanged
+  const tiers = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, i.rarity]));
+  const want: Record<string, string> = {
+    skin_ray_neon_runner: 'epic',
+    skin_bruno_casino_boss: 'legendary',
+    skin_nika_stage_idol: 'epic',
+    skin_vega_star_pilot: 'epic',
+    fx_prime_broadcast: 'rare',
+    fx_phantom_dash: 'rare',
+    fx_golden_confetti: 'rare',
+    fx_vhs_card_frame: 'rare',
+    fx_studio_spotlights: 'epic',
+    fx_neon_fireworks: 'epic',
+    fx_glitch_dash: 'rare',
+    fx_comet_trail: 'rare',
+    fx_arcade_frame: 'rare',
+    fx_holo_foil: 'uncommon',
+    season_halloween_cards: 'rare',
+    season_spooky_broadcast: 'rare',
+    season_pumpkin_victory: 'epic',
+    fighter_lucien: 'legendary',
+  };
+  check('rarity: the approved honest classification of every item — BRUNO the one legendary skin; RAY, NIKA, VEGA epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
+  check('rarity: not everything paid is epic or legendary — all four tiers are used', RARITY_ORDER.every((r) => SHOP_ITEMS.some((i) => i.rarity === r)));
+  check('rarity: PURPLE PHANTOM rare (an exclusive Halloween reward, not sold), LEGENDARY PRODUCTION rare (the same build as SPOOKY BROADCAST); the titles keep theirs (a title and its own victory screen)', COSMETICS.dash_phantom.rarity === 'rare' && COSMETICS.frame_legendary.rarity === 'rare' && COSMETICS.frame_spooky.rarity === 'rare' && COSMETICS.title_halloween_champion.rarity === 'legendary' && COSMETICS.title_prime_legend.rarity === 'legendary' && COSMETICS.title_prime_star.rarity === 'epic');
+  check('rarity: the prices did not move with the tiers (the seven of № 4 and the eleven of 1.9.5)', ALL_SKUS.map((k) => SHOP_PRICES_RUB[k]).join() === '99,149,49,49,49,49,249' && NEW_195.map((k) => SHOP_PRICES_RUB[k]).join() === '149,149,69,69,59,59,49,49,49,49,59');
+  const css = read('src/styles/main.css');
+  check('rarity: shown in PRIME SHOP, the purchase window, MY COLLECTION and the exchange with one colour per tier (uncommon green)', /\.si\.rar-uncommon,\s*\.sn-item\.rar-uncommon,\s*\.pco-item\.rar-uncommon/.test(css) && /\.col-card\.rarity-uncommon \.cc-rarity/.test(css) && /\.rarity-uncommon \.er-rarity/.test(css) && /\.wr-rar\.r-uncommon/.test(css) && ['src/ui/screens/ShopScreen.ts', 'src/ui/screens/CollectionScreen.ts', 'src/ui/screens/EventsScreen.ts', 'src/ui/checkoutUI.ts'].every((f) => /const RARITY = RARITY_LABEL;/.test(read(f))));
+  check('rarity: purely cosmetic — no game, combat or price code reads it', !['src/combat', 'src/core', 'src/league', 'src/meta'].some((d) => fs.readdirSync(path.join(ROOT, d)).some((f: string) => /\.ts$/.test(f) && /\.rarity\b/.test(read(`${d}/${f}`)))) && !/rarity/.test(read('backend/pb_hooks/lib/payments.js')) && !/rarity/.test(read('backend/pb_hooks/lib/checkout.js')));
+}
+
 // ------------------------------------------------------------------ the skins
 {
   const baseline = JSON.parse(read('scripts/lib/look-baseline.json')).looks as Record<string, string>;
@@ -284,7 +347,9 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
       const y = (gb.bones as any)[bone].toon.attributes.position.count;
       return x !== y;
     };
-    check(`${sk.name}: really new geometry — clothes, hair and face, hands, weapon (not a recolour)`, rigPrint(sk.look) !== rigPrint(sk.fighter) && differs('torso') && differs('head') && differs('weaponR') && L.hair.style !== B.hair.style && L.top.style !== B.top.style);
+    // (1.9.5: NIKA and VEGA keep their recognisable hair — the owner's brief — in new colours; the clothes, the head's
+    // accessories and the weapon's decoration are new geometry all the same)
+    check(`${sk.name}: really new geometry — clothes, hair and face, hands, weapon (not a recolour)`, rigPrint(sk.look) !== rigPrint(sk.fighter) && differs('torso') && differs('head') && differs('weaponR') && (L.hair.style !== B.hair.style || (L.hair.color !== B.hair.color && L.hair.color2 !== B.hair.color2)) && L.top.style !== B.top.style);
     const tris = (geo: typeof g) => Object.values(geo.bones).reduce((n: number, b: any) => n + [b.toon, b.glow].reduce((m: number, x: any) => m + (x ? (x.index ? x.index.count : x.attributes.position.count) / 3 : 0), 0), 0);
     const vale = tris(getRigGeometry('vale'));
     check(`${sk.name}: mobile budget — ${Math.round(tris(g) / 1000)}k triangles (the original ${Math.round(tris(gb) / 1000)}k, largest existing look ${Math.round(vale / 1000)}k)`, tris(g) < tris(gb) * 1.5 && tris(g) < vale);
@@ -375,7 +440,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   const ls = late.shop.state(lucien);
   // 1.9.4: no server answer here (offline, no PRIME NETWORK): the approved price is shown, nothing is on sale — only the
   // server sells (it prices him only under an offer that sells characters)
-  check('LUCIEN after the season, not opened, no server: «ПОКА НЕ В ПРОДАЖЕ» with the approved 249 ₽; a purchase never starts without the server', ls.status === 'after_season' && ls.chip === 'ПОКА НЕ В ПРОДАЖЕ' && ls.price === '249 ₽' && !late.shop.selling('fighter_lucien') && late.shop.requestPurchase('fighter_lucien', true).ok === false);
+  check('LUCIEN after the season, not opened, no server: «ОЖИДАЕТ ПРОДАЖИ» (1.9.5: the seasonal word) with the approved 249 ₽; a purchase never starts without the server', ls.status === 'after_season' && ls.chip === 'ОЖИДАЕТ ПРОДАЖИ' && ls.price === '249 ₽' && !late.shop.selling('fighter_lucien') && late.shop.requestPurchase('fighter_lucien', true).ok === false);
   check('LUCIEN: no second fighter id — the shop item is the same «lucien»', lucien.fighter === 'lucien' && Object.keys(FIGHTERS).filter((k) => k.includes('lucien')).length === 1);
   // 1.9.4 — what PRODUCTION answers today (live, sales open, LUCIEN without a price): the card says why, not «sales closed»
   const cos = Object.fromEntries(ALL_SKUS.map((k) => [k, k === 'fighter_lucien' ? null : rubToKop(approvedPriceRub(k))]));
@@ -410,7 +475,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check('wardrobe: the standard look is first and always available (no rights at all), worn when nothing else is', ray0[0].skin === null && ray0[0].available && ray0[0].worn && ray0[0].look === FIGHTERS.ray.look && ray0[0].source === null);
   check('wardrobe: a skin that is not owned is listed locked and cannot be put on (the save stays untouched)', ray0.length === 2 && ray0[1].skin === 'ray_neon_runner' && !ray0[1].available && !ray0[1].worn && !w.shop.setSkin('ray', 'ray_neon_runner') && w.store.saves === 0 && w.shop.lookFor('ray') === 'ray');
   check('wardrobe: every fighter lists only his own looks (switching fighters switches the list); one with no skins has only the standard look', w.shop.wardrobe('bruno').map((x) => x.skin ?? 'std').join() === 'std,bruno_casino_boss' && (Object.keys(FIGHTERS) as (keyof typeof FIGHTERS)[]).every((f) => w.shop.wardrobe(f).every((x) => x.skin === null || SKINS[x.skin].fighter === f)) && w.shop.wardrobe('nika').length === 1);
-  check('wardrobe: built from the skin registry (SKINS), not tied to one skin — every skin of a fighter is listed', (Object.keys(SKINS) as SkinId[]).every((id) => w.shop.wardrobe(SKINS[id].fighter).some((x) => x.skin === id && x.look === SKINS[id].look)));
+  check('wardrobe: built from the skin registry (SKINS), not tied to one skin — every LISTED skin of a fighter is listed (1.9.5: a proposed one only once owned or listed)', (Object.keys(SKINS) as SkinId[]).every((id) => w.shop.wardrobe(SKINS[id].fighter).some((x) => x.skin === id && x.look === SKINS[id].look) === w.shop.listed(SHOP_ITEMS.find((i) => i.skin === id)!)));
   setEntitlements(['skin_ray_neon_runner']);
   check('wardrobe: a purchased skin is available, chosen in one step, saved once and worn everywhere (lookFor)', w.shop.wardrobe('ray')[1].available && w.shop.wardrobe('ray')[1].source === 'purchase' && w.shop.setSkin('ray', 'ray_neon_runner') && w.store.saves === 1 && w.shop.wardrobe('ray')[1].worn && !w.shop.wardrobe('ray')[0].worn && w.shop.lookFor('ray') === 'ray_neon_runner');
   const again = world('2026-10-22T12:00:00Z', JSON.parse(JSON.stringify(w.store.data)));

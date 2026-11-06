@@ -7,6 +7,11 @@
 // 256 px copies in public/producers/) are the catalogue now. The 14 vector producers of 1.9.0 stay as LEGACY: still
 // valid ids (a saved look keeps its face on every device, no database migration), never a default and not offered in
 // the studio — except the one an account already wears. New ids only: an old id never changes its meaning.
+//
+// Alpha 1.9.5 — 3D ONLY (the owner's decision): the game shows and offers nothing but the 19 portraits. A legacy id that an
+// account still has saved stays valid DATA (the server accepts it, nothing in the database changes — an older client keeps
+// working) and is SHOWN as its own 3D portrait (LEGACY_PORTRAIT: one portrait per legacy producer, chosen by persona); the
+// studio opens on that portrait, and saving there writes the portrait id. The vector drawing left the build.
 
 export type ProducerAccess = 'free' | 'reward' | 'season';
 
@@ -97,6 +102,27 @@ const VECTOR_PRODUCERS = legacy([
   { id: 'brainstorm', ru: 'Мозговой штурм', en: 'Brainstorm', access: 'free', skin: '#a8714a', hair: { style: 'curls', color: '#24160f', shine: '#5a3d2c' }, outfit: { kind: 'hoodie_blazer', color: '#ff7a1a', accent: '#1a1838' }, eyes: 'round', brows: 'arch', mouth: 'smile', extras: ['rect_glasses'], face: 'soft' },
 ]);
 
+/**
+ * 1.9.5: the 3D portrait each legacy producer is shown as (one each, never shared; by persona: the assistant director, the
+ * diva → the evening star, the voice in the headset → the sound engineer…). Never changes once published.
+ */
+export const LEGACY_PORTRAIT: Record<string, string> = {
+  director: 'portrait_01',
+  circuit: 'portrait_02',
+  live_wire: 'portrait_03',
+  brainstorm: 'portrait_06',
+  floor: 'portrait_07',
+  spark: 'portrait_08',
+  queen_bee: 'portrait_09',
+  noir: 'portrait_11',
+  showman: 'portrait_12',
+  baron: 'portrait_13',
+  smooth: 'portrait_15',
+  veteran: 'portrait_16',
+  diva: 'portrait_17',
+  curator: 'portrait_18',
+};
+
 /** The whole catalogue (every id the server accepts): the portraits, then the legacy vector producers. */
 export const PRODUCER_AVATARS: ProducerPersona[] = [...PRODUCER_PORTRAITS, ...VECTOR_PRODUCERS];
 /** What the studio offers and a default is drawn from: free and not legacy. */
@@ -143,3 +169,14 @@ export function defaultLook(seed: string): ProducerLook {
 }
 
 export const avatarById = (id: string): ProducerPersona | null => PRODUCER_AVATARS.find((a) => a.id === id) ?? null;
+
+/**
+ * 1.9.5: the 3D portrait the game shows for any saved avatar id — a portrait as itself, a legacy producer as its own
+ * portrait (LEGACY_PORTRAIT), anything unknown or damaged as the first portrait. Never a vector drawing, never empty.
+ */
+export function shownPortrait(id: string): ProducerPortrait {
+  const a = avatarById(id);
+  if (a && isPortrait(a)) return a;
+  const mapped = PRODUCER_PORTRAITS.find((p) => p.id === LEGACY_PORTRAIT[id]);
+  return mapped ?? PRODUCER_PORTRAITS[0];
+}

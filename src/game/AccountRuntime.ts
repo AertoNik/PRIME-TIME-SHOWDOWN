@@ -42,7 +42,7 @@ export type AccountView =
   /** Signed in and confirmed, but the account is not loaded on this page yet (a choice was put off). */
   | { kind: 'not-loaded'; nickname: string; email: string }
   /** The page plays the account. */
-  | { kind: 'account'; nickname: string; email: string; status: SyncStatus; unsynced: boolean; syncedAt: number; conflict: string | null; signedIn: boolean; gate: PlayGate | null; cloud2: boolean };
+  | { kind: 'account'; nickname: string; email: string; status: SyncStatus; unsynced: boolean; syncedAt: number; conflict: string | null; signedIn: boolean; gate: PlayGate | null; cloud2: boolean; detail?: string };
 
 /**
  * 1.8.3: why a match under the PRIME ID cannot start right now (null: it can). 1.8.4: 'terms' — the
@@ -204,6 +204,8 @@ export class AccountRuntime {
         signedIn: !!this.api?.sessionRecord && this.api.sessionRecord.id === uid,
         gate: this.gate(),
         cloud2: this.cloud2,
+        // 1.9.5: why the server refused the save (e.g. «season_closed»)
+        detail: s ? s.detail : '',
       };
     }
     if (this.serverUp === false && !this.me) return { kind: 'server-down' };
@@ -615,6 +617,7 @@ export class AccountRuntime {
     }
     // 1.8.8: the catalog shows the server's prices and «В ПРОДАЖЕ» only when this server really sells
     this.g.shop.setServer(this.serverConfig?.shop ?? null);
+    // (1.9.5: the server's clock it carried moves the seasonal calendar at the next check outside a fight — Game.update)
   }
 
   /** The profile was refused with 429 at start: asks again after 4, 8, 16, 30 s (never a tight loop), then gives up quietly. */

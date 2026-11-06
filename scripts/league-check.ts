@@ -25,7 +25,7 @@ import { canonicalJSON } from '../src/net/cloudSave';
 import { leagueConfig, replayLeague, type LeagueInput, type LeagueSnapshot } from '../src/league/replay';
 import { SIM_VERSION } from '../src/league/simVersion';
 import { leagueRulesSource, leagueSim, producerRulesSource, simVersionSource } from './backend';
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, PRODUCER_PORTRAITS, avatarById, defaultLook, isPortrait, offeredAvatars } from '../src/config/producer.config';
+import { LEGACY_PORTRAIT, PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, PRODUCER_PORTRAITS, avatarById, defaultLook, isPortrait, offeredAvatars, shownPortrait } from '../src/config/producer.config';
 import { producerSVG } from '../src/ui/producerArt';
 import { comboBot, type BotState } from './bots';
 import { availableArenas } from '../src/meta/ArenaSelection';
@@ -133,7 +133,9 @@ function rulesChecks(): void {
   check('producer_rules.js is generated from producer.config.ts and up to date; 19 portraits + 14 legacy avatars, 4 frames, 4 backdrops, all free', fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/producer_rules.js'), 'utf8') === producerRulesSource() && PRODUCER_AVATARS.length >= 12 && PRODUCER_FRAMES.length >= 4 && PRODUCER_BACKDROPS.length >= 4 && [...PRODUCER_AVATARS, ...PRODUCER_FRAMES, ...PRODUCER_BACKDROPS].every((x) => x.access === 'free'));
   const vectors = PRODUCER_AVATARS.filter((a) => !isPortrait(a));
   const svgs = vectors.map((a) => producerSVG({ avatar: a.id, frame: 'studio', backdrop: 'violet' }, 48));
-  check('every legacy avatar is its own drawing (14 different SVGs), vector only — no external image, URL or script', vectors.length === 14 && vectors.every((a) => a.legacy) && new Set(svgs.map((x) => x.replace(/id="[^"]+"|url\(#[^)]+\)/g, ''))).size === 14 && svgs.every((x) => !/<image|href=|https?:|<script/i.test(x)));
+  // 1.9.5 — 3D ONLY: a saved legacy id stays accepted data, but is SHOWN as its own 3D portrait (14 different portraits, one
+  // each), never a vector drawing; the vector drawing code left the build
+  check('1.9.5 every legacy avatar is shown as its own 3D portrait (14 different portraits, none shared, all of the 19) — no vector drawing, no external URL or script', vectors.length === 14 && vectors.every((a) => a.legacy) && new Set(vectors.map((a) => shownPortrait(a.id).id)).size === 14 && vectors.every((a) => LEGACY_PORTRAIT[a.id] === shownPortrait(a.id).id && PRODUCER_PORTRAITS.some((p) => p.id === LEGACY_PORTRAIT[a.id])) && svgs.every((x, i) => (x.match(/<image/g) ?? []).length === 1 && x.includes(`producers/128/${shownPortrait(vectors[i].id).image}`) && !/https?:|<script/i.test(x)) && !/function vector\(|hairBack|facialHair/.test(fs.readFileSync(path.join(ROOT, 'src/ui/producerArt.ts'), 'utf8')));
   // 1.9.4 — 3D PORTRAITS
   const ids = PRODUCER_AVATARS.map((a) => a.id);
   check('1.9.4 the catalogue: 19 portraits portrait_01…19 (avatar-01…19.png), unique ids, none of the 1.9.0 ids reused, catalogue version 2', PRODUCER_PORTRAITS.length === 19 && PRODUCER_PORTRAITS.every((p, i) => p.id === `portrait_${String(i + 1).padStart(2, '0')}` && p.image === `avatar-${String(i + 1).padStart(2, '0')}.png` && !p.legacy) && new Set(ids).size === ids.length && ids.length === 33 && JSON.parse(fs.readFileSync(path.join(ROOT, 'backend/pb_hooks/lib/producer_rules.js'), 'utf8').replace(/^[\s\S]*?module\.exports = /, '').replace(/;\s*$/, '')).version === 2);
@@ -147,7 +149,7 @@ function rulesChecks(): void {
   const seeds = Array.from({ length: 2000 }, (_, i) => 'acc' + i.toString(36).padStart(12, '0'));
   const dflt = new Set(seeds.map((x) => defaultLook(x).avatar));
   check('1.9.4 a default is always a portrait (never legacy) and the 2000 sample accounts spread over all 19; the studio offers exactly the 19', seeds.every((x) => isPortrait(avatarById(defaultLook(x).avatar)!)) && dflt.size === 19 && offeredAvatars().length === 19 && offeredAvatars().every(isPortrait));
-  check('1.9.4 a saved legacy look keeps its face: «diva», «veteran» and «director» still resolve and draw their own vector portrait', ['diva', 'veteran', 'director'].every((id) => avatarById(id)?.legacy === true) && producerSVG({ avatar: 'diva', frame: 'neon', backdrop: 'sunset' }, 48).includes('Дива') && !producerSVG({ avatar: 'diva', frame: 'neon', backdrop: 'sunset' }, 48).includes('<image'));
+  check('1.9.5 a saved legacy look («diva», «veteran», «director») still resolves as data (the server accepts it) and is drawn as its portrait — the studio offers only the 19 portraits, no «Классика»; an unknown id is never an empty badge', ['diva', 'veteran', 'director'].every((id) => avatarById(id)?.legacy === true) && producerSVG({ avatar: 'diva', frame: 'neon', backdrop: 'sunset' }, 48).includes('producers/128/avatar-17.png') && producerSVG({ avatar: 'veteran', frame: 'neon', backdrop: 'sunset' }, 48).includes('avatar-16.png') && producerSVG({ avatar: 'no_such_id', frame: 'studio', backdrop: 'violet' }, 48).includes('avatar-01.png') && !/Классика|Classic/.test(fs.readFileSync(path.join(ROOT, 'src/ui/producerStudio.ts'), 'utf8')) && /offeredAvatars\(\)\s*\.map/.test(fs.readFileSync(path.join(ROOT, 'src/ui/producerStudio.ts'), 'utf8')));
   check('RP below the skill climbs faster, above it slower', LM.rpDelta({ ...p, rp: 100 }, 1000, 'win') > LM.rpDelta({ ...p, rp: 1600 }, 1000, 'win'));
   check('the floor: once reached, a major rank is never lost to RP in the season', LM.applyRp(310, 300, -40).rp === 300);
   const a = LM.applyRp(690, 300, 30);

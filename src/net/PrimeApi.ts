@@ -1,3 +1,4 @@
+import { noteServerTime } from '../meta/serverClock';
 import type PocketBase from 'pocketbase';
 import type { OfferRevision } from '../config/offer.config';
 import { APP_VERSION } from '../config/version';
@@ -468,7 +469,10 @@ export class PrimeApi {
    * never offers a registration the server has not opened.
    */
   async config(): Promise<ServerConfig> {
+    const sentAt = Date.now();
     const r = await this.call((o) => this.pb.send<Rec>('/api/prime/config', { ...o, method: 'GET' }));
+    // 1.9.5: the server's clock for the seasonal calendar (absent on older servers — the device clock stays)
+    noteServerTime(r.time, sentAt, Date.now());
     const m = r.registration === 'invite_only' || r.registration === 'public' ? r.registration : 'disabled';
     const sess = (r.session ?? {}) as Rec;
     const legal = r.legal && typeof r.legal === 'object' ? (r.legal as Rec) : null;

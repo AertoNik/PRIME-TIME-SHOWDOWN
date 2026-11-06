@@ -21,6 +21,7 @@ import { NEW_CARDS, UNIVERSAL_CARDS } from '../src/config/cards';
 import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS } from '../src/config/cosmetics.config';
 import { DAILY } from '../src/config/daily.config';
 import { EVENTS } from '../src/config/events.config';
+import { seasonOf } from '../src/config/seasonal';
 import { DEMO_OFFER, SHOP_OFFERS, TEST_OFFER } from '../src/config/offer.config';
 import { MINOR_PURCHASES, SHOP_ITEMS, SHOP_PRICES_APPROVED_ON, SHOP_PRICES_RUB, SHOP_PRICE_STATUS, SHOP_SALES_OPEN, SHOP_TEST_PRICES_RUB, SKINS, approvedPriceRub, receiptNameOf, rubToKop } from '../src/config/shop.config';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../src/config/fighters';
@@ -79,8 +80,18 @@ export function rulesSource(): string {
   const cosmetics: Record<string, string> = {};
   const shopCosmetics: Record<string, string> = {};
   for (const id of COSMETIC_ORDER) (COSMETICS[id].paid ? shopCosmetics : cosmetics)[id] = COSMETICS[id].slot;
+  // 1.9.5: a seasonal cosmetic sold in PRIME SHOP after its season is BOTH: owned through the save when obtained for
+  // tokens (cosmetics), worn from save.shop.equip when owned only through its purchase (shopCosmetics)
+  for (const it of SHOP_ITEMS) if (it.cosmetic && !COSMETICS[it.cosmetic].paid) shopCosmetics[it.cosmetic] = COSMETICS[it.cosmetic].slot;
   const skins: Record<string, string> = {};
   for (const sk of Object.values(SKINS)) skins[sk.id] = sk.fighter;
+  // 1.9.5: the seasonal exchanges and their end (UTC) — a cloud save may add an exchange purchase only while the event
+  // runs by the SERVER's clock (lib/prime.js seasonClosed; a grace period covers progress made offline)
+  const events: Record<string, { end: string; cosmetics: string[]; fighters: string[]; skins: string[] }> = {};
+  for (const e of EVENTS) {
+    if (!e.start || !e.end) continue;
+    events[e.id] = { end: e.end, cosmetics: e.shop.map((x) => x.cosmetic), fighters: (e.fighters ?? []).map((x) => x.fighter), skins: (e.skins ?? []).map((x) => x.skin) };
+  }
   const rules = {
     app: APP_VERSION,
     schemaMax: VERSION,
@@ -91,6 +102,7 @@ export function rulesSource(): string {
     cosmeticSlots: COSMETIC_SLOTS,
     shopCosmetics,
     skins,
+    events,
     rivals: RIVAL_ORDER,
     goals: GOALS.map((g) => g.id),
     stages: CAREER_STAGES.map((s) => s.id),
@@ -123,10 +135,13 @@ export function shopRulesSource(): string {
   for (const it of SHOP_ITEMS) {
     if (it.skin) catalog[it.sku] = { kind: 'skin', item: it.skin, fighter: SKINS[it.skin].fighter };
     else if (it.cosmetic) catalog[it.sku] = { kind: 'cosmetic', item: it.cosmetic };
-    else if (it.fighter) {
-      catalog[it.sku] = { kind: 'fighter', item: it.fighter };
-      const ev = EVENTS.find((e) => e.fighters?.some((f) => f.fighter === it.fighter));
-      if (ev?.start && ev.end) seasons[it.sku] = { event: ev.id, start: ev.start, end: ev.end };
+    else if (it.fighter) catalog[it.sku] = { kind: 'fighter', item: it.fighter };
+    // 1.9.5: ANY seasonal item (a fighter, a cosmetic or a skin in an event's exchange — src/config/seasonal.ts) is
+    // sold for roubles only after its event, by the server's clock (lib/checkout.js «seasonal_only»)
+    const s = seasonOf(it);
+    if (s) {
+      if (!s.event.start || !s.event.end) throw new Error(`${it.sku}: a seasonal item's event needs its dates`);
+      seasons[it.sku] = { event: s.event.id, start: s.event.start, end: s.event.end };
     }
   }
   // 1.8.8 stage 4: the names an order keeps, and the STAGING-only block a server in Robokassa's test mode
@@ -147,6 +162,10 @@ export function shopRulesSource(): string {
   // 1.8.9.5: the limits for buyers aged 14–17 (used only with PRIME_SHOP_MINORS=on and an offer revision `minors: true`)
   for (const k of ['itemMaxRub', 'per30DaysRub'] as const) if (!(MINOR_PURCHASES[k] > 0) || rubToKop(MINOR_PURCHASES[k]) === null) throw new Error(`MINOR_PURCHASES.${k}: not a positive whole number of kopecks`);
   // 1.9.4: a revision's own limits for 14–17 (its section 5) — whole kopecks, the order limit within the 30-day one
+  // 1.9.5: a revision's goods (its Appendix 1) are known items with an approved price — never a typo, never a proposed price
+  for (const o of [...SHOP_OFFERS, TEST_OFFER, DEMO_OFFER]) {
+    for (const s of o.items ?? []) if (!SHOP_ITEMS.some((i) => i.sku === s) || approvedPriceRub(s as (typeof SHOP_ITEMS)[number]['sku']) === null) throw new Error(`offer revision ${o.revision}: «${s}» is not an approved PRIME SHOP item`);
+  }
   for (const o of SHOP_OFFERS) {
     const l = o.minorLimits;
     if (l && (rubToKop(l.orderMaxRub) === null || rubToKop(l.per30DaysRub) === null || l.orderMaxRub > l.per30DaysRub || typeof l.characters !== 'boolean')) throw new Error(`SHOP_OFFERS revision ${o.revision}: minorLimits`);

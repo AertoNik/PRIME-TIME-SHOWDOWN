@@ -4703,61 +4703,79 @@ input {
 .bc-frame {
   display: none;
 }
-:root[data-frame='spooky'] .bc-frame {
+:root[data-frame='spooky'] .bc-frame,
+.fd-screen.spooky .fd-frame {
   display: block;
   position: absolute;
   inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
   pointer-events: none !important;
   z-index: 2;
 }
-:root[data-frame='spooky'] .bc-frame i {
+:root[data-frame='spooky'] .bc-frame i,
+.fd-screen.spooky .fd-frame i {
   position: absolute;
   width: 22px;
   height: 22px;
   border: 3px solid #ff8a1f;
   filter: drop-shadow(0 0 6px rgba(180, 92, 255, 0.9));
 }
-:root[data-frame='spooky'] .bc-frame .tl {
+:root[data-frame='spooky'] .bc-frame .tl,
+.fd-screen.spooky .fd-frame .tl {
   left: 0;
   top: 0;
   border-right: 0;
   border-bottom: 0;
   border-top-left-radius: 6px;
 }
-:root[data-frame='spooky'] .bc-frame .tr {
+:root[data-frame='spooky'] .bc-frame .tr,
+.fd-screen.spooky .fd-frame .tr {
   right: 0;
   top: 0;
   border-left: 0;
   border-bottom: 0;
   border-top-right-radius: 6px;
 }
-:root[data-frame='spooky'] .bc-frame .bl {
+:root[data-frame='spooky'] .bc-frame .bl,
+.fd-screen.spooky .fd-frame .bl {
   left: 0;
   bottom: 0;
   border-right: 0;
   border-top: 0;
   border-bottom-left-radius: 6px;
 }
-:root[data-frame='spooky'] .bc-frame .br {
+:root[data-frame='spooky'] .bc-frame .br,
+.fd-screen.spooky .fd-frame .br {
   right: 0;
   bottom: 0;
   border-left: 0;
   border-top: 0;
   border-bottom-right-radius: 6px;
 }
-:root[data-frame='spooky'] .timer-box {
+:root[data-frame='spooky'] .timer-box,
+.fd-screen.spooky .fd-timer {
   background: linear-gradient(180deg, #3a1660, #14081f);
   box-shadow: 0 0 0 1.5px #ff8a1f, 0 0 16px rgba(180, 92, 255, 0.6);
 }
-:root[data-frame='spooky'] .timer-box .live {
+:root[data-frame='spooky'] .timer-box .live,
+.fd-screen.spooky .fd-live {
   background: linear-gradient(90deg, #ff6a1a, #b45cff);
 }
 :root[data-frame='spooky'] .fighter-plate {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px #ff8a1f, 0 0 20px rgba(180, 92, 255, 0.35);
 }
+/* 1.9.5: the shop's preview of SPOOKY BROADCAST (a small screen: smaller corners, inside its edges) */
+.fd-screen.spooky .fd-frame {
+  inset: 3px;
+}
+.fd-screen.spooky .fd-frame i {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
 
 /* ---- cosmetic: HALLOWEEN CARD STYLE (frame only: icon, cost and name stay as they are) */
-:root[data-card-style='pumpkin'] .card {
+:root[data-card-style='pumpkin'] .card,
+.pumpkin-set .card {
   box-shadow:
     0 5px 0 rgba(0, 0, 0, 0.45),
     inset 0 0 0 2px #ffb347,
@@ -4765,13 +4783,15 @@ input {
     inset 0 -18px 24px rgba(40, 0, 60, 0.35),
     0 0 14px rgba(180, 92, 255, 0.45);
 }
-:root[data-card-style='pumpkin'] .card .art::before {
+:root[data-card-style='pumpkin'] .card .art::before,
+.pumpkin-set .card .art::before {
   background:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='white' stroke-opacity='.55' stroke-width='1'%3E%3Cpath d='M60 0 L20 0 M60 0 L33 22 M60 0 L45 38 M60 0 L60 40'/%3E%3Cpath d='M48 0 Q50 7 51 9 Q55 11 60 12 M36 0 Q40 12 43 17 Q50 22 60 24 M26 0 Q30 16 35 26 Q46 33 60 36'/%3E%3C/g%3E%3C/svg%3E") top right / 52% no-repeat,
     radial-gradient(circle at 50% 110%, rgba(255, 138, 31, 0.35), transparent 55%),
     var(--card-pattern);
 }
-:root[data-card-style='pumpkin'] .card::before {
+:root[data-card-style='pumpkin'] .card::before,
+.pumpkin-set .card::before {
   content: '';
   position: absolute;
   left: 50%;
@@ -4785,7 +4805,8 @@ input {
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 0 8px rgba(255, 138, 31, 0.7);
   pointer-events: none;
 }
-:root[data-card-style='pumpkin'] .card:not(.in-deck)::after {
+:root[data-card-style='pumpkin'] .card:not(.in-deck)::after,
+.pumpkin-set .card:not(.in-deck)::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -4798,24 +4819,28 @@ input {
   background: #5a8a2e;
   pointer-events: none;
 }
-:root[data-card-style='pumpkin'] .card .nm {
+:root[data-card-style='pumpkin'] .card .nm,
+.pumpkin-set .card .nm {
   text-shadow: 0 2px 0 rgba(58, 10, 80, 0.8), 0 0 8px rgba(180, 92, 255, 0.6);
 }
-:root[data-card-style='pumpkin'] .hand-card.combo-ready {
+:root[data-card-style='pumpkin'] .hand-card.combo-ready,
+.pumpkin-set .hand-card.combo-ready {
   box-shadow:
     0 5px 0 rgba(0, 0, 0, 0.45),
     inset 0 0 0 3px #ffe27a,
     0 0 26px rgba(255, 138, 31, 0.95);
 }
 /* keep the signature-card gold ring and the deck-builder focus readable with the card style */
-:root[data-card-style='pumpkin'] .card.exclusive {
+:root[data-card-style='pumpkin'] .card.exclusive,
+.pumpkin-set .card.exclusive {
   box-shadow:
     0 5px 0 rgba(0, 0, 0, 0.45),
     inset 0 0 0 2px #ffe27a,
     inset 0 0 0 4px rgba(58, 18, 92, 0.85),
     0 0 16px rgba(255, 210, 58, 0.45);
 }
-:root[data-card-style='pumpkin'] .card.focus {
+:root[data-card-style='pumpkin'] .card.focus,
+.pumpkin-set .card.focus {
   box-shadow:
     0 5px 0 rgba(0, 0, 0, 0.45),
     inset 0 0 0 2px #fff,
@@ -10366,6 +10391,273 @@ button.pid-mini:active {
   font-size: 11px;
 }
 
+/* 1.9.5: the exchange's notice to a PRIME ID player without a connection to PRIME CLOUD */
+.ev-hint.ev-offline {
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: #ffd7a8;
+  background: rgba(255, 138, 31, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 138, 31, 0.45);
+}
+
+/* ---- Alpha 1.9.5: the four tiers of rarity — uncommon (green), rare (cyan), epic (violet), legendary (gold); one
+   colour per tier in PRIME SHOP, the purchase window, MY COLLECTION and the event exchange */
+:root {
+  --rar-uncommon: #6fe39a;
+  --rar-uncommon-rgb: 111, 227, 154;
+}
+.si.rar-uncommon,
+.sn-item.rar-uncommon,
+.pco-item.rar-uncommon {
+  --rar: var(--rar-uncommon);
+  --rar-rgb: var(--rar-uncommon-rgb);
+}
+.fit.rar-uncommon,
+.pco-win.rar-uncommon,
+.rarity-uncommon .cc-art.cc-shop {
+  --rar-rgb: var(--rar-uncommon-rgb);
+}
+.col-card.rarity-uncommon .cc-rarity {
+  color: var(--rar-uncommon);
+}
+.col-card.rarity-rare .cc-rarity {
+  color: var(--ps-cyan);
+}
+.col-card.rarity-epic .cc-rarity {
+  color: #cf9bff;
+}
+.col-card.rarity-legendary .cc-rarity {
+  color: var(--gold);
+}
+.col-card.rarity-uncommon.owned {
+  box-shadow: inset 0 0 0 1.5px rgba(var(--rar-uncommon-rgb), 0.45);
+}
+.col-card.rarity-rare.owned {
+  box-shadow: inset 0 0 0 1.5px rgba(var(--ps-cyan-rgb), 0.45);
+}
+.ev-reward.rarity-uncommon {
+  box-shadow: inset 0 0 0 1px rgba(var(--rar-uncommon-rgb), 0.5);
+}
+.ev-reward.rarity-rare {
+  box-shadow: inset 0 0 0 1px rgba(var(--ps-cyan-rgb), 0.5);
+}
+.rarity-uncommon .er-rarity {
+  color: var(--rar-uncommon);
+}
+.rarity-rare .er-rarity {
+  color: var(--ps-cyan);
+}
+/* a skin's tier in the wardrobe of MY COLLECTION (beside where it comes from) */
+.wr-rar {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.wr-rar.r-uncommon {
+  color: var(--rar-uncommon);
+}
+.wr-rar.r-rare {
+  color: var(--ps-cyan);
+}
+.wr-rar.r-epic {
+  color: #cf9bff;
+}
+.wr-rar.r-legendary {
+  color: var(--gold);
+}
+
+/* ---- Alpha 1.9.5: PRIME SHOP showcase polish — ribbons, the new-arrivals strip, per-item art */
+/* one ribbon per card: in the collection / a season's item / new (never more than one) */
+.si-ribbon {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 7.5px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+.si-ribbon.r-new {
+  color: #0a0620;
+  background: linear-gradient(90deg, #ffe58a, #ffb020);
+  box-shadow: 0 0 10px rgba(255, 196, 58, 0.55);
+}
+.si-ribbon.r-season {
+  color: #2a1000;
+  background: linear-gradient(90deg, #ffb347, #ff7a1a);
+  box-shadow: 0 0 10px rgba(255, 122, 26, 0.45);
+}
+.si-ribbon.r-owned {
+  color: #062a2a;
+  background: var(--teal);
+}
+/* owned: a calm teal edge — clearly «yours», the price line steps back */
+.si.is-owned {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px rgba(34, 240, 224, 0.6);
+}
+.si.is-owned .si-price {
+  color: var(--teal);
+}
+/* a season's item: a warm edge at the foot of the picture */
+.si.is-season .si-art {
+  box-shadow: inset 0 -2px 0 rgba(255, 138, 31, 0.75);
+}
+.shop-new {
+  margin-top: 12px;
+}
+.sn-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding: 2px 2px 6px;
+  scrollbar-width: none;
+}
+.sn-row::-webkit-scrollbar {
+  display: none;
+}
+.sn-item {
+  --rar: var(--ps-violet);
+  --rar-rgb: var(--ps-violet-rgb);
+  flex: none;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 0 8px;
+  border: 0;
+  border-radius: 13px;
+  overflow: hidden;
+  text-align: left;
+  color: #fff;
+  cursor: pointer;
+  scroll-snap-align: start;
+  background: linear-gradient(180deg, rgba(36, 20, 84, 0.96), rgba(12, 10, 34, 0.97));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(var(--rar-rgb), 0.55);
+}
+.sn-item.rar-legendary {
+  --rar: var(--ps-gold);
+  --rar-rgb: var(--ps-gold-rgb);
+}
+.sn-item.rar-rare {
+  --rar: var(--ps-cyan);
+  --rar-rgb: var(--ps-cyan-rgb);
+}
+.sn-art {
+  position: relative;
+  display: block;
+  aspect-ratio: 1.15;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 90% at 50% 100%, rgba(var(--rar-rgb), 0.3), transparent 70%),
+    linear-gradient(180deg, #1c0e44, #0c0a24);
+}
+.sn-art .si-portrait {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.sn-art .si-portrait img {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.sn-art .art-cards .card {
+  width: 38%;
+}
+.sn-kind {
+  padding: 4px 8px 0;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(var(--rar-rgb), 0.95);
+}
+.sn-name {
+  padding: 0 8px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 10.5px;
+  line-height: 1.15;
+}
+@media (min-width: 700px) {
+  .sn-item {
+    width: 132px;
+  }
+}
+/* per-item catalog art: each effect its own picture and glow */
+.art-dash.k-glitch svg {
+  filter: drop-shadow(0 0 7px rgba(255, 61, 224, 0.55));
+}
+.art-dash.k-comet svg {
+  filter: drop-shadow(0 0 8px rgba(255, 154, 46, 0.6));
+}
+.art-confetti.k-spotlights svg {
+  filter: drop-shadow(0 0 8px rgba(255, 210, 58, 0.55));
+}
+.art-confetti.k-fireworks svg {
+  filter: drop-shadow(0 0 8px rgba(168, 107, 255, 0.6));
+}
+.art-confetti.k-pumpkin svg {
+  filter: drop-shadow(0 0 8px rgba(255, 138, 31, 0.6));
+}
+.art-frame.k-arcade {
+  background:
+    repeating-linear-gradient(90deg, #ffb020 0 6px, transparent 6px 10px) top / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, #22e3c4 0 6px, transparent 6px 10px) bottom / 100% 2px no-repeat,
+    linear-gradient(180deg, #14102e, #080618);
+  box-shadow: inset 0 0 0 1px rgba(34, 227, 196, 0.35);
+}
+.art-frame.k-arcade i {
+  border: 0;
+  width: 14%;
+  background:
+    linear-gradient(#ffb020, #ffb020) 0 0 / 100% 3px no-repeat,
+    linear-gradient(#ffb020, #ffb020) 0 0 / 3px 100% no-repeat;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 32, 0.8));
+}
+.art-frame.k-arcade .tr {
+  transform: scaleX(-1);
+}
+.art-frame.k-arcade .bl {
+  transform: scaleY(-1);
+}
+.art-frame.k-arcade .br {
+  transform: scale(-1, -1);
+}
+.art-frame.k-arcade .af-air {
+  background: linear-gradient(90deg, #ffb020, #22e3c4);
+}
+.art-frame.k-spooky {
+  background: radial-gradient(70% 80% at 50% 100%, rgba(180, 92, 255, 0.3), transparent 70%), linear-gradient(180deg, #1e0a36, #0a0618);
+  box-shadow: inset 0 0 0 1px rgba(255, 138, 31, 0.4);
+}
+.art-frame.k-spooky i {
+  border-color: #ff8a1f;
+  border-radius: 4px;
+  filter: drop-shadow(0 0 4px rgba(180, 92, 255, 0.95));
+}
+.art-frame.k-spooky .af-air {
+  background: linear-gradient(90deg, #ff6a1a, #b45cff);
+}
+.cd-label.vhs.k-holo {
+  color: #c9f2ff;
+}
+.cd-label.vhs.k-pumpkin {
+  color: #ffb347;
+}
+
 /* the shop footer: collection, PRIME ID, the place of the offer */
 .shop-foot {
   display: flex;
@@ -11084,6 +11376,176 @@ button.pid-mini:active {
 :root[data-motion='off'] .se-glint {
   animation: none;
   display: none;
+}
+/* ---- Alpha 1.9.5 cosmetic: ARCADE CABINET frame (edges only — never over the HUD, fighters or cards) */
+:root[data-frame='arcade'] .bc-frame,
+.fd-screen.arcade .fd-frame {
+  display: block;
+  position: absolute;
+  inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
+  pointer-events: none !important;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(90deg, #ffb020 0 6px, transparent 6px 10px) top / 100% 2px no-repeat,
+    repeating-linear-gradient(90deg, #22e3c4 0 6px, transparent 6px 10px) bottom / 100% 2px no-repeat;
+}
+.fd-screen.arcade .fd-frame {
+  inset: 3px;
+}
+/* stepped «pixel» corners: three blocks each, no curves */
+:root[data-frame='arcade'] .bc-frame i,
+.fd-screen.arcade .fd-frame i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #ffb020;
+  box-shadow: 6px 0 0 #ffb020, 0 6px 0 #ffb020, 12px 0 0 #ff5a36, 0 12px 0 #ff5a36;
+  filter: drop-shadow(0 0 4px rgba(255, 150, 40, 0.75));
+}
+.fd-screen.arcade .fd-frame i {
+  width: 3px;
+  height: 3px;
+  box-shadow: 3px 0 0 #ffb020, 0 3px 0 #ffb020, 6px 0 0 #ff5a36, 0 6px 0 #ff5a36;
+}
+:root[data-frame='arcade'] .bc-frame .tl,
+.fd-screen.arcade .fd-frame .tl {
+  left: 0;
+  top: 0;
+}
+:root[data-frame='arcade'] .bc-frame .tr,
+.fd-screen.arcade .fd-frame .tr {
+  right: 0;
+  top: 0;
+  transform: scaleX(-1);
+}
+:root[data-frame='arcade'] .bc-frame .bl,
+.fd-screen.arcade .fd-frame .bl {
+  left: 0;
+  bottom: 0;
+  transform: scaleY(-1);
+}
+:root[data-frame='arcade'] .bc-frame .br,
+.fd-screen.arcade .fd-frame .br {
+  right: 0;
+  bottom: 0;
+  transform: scale(-1, -1);
+}
+/* PLAYER 1 — a small marquee tag on the right edge, at mid-height */
+:root[data-frame='arcade'] .bc-frame::before,
+.fd-screen.arcade .fd-frame::before {
+  content: 'PLAYER 1';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 7px 2px;
+  border-radius: 4px 0 0 4px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 7.5px;
+  letter-spacing: 0.2em;
+  color: #1a0d00;
+  background: linear-gradient(180deg, #ffd23a, #ff8a1f);
+  box-shadow: 0 0 10px rgba(255, 150, 40, 0.55);
+  opacity: 0.9;
+}
+.fd-screen.arcade .fd-frame::before {
+  padding: 4px 1px;
+  font-size: 5px;
+}
+:root[data-frame='arcade'] .timer-box,
+.fd-screen.arcade .fd-timer {
+  background: linear-gradient(180deg, #2b1405, #120700);
+  box-shadow: 0 0 0 1.5px #ffb020, 0 0 14px rgba(255, 140, 30, 0.45);
+}
+:root[data-frame='arcade'] .timer-box .live,
+.fd-screen.arcade .fd-live {
+  background: linear-gradient(90deg, #ff5a36, #ffb020);
+  color: #1a0d00;
+}
+:root[data-frame='arcade'] .fighter-plate {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px #ffb020, 0 0 20px rgba(34, 227, 196, 0.25);
+}
+
+/* ---- Alpha 1.9.5 cosmetic: HOLO FOIL cards (frame only — icon, cost, name and states read as before) */
+:root[data-card-style='holo'] .card,
+.holo-set .card {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.85),
+    inset 0 0 0 3.5px rgba(150, 110, 255, 0.55),
+    0 0 10px rgba(130, 220, 255, 0.35);
+}
+/* the foil: an iridescent band across the art that drifts slowly (still under reduced motion) */
+:root[data-card-style='holo'] .card .art::before,
+.holo-set .card .art::before {
+  background:
+    linear-gradient(115deg, transparent 18%, rgba(255, 120, 220, 0.42) 33%, rgba(120, 240, 255, 0.45) 46%, rgba(255, 240, 140, 0.38) 59%, transparent 74%) 0 0 / 240% 100%,
+    linear-gradient(180deg, transparent 70%, rgba(8, 4, 22, 0.45) 86%);
+  animation: holoDrift 5.5s ease-in-out infinite alternate;
+}
+/* a small four-point glint in the top corner */
+:root[data-card-style='holo'] .card::before,
+.holo-set .card::before {
+  content: '';
+  position: absolute;
+  right: 7%;
+  top: 6%;
+  z-index: 2;
+  width: 11px;
+  height: 11px;
+  background: radial-gradient(circle, #fff 0 1.5px, transparent 2px), conic-gradient(from 45deg, transparent 0 10%, rgba(255, 255, 255, 0.9) 12%, transparent 14% 35%, rgba(255, 255, 255, 0.9) 37%, transparent 39% 60%, rgba(255, 255, 255, 0.9) 62%, transparent 64% 85%, rgba(255, 255, 255, 0.9) 87%, transparent 89%);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 3px rgba(180, 230, 255, 0.9));
+  pointer-events: none;
+}
+.holo-set .card:not(.in-deck)::after {
+  content: none;
+}
+:root[data-card-style='holo'] .card .nm,
+.holo-set .card .nm {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 6px rgba(160, 230, 255, 0.55);
+}
+:root[data-card-style='holo'] .hand-card.combo-ready,
+.holo-set .hand-card.combo-ready {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 3px #ffe27a,
+    0 0 24px rgba(255, 210, 58, 0.85),
+    0 0 10px rgba(160, 230, 255, 0.55);
+}
+:root[data-card-style='holo'] .card.exclusive,
+.holo-set .card.exclusive {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px #ffe27a,
+    inset 0 0 0 3.5px rgba(150, 110, 255, 0.55),
+    0 0 14px rgba(255, 210, 58, 0.4);
+}
+:root[data-card-style='holo'] .card.focus {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px #fff,
+    0 0 18px rgba(255, 255, 255, 0.5);
+}
+@keyframes holoDrift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 100% 0, 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-card-style='holo'] .card .art::before,
+  .holo-set .card .art::before {
+    animation: none;
+  }
+}
+:root[data-motion='off'][data-card-style='holo'] .card .art::before,
+:root[data-motion='off'] .holo-set .card .art::before {
+  animation: none;
 }
 /* MY COLLECTION — the wardrobe of fighter looks (1.8.8) */
 .wr-card .cc-art .portrait {

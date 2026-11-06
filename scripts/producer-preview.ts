@@ -1,13 +1,14 @@
 // Alpha 1.9.0 — `npm run producer:preview`: the PRIME PRODUCER AVATARS contact sheet (every portrait, every frame and
 // backdrop, sizes 32 / 48 / 96 / 160 on dark and light) → preview-screens/producer-avatars.html (open in a browser).
-// 1.9.4: the 3D portraits first, then the legacy vector producers; `<base>` points the portraits at ../public/producers/.
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES } from '../src/config/producer.config';
+// 1.9.4: the 3D portraits first, then the legacy ids; `<base>` points the portraits at ../public/producers/.
+// 1.9.5: a legacy id is shown as its own 3D portrait (the caption names which).
+import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, shownPortrait } from '../src/config/producer.config';
 import { producerSVG, systemProducerSVG } from '../src/ui/producerArt';
 import { ROOT } from './lib/backendKit';
 import { fs, path } from './lib/node';
 
 const looks = PRODUCER_AVATARS.map((a, i) => ({ a, look: { avatar: a.id, frame: PRODUCER_FRAMES[i % 4].id, backdrop: PRODUCER_BACKDROPS[i % 4].id } }));
-const grid = looks.map(({ a, look }) => `<figure>${producerSVG(look, 160)}<figcaption><b>${a.ru}</b><span>${a.en} · ${a.id}${a.legacy ? ' · legacy' : ''}</span></figcaption></figure>`).join('');
+const grid = looks.map(({ a, look }) => `<figure>${producerSVG(look, 160)}<figcaption><b>${a.ru}</b><span>${a.en} · ${a.id}${a.legacy ? ` · legacy → ${shownPortrait(a.id).id}` : ''}</span></figcaption></figure>`).join('');
 const sizes = (bg: string) => `<div class="sizes" style="background:${bg}">${looks.map(({ look }) => `<div>${[32, 48, 96, 160].map((s) => producerSVG(look, s)).join('')}</div>`).join('')}</div>`;
 const frames = PRODUCER_FRAMES.map((f) => `<figure>${producerSVG({ avatar: 'portrait_01', frame: f.id, backdrop: 'violet' }, 120)}<figcaption><b>${f.ru}</b><span>${f.id}</span></figcaption></figure>`).join('');
 const backs = PRODUCER_BACKDROPS.map((b) => `<figure>${producerSVG({ avatar: 'portrait_17', frame: 'studio', backdrop: b.id }, 120)}<figcaption><b>${b.ru}</b><span>${b.id}</span></figcaption></figure>`).join('');

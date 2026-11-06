@@ -91,6 +91,8 @@ export function syncLine(v: AccountState): string {
   if (!v.signedIn) return SYNC_TEXT['signed-out'];
   if (v.status === 'offline') return v.unsynced ? 'Нет подключения · изменения ждут отправки' : 'Нет подключения';
   if (v.status === 'synced') return `Синхронизировано · ${when(v.syncedAt)}`;
+  // 1.9.5: a seasonal exchange purchase made after the season ended (by the server's clock) is not taken into the cloud
+  if (v.status === 'rejected' && v.detail === 'season_closed') return 'Обмен после конца сезона облако не принимает';
   return SYNC_TEXT[v.status];
 }
 

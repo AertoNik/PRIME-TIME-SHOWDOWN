@@ -1,7 +1,7 @@
 import type { WeaponType } from './types';
 
 export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot';
 export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
 export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker'
@@ -17,7 +17,7 @@ export interface LookDef {
    */
   base?: string;
   /** Alpha 1.8.8: skin decoration on the weapon (never moves the muzzle). */
-  weaponDeco?: 'neon' | 'gold';
+  weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot';
   body: BodyType;
   skin: number;
   hair: { style: HairStyle; color: number; color2: number };
@@ -376,6 +376,59 @@ export const LOOKS: Record<string, LookDef> = {
     glow: 0xffc23a,
     rim: 0xffdc8f,
     face: { cheekbones: 0.15, jaw: 0.45, eyeHeight: 0.96, archedBrows: true, grin: false, browFlash: false },
+  },
+  // ------------------------------------------------ Alpha 1.9.5: PRIME SHOP EXPANSION skins
+  // NIKA — STAGE IDOL: the pop star of PRIME NETWORK's finale concert. Same slim body, face, buns, headset and
+  // TECH CARBINE; a cropped pearl stage jacket with lilac panels, a lit pink heart, a mesh high collar, star
+  // epaulettes and a star buckle; the buns in candy pink and lilac; a white carbine with a pink glow.
+  nika_stage_idol: {
+    id: 'nika_stage_idol',
+    base: 'nika',
+    body: 'slim',
+    skin: 0xf6d0b6,
+    hair: { style: 'buns', color: 0xff6fc8, color2: 0xc9a2ff },
+    top: { style: 'idol', main: 0xf4eefc, accent: 0xff3fa8, trim: 0xa98bff, inner: 0x2a1450 },
+    pants: { style: 'jogger', main: 0x2a1450, accent: 0xff3fa8 },
+    shoes: { main: 0xfff4fb, accent: 0xff3fa8, sole: 0xc9a2ff },
+    gloves: 0xf4eefc,
+    fingerless: true,
+    eyes: 0x6b3cff,
+    brow: 'sly',
+    mouth: 'smile',
+    accessories: ['headset', 'blush', 'earring'],
+    weapon: 'tech_carbine',
+    weaponColor: 0xfdf6ff,
+    weaponDark: 0x3a1f66,
+    weaponDeco: 'idol',
+    glow: 0xff3fa8,
+    rim: 0xffb3e0,
+    headScale: 0.92,
+  },
+  // VEGA — STAR PILOT: the pilot of PRIME NETWORK's star flight. Same slim body, face, ponytail, visor and PULSE
+  // RIFLE; a navy flight suit with a crossed orange harness, padded shoulder blocks, a chest control unit with
+  // three lights, a padded white collar ring and a lit mission patch; platinum hair with gold tips.
+  vega_star_pilot: {
+    id: 'vega_star_pilot',
+    base: 'vega',
+    body: 'slim',
+    skin: 0xf3cdb0,
+    hair: { style: 'ponytail', color: 0xeadfc4, color2: 0xffb340 },
+    top: { style: 'pilot', main: 0x1b2d5c, accent: 0xff8a1f, trim: 0xf2f4f8, inner: 0x2a3f73 },
+    pants: { style: 'jogger', main: 0x1b2d5c, accent: 0xff8a1f },
+    shoes: { main: 0xf2f4f8, accent: 0xff8a1f, sole: 0x2a3f73 },
+    gloves: 0xf2f4f8,
+    fingerless: false,
+    eyes: 0x2e86c8,
+    brow: 'sly',
+    mouth: 'smirk',
+    accessories: ['visor', 'earring', 'headset'],
+    weapon: 'pulse_rifle',
+    weaponColor: 0xf2f4f8,
+    weaponDark: 0x1b2d5c,
+    weaponDeco: 'pilot',
+    glow: 0xffa03a,
+    rim: 0xc99a68,
+    headScale: 0.93,
   },
   vale: {
     id: 'vale',

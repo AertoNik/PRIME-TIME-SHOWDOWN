@@ -1,4 +1,4 @@
-import type { OfferRevision } from '../config/offer.config';
+import { offerSells, type OfferRevision } from '../config/offer.config';
 import { SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { ShopItemState } from './Shop';
 
@@ -141,6 +141,8 @@ export function buildCheckout(i: CheckoutInput): CheckoutView {
   else if (st.owned || st.status === 'received') block = 'owned';
   else if (st.status === 'seasonal' || st.status === 'upcoming') block = 'seasonal_only';
   else if (i.priceRub === null) block = 'price_pending';
+  // 1.9.5: an approved price, but the offer revision shown does not name the item in its Appendix 1 (the server refuses it too)
+  else if (i.offer && !offerSells(i.offer, i.sku)) block = 'price_pending';
   else if (!i.salesOpen) block = 'sales_closed';
   else if (!i.offer) block = 'offer_missing';
   else if (ACCOUNT_BLOCK[i.account.state]) block = ACCOUNT_BLOCK[i.account.state];

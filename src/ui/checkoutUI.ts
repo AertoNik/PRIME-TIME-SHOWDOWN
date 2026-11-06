@@ -1,7 +1,8 @@
+import { RARITY_LABEL } from '../config/cosmetics.config';
 import { COSMETICS } from '../config/cosmetics.config';
 import { FIGHTERS } from '../config/fighters';
 import { currentOffer, offerDate } from '../config/offer.config';
-import { MINOR_PURCHASES, SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
+import { MINOR_PURCHASES, SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, approvedPriceRub, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { Game } from '../game/Game';
 import { CLIENT_PAYMENTS, buildCheckout, maskEmail, savePending, sessionStore, type CheckoutAccount, type CheckoutBlock, type CheckoutInput, type CheckoutView } from '../meta/Checkout';
 import { PAY_TRIES_MAX, POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepChecking, noteTry, onOrderSignal, orderPhase, saveReturn, signalOrder, triesOf, type OrderPhase, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
@@ -30,7 +31,8 @@ import { nameHTML, shopArt } from './shopArt';
 // says «загляните позже». «ПОКУПКА ПОДТВЕРЖДЕНА» only when the server's order is fulfilled and the item is
 // in the server's list of this PRIME ID's rights — the window never grants anything itself.
 
-const RARITY: Record<ShopItemDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
+// 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
+const RARITY = RARITY_LABEL;
 
 /** Development builds only (`?checkoutpreview`): the test scenario panel (see checkoutPreview.ts). */
 const DEV_PREVIEW = import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('checkoutpreview');
@@ -1034,15 +1036,34 @@ export class PrimeCheckout {
         return { tone: 'lock', title: 'Товар сейчас недоступен', text: 'Этот предмет нельзя оформить. Вернитесь в каталог PRIME SHOP.' };
       case 'owned':
         return { tone: 'ok', title: 'Уже в вашей коллекции', text: v.item?.fighter && !v.item.skin ? 'Люсьен уже в вашем составе — повторная покупка не нужна.' : 'Этот предмет уже ваш — повторная покупка не нужна.' };
-      case 'seasonal_only':
-        return v.item && this.g.shop.state(v.item).status === 'upcoming'
-          ? { tone: 'lock', title: 'Откроется в сезонном событии', text: 'Люсьен открывается за PUMPKIN TOKENS во время Halloween Premiere. За рубли он сейчас не продаётся.' }
-          : { tone: 'lock', title: 'Только за PUMPKIN TOKENS', text: 'Во время Halloween Premiere Люсьен открывается только за сезонные жетоны в разделе события. За рубли он сейчас не продаётся.' };
-      case 'price_pending':
+      case 'seasonal_only': {
+        const upcoming = !!v.item && this.g.shop.state(v.item).status === 'upcoming';
+        if (v.item?.fighter && !v.item.skin)
+          return upcoming
+            ? { tone: 'lock', title: 'Откроется в сезонном событии', text: 'Люсьен открывается за PUMPKIN TOKENS во время Halloween Premiere. За рубли он сейчас не продаётся.' }
+            : { tone: 'lock', title: 'Только за PUMPKIN TOKENS', text: 'Во время Halloween Premiere Люсьен открывается только за сезонные жетоны в разделе события. За рубли он сейчас не продаётся.' };
+        // 1.9.5: a seasonal effect or skin — its own event and currency
+        const ev = v.item ? this.g.events.itemSeason(v.item)?.event : null;
+        const cur = ev?.currency?.name ?? 'жетоны события';
+        return upcoming
+          ? { tone: 'lock', title: 'Откроется в сезонном событии', text: `Этот предмет получается за ${cur} во время ${ev?.title ?? 'сезонного события'}. За рубли он сейчас не продаётся.` }
+          : { tone: 'lock', title: `Только за ${cur}`, text: `Во время ${ev?.title ?? 'события'} этот предмет получается только за сезонные жетоны в разделе события. За рубли он сейчас не продаётся.` };
+      }
+      case 'price_pending': {
         // 1.9.4: LUCIEN after his season — his price and the terms for selling a character are not in force yet
-        return v.item?.fighter && !v.item.skin
-          ? { tone: 'wait', title: 'Люсьен пока не продаётся за рубли', text: 'Halloween Premiere завершён. Покупка Люсьена откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает продажу персонажей. Уже открытый Люсьен остаётся в вашем составе.' }
-          : { tone: 'wait', title: 'Продажи пока не открыты', text: 'Цена этого предмета ещё не утверждена, купить его сейчас нельзя. Примерить можно бесплатно.' };
+        if (v.item?.fighter && !v.item.skin)
+          return { tone: 'wait', title: 'Люсьен пока не продаётся за рубли', text: 'Halloween Premiere завершён. Покупка Люсьена откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает продажу персонажей. Уже открытый Люсьен остаётся в вашем составе.' };
+        // 1.9.5: an approved price whose terms are not in force yet (the offer revision that names the item)
+        if (v.item && approvedPriceRub(v.item.sku) !== null) {
+          const ss = this.g.events.itemSeason(v.item);
+          return {
+            tone: 'wait',
+            title: 'Пока не продаётся',
+            text: `${ss?.phase === 'after' ? `${ss.event.title} завершён. ` : ''}Покупка откроется, когда вступит в силу редакция оферты PRIME SHOP с этим товаром.${ss?.phase === 'after' ? ' Полученное за жетоны остаётся у вас без покупки.' : ' Примерить можно бесплатно.'}`,
+          };
+        }
+        return { tone: 'wait', title: 'Продажи пока не открыты', text: 'Цена этого предмета ещё не утверждена, купить его сейчас нельзя. Примерить можно бесплатно.' };
+      }
       case 'sales_closed':
         return { tone: 'wait', title: 'Покупки сейчас недоступны', text: 'Новые покупки в PRIME SHOP сейчас не принимаются. Уже оформленные заказы сохраняются и подтверждаются. Примерить предмет можно бесплатно.' };
       case 'offer_missing':

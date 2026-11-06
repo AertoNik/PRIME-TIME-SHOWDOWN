@@ -2,16 +2,20 @@ import type { ArenaId } from '../config/arenas.config';
 import type { CosmeticId, CosmeticSlot } from '../config/cosmetics.config';
 import { EVENTS, eventSettings, plural, type EventDef, type EventSettings, type QuestDef, type QuestMetric } from '../config/events.config';
 import { DIFFICULTY_ORDER, FIGHTERS } from '../config/fighters';
+import { seasonOf } from '../config/seasonal';
+import { SKU_OF_SKIN, type ShopItemDef, type SkinId } from '../config/shop.config';
 import type { Difficulty, FighterId } from '../config/types';
+import { ownsPaid } from './entitlements';
 import type { MatchResultData } from '../combat/types';
 import { Collection } from './Collection';
 import { inRoster } from './roster';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
+import { serverNow } from './serverClock';
 
 /**
- * Source of "now". The published game uses the device clock (Date.now), which a
- * player can change: fine for a free local event, not a security boundary. A
- * future server version only needs to swap this for server time.
+ * Source of "now". 1.9.5: the PRIME NETWORK server's clock once the game has heard from the server (serverClock.ts),
+ * the device clock otherwise (offline, guest). The server enforces the end of a season itself (lib/checkout.js, the
+ * cloud save check in lib/prime.js); this clock keeps the game's calendar in step with it.
  */
 export type Clock = () => number;
 
@@ -32,6 +36,8 @@ export interface MatchEventOutcome {
 }
 
 export type BuyResult = { ok: true } | { ok: false; reason: string };
+
+export type SeasonPhase = 'before' | 'running' | 'after';
 
 const COMBO_ULTRA = new Set(['superstar', 'electro_blast']);
 
@@ -85,7 +91,7 @@ export class EventManager {
 
   constructor(store: SaveSystem, opts: { clock?: Clock; settings?: EventSettings; registry?: EventDef[] } = {}) {
     this.store = store;
-    this.clock = opts.clock ?? (() => Date.now());
+    this.clock = opts.clock ?? serverNow;
     this.collection = new Collection(store, () => this.now());
     this.settings = opts.settings ?? eventSettings;
     this.registry = opts.registry ?? EVENTS;
@@ -316,12 +322,62 @@ export class EventManager {
    * Alpha 1.8.8: the season whose exchange opens the star `id` and where we are in its calendar
    * (PRIME SHOP reads it — one calendar for the event and the shop).
    */
-  fighterSeason(id: FighterId): { event: EventDef; phase: 'before' | 'running' | 'after' } | null {
+  fighterSeason(id: FighterId): { event: EventDef; phase: SeasonPhase } | null {
     const e = this.registry.find((x) => x.fighters?.some((f) => f.fighter === id));
     if (!e) return null;
+    return { event: e, phase: this.phaseOf(e) };
+  }
+
+  /** Where we are in an event's calendar (by the server's clock once known — serverClock.ts). */
+  phaseOf(e: EventDef): SeasonPhase {
     const now = this.now();
-    const phase = this.isRunning(e, now) ? 'running' : e.end && now >= Date.parse(e.end) ? 'after' : 'before';
-    return { event: e, phase };
+    return this.isRunning(e, now) ? 'running' : e.end && now >= Date.parse(e.end) ? 'after' : 'before';
+  }
+
+  /**
+   * Alpha 1.9.5 — the season of a PRIME SHOP item (a fighter, a cosmetic or a skin in an event's exchange) and where
+   * its calendar stands; `open`: its exchange really sells it now (the event is playable). null: not seasonal.
+   */
+  itemSeason(item: ShopItemDef): { event: EventDef; cost: number; phase: SeasonPhase; open: boolean } | null {
+    const s = seasonOf(item, this.registry);
+    if (!s) return null;
+    const open = this.playable && this.active?.id === s.event.id;
+    return { event: s.event, cost: s.cost, phase: open ? 'running' : this.phaseOf(s.event), open };
+  }
+
+  // ------------------------------------------------ Alpha 1.9.5: skins in the exchange
+  /** The skin `id` on sale in the running event's exchange, with its price (null otherwise). */
+  skinOffer(id: SkinId): { cost: number; event: EventDef } | null {
+    const e = this.active;
+    if (!this.playable || !e?.skins) return null;
+    const x = e.skins.find((s) => s.skin === id);
+    return x ? { cost: x.cost, event: e } : null;
+  }
+
+  /** The skin was obtained in an event's exchange (for its currency) — kept for good. */
+  earnedSkin(id: SkinId): boolean {
+    return Object.values(this.store.data.events).some((p) => p.skins?.some((s) => s.id === id));
+  }
+
+  /**
+   * Opens a skin once, during its event, for its price in the event's currency (tokens and the record saved together).
+   * Never for a skin already owned — for tokens or by a PRIME SHOP purchase.
+   */
+  buySkin(id: SkinId): BuyResult {
+    const e = this.active;
+    if (!this.playable || !e) return { ok: false, reason: 'Обмен доступен только во время события' };
+    const item = e.skins?.find((s) => s.skin === id);
+    if (!item) return { ok: false, reason: 'Этого облика нет в обмене' };
+    if (this.earnedSkin(id) || ownsPaid(SKU_OF_SKIN[id])) return { ok: false, reason: 'Облик уже в вашей коллекции' };
+    const p = this.progress(e.id);
+    const lack = item.cost - p.tokens;
+    if (lack > 0) return { ok: false, reason: `Не хватает ${lack} ${plural(lack, e.currency!.short)}` };
+    p.tokens -= item.cost;
+    p.spent += item.cost;
+    (p.skins ??= []).push({ id, at: this.now() });
+    this.version++;
+    this.store.save();
+    return { ok: true };
   }
 
   /** In the producer's roster (a seasonal star stays there for good once opened). */

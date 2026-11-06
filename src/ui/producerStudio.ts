@@ -1,4 +1,4 @@
-import { PRODUCER_AVATARS, PRODUCER_BACKDROPS, PRODUCER_FRAMES, avatarById, offeredAvatars, type ProducerLook } from '../config/producer.config';
+import { PRODUCER_BACKDROPS, PRODUCER_FRAMES, offeredAvatars, shownPortrait, type ProducerLook } from '../config/producer.config';
 import type { Game } from '../game/Game';
 import { lang } from '../i18n/lang';
 import { esc } from './dom';
@@ -15,7 +15,8 @@ export function openProducerStudio(g: Game): void {
   const pr = g.producer;
   const av = g.account?.view();
   const nick = av && (av.kind === 'account' || av.kind === 'not-loaded' || av.kind === 'unverified') ? av.nickname : '';
-  const pick3 = (l: ProducerLook): ProducerLook => ({ avatar: l.avatar, frame: l.frame, backdrop: l.backdrop });
+  // 1.9.5: a legacy avatar opens as the 3D portrait it is shown as (saving writes that portrait; not saving changes nothing)
+  const pick3 = (l: ProducerLook): ProducerLook => ({ avatar: shownPortrait(l.avatar).id, frame: l.frame, backdrop: l.backdrop });
   let draft: ProducerLook = pick3(pr.shown());
   let msg = '';
   let msgKind: 'ok' | 'err' | '' = '';
@@ -24,10 +25,9 @@ export function openProducerStudio(g: Game): void {
   const html = () => {
     const can = pr.canSave();
     const dirty = JSON.stringify(draft) !== JSON.stringify(pick3(pr.shown()));
-    // 1.9.4: the 3D portraits; a legacy vector producer the account already wears stays first, so keeping it is one tap
-    const worn = avatarById(pick3(pr.shown()).avatar);
-    const ava = [...(worn?.legacy ? [worn] : []), ...offeredAvatars()]
-      .map((a) => `<button class="ps-pick ${draft.avatar === a.id ? 'on' : ''}" data-k="avatar" data-v="${a.id}" aria-pressed="${draft.avatar === a.id}" aria-label="${esc(nm(a))}" title="${esc(nm(a))}">${producerSVG({ avatar: a.id, frame: 'studio', backdrop: draft.backdrop }, 64)}${a.legacy ? `<span>${tr('Классика', 'Classic')}</span>` : ''}</button>`)
+    // 1.9.5: only the 19 3D portraits (the old vector producers are never offered — a saved one is shown as its portrait)
+    const ava = offeredAvatars()
+      .map((a) => `<button class="ps-pick ${draft.avatar === a.id ? 'on' : ''}" data-k="avatar" data-v="${a.id}" aria-pressed="${draft.avatar === a.id}" aria-label="${esc(nm(a))}" title="${esc(nm(a))}">${producerSVG({ avatar: a.id, frame: 'studio', backdrop: draft.backdrop }, 64)}</button>`)
       .join('');
     const frames = free(PRODUCER_FRAMES)
       .map((f) => `<button class="ps-pick sm ${draft.frame === f.id ? 'on' : ''}" data-k="frame" data-v="${f.id}" aria-pressed="${draft.frame === f.id}">${producerSVG({ ...draft, frame: f.id }, 52)}<span>${esc(nm(f))}</span></button>`)
@@ -35,7 +35,7 @@ export function openProducerStudio(g: Game): void {
     const backs = free(PRODUCER_BACKDROPS)
       .map((b) => `<button class="ps-pick sm ${draft.backdrop === b.id ? 'on' : ''}" data-k="backdrop" data-v="${b.id}" aria-pressed="${draft.backdrop === b.id}">${producerSVG({ ...draft, backdrop: b.id }, 52)}<span>${esc(nm(b))}</span></button>`)
       .join('');
-    const cur = PRODUCER_AVATARS.find((a) => a.id === draft.avatar);
+    const cur = shownPortrait(draft.avatar);
     return `<div class="ps">
       <div class="ps-head"><span class="ps-k">PRIME ID</span><div class="h1">${tr('Студия продюсера', 'Producer Studio')}</div></div>
       <div class="ps-preview">${producerSVG(draft, 132, 'ps-big')}<div class="ps-who"><b>${esc(nick || tr('ГОСТЬ', 'GUEST'))}</b><span>${cur ? esc(nm(cur)) : ''}</span><small>${tr('Так вас видят в PRIME LEAGUE: в таблице, на афише и в итогах.', 'This is how PRIME LEAGUE shows you: the table, the bill and the results.')}</small></div></div>

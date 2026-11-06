@@ -24,6 +24,7 @@
 
 import { SHOP_OFFERS } from '../src/config/offer.config';
 import { SHOP_ITEMS, SHOP_PRICES_APPROVED_LATER, SHOP_PRICES_APPROVED_ON, approvedPriceRub, formatRub, type ShopSku } from '../src/config/shop.config';
+import { seasonOf } from '../src/config/seasonal';
 import { ROOT } from './lib/backendKit';
 import { crypto, fs, path, proc } from './lib/node';
 
@@ -40,6 +41,17 @@ const args = proc.argv.slice(2);
 const approved = args.includes('--approved');
 const candidate = !approved && args.includes('--candidate');
 const dateArg = (args.find((a) => a.startsWith('--date=')) ?? '').slice(7);
+// 1.9.5: the moment of the day the revision takes effect, Moscow time (UTC+3, no daylight saving). Default 03:00 — 00:00 UTC,
+// the registry's day-only form as before; any other time is registered as its exact UTC moment (offer.config.ts effectiveFrom)
+const timeArg = (args.find((a) => a.startsWith('--time=')) ?? '--time=03:00').slice(7);
+const timeOk = /^([01]\d|2[0-3]):[0-5]\d$/.test(timeArg);
+/** The registry's `effectiveFrom` for --date / --time: 'YYYY-MM-DD' at 03:00 Moscow time, else the exact UTC ISO moment. */
+function effectiveFromOf(day: string, msk: string): string {
+  if (msk === '03:00') return day;
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = msk.split(':').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hh - 3, mm)).toISOString().replace('.000Z', 'Z');
+}
 // the newest revision is registered but NOT published yet (e.g. a new date): its text may be replaced, nothing archived
 const replaceUnpublished = args.includes('--replace-unpublished');
 
@@ -93,6 +105,7 @@ const city = seller.city.trim();
 if (!city) warnings.push('Город не указан (решение владельца). Robokassa рекомендует указывать адрес; для самозанятого обычно достаточно города — риск низкий.');
 if (pending.length) (approved ? problems : warnings).push('не утверждены условия документов (docs/legal-drafts/decisions.json): ' + pending.join('; '));
 if ((approved || candidate) && !/^\d{4}-\d{2}-\d{2}$/.test(dateArg)) problems.push('дата: --date=ГГГГ-ММ-ДД (день вступления в силу — не раньше фактической публикации на сайте)');
+if (!timeOk) problems.push('время: --time=ЧЧ:ММ по московскому времени (по умолчанию 03:00)');
 
 // a phone or a city appears only when it is filled in — never a stub, never «не указан»
 const vals: Record<string, string> = {
@@ -102,8 +115,19 @@ const vals: Record<string, string> = {
   NPD_SINCE: dayText(seller.npdSince),
   EMAIL: esc(seller.email),
   DATE: approved || candidate ? dayText(dateArg) : '<mark class="todo">[дата фактической публикации]</mark>',
+  // 1.9.5: «с 09:00 по московскому времени» — the moment the revision takes effect (the registry carries the same moment)
+  TIME_MSK: timeOk ? timeArg : '03:00',
   // 1.9.4: a price approved on another day is named with its own date (LUCIEN: 05.11.2026, the six: 23.10.2026)
-  PRICES_DATE: [dayText(SHOP_PRICES_APPROVED_ON), ...Object.entries(SHOP_PRICES_APPROVED_LATER).filter(([s]) => approvedPriceRub(s as ShopSku) !== null).map(([s, d]) => `${esc(SHOP_ITEMS.find((i) => i.sku === s)!.name)} — ${dayText(d!)}`)].join('; '),
+  // 1.9.5: items approved on the same later day share one line («NIKA: STAGE IDOL, … — 6 ноября 2026 года»)
+  PRICES_DATE: [
+    dayText(SHOP_PRICES_APPROVED_ON),
+    ...[...new Set(Object.entries(SHOP_PRICES_APPROVED_LATER).filter(([s]) => approvedPriceRub(s as ShopSku) !== null).map(([, d]) => d!))].map(
+      (d) =>
+        `${SHOP_ITEMS.filter((i) => SHOP_PRICES_APPROVED_LATER[i.sku] === d && approvedPriceRub(i.sku) !== null)
+          .map((i) => esc(i.name))
+          .join(', ')} — ${dayText(d)}`,
+    ),
+  ].join('; '),
 };
 vals.CONTACT_INLINE = `<a href="mailto:${vals.EMAIL}">${vals.EMAIL}</a>${phoneOk ? ` · тел. ${esc(phone)}` : ''}`;
 vals.EXTRA_REQUISITES = `${city ? `<br />Город: ${esc(city)}` : ''}${phoneOk ? `<br />Телефон: ${esc(phone)}` : ''}`;
@@ -113,9 +137,16 @@ vals.FOOTER = `Продавец: ${vals.NAME}, самозанятый (нало�
 // one; its row says what the purchase opens and that a character opened for the event's tokens is never sold again)
 const sold = SHOP_ITEMS.filter((i) => approvedPriceRub(i.sku) !== null);
 const isFighter = (i: (typeof SHOP_ITEMS)[number]) => !!i.fighter && !i.skin;
-const what = (i: (typeof SHOP_ITEMS)[number]) => (isFighter(i) ? `${i.desc} Покупка открывает персонажа в составе бойцов учётной записи PRIME ID. Во время своего события персонаж открывался за жетоны события; учётной записи, открывшей его за жетоны, он повторно не продаётся.` : i.desc);
+// 1.9.5: a seasonal effect or skin (an event's exchange item sold after its season — src/config/seasonal.ts) says the same
+const what = (i: (typeof SHOP_ITEMS)[number]) =>
+  isFighter(i)
+    ? `${i.desc} Покупка открывает персонажа в составе бойцов учётной записи PRIME ID. Во время своего события персонаж открывался за жетоны события; учётной записи, открывшей его за жетоны, он повторно не продаётся.`
+    : seasonOf(i)
+      ? `${i.desc} Во время своего события предмет получался за жетоны события; учётной записи, получившей его за жетоны, он повторно не продаётся.`
+      : i.desc;
 vals.CATALOG = sold.map((i) => `  <tr><td><b>${esc(i.name)}</b><br /><small>${esc(i.kind)}</small></td><td>${esc(what(i))}</td><td>${esc(formatRub(approvedPriceRub(i.sku)!))}</td></tr>`).join('\n');
-if (sold.length !== 7) problems.push(`в каталоге ${sold.length} предметов вместо семи утверждённых`);
+// 1.9.5: every item of the catalog has an approved price (Р-18) — none may be missing from Appendix 1
+if (sold.length !== SHOP_ITEMS.length) problems.push(`в каталоге ${sold.length} предметов из ${SHOP_ITEMS.length}: у остальных цена не утверждена`);
 
 /**
  * 1.9.4: a page whose text is the installed one but for its date keeps the installed file byte for byte — an unchanged
@@ -156,9 +187,9 @@ if (candidate) {
   if (kept.length) log(`Без изменений (как на сайте, с прежней датой): ${kept.join(', ')}`);
   const rev = Number(/<meta name="prime-doc" content="offer" data-version="(\d+)"/.exec(pages.offer)?.[1] ?? 0);
   const sha = crypto.createHash('sha256').update(pages.offer).digest('hex') as string;
-  log(`Кандидат (действует с ${dayText(dateArg)}): docs/legal-drafts/site-candidate/ru/ — ${PAGES.length} страниц; приватно, public/ не изменён.`);
+  log(`Кандидат (действует с ${dayText(dateArg)}, ${timeArg} МСК): docs/legal-drafts/site-candidate/ru/ — ${PAGES.length} страниц; приватно, public/ не изменён.`);
   log(`Оферта, редакция № ${rev}: SHA-256 ${sha}`);
-  log(`   { revision: ${rev}, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '${dateArg}', sha256: '${sha}' }`);
+  log(`   { revision: ${rev}, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '${effectiveFromOf(dateArg, timeArg)}', sha256: '${sha}' }`);
   if (pending.length) log('Ожидает одобрения владельца (до него --approved не установит страницы): ' + pending.join('; '));
   proc.exit(0);
 }
@@ -214,7 +245,7 @@ log('\nДальше (по порядку):');
 for (const a of archived) log('Архив: ' + a);
 const known = SHOP_OFFERS.find((o) => o.revision === revision);
 log('1. src/config/offer.config.ts → SHOP_OFFERS' + (known ? (known.sha256 === sha ? ` — редакция № ${revision} уже записана с этим SHA-256` : ` — ОБНОВИТЬ редакцию № ${revision}:`) : ' — добавить:'));
-if (!known || known.sha256 !== sha) log(`   { revision: ${revision}, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '${dateArg}', sha256: '${sha}' },`);
+if (!known || known.sha256 !== sha) log(`   { revision: ${revision}, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '${effectiveFromOf(dateArg, timeArg)}', sha256: '${sha}' },`);
 log('2. backend/pb_hooks/lib/legal.js → DOCS.<документ>.version = версия из data-version страниц terms/privacy (reaccept — только при существенном изменении правил);');
 log('   EN-версии — тот же номер версии (data-version); scripts/public-check.ts — дата новой редакции.');
 log('3. npm run backend:rules && npm run public:test && npm run checkout && npm run build');

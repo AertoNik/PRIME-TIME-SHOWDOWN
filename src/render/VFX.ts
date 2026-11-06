@@ -1422,8 +1422,8 @@ export class VFX {
     }
   }
 
-  debrisBurst(x: number, y: number, z: number, color: Color, count: number): void {
-    this.debris.spawn(x, y, z, color, count, 1);
+  debrisBurst(x: number, y: number, z: number, color: Color, count: number, scale = 1): void {
+    this.debris.spawn(x, y, z, color, count, scale);
   }
 
   /** Victory confetti; `cols` comes from the active season's palette. */

@@ -144,7 +144,8 @@ function protocolChecks(): void {
   check('the same Receipt signed in live mode: the LIVE Password#1, no IsTest — a test form can never pass for a live one', !('IsTest' in fLive) && fLive.SignatureValue === H.sha256(`${LOGIN}:99.00:10000000123:${rcRay}:${LIVE_P1}:Shp_a=x:Shp_order=ord000000000001`) && fLive.SignatureValue !== fRc.SignatureValue);
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
-  check('nomenclature: every item on sale gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249)', sold.length === 7 && sold.includes('fighter_lucien') && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
+  // (1.9.5: the eleven approved on 06.11.2026 carry a price too — 18 in all; what is SOLD is still the offer's Appendix 1)
+  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items', sold.length === 18 && sold.includes('fighter_lucien') && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
     return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
@@ -263,7 +264,7 @@ function protocolChecks(): void {
   const sha = (t: string) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
   const rnames = Object.keys(realRules().catalog).map((k: string) => PAYJS.receiptName(k));
-  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 7 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
+  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 18 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
 }
 
 // ======================================================================== safety
@@ -371,10 +372,15 @@ const realRules = (): any => {
 const OFFER_H = crypto.createHash('sha256').update('payments-check offer 1').digest('hex');
 // 1.9.4: an offer revision that sells playable characters (the published 1–3 do not) — what offer № 4 will be
 const OFFER_F = { revision: 4, title: 'Тестовая оферта с персонажами', url: 'https://primetimeshowdown.online/legal/ru/offer-test-r4.html', effectiveFrom: '2026-01-02', sha256: crypto.createHash('sha256').update('payments-check offer 4').digest('hex'), fighters: true };
+/**
+ * 1.9.5: a test revision REPLACES the real revisions with its number and above — the real revision 4 (in force from
+ * 07.11.2026) never competes with the test one, so these checks give the same answer on any day.
+ */
+const withTestOffer = (offers: any[], extra: any): any[] => [...offers.filter((x: any) => x.revision < extra.revision), extra];
 function rulesWith(o: { seasonEnded?: boolean; live?: boolean; testPrice?: number; fighters?: boolean }): any {
   const r = JSON.parse(JSON.stringify(realRules()));
   if (o.seasonEnded) r.seasons.fighter_lucien.end = '2026-01-01T00:00:00Z';
-  if (o.fighters) r.offers = [...r.offers, OFFER_F];
+  if (o.fighters) r.offers = withTestOffer(r.offers, OFFER_F);
   if (o.live) {
     r.prices = { skin_ray_neon_runner: 149, skin_bruno_casino_boss: 149, fx_prime_broadcast: 79, fx_phantom_dash: 79, fx_golden_confetti: 99, fx_vhs_card_frame: 49.5, fighter_lucien: 199 };
     r.salesOpen = true;
@@ -585,6 +591,46 @@ async function serverChecks(): Promise<void> {
   const forged = JSON.parse(JSON.stringify(def));
   forged.cosmetics = { ...forged.cosmetics, owned: [...(forged.cosmetics?.owned ?? []), 'dash_prime_phantom'] };
   check('a forged save listing a PRIME SHOP item as owned is refused by the server', (await putSave(B, forged, 0)).status === 400);
+
+  // ---------------------------------------------------------------- 1.9.5: seasonal effects after their season
+  section('1.9.5: сезонные предметы после сезона — жетоны, покупка, повтор, возврат');
+  const SE = await mk('seasontoken@payments.test');
+  const SP = await mk('seasonpaid@payments.test');
+  const SL = await mk('seasonlate@payments.test');
+  for (const x of [SE, SP, SL]) await http('POST', '/api/prime/shop/offer/accept', x.tok, { revision: TERMS.revision, sha256: TERMS.sha256 });
+  // HALLOWEEN CARD STYLE obtained in the exchange: the event's record, the spent tokens and the collection together
+  const cardSave = JSON.parse(JSON.stringify(def));
+  cardSave.cosmetics = { ...cardSave.cosmetics, owned: ['card_pumpkin'], equipped: { cardStyle: 'card_pumpkin' } };
+  cardSave.events = { 'halloween-2026': { tokens: 0, earned: 120, spent: 120, quests: {}, bought: ['card_pumpkin'], fighters: [], grandClaimed: false, day: '', dayTokens: 0 } };
+  check('(set-up) a player who got HALLOWEEN CARD STYLE for PUMPKIN TOKENS has it in the cloud save', (await putSave(SE, cardSave, 0)).status === 200);
+  const seOwned = await http('POST', '/api/prime/shop/checkout', SE.tok, { sku: 'season_halloween_cards' });
+  check('1.9.5 the item obtained for tokens → never sold to that account (409 owned), no order', seOwned.status === 409 && seOwned.j.code === 'owned' && sqlite(`select count(*) from shop_orders where user='${SE.id}';`) === '0');
+  const spc = await http('POST', '/api/prime/shop/checkout', SP.tok, { sku: 'season_halloween_cards' });
+  const spId = sqlite(`select id from shop_orders where invId=${spc.j.order?.inv};`);
+  const spOk = await notify(signedNote(spc.j.order.inv, '10.000000', spId));
+  check('1.9.5 after the season, not obtained: the paid way (staging test payment) → the right to the SAME item (kind cosmetic, item card_pumpkin), «OK»', spc.status === 200 && spOk.text === `OK${spc.j.order.inv}` && sqlite(`select kind||'|'||item||'|'||status from shop_entitlements where "order"='${spId}';`) === 'cosmetic|card_pumpkin|active');
+  const spAgain = await notify(signedNote(spc.j.order.inv, '10.000000', spId));
+  check('1.9.5 the repeated Robokassa notification → «OK», still ONE right', spAgain.text === `OK${spc.j.order.inv}` && sqlite(`select count(*) from shop_entitlements where user='${SP.id}' and sku='season_halloween_cards';`) === '1');
+  check('1.9.5 a second purchase of the bought item → 409 owned (no second order)', (await http('POST', '/api/prime/shop/checkout', SP.tok, { sku: 'season_halloween_cards' })).j.code === 'owned');
+  const wearSave = JSON.parse(JSON.stringify(def));
+  wearSave.shop = { skins: {}, equip: { cardStyle: 'card_pumpkin' } };
+  check('1.9.5 the bought seasonal item is worn from save.shop.equip — the cloud accepts it; save.cosmetics never names it', (await putSave(SP, wearSave, 0)).status === 200);
+  // an order opened before the player got the item for tokens; the payment arrives afterwards → review, never twice
+  const slc = await http('POST', '/api/prime/shop/checkout', SL.tok, { sku: 'season_pumpkin_victory' });
+  const slId = sqlite(`select id from shop_orders where invId=${slc.j.order?.inv};`);
+  const vicSave = JSON.parse(JSON.stringify(def));
+  vicSave.cosmetics = { ...vicSave.cosmetics, owned: ['victory_pumpkin'] };
+  vicSave.events = { 'halloween-2026': { tokens: 0, earned: 220, spent: 220, quests: {}, bought: ['victory_pumpkin'], fighters: [], grandClaimed: false, day: '', dayTokens: 0 } };
+  await putSave(SL, vicSave, 0);
+  const slOk = await notify(signedNote(slc.j.order.inv, '10.000000', slId));
+  check('1.9.5 paid after the same item was obtained for tokens → «OK», kept for review (already_owned_season), no right — the administrator refunds', slOk.text === `OK${slc.j.order.inv}` && sqlite(`select status||'|'||reviewReason from shop_orders where id='${slId}';`) === 'requires_review|already_owned_season' && sqlite(`select count(*) from shop_entitlements where "order"='${slId}';`) === '0');
+  const failedC = await http('POST', '/api/prime/shop/checkout', SE.tok, { sku: 'season_spooky_broadcast' });
+  const failedId = sqlite(`select id from shop_orders where invId=${failedC.j.order?.inv};`);
+  const failNote = await fetch(`${API}/api/prime/pay/robokassa/fail?InvId=${failedC.j.order?.inv}&OutSum=10.00`, { redirect: 'manual' });
+  check('1.9.5 a cancelled / unfinished payment grants nothing (no right; the order stays open or closes — never fulfilled)', failedC.status === 200 && failNote.status < 500 && sqlite(`select status from shop_orders where id='${failedId}';`) !== 'fulfilled' && sqlite(`select count(*) from shop_entitlements where "order"='${failedId}';`) === '0');
+  cli(TEST_ENV, 'prime-shop', 'refund', String(spc.j.order.inv), 'reason=check');
+  cli(TEST_ENV, 'prime-shop', 'refund-done', String(spc.j.order.inv));
+  check('1.9.5 refunding the bought seasonal item revokes ONLY that right; an item obtained for tokens (another account) is untouched', sqlite(`select status from shop_entitlements where "order"='${spId}';`) === 'revoked' && sqlite(`select data from saves where owner='${SE.id}';`).includes('"bought":["card_pumpkin"]') && (await http('POST', '/api/prime/shop/checkout', SE.tok, { sku: 'season_halloween_cards' })).j.code === 'owned');
 
   // ---------------------------------------------------------------- refunds
   section('Возвраты и отзыв права');
@@ -849,7 +895,7 @@ async function serverChecks(): Promise<void> {
   check('the release\'s own rules on a live production server (sales flag + PRIME_SHOP_SALES=open + Receipt): selling to everyone, env live, the approved prices = what is charged (RAY 99, BRUNO 149, four effects 49 ₽); LUCIEN 249 ₽ shown, no charge under offer № 3', realCfg.selling === true && realCfg.env === 'live' && Object.entries(realPrices).every(([k, v]) => realCfg.prices[k] === v && realCfg.charge[k] === (k === 'fighter_lucien' && !r4InForce ? null : v)), JSON.stringify(realCfg));
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
   // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
-  const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom + 'T00:00:00Z') <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
+  const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom.length <= 10 ? o.effectiveFrom + 'T00:00:00Z' : o.effectiveFrom) <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
   check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3, 4].includes(liveOffer.revision), JSON.stringify(liveOffer));
   const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
   check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
@@ -924,7 +970,8 @@ async function serverChecks(): Promise<void> {
   // one item above the limit for one item (300 ₽), one exactly at it (299 ₽); the real 30-day limit (1 500 ₽)
   const rulesMinors = (covered: boolean): any => {
     const r = JSON.parse(JSON.stringify(realRules()));
-    r.offers = r.offers.map((o: any) => ({ ...o, minors: covered }));
+    // (1.9.5: the world of revision 3 on any day — the real revision 4, in force from 07.11.2026, is left out here)
+    r.offers = r.offers.filter((o: any) => o.revision < 4).map((o: any) => ({ ...o, minors: covered }));
     r.prices.skin_ray_neon_runner = 300;
     r.prices.skin_bruno_casino_boss = 299;
     return r;
@@ -995,7 +1042,7 @@ async function serverChecks(): Promise<void> {
   await stopPb();
   // 1.9.4: an offer that sells characters but sets no limits of its own keeps the limits of revisions 1–3 — no character
   const minorsF = rulesMinors(true);
-  testHooks({ ...minorsF, offers: [...minorsF.offers, { ...OFFER_F, minors: true }] });
+  testHooks({ ...minorsF, offers: withTestOffer(minorsF.offers, { ...OFFER_F, minors: true }) });
   await startPb(MIN_ENV);
   const kLuc = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'fighter_lucien' });
   const aLuc = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
@@ -1004,7 +1051,7 @@ async function serverChecks(): Promise<void> {
   // 1.9.4 — revision 4's own limits for 14–17 (minorLimits): every category, 500 ₽ an order, 2 000 ₽ over 30 days
   const R4 = { ...OFFER_F, revision: 4, minors: true, minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true } };
   const rules4 = JSON.parse(JSON.stringify(realRules()));
-  rules4.offers = [...rules4.offers.map((o: any) => ({ ...o, minors: true })), R4];
+  rules4.offers = withTestOffer(rules4.offers.map((o: any) => ({ ...o, minors: true })), R4);
   rules4.prices.skin_ray_neon_runner = 501;
   rules4.prices.skin_bruno_casino_boss = 500;
   testHooks(rules4);

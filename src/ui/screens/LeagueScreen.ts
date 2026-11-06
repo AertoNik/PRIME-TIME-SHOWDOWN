@@ -452,7 +452,7 @@ export class LeagueScreen implements Screen {
     if (!b) return `<div class="lg-state">${tr('Загружаем таблицу сезона…', 'Loading the season table…')}</div>`;
     if (!b.rows.length) return this.empty(UI_ICONS.trophy, tr('Таблица сезона ждёт первого', 'The season table awaits its first'), tr('Ещё никто не сыграл рейтинговый бой в этом сезоне. Одна победа — и первая строка ваша.', 'Nobody has played a ranked fight this season yet. One win — and the first line is yours.'), { tab: 'play', label: tr('В эфир', 'Go on air') });
     const rows = b.rows
-      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''}" style="--rk:${r.rank.color}"><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 18)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
+      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''}" style="--rk:${r.rank.color}"><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 18)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
       .join('');
     return `<div class="lg-k">${tr('СЕЗОН', 'SEASON')} ${b.season.number} · ${tr('реальные игроки', 'real players')} · ${b.total}</div><ol class="lg-board">${rows}</ol>${me.place && !b.rows.some((r) => r.me) ? `<div class="lg-note">${tr('Ваше место', 'Your place')}: ${me.place}</div>` : ''}<small class="muted">${tr('Участники PRIME NETWORK в таблице не участвуют.', 'PRIME NETWORK participants are never in the table.')}</small>`;
   }
@@ -580,7 +580,7 @@ export class LeagueScreen implements Screen {
       .map((m) => {
         const o = m.status === 'void' ? 'void' : (m.outcome ?? 'void');
         const sys = m.opponent.kind === 'system';
-        const ava = sys ? systemProducerSVG(34) : producerSVG(m.opponent.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 34);
+        const ava = sys ? systemProducerSVG(34) : producerSVG(m.opponent.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 34);
         const gain = m.mode === 'squad' || m.mode === 'rush' ? `<b>${m.mode === 'squad' ? 'SQUAD' : 'RUSH'}</b><small>${tr('в серии', 'in a series')}</small>` : m.ranked && m.status === 'done' ? `<b>${(m.rp ?? 0) >= 0 ? '+' : ''}${m.rp} RP</b>${m.tokens ? `<small>+${m.tokens} T</small>` : ''}` : `<b>${tr('без RP', 'no RP')}</b>`;
         return `<li class="lg-fight ${o}"><span class="lg-fres">${res(o === 'void' ? undefined : o)}<small>${how(m.method)}</small></span><span class="lg-fava">${ava}</span><span class="lg-fwho"><b>${esc(lang() === 'en' && m.opponent.nameEn ? m.opponent.nameEn : m.opponent.name)}</b><small>${mini(m.attacker.fighter)}${esc(FIGHTERS[m.attacker.fighter]?.name ?? '')} <i>vs</i> ${esc(FIGHTERS[m.defender.fighter as FighterId]?.name ?? '')}${sys ? ` · PRIME NETWORK` : ''}</small></span><span class="lg-fgain">${gain}</span></li>`;
       })
@@ -1175,7 +1175,7 @@ function showPoster(g: Game, m: LeagueMatch, series?: LeagueSeries): void {
        <div class="lg-vs pv">
          <div class="lg-prod me">${producerSVG(g.producer.shown(), 92)}<b>${esc(myNick)}</b><small>${myLine}</small></div>
          <div class="lg-vs-mark">VS</div>
-         <div class="lg-prod foe">${o.kind === 'system' ? systemProducerSVG(92) : producerSVG(o.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 92)}<b>${esc(o.name)}</b><small>${esc(who)}</small></div>
+         <div class="lg-prod foe">${o.kind === 'system' ? systemProducerSVG(92) : producerSVG(o.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 92)}<b>${esc(o.name)}</b><small>${esc(who)}</small></div>
        </div>
        <div class="lg-fighters"><span class="me">${portraitHTML(g.portraitFor(g.fighterLook(m.attacker.fighter)), a.theme.main, a.theme.dark)}<b>${esc(a.name)}</b></span><i>${tr('бойцы эфира', 'on-air fighters')}</i><span class="foe"><b>${esc(d.name)}</b>${portraitHTML(g.portraitFor(leagueLook(d.id, m.defender.look)), d.theme.main, d.theme.dark)}</span></div>
        ${skinName(m.defender.look) && leagueLook(d.id, m.defender.look) === m.defender.look ? `<div class="lg-poster-look">✦ ${esc(d.name)}: ${esc(skinName(m.defender.look))}</div>` : ''}
@@ -1310,7 +1310,7 @@ export class LeagueResultScreen implements Screen {
       const f = FIGHTERS[s.fighter];
       const won = done && (me ? m!.outcome === 'win' : m!.outcome === 'loss');
       const state = !done ? '' : m!.outcome === 'draw' ? 'draw' : won ? 'won' : 'lost';
-      const ava = me ? producerSVG(this.g.producer.shown(), 56) : v.opponent.kind === 'system' ? systemProducerSVG(56) : producerSVG(v.opponent.look ?? { avatar: 'director', frame: 'studio', backdrop: 'violet' }, 56);
+      const ava = me ? producerSVG(this.g.producer.shown(), 56) : v.opponent.kind === 'system' ? systemProducerSVG(56) : producerSVG(v.opponent.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 56);
       const frac = hp ? Math.max(0, Math.min(1, hp[me ? 0 : 1])) : null;
       const pct = frac === null ? 0 : frac > 0 ? Math.max(1, Math.round(frac * 100)) : 0;
       const bar = frac === null ? '' : `<div class="lg-fo-hp" role="img" aria-label="HP ${pct}%"><i style="--hp:${pct / 100}"></i><span>${pct}%</span></div>`;

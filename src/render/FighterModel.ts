@@ -837,6 +837,56 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const ss of [1, -1]) T.add(sph(0.11, 14, 10), top.accent, { p: [ss * d.shoulderX * 0.92, d.shoulderY + 0.03, 0], s: [1.2, 0.45, 1.05], r: [0, 0, -ss * 0.2] });
         break;
       }
+      case 'idol': {
+        // Alpha 1.9.5 (NIKA — STAGE IDOL): a cropped pearl stage jacket — lilac side panels, a glowing
+        // pink heart on the chest, a mesh high collar, a lit hem and a lilac belt with a star buckle
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.inner);
+        T.add(torsoShell(d, h * 0.26, h * 0.93, 0.018), top.main);
+        for (const ss of [1, -1]) T.add(torsoShell(d, h * 0.3, h * 0.86, 0.024, ss > 0 ? Math.PI * 0.2 : Math.PI * 1.55, Math.PI * 0.25), top.trim);
+        TG.add(torsoRing(d, h * 0.26, 0.022, 0.012), top.accent, {}, GLOW);
+        // the heart: two lobes and a point, lit
+        const hy = h * 0.64;
+        const hz = zf(hy) + 0.02;
+        for (const k of [1, -1]) TG.add(sph(0.034, 12, 10), top.accent, { p: [k * 0.03, hy + 0.012, hz], s: [1, 1, 0.45] }, GLOW);
+        TG.add(rbox(0.05, 0.05, 0.02, 0.008), top.accent, { p: [0, hy - 0.022, hz - 0.004], r: [0, 0, Math.PI / 4] }, GLOW);
+        // mesh high collar
+        T.add(cyl(0.19, 0.21, 0.12, 20), top.trim, { p: [0, h * 0.95, 0], s: [1, 1, 0.9] });
+        TG.add(torsoRing(d, h * 0.9, 0.016, 0.008), top.accent, {}, GLOW * 0.8);
+        // belt with a star buckle
+        T.add(torsoRing(d, h * 0.13, 0.026, 0.03), top.trim);
+        TG.add(rbox(0.04, 0.04, 0.016, 0.006), 0xfff2a8, { p: [0, h * 0.13, zf(h * 0.13) + 0.03], r: [0, 0, Math.PI / 4] }, GLOW * 0.9);
+        break;
+      }
+      case 'pilot': {
+        // Alpha 1.9.5 (VEGA — STAR PILOT): a navy flight suit — an orange harness crossing the chest, a
+        // chest control unit with lit buttons, a padded white collar ring and a glowing mission patch
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(torsoShell(d, 0, h * 0.12, 0.008), top.inner);
+        for (const ss of [1, -1]) {
+          // shoulder-to-hip straps, crossing in front
+          T.add(rbox(0.045, h * 0.86, 0.024, 0.01), top.accent, { p: [ss * 0.06, h * 0.5, zf(h * 0.5) + 0.006], r: [0, 0, ss * 0.42] });
+          T.add(rbox(0.04, h * 0.7, 0.024, 0.01), top.accent, { p: [ss * 0.1, h * 0.52, -zf(h * 0.52) - 0.006], r: [0, 0, -ss * 0.18] });
+        }
+        T.add(torsoRing(d, h * 0.14, 0.03, 0.03), top.accent);
+        // chest control unit
+        const cy = h * 0.5;
+        T.add(rbox(0.12, 0.08, 0.04, 0.014), 0x0c1220, { p: [0, cy, zf(cy) + 0.026] });
+        for (const [bx, c] of [
+          [-0.032, 0x5fd8ff],
+          [0, 0xffd23a],
+          [0.032, 0xff5a3c],
+        ] as [number, number][])
+          TG.add(sph(0.011, 8, 6), c, { p: [bx, cy + 0.01, zf(cy) + 0.048] }, GLOW);
+        // padded collar ring
+        const ring = tor(0.18, 0.045, Math.PI * 2, 22);
+        ring.rotateX(Math.PI / 2);
+        T.add(ring, top.trim, { p: [0, h * 0.95, 0], s: [1, 1, 0.92] });
+        // mission patch on the left chest
+        TG.add(cyl(0.032, 0.032, 0.012, 14), look.glow, { p: [0.13, h * 0.72, zf(h * 0.72) + 0.008], r: [Math.PI / 2, 0, 0] }, GLOW * 0.8);
+        break;
+      }
       case 'suit': {
         // Alpha 1.8.8 (BRUNO — CASINO BOSS): a heavy double-breasted black suit — wide peak lapels edged
         // in gold, a bordeaux shirt with a black tie and a gold clip, two rows of gold buttons, a
@@ -881,6 +931,16 @@ export function getRigGeometry(lookId: string): RigGeometry {
     // neck
     T.add(cyl(d.neckR, d.neckR * 1.1, 0.16, 14), skinDark, { p: [0, d.neckY - 0.02, 0] });
 
+    // Alpha 1.9.5: STAGE IDOL epaulettes with a little lit star; STAR PILOT padded shoulder blocks
+    if (top.style === 'idol') {
+      for (const ss of [1, -1]) {
+        T.add(sph(d.armR * 1.55, 12, 10), top.trim, { p: [ss * d.shoulderX, d.shoulderY + 0.05, 0], s: [1.15, 0.5, 1] });
+        TG.add(rbox(0.03, 0.03, 0.012, 0.004), 0xfff2a8, { p: [ss * d.shoulderX, d.shoulderY + 0.1, 0.04], r: [0, 0, Math.PI / 4] }, GLOW * 0.9);
+      }
+    }
+    if (top.style === 'pilot') {
+      for (const ss of [1, -1]) T.add(rbox(0.13, 0.05, 0.16, 0.02), top.inner, { p: [ss * d.shoulderX, d.shoulderY + 0.06, 0], r: [0, 0, -ss * 0.25] });
+    }
     // shoulder pads for tech / puffer
     if (top.style === 'tech') {
       for (const ss of [1, -1]) {
@@ -1014,6 +1074,14 @@ export function getRigGeometry(lookId: string): RigGeometry {
       // Alpha 1.8.8: an electric-blue sleeve panel with a glowing cyan line down the outside
       U.add(rbox(0.05, d.upperArm * 0.72, 0.06, 0.016), top.accent, { p: [s * ar * 1.12, -d.upperArm * 0.5, 0] });
       B.g(side === 'L' ? 'upperArmL' : 'upperArmR').add(rbox(0.012, d.upperArm * 0.7, 0.014, 0.004), top.trim, { p: [s * ar * 1.24, -d.upperArm * 0.5, 0] }, GLOW * 0.9);
+    } else if (top.style === 'idol') {
+      // Alpha 1.9.5: a lilac puff at the shoulder and a pink line down the pearl sleeve
+      U.add(sph(ar * 1.55, 12, 10), top.trim, { p: [0, -0.05, 0], s: [1, 0.8, 1] });
+      B.g(side === 'L' ? 'upperArmL' : 'upperArmR').add(rbox(0.012, d.upperArm * 0.6, 0.014, 0.004), top.accent, { p: [s * ar * 1.2, -d.upperArm * 0.55, 0] }, GLOW * 0.8);
+    } else if (top.style === 'pilot') {
+      // Alpha 1.9.5: an orange flight stripe on the navy sleeve and a white pocket patch
+      U.add(rbox(0.03, d.upperArm * 0.76, 0.05, 0.012), top.accent, { p: [s * ar * 1.14, -d.upperArm * 0.5, 0] });
+      U.add(rbox(0.05, 0.06, 0.03, 0.01), top.trim, { p: [s * ar * 1.0, -d.upperArm * 0.36, ar * 0.9] });
     } else if (top.style === 'suit') {
       // Alpha 1.8.8: a fine gold seam on the black sleeve
       U.add(rbox(0.012, d.upperArm * 0.7, 0.02, 0.005), top.accent, { p: [s * ar * 1.22, -d.upperArm * 0.5, 0] });
@@ -1039,6 +1107,15 @@ export function getRigGeometry(lookId: string): RigGeometry {
     if (top.style === 'coat') {
       // wide turned-back gold cuff
       F.add(cyl(ar * 1.32, ar * 1.22, 0.1, 16), top.accent, { p: [0, -d.foreArm * 0.78, 0] });
+    }
+    if (top.style === 'idol') {
+      // Alpha 1.9.5: a lit pink cuff
+      FG.add(cyl(ar * 1.22, ar * 1.18, 0.05, 16), top.accent, { p: [0, -d.foreArm * 0.82, 0] }, GLOW * 0.9);
+    }
+    if (top.style === 'pilot') {
+      // Alpha 1.9.5: a white cuff ring with an orange edge
+      F.add(cyl(ar * 1.26, ar * 1.2, 0.08, 16), top.trim, { p: [0, -d.foreArm * 0.78, 0] });
+      F.add(cyl(ar * 1.28, ar * 1.26, 0.018, 16), top.accent, { p: [0, -d.foreArm * 0.72, 0] });
     }
     if (top.style === 'runner') {
       // Alpha 1.8.8: a blue cuff block and the glowing line carried on down the forearm
@@ -1851,6 +1928,28 @@ export function getRigGeometry(lookId: string): RigGeometry {
       W.add(rbox(0.016, 0.07, 0.5, 0.008), 0xd7dce6, { p: [ss * 0.153, 0.02, 0.28] });
       WG.add(sph(0.034, 12, 10), 0xff2a44, { p: [ss * 0.158, 0.02, 0.48], s: [0.5, 1, 1] }, GLOW * 0.7);
     }
+  }
+
+  // Alpha 1.9.5 (STAGE IDOL): the carbine as a stage prop — pearl side plates, a lit heart charm on a short chain
+  // under the barrel, a star on the receiver. Decoration only: the muzzle stays the base carbine's.
+  if (look.weaponDeco === 'idol' && look.weapon === 'tech_carbine') {
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    for (const ss of [1, -1]) W.add(rbox(0.008, 0.1, 0.34, 0.004), look.top.trim, { p: [ss * 0.064, 0.07, 0.12] });
+    for (let i = 0; i < 3; i++) W.add(sph(0.008, 6, 5), 0xe8e2f0, { p: [0, -0.005 - i * 0.022, 0.44] });
+    for (const k of [1, -1]) WG.add(sph(0.022, 10, 8), look.top.accent, { p: [k * 0.018, -0.075, 0.44], s: [1, 1, 0.5] }, GLOW);
+    WG.add(rbox(0.032, 0.032, 0.014, 0.006), look.top.accent, { p: [0, -0.092, 0.44], r: [0, 0, Math.PI / 4] }, GLOW);
+    WG.add(rbox(0.03, 0.03, 0.01, 0.004), 0xfff2a8, { p: [0.0625, 0.12, -0.02], r: [0, Math.PI / 2, Math.PI / 4] }, GLOW * 0.9);
+  }
+  // Alpha 1.9.5 (STAR PILOT): the rifle in flight livery — orange stripes on the stock and barrel shroud, two small
+  // stabiliser fins and a white cheek pad. Decoration only: the muzzle stays the base rifle's.
+  if (look.weaponDeco === 'pilot' && look.weapon === 'pulse_rifle') {
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    for (const z of [-0.2, 0.62]) W.add(rbox(z < 0 ? 0.09 : 0.084, 0.03, 0.05, 0.008), look.top.accent, { p: [0, z < 0 ? 0.11 : 0.135, z] });
+    for (const ss of [1, -1]) W.add(rbox(0.07, 0.008, 0.1, 0.004), look.top.accent, { p: [ss * 0.07, 0.03, 0.76], r: [0, 0, ss * 0.35] });
+    W.add(rbox(0.09, 0.05, 0.14, 0.02), look.top.trim, { p: [0, 0.14, -0.2] });
+    WG.add(rbox(0.06, 0.014, 0.014, 0.004), look.glow, { p: [0, 0.135, 0.46] }, GLOW * 0.9);
   }
 
   // Alpha 1.6.5 — the robot's face lives on its visor: amber eye slots (they blink like eyes),

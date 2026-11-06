@@ -1,8 +1,9 @@
+import { RARITY_LABEL } from '../../config/cosmetics.config';
 import { COSMETICS, COSMETIC_SLOTS, SLOT_LABELS, type CosmeticDef, type CosmeticId } from '../../config/cosmetics.config';
 import { EVENTS } from '../../config/events.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
-import { SHOP_ITEMS, SKINS, SKU_OF_COSMETIC, SKU_OF_SKIN, type SkinId } from '../../config/shop.config';
+import { SHOP_ITEMS, SKINS, SKU_OF_COSMETIC, SKU_OF_SKIN, shopItem, type SkinId } from '../../config/shop.config';
 import { paidSource } from '../../meta/entitlements';
 import { inRoster } from '../../meta/roster';
 import type { FighterId } from '../../config/types';
@@ -15,7 +16,8 @@ import { MODE_ICONS } from '../modeArt';
 import { shopArt } from '../shopArt';
 import type { Screen } from '../UI';
 
-const RARITY: Record<CosmeticDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
+// 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
+const RARITY = RARITY_LABEL;
 const TABS: { id: CollectionTab; label: string }[] = [
   { id: 'all', label: 'Всё' },
   { id: 'cosmetics', label: 'Косметика' },
@@ -169,7 +171,8 @@ export class CollectionScreen implements Screen {
   private wardrobe(): string {
     const g = this.g;
     const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
-    const cards = (Object.keys(SKINS) as SkinId[]).map((id) => {
+    // (1.9.5: a skin whose price is not approved yet is shown only once owned — like the catalog, Shop.listed)
+    const cards = (Object.keys(SKINS) as SkinId[]).filter((id) => g.shop.skinsOf(SKINS[id].fighter).includes(id)).map((id) => {
       const sk = SKINS[id];
       const f = FIGHTERS[sk.fighter];
       const look = LOOKS[sk.look];
@@ -177,9 +180,11 @@ export class CollectionScreen implements Screen {
       const worn = g.shop.skinFor(sk.fighter) === id;
       const std = owned && !worn;
       const art = `<div class="cc-art">${portraitHTML(g.portraitFor(std ? f.look : sk.look), std ? f.theme.main : hex(look.top.accent), std ? f.theme.dark : hex(look.top.main))}</div>`;
-      const src = paidSource(SKU_OF_SKIN[id]);
+      const src = g.shop.skinSource(id);
       // 1.8.8: a development grant and a test-mode (demonstration) right are never shown as a real purchase
-      const head = `<div class="cc-top"><span class="cc-type">Облик бойца · ${esc(f.name)}</span><span class="cc-rarity">${src === 'dev' ? 'Тест (dev)' : src === 'test' ? 'Тестовая покупка' : 'PRIME SHOP'}</span></div>`;
+      // 1.9.5: the skin's tier of rarity beside where it comes from (purely cosmetic)
+      const rar = shopItem(SKU_OF_SKIN[id]).rarity;
+      const head = `<div class="cc-top"><span class="cc-type">Облик бойца · ${esc(f.name)}</span><span class="cc-rarity">${src === 'dev' ? 'Тест (dev)' : src === 'test' ? 'Тестовая покупка' : src === 'season' ? 'Сезонная награда' : 'PRIME SHOP'}<span class="wr-rar r-${rar}">${RARITY[rar]}</span></span></div>`;
       if (!owned) {
         return `<div class="col-card wr-card locked">${art}<div class="cc-body">${head}
             <div class="cc-name">${esc(f.name)}: ${esc(sk.name)}</div>
@@ -336,7 +341,8 @@ export class CollectionScreen implements Screen {
         : `<span class="cc-state locked">${UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"')} ${esc(c.howTo)}</span>`;
     } else if (v.owned) {
       // 1.8.8: a PRIME SHOP item lent by the development test grant is not shown as a real one
-      const src = c.paid ? paidSource(SKU_OF_COSMETIC[c.id] ?? '') : null;
+      // (1.9.5: and a seasonal item bought after its season says how it was obtained, like any purchase)
+      const src = c.paid || !this.g.save.data.cosmetics.owned.includes(c.id) ? paidSource(SKU_OF_COSMETIC[c.id] ?? '') : null;
       const tag = src === 'dev' ? ' · тест (dev)' : src === 'test' ? ' · тестовая покупка' : '';
       state = v.equipped
         ? `<span class="cc-state on">${UI_ICONS.check.replace('<svg', '<svg width="11" height="11"')} Надето${tag}</span>`

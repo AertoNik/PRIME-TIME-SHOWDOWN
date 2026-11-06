@@ -1,4 +1,4 @@
-import type { CosmeticId } from './cosmetics.config';
+import type { CosmeticId, Rarity } from './cosmetics.config';
 import type { FighterId } from './types';
 
 // Alpha 1.8.8 — PRIME SHOP: the one registry of what the shop shows. Stable ids (`sku`) — they will
@@ -22,12 +22,25 @@ export type ShopSku =
   | 'fx_phantom_dash'
   | 'fx_golden_confetti'
   | 'fx_vhs_card_frame'
-  | 'fighter_lucien';
+  | 'fighter_lucien'
+  // Alpha 1.9.5 — PRIME SHOP EXPANSION (prices PROPOSED, not approved: nothing of these is sold)
+  | 'skin_nika_stage_idol'
+  | 'skin_vega_star_pilot'
+  | 'fx_studio_spotlights'
+  | 'fx_neon_fireworks'
+  | 'fx_glitch_dash'
+  | 'fx_comet_trail'
+  | 'fx_arcade_frame'
+  | 'fx_holo_foil'
+  // Alpha 1.9.5 — seasonal items of Halloween Premiere sold after the season (the same item ids as the exchange)
+  | 'season_halloween_cards'
+  | 'season_spooky_broadcast'
+  | 'season_pumpkin_victory';
 
 export type ShopCategory = 'skins' | 'effects' | 'fighters';
 
 /** Alpha 1.8.8: alternate looks of existing fighters. */
-export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss';
+export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot';
 
 export interface SkinDef {
   id: SkinId;
@@ -40,6 +53,8 @@ export interface SkinDef {
 export const SKINS: Record<SkinId, SkinDef> = {
   ray_neon_runner: { id: 'ray_neon_runner', fighter: 'ray', look: 'ray_neon_runner', name: 'NEON RUNNER' },
   bruno_casino_boss: { id: 'bruno_casino_boss', fighter: 'bruno', look: 'bruno_casino_boss', name: 'CASINO BOSS' },
+  nika_stage_idol: { id: 'nika_stage_idol', fighter: 'nika', look: 'nika_stage_idol', name: 'STAGE IDOL' },
+  vega_star_pilot: { id: 'vega_star_pilot', fighter: 'vega', look: 'vega_star_pilot', name: 'STAR PILOT' },
 };
 
 export function isSkinId(id: unknown): id is SkinId {
@@ -58,7 +73,12 @@ export interface ShopItemDef {
   desc: string;
   /** What exactly changes — the item page lists it. */
   highlights: string[];
-  rarity: 'rare' | 'epic' | 'legendary';
+  /**
+   * 1.9.5: four tiers, purely cosmetic (no stat, mechanic or ownership depends on it): uncommon → rare → epic → legendary.
+   * A cosmetic's tier is its MY COLLECTION tier (cosmetics.config.ts — one item, one tier). The owner's honest classification
+   * of 06.11.2026 (docs/ALPHA_1_9_5_PART1_PRE_STAGING_REPORT.md, section 3) — by the real visual, items sold before included.
+   */
+  rarity: Rarity;
   /** What it gives: a skin, a PRIME SHOP cosmetic or a fighter. */
   skin?: SkinId;
   cosmetic?: CosmeticId;
@@ -66,6 +86,8 @@ export interface ShopItemDef {
   preview: ShopPreview;
   /** Featured block at the top of the shop. */
   featured?: boolean;
+  /** 1.9.5: a new arrival — the «НОВИНКА» ribbon and the new-arrivals strip of the catalog. */
+  isNew?: boolean;
 }
 
 export const SHOP_ITEMS: ShopItemDef[] = [
@@ -81,7 +103,7 @@ export const SHOP_ITEMS: ShopItemDef[] = [
       'Неоновые линии на рукавах и голенях, кроссовки в цветах костюма',
       'Бластеры с бирюзовыми рельсами и кольцом у ствола; синий след рывка и заряда',
     ],
-    rarity: 'legendary',
+    rarity: 'epic',
     skin: 'ray_neon_runner',
     fighter: 'ray',
     preview: 'model',
@@ -106,6 +128,42 @@ export const SHOP_ITEMS: ShopItemDef[] = [
     featured: true,
   },
   {
+    sku: 'skin_nika_stage_idol',
+    category: 'skins',
+    name: 'NIKA: STAGE IDOL',
+    kind: '3D-скин · Ника «Глитч»',
+    desc: 'Поп-звезда финального концерта PRIME NETWORK: жемчужный сценический жакет, светящееся сердце на груди и розово-сиреневые пучки.',
+    highlights: [
+      'Укороченный жемчужный жакет со сиреневыми вставками, высоким сетчатым воротником и светящимся подолом',
+      'Розовое неоновое сердце на груди, эполеты с маленькими звёздами, пояс со звёздной пряжкой',
+      'Те же пучки и гарнитура Ники в новой розово-сиреневой гамме, светящиеся манжеты',
+      'Белый карабин с розовым свечением; лицо, рост, оружие и анимации — как у Ники',
+    ],
+    rarity: 'epic',
+    skin: 'nika_stage_idol',
+    fighter: 'nika',
+    preview: 'model',
+    isNew: true,
+  },
+  {
+    sku: 'skin_vega_star_pilot',
+    category: 'skins',
+    name: 'VEGA: STAR PILOT',
+    kind: '3D-скин · Вега «Зенит»',
+    desc: 'Пилот звёздного рейса PRIME NETWORK: тёмно-синий лётный комбинезон, оранжевые ремни подвески и пульт на груди.',
+    highlights: [
+      'Лётный комбинезон с перекрещёнными оранжевыми ремнями и плотными плечевыми блоками',
+      'Нагрудный пульт с тремя огнями, мягкий белый воротник-кольцо, светящаяся нашивка миссии',
+      'Тот же высокий хвост и визор Веги — платина с золотыми кончиками',
+      'Оранжевые полосы на рукавах и белые манжеты; лицо, рост, оружие и анимации — как у Веги',
+    ],
+    rarity: 'epic',
+    skin: 'vega_star_pilot',
+    fighter: 'vega',
+    preview: 'model',
+    isNew: true,
+  },
+  {
     sku: 'fx_prime_broadcast',
     category: 'effects',
     name: 'PRIME BROADCAST',
@@ -116,7 +174,7 @@ export const SHOP_ITEMS: ShopItemDef[] = [
       'Вертикальная плашка ON AIR у левого края',
       'Табло времени и табличка бойца в цветах PRIME NETWORK',
     ],
-    rarity: 'epic',
+    rarity: 'rare',
     cosmetic: 'frame_prime_broadcast',
     preview: 'frame',
   },
@@ -131,7 +189,7 @@ export const SHOP_ITEMS: ShopItemDef[] = [
       'Бирюзовое послесвечение, которое тает чуть дольше',
       'Отдельный предмет: сезонный PURPLE PHANTOM остаётся в коллекции',
     ],
-    rarity: 'epic',
+    rarity: 'rare',
     cosmetic: 'dash_prime_phantom',
     preview: 'dash',
   },
@@ -146,7 +204,7 @@ export const SHOP_ITEMS: ShopItemDef[] = [
       'Золотое кольцо и лучи света вокруг победителя',
       'Сезонные эффекты победы не заменяются — выбирается любой полученный',
     ],
-    rarity: 'legendary',
+    rarity: 'rare',
     cosmetic: 'victory_golden_confetti',
     preview: 'confetti',
   },
@@ -164,6 +222,147 @@ export const SHOP_ITEMS: ShopItemDef[] = [
     rarity: 'rare',
     cosmetic: 'card_vhs',
     preview: 'cards',
+  },
+  {
+    sku: 'fx_studio_spotlights',
+    category: 'effects',
+    name: 'STUDIO SPOTLIGHTS',
+    kind: 'Эффект победы',
+    desc: 'Четыре студийных прожектора по очереди находят победителя, вспыхивают фотовспышки и золотое кольцо света.',
+    highlights: [
+      'Четыре луча с разных сторон студии сходятся на победителе',
+      'Золотое кольцо и мягкий подъём искр в момент «кадра»',
+      'Короткие вспышки фотокамер вокруг арены',
+    ],
+    rarity: 'epic',
+    cosmetic: 'victory_studio_spotlights',
+    preview: 'confetti',
+    isNew: true,
+  },
+  {
+    sku: 'fx_neon_fireworks',
+    category: 'effects',
+    name: 'NEON FIREWORKS',
+    kind: 'Эффект победы',
+    desc: 'Три неоновых залпа над ареной: ракеты взлетают и раскрываются розовыми, бирюзовыми и фиолетовыми шарами.',
+    highlights: [
+      'Три ракеты со следом взлетают над победителем',
+      'Розовый, бирюзовый и фиолетовый шары с белой серединой',
+      'Мягкое кольцо света на полу — без вспышек на весь экран',
+    ],
+    rarity: 'epic',
+    cosmetic: 'victory_neon_fireworks',
+    preview: 'confetti',
+    isNew: true,
+  },
+  {
+    sku: 'fx_glitch_dash',
+    category: 'effects',
+    name: 'GLITCH DASH',
+    kind: 'Эффект рывка DASH',
+    desc: 'Рывок как сбой сигнала: пурпурный и бирюзовый двойники со смещением, рассыпающиеся пиксели и короткая помеха.',
+    highlights: [
+      'Пурпурный и бирюзовый двойники, смещённые поперёк пути',
+      'Пиксели сигнала разлетаются и гаснут',
+      'Только внешний вид: дальность, скорость и неуязвимость DASH не меняются',
+    ],
+    rarity: 'rare',
+    cosmetic: 'dash_glitch',
+    preview: 'dash',
+    isNew: true,
+  },
+  {
+    sku: 'fx_comet_trail',
+    category: 'effects',
+    name: 'COMET TRAIL',
+    kind: 'Эффект рывка DASH',
+    desc: 'Боец проносится кометой: яркая голова, сужающийся огненный хвост и тёплые искры, которые оседают на пол.',
+    highlights: [
+      'Белая голова кометы в точке прибытия',
+      'Сужающийся золотисто-оранжевый хвост вдоль пути',
+      'Тёплые искры падают на пол; дальность и скорость DASH не меняются',
+    ],
+    rarity: 'rare',
+    cosmetic: 'dash_comet',
+    preview: 'dash',
+    isNew: true,
+  },
+  {
+    sku: 'fx_arcade_frame',
+    category: 'effects',
+    name: 'ARCADE CABINET',
+    kind: 'Рамка трансляции',
+    desc: 'Рамка в духе игрового автомата: пиксельные углы, янтарно-бирюзовые пунктиры и табличка PLAYER 1. Показатели боя не закрывает.',
+    highlights: [
+      'Ступенчатые «пиксельные» углы и пунктирные линии по краям',
+      'Вертикальная табличка PLAYER 1 у правого края',
+      'Янтарное табло времени и плашка LIVE',
+    ],
+    rarity: 'rare',
+    cosmetic: 'frame_arcade',
+    preview: 'frame',
+    isNew: true,
+  },
+  {
+    sku: 'fx_holo_foil',
+    category: 'effects',
+    name: 'HOLO FOIL',
+    kind: 'Оформление карт',
+    desc: 'Тактические карты как коллекционные голограммы: переливающаяся фольга и звёздный блик. Название, стоимость и метки комбо читаются как прежде.',
+    highlights: [
+      'Переливающийся радужный слой на рисунке карты',
+      'Тонкая светлая кайма и звёздный блик в углу',
+      'Состояния карт (комбо, энергия, фирменная) видны как прежде; без анимации при «меньше движения»',
+    ],
+    rarity: 'uncommon',
+    cosmetic: 'card_holo',
+    preview: 'cards',
+    isNew: true,
+  },
+  {
+    sku: 'season_halloween_cards',
+    category: 'effects',
+    name: 'HALLOWEEN CARD STYLE',
+    kind: 'Сезонное оформление карт',
+    desc: 'Тыквенные рамки, паутинка и фиолетовое свечение для всех карт — из обмена Halloween Premiere.',
+    highlights: [
+      'Тыквенная рамка, паутинка в углу рисунка и фиолетовое свечение',
+      'Во время Halloween Premiere — только за PUMPKIN TOKENS, после него — в PRIME SHOP',
+      'Полученный за жетоны остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'rare',
+    cosmetic: 'card_pumpkin',
+    preview: 'cards',
+  },
+  {
+    sku: 'season_spooky_broadcast',
+    category: 'effects',
+    name: 'SPOOKY BROADCAST',
+    kind: 'Сезонная рамка трансляции',
+    desc: 'Рамка эфира Halloween Special: оранжевые уголки, фиолетовое свечение и плашка LIVE — из обмена Halloween Premiere.',
+    highlights: [
+      'Оранжевые уголки эфира с фиолетовым свечением',
+      'Табло времени и плашка LIVE в цветах Halloween',
+      'Полученная за жетоны остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'rare',
+    cosmetic: 'frame_spooky',
+    preview: 'frame',
+  },
+  {
+    sku: 'season_pumpkin_victory',
+    category: 'effects',
+    name: 'PUMPKIN VICTORY',
+    kind: 'Сезонный эффект победы',
+    desc: 'Светящиеся тыквы и праздничное конфетти над ареной при победе — из обмена Halloween Premiere.',
+    highlights: [
+      'Светящиеся тыквы взлетают над ареной',
+      'Праздничное конфетти в цветах Halloween',
+      'Полученный за жетоны остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'epic',
+    cosmetic: 'victory_pumpkin',
+    preview: 'confetti',
   },
   {
     sku: 'fighter_lucien',
@@ -217,12 +416,40 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   fx_golden_confetti: 'approved',
   fx_vhs_card_frame: 'approved',
   fighter_lucien: 'approved',
+  // 1.9.5: APPROVED by the owner on 06.11.2026 (decision Р-18). Sold only once an offer revision that lists them in its
+  // Appendix 1 is in force (offer.config.ts `items`; the server checks it — lib/payments.js itemOffered): revision 4
+  // does not, so until revision 5 takes effect they are shown at most as «not on sale yet», never charged.
+  skin_nika_stage_idol: 'approved',
+  skin_vega_star_pilot: 'approved',
+  fx_studio_spotlights: 'approved',
+  fx_neon_fireworks: 'approved',
+  fx_glitch_dash: 'approved',
+  fx_comet_trail: 'approved',
+  fx_arcade_frame: 'approved',
+  fx_holo_foil: 'approved',
+  season_halloween_cards: 'approved',
+  season_spooky_broadcast: 'approved',
+  season_pumpkin_victory: 'approved',
 };
 
 /** When the owner approved the approved prices (shown nowhere in the game; for the documents and checks). */
 export const SHOP_PRICES_APPROVED_ON = '2026-10-23';
 /** 1.9.4: prices approved on another day than SHOP_PRICES_APPROVED_ON (the documents name both days). */
-export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = { fighter_lucien: '2026-11-05' };
+export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
+  fighter_lucien: '2026-11-05',
+  // 1.9.5 (Р-18, 06.11.2026): the eleven items of PRIME SHOP EXPANSION and the three Halloween items sold after the season
+  skin_nika_stage_idol: '2026-11-06',
+  skin_vega_star_pilot: '2026-11-06',
+  fx_studio_spotlights: '2026-11-06',
+  fx_neon_fireworks: '2026-11-06',
+  fx_glitch_dash: '2026-11-06',
+  fx_comet_trail: '2026-11-06',
+  fx_arcade_frame: '2026-11-06',
+  fx_holo_foil: '2026-11-06',
+  season_halloween_cards: '2026-11-06',
+  season_spooky_broadcast: '2026-11-06',
+  season_pumpkin_victory: '2026-11-06',
+};
 
 /**
  * Prices in roubles. Approved 23.10.2026 by the owner: RAY: NEON RUNNER 99, BRUNO: CASINO BOSS 149, PRIME
@@ -237,6 +464,18 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number> = {
   fx_golden_confetti: 49,
   fx_vhs_card_frame: 49,
   fighter_lucien: 249,
+  // 1.9.5 — approved 06.11.2026 (SHOP_PRICE_STATUS, Р-18)
+  skin_nika_stage_idol: 149,
+  skin_vega_star_pilot: 149,
+  fx_studio_spotlights: 69,
+  fx_neon_fireworks: 69,
+  fx_glitch_dash: 59,
+  fx_comet_trail: 59,
+  fx_arcade_frame: 49,
+  fx_holo_foil: 49,
+  season_halloween_cards: 49,
+  season_spooky_broadcast: 49,
+  season_pumpkin_victory: 59,
 };
 
 /** The price the shop may show and the server may charge: the approved one — null while only proposed. */
@@ -269,6 +508,17 @@ export const SHOP_TEST_PRICES_RUB: Record<ShopSku, number> = {
   fx_golden_confetti: 10,
   fx_vhs_card_frame: 10,
   fighter_lucien: 10,
+  skin_nika_stage_idol: 10,
+  skin_vega_star_pilot: 10,
+  fx_studio_spotlights: 10,
+  fx_neon_fireworks: 10,
+  fx_glitch_dash: 10,
+  fx_comet_trail: 10,
+  fx_arcade_frame: 10,
+  fx_holo_foil: 10,
+  season_halloween_cards: 10,
+  season_spooky_broadcast: 10,
+  season_pumpkin_victory: 10,
 };
 
 /** The paid way to open a fighter (LUCIEN after his season) — the sku its purchase record carries. */

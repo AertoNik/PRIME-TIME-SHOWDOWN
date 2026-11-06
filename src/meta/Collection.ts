@@ -77,7 +77,16 @@ export class Collection {
   owns(id: CosmeticId): boolean {
     // 1.8.8: a PRIME SHOP item is owned only through a confirmed purchase (never via the save)
     if (COSMETICS[id].paid) return ownsPaid(SKU_OF_COSMETIC[id] ?? '');
-    return this.c.owned.includes(id);
+    if (this.c.owned.includes(id)) return true;
+    // 1.9.5: a seasonal item bought in PRIME SHOP after its season — the SAME item, owned through the purchase
+    // (never written into save.cosmetics, so a refund takes back only what the purchase gave)
+    return this.byPurchase(id);
+  }
+
+  /** 1.9.5: owned only through a PRIME SHOP purchase (a PRIME SHOP item, or a seasonal one bought after its season). */
+  private byPurchase(id: CosmeticId): boolean {
+    const sku = SKU_OF_COSMETIC[id];
+    return !!sku && !this.c.owned.includes(id) && ownsPaid(sku);
   }
 
   /** 1.8.8: the PRIME SHOP item worn in a slot — only while it is really owned. */
@@ -173,8 +182,9 @@ export class Collection {
       return true;
     }
     if (!this.owns(id)) return false;
-    // 1.8.8: a PRIME SHOP item is worn from save.shop.equip (save.cosmetics never names it)
-    if (def.paid) {
+    // 1.8.8: a PRIME SHOP item is worn from save.shop.equip (save.cosmetics never names it); 1.9.5: so is a seasonal
+    // item owned only through its purchase (save.cosmetics.equipped may name only what save.cosmetics owns)
+    if (def.paid || this.byPurchase(id)) {
       const sh = (this.store.data.shop ??= { skins: {}, equip: {} });
       if (on) {
         sh.equip[def.slot] = id;
@@ -254,7 +264,7 @@ export class Collection {
       def: COSMETICS[id],
       owned,
       equipped: owned && this.isEquipped(id, fighter),
-      fresh: owned && !COSMETICS[id].paid && !this.c.seen.includes(id),
+      fresh: owned && !COSMETICS[id].paid && this.c.owned.includes(id) && !this.c.seen.includes(id),
       at: this.acquiredAt(id),
       owners: this.owners(id).slice(),
     };

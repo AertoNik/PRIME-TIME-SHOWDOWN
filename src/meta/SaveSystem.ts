@@ -3,7 +3,7 @@ import { CAREER_STAGES, CAREER_START, GOALS, LEVEL_THRESHOLDS, type GoalId, type
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETICS, COSMETIC_SLOTS, isGameCosmeticId as isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
-import { isSkinId, SKINS, type SkinId } from '../config/shop.config';
+import { isSkinId, SKINS, SKU_OF_COSMETIC, type SkinId } from '../config/shop.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
 import { APP_VERSION } from '../config/version';
@@ -61,6 +61,11 @@ export interface EventProgress {
   bought: CosmeticId[];
   /** 1.7: seasonal stars opened in this event's exchange, and when (they stay in the roster for good). */
   fighters: { id: FighterId; at: number }[];
+  /**
+   * 1.9.5: PRIME SHOP skins obtained in this event's exchange for its currency, and when (kept for good). Written only
+   * once one is obtained — a save without such a skin keeps exactly its earlier text.
+   */
+  skins?: { id: SkinId; at: number }[];
   grandClaimed: boolean;
   /** Daily cap bookkeeping for match tokens (local date key). */
   day: string;
@@ -356,7 +361,8 @@ function sanitizeShop(raw: unknown): ShopState {
   if (r.equip && typeof r.equip === 'object') {
     for (const slot of COSMETIC_SLOTS) {
       const id = (r.equip as Record<string, unknown>)[slot];
-      if (typeof id === 'string' && id in COSMETICS && COSMETICS[id as CosmeticId].paid && COSMETICS[id as CosmeticId].slot === slot) out.equip[slot] = id as CosmeticId;
+      // (1.9.5: and a seasonal item sold in PRIME SHOP after its season — worn from here when owned through its purchase)
+      if (typeof id === 'string' && id in COSMETICS && (COSMETICS[id as CosmeticId].paid || !!SKU_OF_COSMETIC[id as CosmeticId]) && COSMETICS[id as CosmeticId].slot === slot) out.equip[slot] = id as CosmeticId;
     }
   }
   return out;
@@ -409,6 +415,15 @@ function sanitizeEvents(raw: unknown): Record<string, EventProgress> {
         const r = f as { id?: unknown; at?: unknown } | null;
         if (r && isFighter(r.id) && FIGHTERS[r.id].seasonal && !p.fighters.some((x) => x.id === r.id)) p.fighters.push({ id: r.id, at: Math.max(0, num(r.at, 0)) });
       }
+    }
+    // 1.9.5: skins opened here for the event's currency (absent: none — and the field stays absent)
+    if (Array.isArray(e.skins)) {
+      const list: { id: SkinId; at: number }[] = [];
+      for (const k of e.skins as unknown[]) {
+        const r = k as { id?: unknown; at?: unknown } | null;
+        if (r && isSkinId(r.id) && !list.some((x) => x.id === r.id)) list.push({ id: r.id, at: Math.max(0, num(r.at, 0)) });
+      }
+      if (list.length) p.skins = list;
     }
     p.grandClaimed = bool(e.grandClaimed, false);
     p.day = typeof e.day === 'string' ? e.day.slice(0, 16) : '';

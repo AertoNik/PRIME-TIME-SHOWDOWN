@@ -3,6 +3,7 @@
 // Step-by-step guide in Russian: docs/SEASONAL_EVENTS.md
 import type { ArenaId } from './arenas.config';
 import type { CosmeticId } from './cosmetics.config';
+import type { SkinId } from './shop.config';
 import type { ThemeId } from './themes.config';
 import type { Difficulty, FighterId } from './types';
 
@@ -105,6 +106,16 @@ export interface SeasonFighter {
   cost: number;
 }
 
+/**
+ * Alpha 1.9.5: a PRIME SHOP skin in the event's exchange — obtained once for the event's currency, kept for good
+ * (save.events[id].skins). After the season it may be sold in PRIME SHOP under the SAME item (shop.config SKINS /
+ * SHOP_ITEMS) — never a second copy (src/config/seasonal.ts).
+ */
+export interface SeasonSkin {
+  skin: SkinId;
+  cost: number;
+}
+
 export interface EventDef {
   id: string;
   title: string;
@@ -122,6 +133,8 @@ export interface EventDef {
   shop: ShopItem[];
   /** Alpha 1.7: seasonal stars on sale in the exchange (Halloween Premiere: LUCIEN). */
   fighters?: SeasonFighter[];
+  /** Alpha 1.9.5: PRIME SHOP skins in the exchange (none so far — the mechanism is ready for future seasons). */
+  skins?: SeasonSkin[];
   /** Season grand prize, unlocked by finishing `questsNeeded` quests. */
   grandPrize?: { cosmetic: CosmeticId; questsNeeded: number };
 }

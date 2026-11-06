@@ -1,3 +1,4 @@
+import { RARITY_LABEL } from '../../config/cosmetics.config';
 import { Color } from 'three';
 import { FIGHTERS } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
@@ -12,11 +13,12 @@ import { PrimeCheckout, checkoutAccount } from '../checkoutUI';
 import { DASH_FX, VICTORY_FX, dashBurst, dashColor, victoryCelebration } from '../../render/cosmeticFx';
 import { cardHTML, el, esc, setScreenHTML } from '../dom';
 import { sellerCardHTML } from '../sellerLine';
-import { hex, nameHTML, shopArt } from '../shopArt';
+import { CARD_STYLE, FRAME_STYLE, hex, nameHTML, shopArt } from '../shopArt';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
 
-const RARITY: Record<ShopItemDef['rarity'], string> = { rare: 'Редкий', epic: 'Эпический', legendary: 'Легендарный' };
+// 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
+const RARITY = RARITY_LABEL;
 /** Fitting-room zoom steps (1 = the whole fighter in the stage). */
 const ZOOMS = [1, 1.4, 1.85];
 
@@ -317,6 +319,21 @@ export class ShopScreen implements Screen {
         </section>`;
       })
       .join('');
+    // 1.9.5: the new arrivals first (only what the catalog lists — Shop.listed), as a short strip
+    const fresh = this.cat === 'all' ? states.filter((s) => s.item.isNew && !s.owned) : [];
+    const strip = fresh.length
+      ? `<section class="shop-new"><div class="shop-sec-title"><span>Новое в PRIME SHOP</span><i></i><b>${fresh.length}</b></div>
+          <div class="sn-row">${fresh
+            .map(
+              (s) => `<button class="sn-item rar-${s.item.rarity}" data-act="open" data-sku="${s.item.sku}" aria-label="${esc(s.item.name)}: подробнее">
+                <span class="sn-art">${shopArt(g, s.item)}</span>
+                <span class="sn-kind">${esc(s.item.kind.split(' · ')[0])}</span>
+                <span class="sn-name">${esc(s.item.name.replace(/^[^:]+: /, ''))}</span>
+              </button>`,
+            )
+            .join('')}</div>
+        </section>`
+      : '';
     // 1.8.8 stage 3: the offer in force (offer.config.ts) — readable here without buying anything
     const doc = currentOffer();
     const offer = doc
@@ -333,6 +350,7 @@ export class ShopScreen implements Screen {
             .map((c) => `<button class="${this.cat === c.id ? 'on' : ''}" role="tab" aria-selected="${this.cat === c.id}" data-act="cat" data-cat="${c.id}">${esc(c.title)}</button>`)
             .join('')}
         </div>
+        ${strip}
         ${sections}
         <section class="shop-foot">
           <button class="sf-row" data-act="collection">
@@ -364,8 +382,17 @@ export class ShopScreen implements Screen {
   private itemCard(st: ShopItemState, size: 'hero' | 'tile' | 'wide'): string {
     const it = st.item;
     const tryLabel = it.category === 'fighters' ? 'Смотреть в 3D' : 'Примерить';
-    return `<article class="si si-${size} rar-${it.rarity} st-${st.status}">
-        <div class="si-art" data-act="open" data-sku="${it.sku}">${shopArt(this.g, it)}<span class="si-rar">${RARITY[it.rarity]}</span></div>
+    // 1.9.5: one ribbon says what matters first — in the collection, a season's item, or new
+    const seasonal = st.status === 'seasonal' || st.status === 'upcoming' || st.status === 'after_season' || st.status === 'received' || (!st.owned && !!this.g.events.itemSeason(it));
+    const ribbon = st.owned
+      ? `<span class="si-ribbon r-owned">${UI_ICONS.check.replace('<svg', '<svg width="9" height="9"')}${it.fighter && !it.skin ? 'В СОСТАВЕ' : 'В КОЛЛЕКЦИИ'}</span>`
+      : seasonal
+        ? '<span class="si-ribbon r-season">СЕЗОН</span>'
+        : it.isNew
+          ? '<span class="si-ribbon r-new">НОВИНКА</span>'
+          : '';
+    return `<article class="si si-${size} rar-${it.rarity} st-${st.status} ${st.owned ? 'is-owned' : ''} ${seasonal ? 'is-season' : ''}">
+        <div class="si-art" data-act="open" data-sku="${it.sku}">${shopArt(this.g, it)}<span class="si-rar">${RARITY[it.rarity]}</span>${ribbon}</div>
         <div class="si-body">
           <div class="si-kind">${esc(it.kind.split(' · ')[0])}</div>
           <div class="si-name">${nameHTML(it.name)}</div>
@@ -414,7 +441,7 @@ export class ShopScreen implements Screen {
             </div>
           </div>
         </div>`;
-    } else stage = `<div class="fit-stage fit-dom"><span class="fit-badge">Предпросмотр · ничего не покупается</span>${p === 'frame' ? this.frameDemo() : this.cardsDemo()}</div>`;
+    } else stage = `<div class="fit-stage fit-dom"><span class="fit-badge">Предпросмотр · ничего не покупается</span>${p === 'frame' ? this.frameDemo(it) : this.cardsDemo(it)}</div>`;
     const who = it.skin ? FIGHTERS[SKINS[it.skin].fighter] : it.fighter ? FIGHTERS[it.fighter] : null;
     this.el.classList.add('at-item');
     this.el.classList.toggle('dom-preview', !three);
@@ -460,9 +487,10 @@ export class ShopScreen implements Screen {
     }
   }
 
-  /** PRIME BROADCAST: the standard broadcast and the premium one side by side (same HUD markup). */
-  private frameDemo(): string {
-    const screen = (prime: boolean) => `<div class="fd-screen ${prime ? 'prime' : ''}">
+  /** A broadcast frame: the standard broadcast and the item's frame side by side (same HUD markup; 1.9.5: any frame). */
+  private frameDemo(it: ShopItemDef): string {
+    const key = (it.cosmetic && FRAME_STYLE[it.cosmetic]) || 'prime';
+    const screen = (on: boolean) => `<div class="fd-screen ${on ? key : ''}">
         <div class="fd-frame"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
         <div class="fd-top"><span class="fd-hp"><i style="width:72%"></i></span><span class="fd-timer"><b class="fd-live">LIVE</b>1:15</span><span class="fd-hp r"><i style="width:54%"></i></span></div>
         <div class="fd-floor"></div>
@@ -470,12 +498,13 @@ export class ShopScreen implements Screen {
       </div>`;
     return `<div class="frame-demo">
         <figure>${screen(false)}<figcaption>Стандарт</figcaption></figure>
-        <figure>${screen(true)}<figcaption>PRIME BROADCAST</figcaption></figure>
+        <figure>${screen(true)}<figcaption>${esc(it.name)}</figcaption></figure>
       </div>`;
   }
 
-  /** VHS CARD FRAME: the selected fighter's real cards — as they are now and in VHS, with hand states. */
-  private cardsDemo(): string {
+  /** A card style: the selected fighter's real cards — as they are now and in the item's style, with hand states (1.9.5: any style). */
+  private cardsDemo(it: ShopItemDef): string {
+    const key = (it.cosmetic && CARD_STYLE[it.cosmetic]) || 'vhs';
     const s = this.g.save.data;
     const deck = s.fighters[s.selected].deck.slice(0, 4);
     const row = () =>
@@ -489,8 +518,8 @@ export class ShopScreen implements Screen {
     return `<div class="cards-demo">
         <div class="cd-label">Сейчас</div>
         <div class="cd-row">${row()}</div>
-        <div class="cd-label vhs">VHS CARD FRAME</div>
-        <div class="cd-row vhs-set">${row()}</div>
+        <div class="cd-label vhs k-${key}">${esc(it.name)}</div>
+        <div class="cd-row ${key}-set">${row()}</div>
         <div class="cd-legend"><span>2-я карта — готово комбо</span><span>4-я — не хватает энергии</span></div>
       </div>`;
   }

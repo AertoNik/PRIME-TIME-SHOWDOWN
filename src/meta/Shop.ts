@@ -1,7 +1,7 @@
 import { COSMETICS } from '../config/cosmetics.config';
 import { FIGHTERS } from '../config/fighters';
 import { plural } from '../config/events.config';
-import { currentOffer } from '../config/offer.config';
+import { currentOffer, offerSells } from '../config/offer.config';
 import {
   SHOP_ITEMS,
   SHOP_SALES_OPEN,
@@ -40,13 +40,13 @@ export type ShopStatus =
   | 'soon'
   /** On sale — only once SHOP_SALES_OPEN and a price exist (stage 4). */
   | 'on_sale'
-  /** LUCIEN while Halloween Premiere runs: opened for PUMPKIN TOKENS only. */
+  /** A seasonal item while its event runs: obtained for the event's currency only (1.9.5: any kind — LUCIEN, effects, skins). */
   | 'seasonal'
-  /** LUCIEN before his season. */
+  /** A seasonal item before its season. */
   | 'upcoming'
-  /** LUCIEN after his season, not opened: a future paid way. */
+  /** A seasonal item after its season, not obtained: «ожидает продажи» (its price / terms not in force yet). */
   | 'after_season'
-  /** LUCIEN opened (by any way). */
+  /** A seasonal fighter opened (by any way). */
   | 'received';
 
 /** One look of a fighter in the wardrobe (Shop.wardrobe). */
@@ -59,8 +59,8 @@ export interface WardrobeEntry {
   /** May be worn now: the standard look always, a skin only while owned. */
   available: boolean;
   worn: boolean;
-  /** Where the right comes from (entitlements.paidSource): a purchase, a test-mode / demonstration right, a dev grant. */
-  source: 'purchase' | 'test' | 'dev' | null;
+  /** Where the right comes from (entitlements.paidSource): a purchase, a test-mode / demonstration right, a dev grant; 1.9.5: an event's exchange. */
+  source: 'purchase' | 'test' | 'dev' | 'season' | null;
 }
 
 export interface ShopItemState {
@@ -114,14 +114,37 @@ export class Shop {
 
   // ------------------------------------------------------------ ownership
   owns(item: ShopItemDef): boolean {
-    if (item.skin) return ownsPaid(item.sku);
+    if (item.skin) return this.ownsSkin(item.skin);
     if (item.cosmetic) return this.collection.owns(item.cosmetic);
     if (item.fighter) return this.events.ownsFighter(item.fighter);
     return false;
   }
 
+  /** A skin is owned through a PRIME SHOP purchase, or (1.9.5) obtained in an event's exchange for its currency. */
   ownsSkin(id: SkinId): boolean {
-    return ownsPaid(SKU_OF_SKIN[id]);
+    return ownsPaid(SKU_OF_SKIN[id]) || this.events.earnedSkin(id);
+  }
+
+  /** How a skin is owned — what the wardrobe and MY COLLECTION say (never «приобретено» for a test or dev right). */
+  skinSource(id: SkinId): WardrobeEntry['source'] {
+    return paidSource(SKU_OF_SKIN[id]) ?? (this.events.earnedSkin(id) ? 'season' : null);
+  }
+
+  /**
+   * 1.9.5: the catalog lists an item when its price is approved AND the offer revision in force names it (its Appendix 1
+   * — offer.config.ts `items`), when it is owned, or when it is seasonal (its season state is shown: «сезонный», «ожидает
+   * продажи»…). Anything else — a proposed price, or an approved one waiting for its revision — is listed only in
+   * development builds and on a staging server (Robokassa's test mode): never shown on the official site before the
+   * terms that sell it take effect.
+   */
+  listed(item: ShopItemDef): boolean {
+    if ((approvedPriceRub(item.sku) !== null && offerSells(currentOffer(), item.sku)) || this.owns(item) || this.events.itemSeason(item)) return true;
+    return !!import.meta.env?.DEV || this.server?.env === 'test';
+  }
+
+  /** 1.9.5: the item's price is approved, but the offer revision in force does not name it yet (it waits for the next one). */
+  awaitsOffer(item: ShopItemDef): boolean {
+    return approvedPriceRub(item.sku) !== null && !offerSells(currentOffer(), item.sku);
   }
 
   isWorn(item: ShopItemDef): boolean {
@@ -202,39 +225,99 @@ export class Shop {
     if (item.fighter && !item.skin) return this.fighterState(item);
     const owned = this.owns(item);
     const price = this.priceOf(item.sku);
+    const season = this.events.itemSeason(item);
     if (owned) {
       const worn = this.isWorn(item);
       // «Приобретено» only for a confirmed purchase; a test-mode right and a development grant say so plainly
       const source = paidSource(item.sku);
       const where = item.skin ? 'Облик выбирается в «Моей коллекции» → «Облики бойцов».' : 'Надевается в «Моей коллекции».';
+      // 1.9.5: obtained in its event's exchange (not bought): kept for good, never offered for roubles
+      const earned = !source && !!season;
       return {
         item,
         status: worn ? 'equipped' : 'owned',
         chip: worn ? 'НАДЕТО' : 'В КОЛЛЕКЦИИ',
-        price: source === 'dev' ? 'Тестовый доступ (dev)' : source === 'test' ? 'Тестовая покупка' : 'Приобретено',
+        price: source === 'dev' ? 'Тестовый доступ (dev)' : source === 'test' ? 'Тестовая покупка' : earned ? `Получено в ${season!.event.title}` : 'Приобретено',
         note:
           source === 'dev'
             ? 'Только сборка разработки: тестовый доступ действует до перезагрузки страницы, не сохраняется и не попадает в PRIME CLOUD.'
             : source === 'test'
               ? `Получено по тестовой оплате Robokassa — деньги не списывались. Это не покупка: доступ действует, пока идёт ${this.server?.env === 'demo' ? 'демонстрационный' : 'тестовый'} режим. ${where}`
-              : where,
+              : earned
+                ? `Получено за ${season!.event.currency?.name ?? 'жетоны события'} и остаётся у вас навсегда — покупать не нужно. ${where}`
+                : where,
         owned,
       };
     }
+    if (season) return this.seasonState(item, season);
     // (nothing is promised while sales are closed: no «скоро», no date)
     const open = this.selling(item.sku);
     const env = this.server?.env;
+    // 1.9.5: the shop sells, but this item's price is not approved yet (a new item waiting for the owner) — or it is
+    // approved and waits for the offer revision that names it (the server sells nothing the terms in force do not list)
+    const others = SHOP_ITEMS.some((i) => this.selling(i.sku));
+    const unpriced = !open && this.priceKop(item.sku) === null && others;
+    const waits = !open && !unpriced && this.awaitsOffer(item);
     return {
       item,
       status: open ? 'on_sale' : 'soon',
-      chip: !open ? 'ПОКА НЕ В ПРОДАЖЕ' : env === 'demo' ? 'ДЕМО-ОПЛАТА' : env === 'test' ? 'ТЕСТ-ОПЛАТА' : 'В ПРОДАЖЕ',
+      chip: unpriced ? 'ЦЕНА УТОЧНЯЕТСЯ' : !open ? 'ПОКА НЕ В ПРОДАЖЕ' : env === 'demo' ? 'ДЕМО-ОПЛАТА' : env === 'test' ? 'ТЕСТ-ОПЛАТА' : 'В ПРОДАЖЕ',
       price,
-      note: !open
+      note: unpriced
+        ? 'Новинка PRIME SHOP: цена ещё не утверждена, поэтому купить предмет пока нельзя. Примерка бесплатна и ничего не открывает.'
+        : waits
+        ? 'Новинка PRIME SHOP: покупка откроется, когда вступит в силу редакция оферты PRIME SHOP с этим товаром. Примерка бесплатна и ничего не открывает.'
+        : !open
         ? 'Примерка бесплатна и ничего не открывает. Продажи PRIME SHOP пока не открыты.'
         : isTestPay(env)
           ? `${env === 'demo' ? 'Демонстрационная покупка' : 'Тестовая покупка'} с PRIME ID: оплата в тестовом режиме Robokassa, настоящие деньги не списываются. Примерка бесплатна.`
           : 'Настоящая покупка за рубли с PRIME ID: оплата на защищённой странице Robokassa. Примерка бесплатна и ничего не открывает.',
       owned,
+    };
+  }
+
+  /**
+   * 1.9.5 — a seasonal effect or skin that is not owned: during its event — for the event's currency only (the
+   * exchange); after it — for roubles once its price is approved and the offer in force lists it («ожидает продажи»
+   * until then); before it — nothing yet. The same rules as LUCIEN (fighterState) and as the server (lib/checkout.js).
+   */
+  private seasonState(item: ShopItemDef, season: NonNullable<ReturnType<EventManager['itemSeason']>>): ShopItemState {
+    const ev = season.event;
+    if (season.open) {
+      const cur = ev.currency!;
+      const have = this.events.tokens(ev);
+      return {
+        item,
+        status: 'seasonal',
+        chip: 'СЕЗОННЫЙ',
+        price: `${season.cost} ${cur.name}`,
+        note: `Сейчас получается только за жетоны ${ev.title}: у вас ${have} ${plural(have, cur.short)}. За рубли во время события не продаётся.`,
+        owned: false,
+      };
+    }
+    if (season.phase === 'after') {
+      const open = this.selling(item.sku);
+      const env = this.server?.env;
+      return {
+        item,
+        status: open ? 'on_sale' : 'after_season',
+        chip: !open ? 'ОЖИДАЕТ ПРОДАЖИ' : env === 'demo' ? 'ДЕМО-ОПЛАТА' : env === 'test' ? 'ТЕСТ-ОПЛАТА' : 'В ПРОДАЖЕ',
+        price: this.priceOf(item.sku),
+        note: open
+          ? `${ev.title} завершён — предмет сезона теперь можно купить в PRIME SHOP. Полученное за жетоны остаётся у игроков без покупки.`
+          : this.priceKop(item.sku) !== null
+            ? `${ev.title} завершён. Покупка откроется, когда предмет войдёт в действующую редакцию оферты PRIME SHOP.`
+            : `${ev.title} завершён. Купить предмет за рубли можно будет, когда для него утвердят цену и условия продажи.`,
+        owned: false,
+      };
+    }
+    return {
+      item,
+      status: 'upcoming',
+      chip: 'СЕЗОННЫЙ',
+      price: `Откроется в ${ev.title}`,
+      note: 'Сезонный предмет: во время события получается за жетоны события, после него может появиться в PRIME SHOP.',
+      owned: false,
     };
   }
 
@@ -264,7 +347,7 @@ export class Shop {
       return {
         item,
         status: open ? 'on_sale' : 'after_season',
-        chip: open ? 'В ПРОДАЖЕ' : 'ПОКА НЕ В ПРОДАЖЕ',
+        chip: open ? 'В ПРОДАЖЕ' : 'ОЖИДАЕТ ПРОДАЖИ',
         price: this.priceOf(item.sku),
         // 1.9.4: the shop may well be selling — what is missing then is LUCIEN's own price and terms, not «sales»
         note: open
@@ -287,8 +370,9 @@ export class Shop {
     };
   }
 
+  /** The catalog: every listed item (listed()) with its state. */
   states(): ShopItemState[] {
-    return SHOP_ITEMS.map((i) => this.state(i));
+    return SHOP_ITEMS.filter((i) => this.listed(i)).map((i) => this.state(i));
   }
 
   // ------------------------------------------------------------ wardrobe (skins)
@@ -314,13 +398,13 @@ export class Shop {
     const worn = this.skinFor(fighter);
     return [
       { skin: null, look: FIGHTERS[fighter].look, name: 'Стандарт', available: true, worn: worn === null, source: null },
-      ...this.skinsOf(fighter).map((s) => ({ skin: s, look: SKINS[s].look, name: SKINS[s].name, available: this.ownsSkin(s), worn: worn === s, source: paidSource(SKU_OF_SKIN[s]) })),
+      ...this.skinsOf(fighter).map((s) => ({ skin: s, look: SKINS[s].look, name: SKINS[s].name, available: this.ownsSkin(s), worn: worn === s, source: this.skinSource(s) })),
     ];
   }
 
-  /** The skins made for a fighter (the wardrobe lists them). */
+  /** The skins made for a fighter that the wardrobe lists (owned, or listed in the catalog — listed()). */
   skinsOf(fighter: FighterId): SkinId[] {
-    return (Object.keys(SKINS) as SkinId[]).filter((s) => SKINS[s].fighter === fighter);
+    return (Object.keys(SKINS) as SkinId[]).filter((s) => SKINS[s].fighter === fighter && (this.ownsSkin(s) || this.listed(shopItem(SKU_OF_SKIN[s]))));
   }
 
   /** Wear an owned skin, or the standard look with null. A skin that is not owned is refused. */

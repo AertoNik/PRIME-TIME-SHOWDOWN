@@ -87,10 +87,12 @@ export class ThemeManager {
     const card = equipped.cardStyle;
     if (card === 'card_pumpkin') root.dataset.cardStyle = 'pumpkin';
     else if (card === 'card_vhs') root.dataset.cardStyle = 'vhs';
+    else if (card === 'card_holo') root.dataset.cardStyle = 'holo';
     else delete root.dataset.cardStyle;
     if (equipped.broadcastFrame === 'frame_spooky') root.dataset.frame = 'spooky';
     else if (equipped.broadcastFrame === 'frame_legendary') root.dataset.frame = 'legendary';
     else if (equipped.broadcastFrame === 'frame_prime_broadcast') root.dataset.frame = 'prime';
+    else if (equipped.broadcastFrame === 'frame_arcade') root.dataset.frame = 'arcade';
     else delete root.dataset.frame;
     if (equipped.title === 'title_halloween_champion') root.dataset.title = 'halloween-champion';
     else if (equipped.title === 'title_prime_legend') root.dataset.title = 'prime-legend';
