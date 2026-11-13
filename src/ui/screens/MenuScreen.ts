@@ -9,6 +9,8 @@ import type { Screen } from '../UI';
 import { openFightEntry } from './LeagueScreen';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
 import { openDaily } from '../dailyUI';
+import { cardCatalog, catalogStats } from '../cardCatalog';
+import { inRoster } from '../../meta/roster';
 
 /**
  * Alpha 1.8.8: the «ТВОЙ PRIME ID» hint next to the profile button — for a player not signed in to
@@ -105,6 +107,7 @@ export class MenuScreen implements Screen {
       else if (act === 'settings') this.g.openSettings();
       else if (act === 'events') this.g.goto('events');
       else if (act === 'collection') this.g.goto('collection');
+      else if (act === 'cards') this.g.goto('cards', { back: 'menu' });
       else if (act === 'profile') this.g.goto('profile');
       else if (act === 'daily') {
         // 1.8.9: DAILY PRIME STREAK — the window over the menu (never on its own, never during a fight)
@@ -257,8 +260,15 @@ export class MenuScreen implements Screen {
     const shopEntry = `<button class="shop-entry" data-act="shop" aria-label="PRIME SHOP — магазин: скины, эффекты и бесплатная примерка">
         <span class="se-glint" aria-hidden="true"></span>
         <span class="se-ico">${UI_ICONS.shop}</span>
-        <span class="se-text"><b>PRIME <em>SHOP</em></b><small>Скины · эффекты · примерка</small></span>
+        <span class="se-text"><b>PRIME <em>SHOP</em></b><small>Скины · эффекты<span class="se-more"> · примерка</span></small></span>
         <span class="se-go">${UI_ICONS.next}</span>
+      </button>`;
+    // Alpha 1.9.8: CARDS beside PRIME SHOP — the cards for career dollars (browse, buy); a dot when one can be bought now
+    const cardStats = catalogStats(cardCatalog(g.career, s, (f) => inRoster(s, f)));
+    const cardsEntry = `<button class="cards-entry" data-act="cards" aria-label="Карты: все карты, их эффекты и покупка за гонорары${cardStats.buyable ? ` — можно купить: ${cardStats.buyable}` : ''}">
+        <span class="ce-ico">${UI_ICONS.cards}</span>
+        <span class="ce-text"><b>КАРТЫ</b><small>${cardStats.have}/${cardStats.total}</small></span>
+        ${cardStats.buyable ? `<span class="badge-dot">${cardStats.buyable}</span>` : ''}
       </button>`;
     // 1.8.8: the PRIME ID hint (not signed in, not during the first-run choice, not retired)
     const signedIn = !!g.account?.api?.sessionRecord;
@@ -289,7 +299,7 @@ export class MenuScreen implements Screen {
       <div class="menu-actions">
         <div class="menu-play">
           ${fightEntry}
-          ${shopEntry}
+          <div class="menu-shops">${shopEntry}${cardsEntry}</div>
         </div>
         <div class="menu-nav">
           <button class="btn ghost" data-act="roster">${UI_ICONS.users.replace('<svg', '<svg width="18" height="18"')} Бойцы</button>

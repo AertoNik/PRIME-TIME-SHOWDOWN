@@ -189,6 +189,25 @@ export class BroadcastSystem {
           this.reactionCd = 1.4;
         }
         break;
+      // Alpha 1.9.8 — MAGNET PULL caught the opponent (a positional play, like a push) / SAFE CUT took a dangerous hit
+      case 'magnet':
+        if (e.side === 0 && e.hit) this.add(BROADCAST.push, 'МАГНИТ');
+        break;
+      case 'safeCut':
+        if (e.side === 0 && e.what === 'cut') {
+          this.add(BROADCAST.safeCut, 'СКЛЕЙКА');
+          this.host.emit({ type: 'reaction', text: 'SAFE CUT!', tier: 2, sub: 'ДУБЛЬ СПАСЁН' });
+          this.reactionCd = 1.2;
+        }
+        break;
+      // Alpha 1.9.8 — ACE's duel shot landed
+      case 'perfectTake':
+        if (e.side === 0) {
+          this.add(BROADCAST.perfectTake, 'PERFECT TAKE');
+          this.host.emit({ type: 'reaction', text: 'PERFECT TAKE!', tier: 3, sub: 'MAIN EVENT' });
+          this.reactionCd = 1.4;
+        }
+        break;
       case 'feintCounter':
         if (e.side === 0) {
           this.add(BROADCAST.feintRead, 'ОБМАННЫЙ МАНЁВР');

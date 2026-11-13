@@ -38,13 +38,15 @@ class MemSave {
 }
 
 // ------------------------------------------------------------ availability
-check('six sets registered in order (1.7.5: + graveyard; 1.9.7: + holiday)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard,holiday' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
+check('seven sets registered in order (1.7.5: + graveyard; 1.9.7: + holiday; 1.9.8: + newsroom)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard,holiday,newsroom' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
+// Alpha 1.9.8 — NEON NEWSROOM: a permanent set, open in every season (npm run newsroom checks it in depth)
+check('newsroom: permanent, open in the standard season, at Halloween and in winter; a saved choice always stays', ARENAS.newsroom.availability.kind === 'permanent' && (['default', 'halloween', 'winter'] as const).every((s) => availableArenas(s).includes('newsroom') && validArenaPref('newsroom', s) === 'newsroom'));
 // Alpha 1.9.7 — HOLIDAY BROADCAST: the New Year set, open only with the winter theme of WINTER SHOWDOWN
 check('holiday set is seasonal (winter theme), dressed for the winter itself', ARENAS.holiday.availability.kind === 'seasonal' && ARENAS.holiday.availability.themeId === 'winter' && ARENAS.holiday.nativeSeason === 'winter');
-check('holiday: closed in the standard season and at Halloween, open in winter (with every permanent set)', !availableArenas('default').includes('holiday') && !availableArenas('halloween').includes('holiday') && availableArenas('winter').join() === 'original,casino,backlot,graveyard,holiday');
+check('holiday: closed in the standard season and at Halloween, open in winter (with every permanent set)', !availableArenas('default').includes('holiday') && !availableArenas('halloween').includes('holiday') && availableArenas('winter').join() === 'original,casino,backlot,graveyard,holiday,newsroom');
 check('holiday: a saved choice falls back to the original studio after the season, stays during it', validArenaPref('holiday', 'default') === 'original' && validArenaPref('holiday', 'winter') === 'holiday');
-check('standard season: the permanent sets are open — 1.8.9.5: the cemetery among them', availableArenas('default').join() === 'original,casino,backlot,graveyard');
-check('Halloween: the haunted set and the cemetery open too', availableArenas('halloween').join() === 'original,casino,backlot,haunted,graveyard');
+check('standard season: the permanent sets are open — 1.8.9.5: the cemetery among them; 1.9.8: the newsroom', availableArenas('default').join() === 'original,casino,backlot,graveyard,newsroom');
+check('Halloween: the haunted set and the cemetery open too (and the permanent newsroom)', availableArenas('halloween').join() === 'original,casino,backlot,haunted,graveyard,newsroom');
 check('another season (winter preview): the haunted set closed, the cemetery open (permanent)', !availableArenas('winter').includes('haunted') && availableArenas('winter').includes('graveyard'));
 check('cemetery is permanent (Alpha 1.8.9.5), still the Halloween set by origin (its native season for the decor)', ARENAS.graveyard.availability.kind === 'permanent' && ARENAS.graveyard.nativeSeason === 'halloween');
 check('a saved cemetery choice stays in every season (no fallback any more)', validArenaPref('graveyard', 'default') === 'graveyard' && validArenaPref('graveyard', 'halloween') === 'graveyard' && validArenaPref('graveyard', 'winter') === 'graveyard');
@@ -60,10 +62,11 @@ check('RANDOM stays RANDOM; junk becomes the original studio', validArenaPref('r
     seen.set(id, (seen.get(id) ?? 0) + 1);
   }
   check('RANDOM (standard season) never picks the closed seasonal set (haunted)', !seen.has('haunted'));
-  check('RANDOM (standard season) picks every open set, the cemetery included, roughly evenly', ['original', 'casino', 'backlot', 'graveyard'].every((id) => (seen.get(id as ArenaId) ?? 0) > 800));
+  // (1.9.8: five open sets → 800 of 4000 each on average; «roughly evenly» = at least 640 each)
+  check('RANDOM (standard season) picks every open set, the cemetery and the newsroom included, roughly evenly', ['original', 'casino', 'backlot', 'graveyard', 'newsroom'].every((id) => (seen.get(id as ArenaId) ?? 0) > 640));
   const seenH = new Set<ArenaId>();
   for (let i = 0; i < 400; i++) seenH.add(resolveArena('random', 'halloween', () => rng.next()));
-  check('RANDOM during Halloween can pick all five sets', seenH.size === 5);
+  check('RANDOM during Halloween can pick all six sets (1.9.8: the newsroom too)', seenH.size === 6);
   check('a fixed choice is not randomised', resolveArena('casino', 'default', () => 0.99) === 'casino');
   check('resolveArena falls back for an unavailable fixed choice', resolveArena('haunted', 'default', () => 0) === 'original');
 }
@@ -83,7 +86,7 @@ for (const id of ARENA_ORDER) {
 check('original studio keeps its speakers exactly as before', ARENAS.original.props.length === ARENA.props.length && ARENAS.original.props.every((p, i) => p.kind === 'speaker' && p.x === ARENA.props[i].x && p.z === ARENA.props[i].z && p.respawn === ARENA.propRespawn));
 check('the new sets stay damaged until the next fight (no respawn farming)', (['casino', 'backlot', 'haunted', 'graveyard'] as ArenaId[]).every((id) => ARENAS[id].props.every((p) => p.respawn === 0)));
 // Alpha 1.7.5: cover on the fighting floor exists only on GRAVEYARD BROADCAST (npm run graveyard checks it)
-check('cover on the floor only on the cemetery and the New Year set', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday') === !!ARENAS[id].covers?.length));
+check('cover on the floor only on the cemetery, the New Year set and the newsroom', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday' || id === 'newsroom') === !!ARENAS[id].covers?.length));
 
 /** Hammer every set piece many times: breaks are finite, reactive pieces never break. */
 for (const id of ARENA_ORDER) {

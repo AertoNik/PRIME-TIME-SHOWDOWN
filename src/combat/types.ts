@@ -107,6 +107,12 @@ export interface Projectile {
   first: boolean;
   /** Covers a piercing CHARGED SHOT already went through (bit per cover). */
   coverMask: number;
+  /** Alpha 1.9.8 — ACE: the MAIN EVENT round (a heavy card shot: a landed hit pays energy back once). */
+  main: boolean;
+  /** Alpha 1.9.8 — a landed hit (STAR TURN: a regular shot that dies without one breaks the run). */
+  landed: boolean;
+  /** Alpha 1.9.8 — STAR TURN: this regular shot is the star shot (it never counts towards the next run). */
+  star: boolean;
 }
 
 export interface SmokeZone {
@@ -301,6 +307,16 @@ export type MatchEvent =
   | { type: 'bank'; side: Side; x: number; z: number; nx: number; nz: number; dx: number; dz: number }
   /** Alpha 1.5: a BANK SHOT landed after its ricochet. */
   | { type: 'trickShot'; side: Side; x: number; z: number; refund: number }
+  /** Alpha 1.9.8 — ACE: the MAIN EVENT round landed (PERFECT TAKE: energy back). */
+  | { type: 'perfectTake'; side: Side; x: number; z: number; refund: number }
+  /** Alpha 1.9.8 — ACE: STAR TURN lit (`ready`: the next shot is the star) or fired (`fire`). */
+  | { type: 'starTurn'; side: Side; what: 'ready' | 'fire' }
+  /** Alpha 1.9.8 — SHOWTIME switched on (`on`) / the next card came out on cue (`cue`). */
+  | { type: 'showtime'; side: Side; what: 'on' | 'cue'; x: number; z: number }
+  /** Alpha 1.9.8 — MAGNET PULL's pulse from (x, z) at the target (tx, tz); `hit` false: out of reach or dodged. */
+  | { type: 'magnet'; side: Side; x: number; z: number; tx: number; tz: number; range: number; hit: boolean }
+  /** Alpha 1.9.8 — SAFE CUT raised (`up`), cut a dangerous hit (`cut`), ran out (`end`). */
+  | { type: 'safeCut'; side: Side; what: 'up' | 'cut' | 'end'; x: number; z: number }
   /** Alpha 1.5: FALSE START — the feint step (window seconds of reading). */
   | { type: 'feint'; side: Side; x: number; z: number; dx: number; dz: number; window: number }
   /** Alpha 1.5: the feint read an attack — it missed and the counter shot is on its way. */

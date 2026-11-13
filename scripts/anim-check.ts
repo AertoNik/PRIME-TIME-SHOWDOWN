@@ -148,7 +148,8 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
 // weapon fire styles
 {
   const weapons = Object.keys(FIRE_STYLE);
-  check(`fire styles exist for all ${weapons.length} weapons`, weapons.length === 8);
+  // (1.9.8: + ACE's GOLDEN ACE revolver)
+  check(`fire styles exist for all ${weapons.length} weapons`, weapons.length === 9 && weapons.includes('revolver'));
   // the opening shot after a pause commits harder than the next shot of the series
   const { rig, anim } = models.get('bruno');
   anim.reset(0);

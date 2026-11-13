@@ -371,10 +371,59 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
     idleStyle: 'clockwork',
     theme: { main: '#8e1b2e', accent: '#e0b84c', dark: '#0d1430' },
   },
+  // Alpha 1.9.8 — CONTENT EXPANSION: ACE (АЙЗ), the show's headliner — a permanent contract star (career dollars). A
+  // dueling revolver, GOLDEN ACE: one fast, precise round at a time (no burst, no spread, no homing). STAR TURN rewards a
+  // run of hits; MAIN EVENT is the duel shot that pays energy back only when it lands. Tuned with headless fights against
+  // the whole roster (docs/ALPHA_1_9_8_DEVELOPMENT_REPORT.md): mid-pack, a skill fighter.
+  ace: {
+    id: 'ace',
+    name: 'АЙЗ',
+    nickname: 'ХЕДЛАЙНЕР',
+    fullName: 'Айз «Хедлайнер» Ривьера',
+    style: 'Дуэль и точность',
+    tagline: 'Главный выход — всегда мой.',
+    bio: 'Молодая звезда вечернего эфира PRIME TIME. Айз выходит на арену в белом смокинге, поправляет манжету перед камерой и стреляет из GOLDEN ACE так, будто репетировал этот выстрел всю жизнь. Самоуверенный? Немного. Но зрители приходят именно на его главный выход.',
+    strengths: ['Точные выстрелы', 'Серия STAR TURN', 'MAIN EVENT возвращает энергию'],
+    weaknesses: ['Промах сбрасывает серию', 'Средний темп стрельбы', 'Стойку MAIN EVENT видно заранее'],
+    stats: {
+      maxHp: 14300,
+      moveSpeed: 4.5,
+      armor: 0,
+      attack: {
+        weapon: 'revolver',
+        interval: 0.58,
+        damage: 80,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.022,
+        speed: 26,
+        range: 9.4,
+        radius: 0.2,
+        homing: 0,
+        falloff: 1,
+      },
+      preferredRange: 5.4,
+      evasion: 0.75,
+    },
+    bars: { health: 3, damage: 4, speed: 4, range: 4, control: 3 },
+    passive: 'star_turn',
+    signature: 'main_event',
+    look: 'ace',
+    defaultDeck: ['dash', 'shield', 'overdrive', 'main_event'],
+    startFans: 2600,
+    // the curve of src/config/careerPrices.ts: 1850 × 3.2 (level 6) = 5900 career dollars — the last and dearest contract,
+    // a little above Rina's 5750 (level 5); 6700 would leave a beginner 11 fights of saving (economy:check allows 10)
+    contract: { cost: 1850, level: 6 },
+    dashStyle: 'slide',
+    victoryStyle: 'headliner',
+    idleStyle: 'headliner',
+    theme: { main: '#d9b24a', accent: '#3fe0d0', dark: '#141822' },
+  },
 };
 
 /** Alpha 1.7: LUCIEN joins the end of the roster (1.9.7: then CRAX) (a seasonal star: shown once owned or while his event runs). */
-export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'crax'];
+// Alpha 1.9.8: ACE joins the contract stars right after RINA (the seasonal stars stay at the end)
+export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'ace', 'lucien', 'crax'];
 
 export const RIVALS: Record<RivalId, RivalDef> = {
   dex: {

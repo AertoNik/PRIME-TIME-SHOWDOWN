@@ -58,11 +58,12 @@ async function signIn(email: string, pw: string): Promise<string> {
 }
 /**
  * 1.9.7: a save as the 1.8.4 game wrote it — without CRAX (a server before 1.9.7 does not know him; today's defaultSave()
- * lists him, which is why the 1.9.7 server goes live before the site).
+ * lists him, which is why the 1.9.7 server goes live before the site). 1.9.8: nor ACE, for the same reason.
  */
 function oldSave(): any {
   const s = defaultSave() as any;
   delete s.fighters.crax;
+  delete s.fighters.ace;
   return s;
 }
 

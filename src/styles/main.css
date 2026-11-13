@@ -3309,6 +3309,14 @@ input {
   height: 160px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(var(--teal-rgb), 0.25), transparent 70%);
+  /* 1.9.8: the glow sat ON TOP of the card's content right where the pencil is and took the tap — on an iPhone the
+     pencil «did nothing». It is decoration only: below the content, never a tap target */
+  pointer-events: none;
+  z-index: 0;
+}
+.org-card > * {
+  position: relative;
+  z-index: 1;
 }
 .org-name {
   display: flex;
@@ -3337,10 +3345,24 @@ input {
   -webkit-user-select: text;
   user-select: text;
 }
-.org-name .org-x {
+.org-name .org-x,
+.org-name .org-edit {
   width: 34px;
   height: 34px;
   flex: none;
+}
+/* 1.9.8: one field for both states (never rebuilt): read-only it looks like the studio's title */
+.org-name input[readonly] {
+  padding: 7px 0;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.org-name[data-editing='0'] .org-x,
+.org-name[data-editing='1'] .org-edit {
+  display: none;
 }
 .goal {
   display: flex;
@@ -17107,4 +17129,246 @@ button.lg-arena:active {
 .btn.busy {
   opacity: 0.6;
   pointer-events: none;
+}
+
+/* =====================================================================
+   Alpha 1.9.8 — CARDS: the main menu's card section (browse and buy) and its entry beside PRIME SHOP;
+   the prep screen keeps the deck and a link here.
+   ===================================================================== */
+.menu-shops {
+  display: flex;
+  gap: 8px;
+}
+.menu-shops .shop-entry {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cards-entry {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 6px 12px 6px 7px;
+  border-radius: 15px;
+  color: #fff;
+  text-align: left;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(58, 230, 255, 0.2), transparent 50%),
+    linear-gradient(115deg, #0f2a5a 0%, #173f86 55%, #0d2350 100%);
+  box-shadow:
+    0 4px 0 #071634,
+    0 10px 22px rgba(30, 120, 255, 0.22),
+    inset 0 0 0 1.5px rgba(120, 220, 255, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.cards-entry:active {
+  transform: translateY(3px);
+  filter: brightness(1.12);
+  box-shadow:
+    0 1px 0 #071634,
+    0 4px 12px rgba(30, 120, 255, 0.25),
+    inset 0 0 0 1.5px rgba(150, 230, 255, 0.85);
+}
+.cards-entry:focus-visible {
+  outline: 2px solid #7fe3ff;
+  outline-offset: 2px;
+}
+.ce-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #7fe3ff;
+  background: radial-gradient(circle at 50% 30%, rgba(127, 227, 255, 0.28), rgba(6, 16, 40, 0.9) 70%);
+  box-shadow: inset 0 0 0 1.5px rgba(127, 227, 255, 0.6);
+}
+.ce-ico svg {
+  width: 24px;
+  height: 24px;
+}
+.ce-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ce-text b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+}
+.ce-text small {
+  font-size: 11px;
+  font-weight: 700;
+  color: #bfe6ff;
+}
+@media (max-width: 380px) {
+  .cards-entry {
+    padding-right: 9px;
+  }
+  .menu-shops .se-text small {
+    font-size: 10px;
+  }
+  .menu-shops .se-go {
+    display: none;
+  }
+}
+@media (max-height: 620px) {
+  .cards-entry {
+    min-height: 42px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .ce-ico {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* the section */
+.cards-screen.active {
+  background: linear-gradient(180deg, rgba(var(--shade-rgb), 0.55) 0%, rgba(var(--shade-rgb), 0.8) 40%, rgba(var(--shade-rgb), 0.88) 100%);
+}
+.cards-screen .cards-money {
+  margin-left: auto;
+  font-size: 12px;
+}
+.cards-screen .shop-note {
+  margin: 4px 4px 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.ci-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ci-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+.ci-stats b {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1;
+}
+.ci-stats span {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.ci-stats .hot b {
+  color: var(--gold);
+}
+.cards-filter {
+  margin-top: 10px;
+}
+.cards-group .collection.shop {
+  padding-bottom: 12px;
+}
+.shop-tag.free {
+  color: #dfe9ff;
+  background: #2c3a6a;
+}
+.shop-tag.own {
+  color: #06251a;
+  background: var(--green);
+}
+.shop-tag.sig {
+  color: #1a1203;
+  background: #f0c96a;
+  max-width: 96%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cards-screen .collection.shop .card.sealed {
+  filter: grayscale(0.85) brightness(0.55);
+}
+@container (min-width: 600px) {
+  .cards-screen > * {
+    width: 100%;
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* the prep screen's way to the section */
+.cards-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  text-align: left;
+  color: var(--text, #fff);
+  cursor: pointer;
+}
+.cl-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: #7fe3ff;
+  background: rgba(127, 227, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(127, 227, 255, 0.45);
+}
+.cl-ico svg {
+  width: 22px;
+  height: 22px;
+}
+.cl-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cl-text b {
+  font-size: 13px;
+}
+.cl-text small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.cl-go svg {
+  width: 14px;
+  height: 14px;
+}
+.cards-link .badge-dot {
+  top: -6px;
+  right: -4px;
+}
+.cards-filter {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.cards-filter button {
+  padding: 8px 2px 7px;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+@media (max-width: 380px) {
+  .menu-shops .se-more {
+    display: none;
+  }
 }

@@ -100,11 +100,13 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
   // fingerprints of 1.7.1: the four earlier sets' data and their stage code
   // (1.9.1: OriginalStage merges its static pieces per material — fewer draw calls, the same picture — new fingerprint)
   const DATA: Record<string, string> = { original: '69dde642', casino: '2d1240e8', backlot: '38bbcaf8', haunted: '347a1089' };
-  const CODE: Record<string, string> = { HauntedStage: 'ba204c7a', OriginalStage: 'a7a20be3', CasinoStage: '2c95aa0', BacklotStage: 'd6ba30c7' };
+  // (1.9.8: STUDIO BACKLOT's lighting grid moved off the battle camera's view — the two trusses ACROSS the set now run along
+  // its sides; its data (props, covers, light, colours) is untouched — new code fingerprint, the same DATA one)
+  const CODE: Record<string, string> = { HauntedStage: 'ba204c7a', OriginalStage: 'a7a20be3', CasinoStage: '2c95aa0', BacklotStage: 'ec73c1e7' };
   check('HAUNTED PRIME SET: its data is exactly as in 1.7.1 (props, light, colours, availability)', hash(JSON.stringify(ARENAS.haunted)) === DATA.haunted && !ARENAS.haunted.covers);
   check('HAUNTED PRIME SET: its stage code is untouched', hash(readFileSync('src/render/stages/HauntedStage.ts', 'utf8')) === CODE.HauntedStage);
   check('the three permanent sets: data and stage code untouched', (['original', 'casino', 'backlot'] as const).every((id) => hash(JSON.stringify(ARENAS[id])) === DATA[id]) && ['OriginalStage', 'CasinoStage', 'BacklotStage'].every((n) => hash(readFileSync(`src/render/stages/${n}.ts`, 'utf8')) === CODE[n]));
-  check('only the cemetery (and, 1.9.7, the New Year set) has cover on the floor', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday') === !!ARENAS[id].covers?.length));
+  check('only the cemetery (and, 1.9.7, the New Year set; 1.9.8, the newsroom) has cover on the floor', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday' || id === 'newsroom') === !!ARENAS[id].covers?.length));
 }
 
 // ------------------------------------------------------- 3. UTC availability
@@ -125,7 +127,7 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
   check('UTC: open from 20 Oct 00:00:00 (in the picker and in RANDOM)', first.open && first.random && first.pref === 'graveyard' && first.pays);
   check('UTC: still open on 3 Nov 23:59:59', last.open && last.random && last.pays);
   check('UTC: still open from 4 Nov 00:00 — the saved choice stays, RANDOM keeps it; the event no longer pays', after.open && after.random && after.pref === 'graveyard' && !after.pays);
-  check('RANDOM picks the cemetery in and out of the season; a fixed choice outside it is honoured', resolveArena('graveyard', 'default', () => 0) === 'graveyard' && resolveArena('random', 'halloween', () => 0.99) === 'graveyard');
+  check('RANDOM picks the cemetery in and out of the season; a fixed choice outside it is honoured', resolveArena('graveyard', 'default', () => 0) === 'graveyard' && resolveArena('random', 'halloween', () => 0.75) === 'graveyard'); // 1.9.8: the cemetery is the 5th of 6 open sets at Halloween
   // the cemetery itself adds no save fields; the schema is 12 since Alpha 1.8 (win streaks)
   check('saves: the choice round-trips by id and survives the season check (no new save fields)', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'graveyard' }))).arena === 'graveyard' && defaultSave().version === 12);
 }
@@ -697,7 +699,8 @@ function autoFight(fighter: FighterId, rival: RivalId, seed: number, mode: 'smar
   const game = readFileSync('src/game/Game.ts', 'utf8');
   check('bonus: once per match — Game hands the set over and clears the event id right after paying', /applyMatch\(this\.matchEventId, m\.result, meta\.difficulty, m\.cfg\.arena\);\s*this\.matchEventId = null;/.test(game));
   check('bonus: not from FIRST BROADCAST, Survival waves report per attempt as before', game.includes("mode.kind !== 'survival' && mode.kind !== 'tutorial' && this.events.playable"));
-  check('BOSS FIGHT never takes place among the tombstones (the cemetery hands it to HAUNTED PRIME SET)', game.includes("if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'holiday' ? 'original' : 'haunted';"));
+  // (1.9.8: the rule reads from the cemetery's side — the cemetery → HAUNTED, every other set with cover → the original)
+  check('BOSS FIGHT never takes place among the tombstones (the cemetery hands it to HAUNTED PRIME SET)', game.includes("if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'graveyard' ? 'haunted' : 'original';"));
   // economy: real fights through the real exchange — days to LUCIEN (500) with and without the bonus
   class Bare {
     data: SaveData = defaultSave();

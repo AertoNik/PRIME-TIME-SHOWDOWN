@@ -87,7 +87,8 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
 
 // ------------------------------------------------------------- registry
 {
-  check(`registry: exactly 15 new cards, all different (${NEW_CARDS.length})`, NEW_CARDS.length === 15 && new Set(NEW_CARDS).size === 15);
+  // Alpha 1.9.8 adds three more shop cards after the fifteen of 1.6 (their own checks: npm run expansion)
+  check(`registry: the 15 cards of 1.6 first, then the 3 of 1.9.8 — all different (${NEW_CARDS.length})`, NEW_CARDS.length === 18 && new Set(NEW_CARDS).size === 18 && NEW_CARDS.slice(15).join() === 'showtime,magnet_pull,safe_cut');
   const expected: Record<string, number> = {
     spotlight_tag: 2,
     split_shot: 3,
@@ -104,6 +105,10 @@ function run(m: Match, secs: number, every?: () => void): MatchEvent[] {
     high_stakes: 1,
     second_take: 3,
     freeze_frame: 2,
+    // Alpha 1.9.8
+    showtime: 2,
+    magnet_pull: 3,
+    safe_cut: 2,
   };
   check('registry: every new card has its tuned energy cost (1–4)', NEW_CARDS.every((c) => CARDS[c].cost === expected[c]));
   check('registry: every new card has an icon, a family, a gesture, a counter text and a shop entry', NEW_CARDS.every((c) => CARD_ICONS[c]?.includes('<svg') && !!CARDS[c].family && !!CARDS[c].cast && (CARDS[c].counter?.length ?? 0) > 20 && !!CARDS[c].shop));
@@ -813,6 +818,13 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
     ['dash', 'backtrack', 'double_take'],
     ['freeze_frame', 'backtrack', 'replay'],
     ['freeze_frame', 'dash', 'time_slip'],
+    // Alpha 1.9.8 (in depth: npm run expansion)
+    ['showtime', 'power_shot', 'standing_ovation'],
+    ['showtime', 'main_event', 'standing_ovation', undefined, 'ace'],
+    ['magnet_pull', 'power_shot', 'close_up'],
+    ['magnet_pull', 'main_event', 'close_up', undefined, 'ace'],
+    ['showtime', 'magnet_pull', 'star_pull'],
+    ['safe_cut', 'dash', 'clean_exit'],
   ];
   const bad: string[] = [];
   for (const [a, b, id, setup, f] of cases) {

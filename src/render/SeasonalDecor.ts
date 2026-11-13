@@ -732,6 +732,7 @@ export class SeasonalDecor {
    *   PRIME CASINO          red and gold: gold and red lights, towers of gifts with gold ribbons, baubles under the screens
    *   STUDIO BACKLOT        a snowy street: warm retro multicolour bulbs, icicles on the barrier, wreaths on the walls
    *   GRAVEYARD BROADCAST   a frozen night: icy blue and violet lights, icicles, ice crystals
+   *   NEON NEWSROOM         (1.9.8) a winter edition of the news: cyan, violet and white lights, ice crystals
    */
   private buildWinterStyle(rng: Rng): void {
     const st = this.stage;
@@ -755,6 +756,9 @@ export class SeasonalDecor {
       this.barrierLights([0x7fd8ff, 0xb48cff, 0xe8f6ff], 0.5, 0.05, rng);
       this.icicles(rng);
       this.iceCrystals(ground.filter((_, i) => i % 2 === 0), rng);
+    } else if (st === 'newsroom') {
+      this.barrierLights([0x5ef0ff, 0xa87aff, 0xffffff], 0.44, 0.05, rng);
+      this.iceCrystals(ground.filter((_, i) => i % 2 === 1), rng);
     }
   }
 

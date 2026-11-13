@@ -644,20 +644,33 @@ export class BacklotStage extends Stage {
         truss.push(new CylinderGeometry(0.025, 0.025, 0.72, 4).rotateZ(-0.8).translate(x, y + 0.25, z + 0.25));
       }
     };
+    // the same truss running ALONG the set (north–south) at x
+    const addRail = (x: number, y: number, z0: number, z1: number) => {
+      const len = z1 - z0;
+      const zc = (z0 + z1) / 2;
+      for (const dy of [0, 0.5]) for (const dx of [-0.25, 0.25]) truss.push(new CylinderGeometry(0.04, 0.04, len, 6).rotateX(Math.PI / 2).translate(x + dx, y + dy, zc));
+      for (let z = z0; z <= z1; z += 0.6) {
+        truss.push(new CylinderGeometry(0.025, 0.025, 0.72, 4).rotateX(0.8).translate(x - 0.25, y + 0.25, z));
+        truss.push(new CylinderGeometry(0.025, 0.025, 0.72, 4).rotateX(-0.8).translate(x + 0.25, y + 0.25, z));
+      }
+    };
     addTruss(-12.6, 11.2, 28);
-    addTruss(-4, 12.2, 28);
-    addTruss(5, 12.2, 28);
+    // Alpha 1.9.8: the two trusses ACROSS the set (z −4 and +5, 12 m up) and the lamps hanging from them sat between the
+    // battle camera and the floor — on a phone they cut the fight with dark bars, and a lamp housing near the lens
+    // blacked out a fighter. As on the cemetery (1.7.6) the grid now runs ALONG both sides of the set, outside every
+    // battle view; the back truss over the north flats stays where it was (it is behind the fight)
+    addRail(-12.5, 12.2, -12.6, 8);
+    addRail(12.5, 12.2, -12.6, 8);
     for (const sx of [-1, 1]) truss.push(new CylinderGeometry(0.03, 0.03, 4, 4).translate(sx * 3.8, 10.6, -14.2));
     this.group.add(new Mesh(merge(truss), steelMat));
     const lampParts: BufferGeometry[] = [];
     const lensParts: BufferGeometry[] = [];
-    for (const z of [-12.6, -4, 5]) {
-      for (let x = -12; x <= 12; x += 3) {
-        const y = z === -12.6 ? 10.7 : 11.7;
-        lampParts.push(new CylinderGeometry(0.22, 0.28, 0.45, 10).translate(x, y, z));
-        lensParts.push(new CylinderGeometry(0.2, 0.2, 0.04, 10).translate(x, y - 0.24, z));
-      }
-    }
+    const hangLamp = (x: number, y: number, z: number) => {
+      lampParts.push(new CylinderGeometry(0.22, 0.28, 0.45, 10).translate(x, y, z));
+      lensParts.push(new CylinderGeometry(0.2, 0.2, 0.04, 10).translate(x, y - 0.24, z));
+    };
+    for (let x = -12; x <= 12; x += 3) hangLamp(x, 10.7, -12.6);
+    for (const x of [-12.5, 12.5]) for (let z = -9.6; z <= 7.5; z += 3) hangLamp(x, 11.7, z);
     this.group.add(new Mesh(merge(lampParts), new MeshStandardMaterial({ color: 0x1a1c22, roughness: 0.5, metalness: 0.6 })));
     this.group.add(new Mesh(merge(lensParts), new MeshBasicMaterial({ color: new Color(0xffc890).multiplyScalar(2.2), toneMapped: false })));
 

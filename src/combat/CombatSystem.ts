@@ -33,6 +33,8 @@ export interface SpawnOpts {
   ownPass?: boolean;
   /** Alpha 1.6.1 SECOND TAKE echo. */
   echo?: boolean;
+  /** Alpha 1.9.8 — ACE's MAIN EVENT round. */
+  main?: boolean;
 }
 
 /**
@@ -183,6 +185,9 @@ export function muzzleOffset(weapon: WeaponType, muzzle: number): { right: numbe
     case 'cane':
       // Alpha 1.7: Lucien's VAMPIRE CANE BLASTER pointed at the target at arm's length — the bolt leaves its tip
       return { right: 0.28, fwd: 1.45 };
+    case 'revolver':
+      // Alpha 1.9.8: ACE's GOLDEN ACE, a compact duel revolver held out in the right hand
+      return { right: 0.32, fwd: 0.92 };
   }
 }
 
@@ -230,6 +235,17 @@ export class CombatSystem {
     if (f.momentum > 0) f.momentum = Math.max(0, f.momentum - dt);
     // Alpha 1.9.7 (CRAX): the MAINSPRING's faster trigger, and the TWELFTH STRIKE clock running down
     if (f.mainspring > 0) f.mainspring = Math.max(0, f.mainspring - dt);
+    // Alpha 1.9.8: SHOWTIME's tempo and its cue; SAFE CUT's window
+    if (f.showtime > 0) f.showtime = Math.max(0, f.showtime - dt);
+    if (f.cue > 0) f.cue = Math.max(0, f.cue - dt);
+    if (f.safeCut > 0) {
+      f.safeCut -= dt;
+      if (f.safeCut <= 0) {
+        f.safeCut = 0;
+        f.safeCutHeavy = false;
+        this.m.emit({ type: 'safeCut', side: f.side, what: 'end', x: f.x, z: f.z });
+      }
+    }
     if (f.clock > 0) {
       f.clock -= dt;
       if (f.clock <= 0) this.stopClock(f);
@@ -825,13 +841,20 @@ export class CombatSystem {
         f.burstRiposte = riposte;
       } else riposte = f.burstRiposte;
     }
+    // Alpha 1.9.8 — STAR TURN (ACE): after a run of landed shots the next one is the star shot
+    const star = f.def.passive === 'star_turn' && f.starReady;
+    if (star) {
+      f.starReady = false;
+      this.m.emit({ type: 'starTurn', side: f.side, what: 'fire' });
+    }
     const dmg =
       atk.damage *
       f.outgoingDamageMult() *
       (counter ? CARD_TUNING.dash.counterMult : 1) *
       (deadeye ? PASSIVE_TUNING.deadeye.mult : 1) *
       (cross ? PASSIVE_TUNING.crossfire.mult : 1) *
-      (riposte ? PASSIVE_TUNING.riposte.mult : 1);
+      (riposte ? PASSIVE_TUNING.riposte.mult : 1) *
+      (star ? PASSIVE_TUNING.star_turn.mult : 1);
     const kind: ProjectileKind =
       atk.weapon === 'boom_cannon'
         ? 'pellet'
@@ -846,13 +869,14 @@ export class CombatSystem {
     for (let i = 0; i < n; i++) {
       const fan = n > 1 ? -atk.spread / 2 + (atk.spread * i) / (n - 1) : 0;
       const y = yaw + fan + rng.range(-atk.inaccuracy, atk.inaccuracy);
-      this.spawn(f.side, kind, atk.weapon, origin.x, origin.z, y, atk.speed * rng.range(0.95, 1.05), dmg, atk.radius, atk.range, {
+      const shot = this.spawn(f.side, kind, atk.weapon, origin.x, origin.z, y, atk.speed * rng.range(0.95, 1.05), dmg, atk.radius, atk.range, {
         homing: atk.homing,
         falloff: atk.falloff,
         slowAmount: atk.slow?.amount ?? 0,
         slowDuration: atk.slow?.duration ?? 0,
-        crit: counter || deadeye || riposte,
+        crit: counter || deadeye || riposte || star,
       });
+      shot.star = star;
     }
     f.m.shots++;
     this.m.emit({ type: 'shot', side: f.side, weapon: atk.weapon, muzzle, x: origin.x, z: origin.z, dx: dm.sin(yaw), dz: dm.cos(yaw), kind });
@@ -905,6 +929,24 @@ export class CombatSystem {
       ...opts,
     });
     this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dirX, dz: dirZ, kind: 'bank' });
+  }
+
+  /**
+   * Alpha 1.9.8 — ACE's MAIN EVENT: one fast GOLDEN ACE round, a heavy card shot (shields, DASH, FALSE START, FRAME
+   * CATCH, cover and SPOTLIGHT TAG treat it like POWER SHOT). A landed hit pays `energyRefund` back (see the hit test).
+   */
+  fireMain(f: FighterSim, dirX: number, dirZ: number, damage: number, opts: SpawnOpts): void {
+    const yaw = dm.atan2(dirX, dirZ);
+    f.facing = yaw;
+    const origin = this.muzzleWorld(f, 0, yaw);
+    const t = CARD_TUNING.main_event;
+    this.spawn(f.side, 'power', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, damage, t.radius, t.range, {
+      knockback: t.knockback,
+      heavy: true,
+      main: true,
+      ...opts,
+    });
+    this.m.emit({ type: 'shot', side: f.side, weapon: f.stats.attack.weapon, muzzle: 0, x: origin.x, z: origin.z, dx: dirX, dz: dirZ, kind: 'power' });
   }
 
   /** Where Kai's BANK SHOT would go right now: aimed at where the target will be when the round arrives. */
@@ -1030,6 +1072,9 @@ export class CombatSystem {
     p.oz = p.echo ? z : shooter.z;
     p.first = true;
     p.coverMask = 0;
+    p.main = o.main ?? false;
+    p.landed = false;
+    p.star = false;
     this.m.projectiles.push(p);
     return p;
   }
@@ -1051,6 +1096,11 @@ export class CombatSystem {
   windupAim(f: FighterSim, card: string, combo: ComboId | null, out: { x: number; z: number }): { x: number; z: number } {
     // Alpha 1.7 — BAT BITE: a lunge, led by how long it takes to get there (it bends on the way, too)
     if (card === 'bat_bite') return this.leadAim(f, CARD_TUNING.bat_bite.rushSpeed, 0.7, out);
+    // Alpha 1.9.8 — CLOSE-UP: the shot after MAGNET PULL leads the pulled target
+    if (combo === 'close_up') {
+      const speed = card === 'main_event' ? CARD_TUNING.main_event.speed : CARD_TUNING.power_shot.speed;
+      return this.leadAim(f, speed, COMBO_TUNING.closeUpLead, out);
+    }
     if (combo === 'spotlight') {
       const speed = card === 'charged_shot' ? CARD_TUNING.charged_shot.speed : CARD_TUNING.power_shot.speed;
       return this.leadAim(f, speed, COMBO_TUNING.spotlightLead, out);
@@ -1200,6 +1250,38 @@ export class CombatSystem {
       f.shoveX *= cap / l;
       f.shoveZ *= cap / l;
     }
+  }
+
+  /**
+   * Alpha 1.9.8 — MAGNET PULL: the PULSE PUSH slide the other way, towards the fighter, never closer than `stopAt`
+   * (the barrier, the cover and the wall stop it like any slide). STAR PULL (SHOWTIME first): further and harder.
+   */
+  magnetPull(f: FighterSim, foe: FighterSim, combo: ComboId | null): void {
+    const m = this.m;
+    const t = CARD_TUNING.magnet_pull;
+    const star = combo === 'star_pull';
+    const range = t.range + (star ? COMBO_TUNING.starPullRange : 0);
+    const dx = f.x - foe.x;
+    const dz = f.z - foe.z;
+    const d = dm.hypot(dx, dz) || 1;
+    const inReach = !foe.ko && d <= range + foe.radius * 0.5;
+    const hit = inReach && foe.invuln <= 0;
+    m.emit({ type: 'magnet', side: f.side, x: f.x, z: f.z, tx: foe.x, tz: foe.z, range, hit });
+    if (!hit) {
+      if (inReach) {
+        // dashed through the pulse
+        m.emit({ type: 'dodge', side: foe.side, x: foe.x, z: foe.z, perfect: false, heavy: false });
+        this.onEvade(foe);
+      }
+      return;
+    }
+    let force = t.force * (star ? COMBO_TUNING.starPullForce : 1);
+    if (foe.shield > 0) force *= t.shieldMult;
+    // the slide covers about force / decay metres: never past `stopAt`
+    const room = d - t.stopAt;
+    if (room <= 0.05) return;
+    force = Math.min(force, room * CARD_TUNING.pulse_push.decay);
+    this.shove(foe, dx / d, dz / d, force);
   }
 
   /**
@@ -1475,6 +1557,24 @@ export class CombatSystem {
               boost: p.boost,
             });
             if (clocked) this.clockShot(src, foe, outcome, strike);
+            if (outcome === 'hit') {
+              p.landed = true;
+              // Alpha 1.9.8 — STAR TURN: a landed regular shot moves the run (the star shot itself starts a new one)
+              if (src.def.passive === 'star_turn' && HIT_KIND[p.kind] === 'auto' && !p.star && !p.echo && !src.ko) {
+                src.starStreak++;
+                if (src.starStreak >= PASSIVE_TUNING.star_turn.every && !src.starReady) {
+                  src.starStreak = 0;
+                  src.starReady = true;
+                  m.emit({ type: 'starTurn', side: src.side, what: 'ready' });
+                }
+              }
+              // Alpha 1.9.8 — MAIN EVENT: PERFECT TAKE (a landed round only; never an echo)
+              if (p.main && !p.echo && !src.ko) {
+                const refund = CARD_TUNING.main_event.energyRefund;
+                m.hands[src.side].gain(refund);
+                m.emit({ type: 'perfectTake', side: src.side, x: p.x, z: p.z, refund });
+              }
+            }
             if (outcome === 'dodged') {
               // FALSE START read it: the shot flies on past her
               p.passThrough = true;
@@ -1562,7 +1662,15 @@ export class CombatSystem {
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
       if (p.alive) list[w++] = p;
-      else this.pool.push(p);
+      else {
+        // Alpha 1.9.8 — STAR TURN: a regular shot that ends without a landed hit (a miss, a DASH, a shield, a cover)
+        // breaks ACE's run
+        if (!p.landed && !p.star && !p.echo && HIT_KIND[p.kind] === 'auto') {
+          const o = this.m.fighters[p.owner];
+          if (o.def.passive === 'star_turn') o.starStreak = 0;
+        }
+        this.pool.push(p);
+      }
     }
     list.length = w;
   }
@@ -1740,6 +1848,19 @@ export class CombatSystem {
     if (!TICKS.has(h.kind) && this.m.inOwnSmoke(target)) dmg *= 1 - CARD_TUNING.smoke.damageCut;
     dmg *= 1 - target.stats.armor;
     if (target.ironSkin > 0) dmg *= 1 - PASSIVE_TUNING.iron_skin.reduction;
+    // Alpha 1.9.8 — SAFE CUT: the first dangerous hit is cut (its push and stun too) and the cut ends; lighter hits lose a
+    // little. A raised SHIELD comes first (it absorbs below); never a dodge; ticking damage is not cut.
+    let cutPush = 1;
+    if (target.safeCut > 0 && !TICKS.has(h.kind) && !(target.shield > 0 && target.shieldHp > 0)) {
+      const st = CARD_TUNING.safe_cut;
+      if (target.safeCutHeavy && (h.heavy || dmg >= st.threshold)) {
+        dmg *= st.heavyMult;
+        cutPush = st.pushMult;
+        target.safeCut = 0;
+        target.safeCutHeavy = false;
+        m.emit({ type: 'safeCut', side: target.side, what: 'cut', x: target.x, z: target.z });
+      } else dmg *= 1 - st.lightCut;
+    }
 
     if (target.shield > 0 && target.shieldHp > 0 && h.kind !== 'dot') {
       // piercing shots: part of the damage goes straight through, and the shield breaks
@@ -1805,15 +1926,15 @@ export class CombatSystem {
     // DIRECTOR'S CUT: the champion stands his ground — knockback neither moves nor stops him
     // (stuns and SYSTEM OVERLOAD still break the series)
     if (h.knockback > 0 && target.action.kind !== 'cut') {
-      target.kbX = h.dx * h.knockback * 2.6;
-      target.kbZ = h.dz * h.knockback * 2.6;
-      target.knockback = Math.min(0.7, 0.15 + h.knockback * 0.06);
+      target.kbX = h.dx * h.knockback * cutPush * 2.6;
+      target.kbZ = h.dz * h.knockback * cutPush * 2.6;
+      target.knockback = Math.min(0.7, 0.15 + h.knockback * cutPush * 0.06);
       if (target.action.kind === 'windup') {
         m.emit({ type: 'interrupt', side: target.side, by: source.side });
         target.action = { kind: 'none' };
       }
     }
-    if (h.stun > 0) this.applyStun(target, h.stun, source.side);
+    if (h.stun > 0) this.applyStun(target, h.stun * cutPush, source.side);
 
     // Alpha 1.9.7 MAINSPRING (CRAX): once a fight, under half health the spring rewinds
     if (target.def.passive === 'mainspring' && !target.mainspringUsed && target.hp < target.maxHp * PASSIVE_TUNING.mainspring.threshold) {

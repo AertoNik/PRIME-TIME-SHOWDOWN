@@ -34,7 +34,7 @@ export interface AIProfile {
 const isControl = (card: CardId) => card === 'shock' || card === 'system_overload';
 
 /** Alpha 1.7.5: card attacks that cover on the line of fire would swallow (GRAVEYARD). */
-const STOPPED_BY_COVER = new Set<CardId>(['power_shot', 'split_shot', 'rebound_disc', 'cable_snare', 'knockout', 'bat_bite', 'adrenaline', 'twelfth_strike']);
+const STOPPED_BY_COVER = new Set<CardId>(['power_shot', 'split_shot', 'rebound_disc', 'cable_snare', 'knockout', 'bat_bite', 'adrenaline', 'twelfth_strike', 'main_event']);
 
 const contactTmp = { x: 0, z: 0 };
 
@@ -882,12 +882,13 @@ export class FighterAI {
           const c = prof.control;
           const zapOk = !c || (this.controlAllowed() && m.rng.chance(c.interruptMult));
           // Alpha 1.6: a screen or a frame also answers a shot that is coming (not CHARGED SHOT, not a charge)
-          const shot = foe.action.kind === 'windup' && (foe.action.card === 'power_shot' || foe.action.card === 'bank_shot');
+          const shot = foe.action.kind === 'windup' && (foe.action.card === 'power_shot' || foe.action.card === 'bank_shot' || foe.action.card === 'main_event');
           if (
             charging &&
             ((zapOk && (this.tryPlay('shock') || this.tryPlay('system_overload'))) ||
               (locked && this.tryPlay('false_start')) ||
               this.tryPlay('shield') ||
+              this.tryPlay('safe_cut') ||
               (shot && locked && (this.tryPlay('frame_catch') || this.tryPlay('stage_barrier'))))
           )
             return;
@@ -1036,7 +1037,7 @@ export class FighterAI {
     const hand = m.hands[this.side];
     const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
     const hasHeavy =
-      this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0 || this.has('bank_shot') >= 0;
+      this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0 || this.has('bank_shot') >= 0 || this.has('main_event') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';
     // Visible openings a pressure fighter jumps on: the foe just spent its DASH,
     // is slowed, or is committed to a charge of its own.
@@ -1116,6 +1117,44 @@ export class FighterAI {
         if (foe.hp < 600) s += 1.5;
         break;
       }
+      case 'main_event': {
+        // Alpha 1.9.8 — ACE's duel shot: a precise round from mid range; the energy comes back only on a hit, so it is
+        // played into an opening, never into a raised shield or a DASH
+        const reach = CARD_TUNING.main_event.range;
+        s = dist < reach * 0.85 ? 5 : dist < reach ? 2 : 0;
+        if (dist < 2) s -= 1.5;
+        if (foeDisabled) s += 4.5;
+        if (foeBlocking) s -= 6;
+        if (combo) s += 4;
+        if (foe.hp < 520) s += 2;
+        if (opening) s += 2;
+        break;
+      }
+      // ---- Alpha 1.9.8 — three universal cards
+      case 'showtime': {
+        // tempo and a cue for the card that follows: worth it before a card shot or a pull, never alone
+        const follow = (['main_event', 'power_shot', 'charged_shot', 'bank_shot', 'knockout', 'bat_bite', 'magnet_pull'] as CardId[]).some((c) => this.has(c) >= 0);
+        s = follow ? 3.5 : 0.5;
+        if (hand.energy < 5) s -= 2.5;
+        if (f.cue > 0) s = -10;
+        break;
+      }
+      case 'magnet_pull': {
+        // pull a kiting opponent into the fighter's range — and into the card shot that follows
+        const reach = CARD_TUNING.magnet_pull.range;
+        const payoff = (['main_event', 'power_shot', 'knockout', 'bat_bite'] as CardId[]).some((c) => this.has(c) >= 0);
+        s = dist > f.stats.preferredRange + 1 && dist < reach ? 4 : dist < reach ? 1 : -10;
+        if (payoff) s += 1.5;
+        if (foe.invuln > 0) s -= 6;
+        if (foe.shield > 0) s -= 2;
+        break;
+      }
+      case 'safe_cut':
+        // mostly a reaction card (see the reaction step); proactively when the opponent is about to cut loose
+        s = 0.5;
+        if (threatened && dist < foe.stats.attack.range) s += 3;
+        if (f.safeCut > 0 || f.shield > 0) s = -10;
+        break;
       case 'false_start':
         // mostly a reaction card (see the reaction step); proactively only under fire
         s = 1;

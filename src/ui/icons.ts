@@ -95,6 +95,35 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M30 34 V18 M30 34 V22" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
      <path d="M48 8 L52 18 L62 20 L53 26 L56 36 L48 30 L40 36 L43 26 L34 20 L44 18 Z" fill="#ffd36a" ${STROKE}/>`,
   ),
+  // Alpha 1.9.8 — MAIN EVENT: GOLDEN ACE under a golden spotlight, a star flash at the muzzle (PERFECT TAKE)
+  main_event: S(
+    `<path d="M14 4 L26 4 L40 40 L4 40 Z" fill="#ffe08a" opacity=".32"/>
+     <path d="M15 4 h10" stroke="#ffe08a" stroke-width="4" stroke-linecap="round"/>
+     <path d="M10 40 L34 40 L36 34 L44 34 L44 30 L22 30 L18 26 L12 26 L10 30 Z" fill="#fff" ${STROKE}/>
+     <circle cx="21" cy="34" r="5.5" fill="#e8c25a" stroke="rgba(0,0,0,0.35)" stroke-width="2"/>
+     <path d="M12 40 L8 54 L16 54 L19 44" fill="#fff" ${STROKE}/>
+     <path d="M54 32 l2.4 5.6 6 .6 -4.6 4 1.4 5.8 -5.2 -3.1 -5.2 3.1 1.4 -5.8 -4.6 -4 6 -.6 Z" fill="#ffd36a" ${STROKE}/>`,
+  ),
+  // Alpha 1.9.8 — SHOWTIME: a director's raised hand and a LIVE lamp, speed lines
+  showtime: S(
+    `<circle cx="44" cy="16" r="9" fill="#ff4a5c" stroke="rgba(0,0,0,0.35)" stroke-width="3"/>
+     <circle cx="44" cy="16" r="3.5" fill="#fff"/>
+     <path d="M14 56 L14 30 C14 26 20 26 20 30 L20 22 C20 18 26 18 26 22 L26 20 C26 16 32 16 32 20 L32 24 C32 20 38 20 38 24 L38 42 C38 50 32 56 26 56 Z" fill="#fff" ${STROKE}/>
+     <path d="M44 34 h14 M46 42 h12 M48 50 h10" stroke="#ffd36a" stroke-width="4" stroke-linecap="round"/>`,
+  ),
+  // Alpha 1.9.8 — MAGNET PULL: a horseshoe magnet and three pull arcs
+  magnet_pull: S(
+    `<path d="M8 10 L22 10 L22 34 C22 42 42 42 42 34 L42 10 L56 10 L56 34 C56 52 8 52 8 34 Z" fill="#fff" ${STROKE}/>
+     <rect x="8" y="10" width="14" height="9" fill="#ff5a6a"/><rect x="42" y="10" width="14" height="9" fill="#5aa8ff"/>
+     <path d="M20 58 C26 54 38 54 44 58 M24 62 C28 60 36 60 40 62" stroke="#bfe0ff" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  ),
+  // Alpha 1.9.8 — SAFE CUT: a film strip cut by a clean diagonal (the editor's splice)
+  safe_cut: S(
+    `<rect x="6" y="16" width="52" height="32" rx="4" fill="#fff" ${STROKE}/>
+     <g fill="#1d4a5a">${[0, 1, 2, 3, 4, 5].map((k) => `<rect x="${10 + k * 8}" y="19" width="4" height="4" rx="1"/><rect x="${10 + k * 8}" y="41" width="4" height="4" rx="1"/>`).join('')}</g>
+     <path d="M20 54 L44 10" stroke="#9ef0d0" stroke-width="6" stroke-linecap="round"/>
+     <path d="M20 54 L44 10" stroke="#1d4a5a" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 4"/>`,
+  ),
   // three warning lines from the champion's rifle, the last one the widest (DIRECTOR'S CUT)
   directors_cut: S(
     `<path d="M10 34 L56 12" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
@@ -260,6 +289,11 @@ export const PASSIVE_ICONS: Record<PassiveId, string> = {
     `<path d="M32 32 m-4 0 a4 4 0 1 1 8 0 a8 8 0 1 1 -16 0 a12 12 0 1 1 24 0 a16 16 0 1 1 -32 0" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/>
      <path d="M48 46 L56 54 M53 51 l5 -5 a3 3 0 0 1 4 4 l-5 5" stroke="#ffd36a" stroke-width="4" fill="none" stroke-linecap="round"/>`,
   ),
+  // Alpha 1.9.8: STAR TURN — three landed shots light a star
+  star_turn: S(
+    `<circle cx="12" cy="50" r="5" fill="#fff"/><circle cx="26" cy="50" r="5" fill="#fff"/><circle cx="40" cy="50" r="5" fill="#fff"/>
+     <path d="M40 6 l4.6 10.4 11.4 1.1 -8.6 7.6 2.5 11.1 -9.9 -5.8 -9.9 5.8 2.5 -11.1 -8.6 -7.6 11.4 -1.1 Z" fill="#ffd36a" ${STROKE}/>`,
+  ),
   // Alpha 1.5: RIPOSTE — an arrow turning back on itself
   riposte: S(
     `<path d="M50 14 C30 8 12 20 14 36 C16 50 34 56 48 46" fill="none" stroke="#ff6f61" stroke-width="5" stroke-linecap="round"/>
@@ -297,5 +331,7 @@ export const UI_ICONS = {
   // 1.8.8+: the quick wardrobe of the roster — a clothes hanger: a curled hook, the shoulders and the bar, a gold knot
   hanger: S(`<path d="M25 13 C25 8.4 28.2 5 32 5 C35.8 5 39 8 39 12 C39 16.4 32 17.6 32 23 V26.5" fill="none" stroke="#fff" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 26.5 L7.6 43.4 C4.4 45.6 5.9 50.5 9.8 50.5 H54.2 C58.1 50.5 59.6 45.6 56.4 43.4 Z" fill="rgba(255,255,255,0.14)" stroke="#fff" stroke-width="4.6" stroke-linejoin="round"/><circle cx="32" cy="26.5" r="3.8" fill="#ffd23a"/><path d="M15 46 H49" stroke="#22f0e0" stroke-width="2.4" stroke-linecap="round" opacity=".9"/>`),
   // Alpha 1.8.8: PRIME SHOP — a shopping bag with a star
+  // Alpha 1.9.8 — CARDS (the main menu's card section): two fanned cards with an energy gem
+  cards: S(`<rect x="10" y="14" width="26" height="38" rx="5" transform="rotate(-14 23 33)" fill="currentColor" opacity=".55"/><rect x="26" y="10" width="28" height="42" rx="5" transform="rotate(10 40 31)" fill="currentColor"/><path d="M41 22 L47 31 L41 40 L35 31 Z" fill="#0b0f2e"/>`),
   shop: S(`<path d="M12 22 H52 L48 58 H16 Z" fill="currentColor"/><path d="M23 26 V18 C23 8 41 8 41 18 V26" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M32 30 L35 37 L42.5 37.6 L36.8 42.4 L38.6 49.6 L32 45.6 L25.4 49.6 L27.2 42.4 L21.5 37.6 L29 37 Z" fill="#0b0f2e"/>`),
 };

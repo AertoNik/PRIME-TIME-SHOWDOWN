@@ -145,7 +145,7 @@ function protocolChecks(): void {
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
   // (1.9.5: the eleven approved on 06.11.2026 carry a price too — 18 in all; what is SOLD is still the offer's Appendix 1)
-  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items', sold.length === 23 && sold.includes('fighter_lucien') && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
+  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items; 1.9.8: 25 with KAI and RINA (149)', sold.length === 25 && sold.includes('fighter_lucien') && sold.includes('skin_kai_cue_master') && sold.includes('skin_rina_dune_mirage') && rules.prices.skin_kai_cue_master === 149 && rules.prices.skin_rina_dune_mirage === 149 && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
     return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
@@ -264,8 +264,8 @@ function protocolChecks(): void {
   const sha = (t: string) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
   const rnames = Object.keys(realRules().catalog).map((k: string) => PAYJS.receiptName(k));
-  // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced)
-  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 23 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
+  // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced; 1.9.8: 25)
+  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 25 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
 }
 
 // ======================================================================== safety
@@ -603,6 +603,25 @@ async function serverChecks(): Promise<void> {
   forged.cosmetics = { ...forged.cosmetics, owned: [...(forged.cosmetics?.owned ?? []), 'dash_prime_phantom'] };
   check('a forged save listing a PRIME SHOP item as owned is refused by the server', (await putSave(B, forged, 0)).status === 400);
 
+  // ---------------------------------------------------------------- 1.9.8: the two new epic skins
+  section('1.9.8: эпические скины КАЙ и РИНА — серверная цена, чек, права, без повторной покупки');
+  {
+    const K = await mk('kaiskin@payments.test');
+    await http('POST', '/api/prime/shop/offer/accept', K.tok, { revision: TERMS.revision, sha256: TERMS.sha256 });
+    const kc = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'skin_kai_cue_master', priceRub: 1, amountKop: 1 });
+    const ko = kc.j.order;
+    check('1.9.8 KAI: CUE MASTER — the order at the SERVER price (test environment 10 ₽; a price sent by the game is ignored), the receipt name of a look', kc.status === 200 && ko.amountKop === 1000 && ko.title === PAYJS.receiptName('skin_kai_cue_master') && /KAI: CUE MASTER/.test(ko.title) && kc.j.payment?.fields?.Description === ko.title);
+    const kId = sqlite(`select id from shop_orders where invId=${ko.inv};`);
+    const kOk = await notify(signedNote(ko.inv, '10.000000', kId));
+    const kOwned = (await http('GET', '/api/prime/shop/purchases', K.tok)).j.owned;
+    check('1.9.8 paid → the buyer\'s PRIME ID owns the skin (one right)', kOk.text === `OK${ko.inv}` && kOwned.includes('skin_kai_cue_master') && sqlite(`select count(*) from shop_entitlements where user='${K.id}' and sku='skin_kai_cue_master';`) === '1');
+    check('1.9.8 a second purchase of the bought skin → 409 owned, no new order', (await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'skin_kai_cue_master' })).j.code === 'owned' && sqlite(`select count(*) from shop_orders where user='${K.id}';`) === '1');
+    const rc = await http('POST', '/api/prime/shop/checkout', K.tok, { sku: 'skin_rina_dune_mirage' });
+    check('1.9.8 RINA: DUNE MIRAGE is sold on its own (a separate item, its own receipt name)', rc.status === 200 && rc.j.order.title === PAYJS.receiptName('skin_rina_dune_mirage') && /RINA: DUNE MIRAGE/.test(rc.j.order.title));
+    const live = read('backend/pb_hooks/lib/shop_rules.js');
+    check('1.9.8 the live price the server charges is 149 ₽ for each, approved (the generated rules — never the game\'s number)', /"prices": \{[^}]*"skin_kai_cue_master": 149,[^}]*"skin_rina_dune_mirage": 149,/.test(live) && /"skin_kai_cue_master": "approved"/.test(live) && /"skin_rina_dune_mirage": "approved"/.test(live));
+  }
+
   // ---------------------------------------------------------------- 1.9.5: seasonal effects after their season
   section('1.9.5: сезонные предметы после сезона — жетоны, покупка, повтор, возврат');
   const SE = await mk('seasontoken@payments.test');
@@ -907,7 +926,7 @@ async function serverChecks(): Promise<void> {
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
   // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
   const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom.length <= 10 ? o.effectiveFrom + 'T00:00:00Z' : o.effectiveFrom) <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
-  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3, 4, 5].includes(liveOffer.revision), JSON.stringify(liveOffer));
+  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && liveOffer.revision >= 2 && liveOffer.revision < 9000, JSON.stringify(liveOffer));
   const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
   check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
   await http('POST', '/api/prime/shop/offer/accept', M.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });

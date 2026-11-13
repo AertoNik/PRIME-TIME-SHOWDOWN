@@ -773,6 +773,16 @@ export class BattleView {
     _c.copy(accent);
     if (enemy) _c.lerp(TEAM_COLORS[1], 0.3);
     if (p.kind === 'bank') _c.set(0xff9a4a).lerp(accent, 0.25);
+    // Alpha 1.9.8 — ACE: GOLDEN ACE's rounds are white-gold tracers; the STAR TURN round and the MAIN EVENT round burn gold
+    if (p.weapon === 'revolver') {
+      if (p.main) {
+        _c.set(0xffd23a);
+        v.streakLen *= 1.6;
+      } else if (p.star) {
+        _c.set(0xffe27a);
+        v.streakLen *= 1.35;
+      } else _c.set(0xfff0c8).lerp(accent, 0.12);
+    }
     if (p.electric) _c.set(0xffe14d);
     // Alpha 1.6: card shots wear their card's colour
     if (p.kind === 'split') _c.set(0x7cff6b);
@@ -1390,6 +1400,67 @@ export class BattleView {
         const s = this.slots[e.side];
         this.vfx.bankSpark(e.x, e.z, e.nx, e.nz, _c.set(0xff9a4a).lerp(s.accent, 0.3));
         this.cam.addTrauma(0.08);
+        break;
+      }
+      case 'perfectTake': {
+        // Alpha 1.9.8 — MAIN EVENT landed: a golden PERFECT TAKE burst where it hit, ACE's flourish (two turns of GOLDEN ACE)
+        const s = this.slots[e.side];
+        const gold = _c.set(0xffd23a);
+        this.vfx.rays(e.x, ARENA.shotHeight, e.z, gold, 1, 4.2, 0.45, 2.6);
+        this.vfx.flash(e.x, ARENA.shotHeight + 0.4, e.z, _c.set(0xfff0c0), 1, 3.0, 0.3, 2.8);
+        this.vfx.ring(e.x, e.z, gold, 0.55, 3.4, 0.45, 2.6);
+        this.vfx.burst(e.x, ARENA.shotHeight, e.z, gold, 18, 5, 0.12, 0.45, 2.4, -2, 2);
+        s.model.anim.cue('trick');
+        this.cam.kick(0.3);
+        this.arena.hype(0.8);
+        break;
+      }
+      case 'starTurn': {
+        // Alpha 1.9.8 — STAR TURN: a gold glint at GOLDEN ACE's muzzle when the star shot is ready / a gold pop as it leaves
+        const s = this.slots[e.side];
+        const mz = s.model.rig.muzzles[0].getWorldPosition(_v);
+        const gold = _c.set(0xffe27a);
+        if (e.what === 'ready') this.vfx.burst(mz.x, mz.y, mz.z, gold, 8, 2.5, 0.08, 0.35, 2.4);
+        else this.vfx.flash(mz.x, mz.y, mz.z, gold, 0.7, 1.6, 0.16, 2.6);
+        break;
+      }
+      // ---- Alpha 1.9.8 — the three new cards
+      case 'showtime': {
+        const s = this.slots[e.side];
+        const gold = _c.set(0xffb23f);
+        if (e.what === 'on') {
+          this.vfx.rays(s.pos.x, 2.0, s.pos.z, gold, 1, 3.2, 0.45, 2.4);
+          this.vfx.ring(s.pos.x, s.pos.z, gold, 0.5, 2.6, 0.4, 2.4);
+          this.arena.hype(0.4);
+        } else this.vfx.flash(s.pos.x, 1.6, s.pos.z, gold, 0.6, 1.8, 0.2, 2.6);
+        break;
+      }
+      case 'magnet': {
+        // a magnetic pulse: arcs from the fighter towards the target, a ring where it lands (none if out of reach)
+        const s = this.slots[e.side];
+        const blue = _c.set(0x5aa8ff);
+        const from = s.model.rig.elbowL.getWorldPosition(_v);
+        _v2.set(e.tx, 1.1, e.tz);
+        this.vfx.bolt(from, _v2, blue, 0.09, 0.32, 0.05, 2.6);
+        this.vfx.ring(s.pos.x, s.pos.z, blue, 0.4, e.range * 1.2, 0.35, 2.2);
+        if (e.hit) {
+          const t = this.slots[1 - e.side];
+          this.vfx.ring(t.pos.x, t.pos.z, _c.set(0xbfe0ff), 0.5, 2.0, 0.35, 2.6);
+          this.vfx.flash(t.pos.x, 1.2, t.pos.z, blue, 0.6, 2.0, 0.22, 2.4);
+          this.cam.addTrauma(0.14);
+        }
+        break;
+      }
+      case 'safeCut': {
+        const s = this.slots[e.side];
+        const mint = _c.set(0x9ef0d0);
+        if (e.what === 'up') this.vfx.ring(s.pos.x, s.pos.z, mint, 0.45, 2.2, 0.35, 2.4);
+        else if (e.what === 'cut') {
+          // the splice: a bright mint flash and a sharp ring — the hit landed, smaller
+          this.vfx.flash(s.pos.x, 1.4, s.pos.z, _c.set(0xeafff6), 0.9, 2.6, 0.22, 2.8);
+          this.vfx.ring(s.pos.x, s.pos.z, mint, 0.5, 3.0, 0.3, 2.8);
+          this.vfx.burst(s.pos.x, 1.3, s.pos.z, mint, 12, 4, 0.1, 0.35, 2.4);
+        }
         break;
       }
       case 'trickShot': {

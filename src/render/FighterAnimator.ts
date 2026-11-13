@@ -307,6 +307,8 @@ export class FighterAnimator {
   // shot flourishes
   private shotN = 0;
   private twirlT = -1;
+  /** Alpha 1.9.8: full turns of the current twirl (ACE: two after MAIN EVENT). */
+  private twirlTurns = 1;
   private pumpT = -1;
   private tapT = -1;
   // Alpha 1.7 — Lucien's cane: its tilt in the hand (+ = tip down), the guard / point / fencing weights,
@@ -330,6 +332,8 @@ export class FighterAnimator {
   private keyAngle = 0;
   private crankAngle = 0;
   private selfWindT = 6;
+  /** Alpha 1.9.8 (ACE): which lobby flourish comes next (the cuff, GOLDEN ACE spun on the finger). */
+  private aceFlairN = 0;
   /** The key-turn's length now (fight / lobby) and the key's angle when the gesture began. */
   private windDur = CLOCK_WIND_TIME;
   private keyFrom = 0;
@@ -460,7 +464,7 @@ export class FighterAnimator {
     else {
       kickTo(this.climbR, climb);
       // the support hand rides along on two-handed weapons
-      if (wpn !== 'ricochet' && wpn !== 'cane') kickTo(this.climbL, climb * 0.8);
+      if (wpn !== 'ricochet' && wpn !== 'cane' && wpn !== 'revolver') kickTo(this.climbL, climb * 0.8);
     }
     const settled = 1 - moving * 0.45;
     // Crash (brawler) barely gives ground: he leans back less and then presses forward
@@ -473,7 +477,7 @@ export class FighterAnimator {
     else this.recoilR.kick(r.kick * k);
     // Two-handed weapons rock both arms (Kai's trick pistol is one-handed: his free hand stays loose).
     const w = this.rig.look.weapon;
-    if (w !== 'twin_blasters' && w !== 'ricochet' && w !== 'cane') this.recoilL.kick(r.kick * (w === 'stinger' ? 0.35 : 0.6) * k);
+    if (w !== 'twin_blasters' && w !== 'ricochet' && w !== 'cane' && w !== 'revolver') this.recoilL.kick(r.kick * (w === 'stinger' ? 0.35 : 0.6) * k);
     this.recoilBody.kick((r.spine * 60 + (heavy ? 2.5 : 0)) * k);
     if (r.shove > 0 || heavy) this.shove.kick(-(r.shove + (heavy ? 3 : 0)));
     if (heavy) this.squash.kick(-2.5);
@@ -481,6 +485,11 @@ export class FighterAnimator {
     // weapon-specific follow-through
     this.shotN++;
     if (w === 'ricochet' && !heavy && this.shotN % 4 === 0 && this.twirlT < 0) this.twirlT = 0; // showman spins the pistol every few shots
+    // Alpha 1.9.8 (ACE): GOLDEN ACE spun twice after MAIN EVENT, once now and then between regular shots
+    else if (w === 'revolver' && this.twirlT < 0 && (heavy || this.shotN % 7 === 0)) {
+      this.twirlT = 0;
+      this.twirlTurns = heavy ? 2 : 1;
+    }
     else if (w === 'boom_cannon') this.pumpT = 0; // pump the shotgun
     else if (w === 'stinger' && !heavy) this.tapT = 0; // the second barrel of the double tap
     // Alpha 1.9.7 (CRAX): the crank turns once the burst is over (each shot of the burst pushes it back)
@@ -929,6 +938,14 @@ export class FighterAnimator {
       P.shLX = sinP * A * 0.6;
       P.shLZ = 0.16;
       P.elL = -0.35 - A * 0.4;
+    } else if (rig.look.weapon === 'revolver') {
+      // Alpha 1.9.8 — ACE: GOLDEN ACE hangs easily at his side, muzzle down; the free arm swings with an easy stride
+      P.shRX = -0.16 + sinP * A * 0.1;
+      P.shRZ = -0.08;
+      P.elR = -0.5;
+      P.shLX = sinP * A * 0.5;
+      P.shLZ = 0.12;
+      P.elL = -0.3 - A * 0.35;
     } else if (rig.look.weapon === 'stinger') {
       // compact blaster carried close at the chest, the free hand near the wrist
       P.shRX = -0.55 + sinP * A * 0.1;
@@ -1185,6 +1202,21 @@ export class FighterAnimator {
           }
           break;
         }
+        case 'headliner': {
+          // Alpha 1.9.8 — ACE: an easy star's stance — the weight on one leg, the other knee loose, a slight hip, the chest
+          // open and the chin up, a slow sway as if the music of the show plays for him
+          const sw = Math.sin(t * 1.2);
+          P.hipsRZ += (0.045 + sw * 0.01) * idleW;
+          P.bodyX += 0.018 * idleW;
+          P.kneeR += 0.12 * idleW;
+          P.legRX -= 0.06 * idleW;
+          P.legRZ -= 0.04 * idleW;
+          P.spineRX -= 0.04 * idleW;
+          P.spineRZ += sw * 0.015 * idleW;
+          P.headRX -= 0.05 * idleW;
+          P.headRZ -= 0.025 * idleW;
+          break;
+        }
         case 'champion': {
           // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
           const br = Math.sin(t * 1.05);
@@ -1282,6 +1314,19 @@ export class FighterAnimator {
           P.spineRY += -0.16 * aw;
           P.headRY += 0.1 * aw;
           break;
+        case 'revolver':
+          // Alpha 1.9.8 — ACE: the duelist's line — the gun arm locked out at the target, the body bladed, chin up, the
+          // free hand folded behind the back
+          this.to('shRX', -1.44 + bob);
+          this.to('shRZ', 0.1);
+          this.to('elR', -0.08);
+          this.to('shLX', 0.42);
+          this.to('shLZ', 0.22);
+          this.to('elL', -1.72);
+          P.spineRY += -0.22 * aw;
+          P.headRY += 0.14 * aw;
+          P.headRX -= 0.04 * aw;
+          break;
         case 'stinger':
           // compact two-hand hold close to the face: low, coiled, ready to step
           this.to('shRX', -1.22 + bob * 0.5);
@@ -1336,9 +1381,11 @@ export class FighterAnimator {
     if (this.twirlT >= 0) {
       // RICOCHET: a quick spin of the pistol around the trigger finger
       this.twirlT += dt;
-      const p = this.twirlT / 0.42;
-      if (p >= 1) this.twirlT = -1;
-      else this.wFlip = ease.inOutCubic(p) * TAU;
+      const p = this.twirlT / (0.42 * (this.twirlTurns > 1 ? 1.45 : 1));
+      if (p >= 1) {
+        this.twirlT = -1;
+        this.twirlTurns = 1;
+      } else this.wFlip = ease.inOutCubic(p) * TAU * this.twirlTurns;
     }
     if (this.tapT >= 0) {
       // STINGER: the second barrel of the double tap
@@ -1353,12 +1400,16 @@ export class FighterAnimator {
     if (inp.action === 'windup') {
       const p = clamp01(inp.actionT / Math.max(0.05, inp.actionTotal));
       const crouch = ease.outCubic(Math.min(1, p * 2));
-      P.kneeL += 0.45 * crouch;
-      P.kneeR += 0.45 * crouch;
-      P.legLX -= 0.25 * crouch;
-      P.legRX -= 0.25 * crouch;
-      P.bodyY -= 0.08 * crouch;
-      if (inp.actionCard === 'bat_bite') {
+      // (1.9.8: ACE stands tall for his duel shot — only a slight give in the knees)
+      const low = inp.actionCard === 'main_event' ? 0.25 : 1;
+      P.kneeL += 0.45 * crouch * low;
+      P.kneeR += 0.45 * crouch * low;
+      P.legLX -= 0.25 * crouch * low;
+      P.legRX -= 0.25 * crouch * low;
+      P.bodyY -= 0.08 * crouch * low;
+      if (inp.actionCard === 'main_event') {
+        this.mainEventPose(P, p);
+      } else if (inp.actionCard === 'bat_bite') {
         // Alpha 1.7 — BAT BITE: a predatory coil — deep and low, chin up and eyes on the prey, the cane
         // drawn back, the free hand a claw reaching forward (the bats gather around him meanwhile)
         P.kneeL += 0.2 * crouch;
@@ -2034,6 +2085,7 @@ export class FighterAnimator {
       if (this.flairT <= 0 && this.flair <= 0) {
         this.flair = 1.6;
         this.flairT = 6 + Math.random() * 4;
+        if (this.victoryStyle === 'headliner') this.aceFlairN++;
       }
       if (this.flair > 0) {
         this.flair -= dt;
@@ -2972,7 +3024,113 @@ export class FighterAnimator {
         this.flourish(vt, 0.62, false);
         break;
       }
+      // ---- Alpha 1.9.8 — ACE
+      case 'ace_cuff_bow': {
+        // the cuff straightened (one tug, a look at it), then a short bow to the camera with the free hand over the heart;
+        // he rises with a grin, GOLDEN ACE lowered at his side
+        if (vt < 1.05) this.cuffPose(this.tgt, vt / 1.05, k);
+        const bow = vt > 1.0 && vt < 2.0 ? Math.sin(((vt - 1.0) / 1.0) * Math.PI) : 0;
+        const after = smoothstep(0.95, 1.25, vt);
+        this.to('shLX', lerp(this.tgt.shLX, -1.2, after));
+        this.to('shLZ', lerp(this.tgt.shLZ, -0.55, after));
+        this.to('elL', lerp(this.tgt.elL, -1.85, after));
+        this.to('shRX', lerp(this.tgt.shRX, -0.15, after));
+        this.to('shRZ', lerp(this.tgt.shRZ, -0.12, after));
+        this.to('elR', lerp(this.tgt.elR, -0.3, after));
+        this.to('spineRX', 0.42 * bow);
+        this.to('headRX', 0.2 * bow - 0.06 * after);
+        this.to('legRX', 0.22 * bow);
+        this.to('kneeL', 0.14 * bow + 0.04);
+        if (vt > 1.9) this.browUp = Math.max(this.browUp, 0.1);
+        this.flourish(vt, 1.5, false);
+        break;
+      }
+      case 'ace_spin_holster': {
+        // GOLDEN ACE spun three times on the finger at chest height, then dropped to the hip as if into a holster —
+        // and the free hand points at the camera with a wink
+        const spinP = clamp01((vt - 0.15) / 0.95);
+        this.wFlip = spinP > 0 && spinP < 1 ? ease.inOutCubic(spinP) * TAU * 3 : 0;
+        const drop = smoothstep(1.1, 1.35, vt);
+        this.to('shRX', lerp(-1.0, 0.05, drop));
+        this.to('shRZ', lerp(0.18, -0.18, drop));
+        this.to('elR', lerp(-1.3, -0.15, drop));
+        const point = smoothstep(1.3, 1.55, vt);
+        this.to('shLX', lerp(0.0, -1.45, point));
+        this.to('shLZ', lerp(0.12, -0.15, point));
+        this.to('elL', lerp(-0.35, -0.12, point));
+        this.to('headRZ', 0.1 * point);
+        this.to('hipsRZ', 0.05);
+        this.to('kneeR', 0.12);
+        if (vt > 1.45) this.browUp = Math.max(this.browUp, 0.12);
+        this.flourish(vt, 1.32, false);
+        break;
+      }
+      case 'ace_curtain_call': {
+        // the headliner's curtain call: both arms open wide to the crowd, GOLDEN ACE raised high, the chin up — then a slow
+        // turn of the head across the audience and a deep, easy breath
+        const open = smoothstep(0.1, 0.55, vt);
+        const scan = Math.sin(clamp01((vt - 0.6) / 1.2) * Math.PI * 2) * 0.22;
+        this.to('shRX', lerp(-0.2, -2.35, open));
+        this.to('shRZ', lerp(0, -0.55, open));
+        this.to('elR', -0.2);
+        this.to('shLX', lerp(0, -0.55, open));
+        this.to('shLZ', lerp(0.1, 1.15, open));
+        this.to('elL', -0.18);
+        this.to('spineRX', -0.14 * open);
+        this.to('headRX', -0.16 * open);
+        this.to('headRY', scan * open);
+        this.to('legLZ', 0.06);
+        this.to('legRZ', -0.06);
+        this.flourish(vt, 0.55, false);
+        break;
+      }
     }
+  }
+
+  /**
+   * Alpha 1.9.8 — ACE straightens the cuff of his gun hand: the right forearm comes up across the chest (GOLDEN ACE pointing
+   * away, muzzle down), the free hand takes the cuff between finger and thumb and gives it one short tug, the chin dips to
+   * look at it. `k` 0..1: how far into the gesture (in, tug, out); `w`: how much of it to blend in.
+   */
+  private cuffPose(P: Pose, k: number, w = 1): void {
+    const inW = smoothstep(0, 0.28, k) * (1 - smoothstep(0.8, 1, k)) * w;
+    const tug = Math.sin(clamp01((k - 0.36) / 0.26) * Math.PI);
+    // the gun hand in front of the belt, GOLDEN ACE pointing forward and down; the free hand meets its wrist
+    P.shRX = mix(P.shRX, -0.55, inW);
+    P.shRZ = mix(P.shRZ, 0.58, inW);
+    P.elR = mix(P.elR, -1.15, inW);
+    P.shLX = mix(P.shLX, -0.6 - tug * 0.05, inW);
+    P.shLZ = mix(P.shLZ, -1.22 + tug * 0.1, inW);
+    P.elL = mix(P.elL, -0.6 - tug * 0.2, inW);
+    P.headRX += 0.32 * inW;
+    P.headRY -= 0.16 * inW;
+    P.spineRX += 0.05 * inW;
+    P.spineRY += 0.08 * inW;
+    if (k > 0.3 && k < 0.7) this.browUp = Math.max(this.browUp, 0.06 * w);
+  }
+
+  /**
+   * Alpha 1.9.8 — MAIN EVENT, driven by the wind-up's own progress (the player's short wind-up and a rival's longer one
+   * alike): a tall stance → the cuff → the presentation (the gun hand sweeps out wide, the body turns into the line) →
+   * the arm locked on the target. The golden spotlight and the shot are the effects' and the simulation's.
+   */
+  private mainEventPose(P: Pose, p: number): void {
+    const st = smoothstep(0, 0.16, p);
+    P.spineRX -= 0.06 * st;
+    P.headRX -= 0.06 * st;
+    P.hipsRZ += 0.04 * st;
+    if (p < 0.64) this.cuffPose(P, clamp01((p - 0.08) / 0.52));
+    const sweep = smoothstep(0.5, 0.7, p) * (1 - smoothstep(0.76, 0.9, p));
+    const aim = smoothstep(0.72, 0.9, p);
+    P.shRX = mix(mix(P.shRX, -1.05, sweep), -1.46, aim);
+    P.shRZ = mix(mix(P.shRZ, -0.6, sweep), 0.08, aim);
+    P.elR = mix(mix(P.elR, -0.22, sweep), -0.05, aim);
+    const back = smoothstep(0.56, 0.74, p);
+    P.shLX = mix(P.shLX, 0.42, back);
+    P.shLZ = mix(P.shLZ, 0.22, back);
+    P.elL = mix(P.elL, -1.72, back);
+    P.spineRY += -0.3 * aim + 0.16 * sweep;
+    P.headRY += 0.16 * aim;
   }
 
   /** Menu showcase gestures (`this.w` rises and falls over the 1.6 s gesture; fp = progress 0..1). */
@@ -3049,6 +3207,19 @@ export class FighterAnimator {
         this.to('shLZ', 0.5);
         this.to('elL', -2.2);
         this.to('headRY', -Math.round(f * 2) / 2 * 0.18);
+        break;
+      case 'headliner':
+        // Alpha 1.9.8 — ACE, in turns: the cuff straightened (one tug, a look at it) / GOLDEN ACE spun twice on the finger at
+        // chest height, then a glance and a grin to the camera
+        if (this.aceFlairN % 2 === 1) this.cuffPose(this.tgt, fp, f);
+        else {
+          this.to('shRX', -1.0);
+          this.to('shRZ', 0.15);
+          this.to('elR', -1.2);
+          this.wFlip = ease.inOutCubic(clamp01((fp - 0.1) / 0.6)) * TAU * 2;
+          this.to('headRY', 0.2 * smoothstep(0.6, 0.9, fp));
+          if (fp > 0.7) this.browUp = Math.max(this.browUp, 0.1);
+        }
         break;
       case 'nightstar':
         // Lucien: the cane twirled twice at his side, a glance over the collar

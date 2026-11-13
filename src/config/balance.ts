@@ -65,6 +65,12 @@ export const COVER_TUNING = {
   snowgen: { hp: 900, radius: 0.4, half: 0, height: 1.5 },
   clocktower: { hp: 1300, radius: 0.44, half: 0, height: 1.95 },
   console: { hp: 850, radius: 0.27, half: 0.42, height: 1.2 },
+  // Alpha 1.9.8 — NEON NEWSROOM (the same rules: the body is the look, above the line of fire, never over 2.0 m):
+  // an anchor-desk segment (capsule), a mobile tech panel (a narrow capsule), an equipment rack and a camera pedestal (round)
+  newsdesk: { hp: 1000, radius: 0.3, half: 0.55, height: 1.08 },
+  techpanel: { hp: 700, radius: 0.24, half: 0.3, height: 1.56 },
+  rack: { hp: 1200, radius: 0.4, half: 0, height: 1.8 },
+  pedestal: { hp: 650, radius: 0.36, half: 0, height: 1.62 },
   /** A knockback into cover faster than this (m/s) slams it. */
   slamSpeed: 5.5,
   /** What the slam does to the cover (the fighter only stops: no extra damage, no stun). */
@@ -375,6 +381,37 @@ export const CARD_TUNING = {
    * or a DASH answers it. The clock stops `window` s after the key turned and `ready` s after it reached twelve.
    */
   twelfth_strike: { window: 9, marksPerHit: 2, ready: 4.5, damage: 320, knockback: 2.4 },
+  /**
+   * Alpha 1.9.8 — ACE's MAIN EVENT (PERFECT TAKE): a duel shot from GOLDEN ACE. The player's wind-up (`windup`; a rival's
+   * is the longer `telegraph`) carries the stance, the cuff and the golden spotlight — readable, interruptible, like every
+   * heavy card shot. One fast, precise round: `damage`, a light push. A HIT (not a shield, a DASH, a FALSE START, a decoy
+   * or a cover) gives `energyRefund` back once — a miss gives nothing; a SECOND TAKE never replays it. Sized against POWER
+   * SHOT (600 for 4): less damage and no knockdown, the refund pays for precision (net ~2,5 energy for a hit).
+   */
+  main_event: { windup: 0.62, telegraph: 1.0, lockAt: 0.6, damage: 470, speed: 34, radius: 0.27, range: 11.5, knockback: 1.4, energyRefund: 1.5 },
+
+  // ------------------------------------------------- Alpha 1.9.8 — three universal cards
+  // Sized against the same economy (0,8 energy/s, POWER SHOT 600 for 4) and against what they would replace: none of
+  // them deals damage, none stuns, none stacks with itself (checked with `npm run cards` and `npm run cardsim`).
+  /**
+   * SHOWTIME — «on cue». For `window` s the NEXT card the fighter plays (any card but SHOWTIME) comes out on cue: its
+   * wind-up (a rival's telegraph) takes ×`windupMult` — once. Meanwhile `duration` s of tempo: ×`speed` movement and
+   * ×`fireRate` trigger. No energy and no card cost is touched; a second SHOWTIME only renews the cue (nothing stacks).
+   */
+  showtime: { window: 4, windupMult: 0.6, duration: 3, speed: 1.1, fireRate: 1.15 },
+  /**
+   * MAGNET PULL — a magnetic pulse at an opponent within `range` m slides them towards the fighter (`force` m/s,
+   * decaying like PULSE PUSH — about force / decay m), never closer than `stopAt` m between them. It is the PULSE PUSH
+   * slide: the barrier, the cover and the arena wall stop it; a DASH in the air dodges it; a raised SHIELD keeps
+   * ×`shieldMult` of it; heavy fighters and the champion slide less. No damage, no stun, one pulse — nothing holds.
+   */
+  magnet_pull: { range: 6.5, force: 8, stopAt: 2.4, shieldMult: 0.5 },
+  /**
+   * SAFE CUT — «the editor's cut» for `duration` s: lighter hits lose `lightCut`; the FIRST dangerous one (a heavy hit or
+   * `threshold`+ damage) is cut to ×`heavyMult`, its push and stun ×`pushMult` — and SAFE CUT ends. Never a dodge (the hit
+   * lands, smaller); ticking damage is not cut; a raised SHIELD absorbs first (SAFE CUT never replaces it).
+   */
+  safe_cut: { duration: 2, lightCut: 0.2, threshold: 250, heavyMult: 0.45, pushMult: 0.5 },
 };
 
 export const COMBO_TUNING = {
@@ -423,6 +460,16 @@ export const COMBO_TUNING = {
   /** TIME SLIP: DASH distance multiplier; Alpha 1.6.1: the slow-motion ring also lasts longer. */
   timeSlipDist: 1.3,
   timeSlipExtend: 1.5,
+  /** Alpha 1.9.8 — STANDING OVATION (SHOWTIME → MAIN EVENT / POWER SHOT): the shot on cue hits harder. */
+  ovationMult: 1.25,
+  /** Alpha 1.9.8 — CLOSE-UP (MAGNET PULL → MAIN EVENT / POWER SHOT): the shot leads the pulled target and hits harder. */
+  closeUpLead: 0.9,
+  closeUpMult: 1.15,
+  /** Alpha 1.9.8 — STAR PULL (SHOWTIME → MAGNET PULL): the pulse reaches further (m) and pulls harder. */
+  starPullRange: 1.5,
+  starPullForce: 1.25,
+  /** Alpha 1.9.8 — CLEAN EXIT (SAFE CUT → DASH): a longer dash out of trouble. */
+  cleanExitDist: 1.3,
 };
 
 export const PASSIVE_TUNING = {
@@ -440,6 +487,11 @@ export const PASSIVE_TUNING = {
    * +`energy` card energy and `duration` s of a faster trigger (×`fireRate`).
    */
   mainspring: { threshold: 0.5, energy: 1, duration: 3, fireRate: 1.2 },
+  /**
+   * Alpha 1.9.8 — STAR TURN (ACE): `every` regular GOLDEN ACE shots in a row that land light the next one — it deals
+   * ×`mult`. A shot that misses, is dodged or is blocked by a shield breaks the run (precision, not volume).
+   */
+  star_turn: { every: 3, mult: 1.6 },
 };
 
 export const BROADCAST = {
@@ -470,6 +522,10 @@ export const BROADCAST = {
   /** Alpha 1.5: a BANK SHOT landing after its ricochet / a FALSE START reading an attack. */
   trickShot: 5,
   feintRead: 6,
+  /** Alpha 1.9.8: ACE's MAIN EVENT landed (PERFECT TAKE) — a little below a ricochet's TRICK SHOT (a straight shot is easier). */
+  perfectTake: 4,
+  /** Alpha 1.9.8: SAFE CUT took the edge off a dangerous hit (a read, like a block). */
+  safeCut: 3,
   /** Alpha 1.6: the same tactical combo again within this many seconds is worth half the show rating. */
   comboRepeat: 15,
   /** Alpha 1.6: SPOTLIGHT TAG paid off / FRAME CATCH stopped a shot / a cable held / a push landed / HIGH STAKES. */

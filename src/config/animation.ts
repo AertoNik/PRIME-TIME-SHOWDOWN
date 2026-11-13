@@ -180,6 +180,21 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.02,
     turnRate: 19,
   },
+  // Alpha 1.9.8 — ACE: a headliner's walk onto the stage — easy confident strides, chest open to the camera, a light
+  // swing of the free arm, crisp turns towards the target (a duelist's snap, not a brawler's lurch)
+  headliner: {
+    strideLength: 2.35,
+    legSwing: 0.76,
+    kneeLift: 1.15,
+    bob: 0.04,
+    sway: 0.05,
+    lean: 0.13,
+    accelLean: 0.075,
+    turnBank: 0.09,
+    armBob: 0.06,
+    contactSquash: 0.028,
+    turnRate: 18,
+  },
 };
 
 /** Weapon handling: recoil spring and how much of the body follows each shot. */
@@ -213,6 +228,8 @@ export const RECOIL: Record<WeaponType, RecoilProfile> = {
   stinger: { kick: 7, stiffness: 560, damping: 28, spine: 0.005, shove: 0.12, slide: 0.045, shake: 0 },
   // Alpha 1.7 — Lucien's cane: a clean flick of the wrist, the body barely moves
   cane: { kick: 6, stiffness: 430, damping: 22, spine: 0.005, shove: 0.12, slide: 0.03, shake: 0 },
+  // Alpha 1.9.8 — ACE's GOLDEN ACE: a duel revolver — a crisp upward snap of the wrist, a quick clean return
+  revolver: { kick: 13, stiffness: 400, damping: 19, spine: 0.009, shove: 0.18, slide: 0.05, shake: 0 },
 };
 
 /**
@@ -269,6 +286,9 @@ export const FIRE_STYLE: Record<WeaponType, FireStyle> = {
   stinger: { firstShot: 1.15, series: [1, 0.7], twist: 0.08, chest: 0.03, dip: 0.06, nod: 0.025, sway: 0.04, brace: 0, braceAmt: 0, climb: 0.16, lean: 0.06, push: 0.03, weight: 0.7 },
   // Lucien: the cane is raised and pointed before each bolt (brace = the point), a small wrist flick, poised
   cane: { firstShot: 1.15, series: [1, 0.85], twist: 0.05, chest: 0.03, dip: 0.03, nod: 0.03, sway: 0.02, brace: 0.24, braceAmt: 0.35, climb: 0.1, lean: 0.04, push: 0.02, weight: 0.8 },
+  // Alpha 1.9.8 — ACE: the duelist's draw — the revolver arm locks out, a sharp snap of the wrist, the shoulders square to
+  // the target and the chest stays open to the camera; a measured rhythm, never a spray
+  revolver: { firstShot: 1.3, series: [1, 0.85, 0.95], twist: 0.07, chest: 0.045, dip: 0.03, nod: 0.04, sway: 0.03, brace: 0.14, braceAmt: 0.35, climb: 0.15, lean: 0.055, push: 0.03, weight: 0.85 },
 };
 
 export const HIT_REACTION = {
@@ -307,6 +327,9 @@ export const VICTORY_SETS = {
   // Alpha 1.9.7 — CRAX: a heel-click salute to the brim / the key wound twice, then both arms up in a shower of gold gears /
   // «present arms» — the rifle raised upright before the chest, then a bow in three clockwork steps
   clockwork: ['clock_salute', 'clock_wind', 'clock_present'],
+  // Alpha 1.9.8 — ACE: the cuff adjusted, then a bow to the camera / GOLDEN ACE spun on the finger and holstered at the hip
+  // with a wink / both arms open to the crowd under a golden spotlight (the headliner's curtain call)
+  headliner: ['ace_cuff_bow', 'ace_spin_holster', 'ace_curtain_call'],
 } as const satisfies Record<VictoryStyle, readonly string[]>;
 
 export type VictoryMove = (typeof VICTORY_SETS)[VictoryStyle][number];

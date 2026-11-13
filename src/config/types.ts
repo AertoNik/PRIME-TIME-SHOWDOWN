@@ -1,6 +1,6 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
-export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina' | 'lucien' | 'crax';
+export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina' | 'lucien' | 'crax' | 'ace';
 export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale' | 'bot';
 export type CardId =
   | 'dash'
@@ -39,7 +39,13 @@ export type CardId =
   /** Alpha 1.7: Lucien's bat-swarm lunge and bite (initial damage + a short bleed). */
   | 'bat_bite'
   // Alpha 1.9.7 — WINTER SHOWDOWN: CRAX's signature
-  | 'twelfth_strike';
+  | 'twelfth_strike'
+  // Alpha 1.9.8 — CONTENT EXPANSION: ACE's signature (PERFECT TAKE)
+  | 'main_event'
+  // Alpha 1.9.8 — three universal cards (bought in the career)
+  | 'showtime'
+  | 'magnet_pull'
+  | 'safe_cut';
 export type ComboId =
   | 'counter_strike'
   | 'electro_blast'
@@ -66,19 +72,24 @@ export type ComboId =
   | 'rewind_trap'
   | 'double_take'
   | 'replay'
-  | 'time_slip';
+  | 'time_slip'
+  // Alpha 1.9.8 — the new cards and MAIN EVENT
+  | 'standing_ovation'
+  | 'close_up'
+  | 'star_pull'
+  | 'clean_exit';
 /** Alpha 1.6: card families on the prep screen (the four groups of the new cards plus the classics). */
 export type CardFamily = 'attack' | 'control' | 'defense' | 'show';
 /** Alpha 1.6: how the fighter's body sells a card (FighterAnimator.cast). */
 export type CastKind = 'throw' | 'shot' | 'device' | 'guard' | 'signal';
-export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger' | 'cane';
+export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger' | 'cane' | 'revolver';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
-export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte' | 'duelist' | 'mainspring';
+export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte' | 'duelist' | 'mainspring' | 'star_turn';
 export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide' | 'swirl';
 /** Victory set key (render only): picks which family of victory animations a fighter performs. */
-export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion' | 'nightstar' | 'clockwork';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician' | 'duelist' | 'clockwork';
+export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion' | 'nightstar' | 'clockwork' | 'headliner';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician' | 'duelist' | 'clockwork' | 'headliner';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 

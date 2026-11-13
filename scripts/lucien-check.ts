@@ -51,7 +51,8 @@ const AUTO = { mode: 'auto' as const, forcedEventId: 'none' };
 
 // ------------------------------------------------------------- the roster
 {
-  check('roster: LUCIEN «THE NIGHT STAR» is the seventh fighter (1.9.7: CRAX joins after him)', FIGHTER_ORDER.length === 8 && FIGHTER_ORDER[6] === 'lucien' && FIGHTER_ORDER[7] === 'crax' && L.name === 'LUCIEN' && L.nickname === 'THE NIGHT STAR');
+  // (1.9.8: the permanent contract star ACE joins after RINA, before the seasonal stars)
+  check('roster: LUCIEN «THE NIGHT STAR» is the eighth fighter, after ACE (1.9.8) and before CRAX (1.9.7)', FIGHTER_ORDER.length === 9 && FIGHTER_ORDER[6] === 'ace' && FIGHTER_ORDER[7] === 'lucien' && FIGHTER_ORDER[8] === 'crax' && L.name === 'LUCIEN' && L.nickname === 'THE NIGHT STAR');
   check('roster: a seasonal star of Halloween Premiere — no contract to sign', L.contract === null && L.seasonal?.eventId === 'halloween-2026' && !!LOOKS[L.look] && L.look === 'lucien');
   check('roster: never an opponent (not in any rotation, Survival, Challenge or Boss)', !RIVAL_ORDER.includes('lucien' as RivalId) && !Object.values(RIVALS).some((r) => r.look === 'lucien' || r.archetype === 'lucien') && SURVIVAL.waves.length > 0 && !Object.values(BOSSES).some((b) => (b.rival as string) === 'lucien'));
   check('weapon: VAMPIRE CANE BLASTER — bolts from afar, strikes up close (one weapon, one attack timer)', L.stats.attack.weapon === 'cane' && !!L.stats.attack.melee && L.stats.attack.melee.exit > L.stats.attack.melee.enter && L.stats.attack.melee.exit <= L.stats.attack.melee.reach + 0.55 * 0.5);

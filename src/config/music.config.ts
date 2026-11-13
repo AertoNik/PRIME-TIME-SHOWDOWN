@@ -22,7 +22,9 @@ export type MusicId =
   | 'victor_boss'
   // Alpha 1.9.7 — WINTER SHOWDOWN (the owner's two songs)
   | 'prime_menu_winter'
-  | 'winter_arena';
+  | 'winter_arena'
+  // Alpha 1.9.8 — NEON NEWSROOM (the owner's song)
+  | 'neon_newsroom';
 
 export interface MusicTrackDef {
   /** Path under public/ (relative, so it works from any sub-path of GitHub Pages). */
@@ -50,6 +52,9 @@ export const MUSIC_TRACKS: Record<MusicId, MusicTrackDef> = {
   // values above for prime_menu_halloween and haunted_arena to 0.01 LU) — docs/WINTER_EVENT_2026_IMPLEMENTATION_REPORT.md
   prime_menu_winter: { file: 'audio/music/prime_menu_winter.mp3', lufs: -11.27, phone: -12.86, role: 'menu' },
   winter_arena: { file: 'audio/music/winter_arena.mp3', lufs: -11.22, phone: -12.68, role: 'battle' },
+  // Alpha 1.9.8: the same BS.1770-4 meter (it reproduces haunted_arena, prime_menu_halloween and winter_arena above to
+  // 0.01 LU) — 92.5 s, 192 kbit/s, 44.1 kHz stereo (docs/ALPHA_1_9_8_WORKLOG.md)
+  neon_newsroom: { file: 'audio/music/neon_newsroom.mp3', lufs: -11.51, phone: -13.28, role: 'battle' },
 };
 
 /**
@@ -77,6 +82,8 @@ export const ARENA_MUSIC: Record<ArenaId, MusicId> = {
   graveyard: 'haunted_arena',
   // Alpha 1.9.7: the New Year set has its own song (the other sets keep theirs during the winter event)
   holiday: 'winter_arena',
+  // Alpha 1.9.8: the newsroom's own song, only there
+  newsroom: 'neon_newsroom',
 };
 
 const dB = (v: number) => Math.pow(10, v / 20);

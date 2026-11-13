@@ -428,6 +428,13 @@ export class AudioSystem {
         this.tone({ type: 'sine', f0: 180, f1: 90, dur: 0.1, gain: 0.08 * v });
         this.noise({ dur: 0.04, gain: 0.05 * v, type: 'bandpass', f0: 3200, q: 1.4 });
         break;
+      case 'revolver':
+        // Alpha 1.9.8 — ACE's GOLDEN ACE: a clean, round revolver crack with a short golden "ting" of the cylinder
+        this.noise({ dur: 0.055, gain: 0.11 * v, type: 'highpass', f0: 2400 });
+        this.tone({ type: 'square', f0: 1050 + Math.random() * 100, f1: 260, dur: 0.11, gain: 0.08 * v, filter: { type: 'lowpass', f0: 4600 } });
+        this.tone({ type: 'sine', f0: 220, f1: 110, dur: 0.09, gain: 0.07 * v });
+        this.tone({ type: 'triangle', f0: 2650, f1: 2500, dur: 0.1, gain: 0.025 * v, delay: 0.035 });
+        break;
       case 'tech_carbine':
         // crisp electronic tick per round of the burst
         this.tone({ type: 'square', f0: 1100 + Math.random() * 120, f1: 520, dur: 0.06, gain: 0.07 * v, filter: { type: 'bandpass', f0: 2200, q: 2 } });
@@ -730,6 +737,56 @@ export class AudioSystem {
     this.crowd(2);
   }
 
+  /**
+   * Alpha 1.9.8 — ACE's MAIN EVENT begins: the cuff (a soft cloth swish), the follow-spot switching on (a low lamp «thunk»)
+   * and a short rising shimmer under the stance.
+   */
+  mainEvent(): void {
+    this.noise({ dur: 0.12, gain: 0.07, type: 'bandpass', f0: 2600, q: 1.2, delay: 0.06 });
+    this.tone({ type: 'sine', f0: 110, f1: 70, dur: 0.12, gain: 0.12, delay: 0.14 });
+    this.noise({ dur: 0.05, gain: 0.06, type: 'lowpass', f0: 900, delay: 0.14 });
+    this.tone({ type: 'triangle', f0: NOTE(76), f1: NOTE(83), dur: 0.36, gain: 0.035, delay: 0.2, filter: { type: 'lowpass', f0: 5000 } });
+  }
+
+  /** Alpha 1.9.8 — MAIN EVENT landed (PERFECT TAKE): a bright gold chord and the crowd. */
+  perfectTake(): void {
+    [0, 4, 7, 12].forEach((n, i) => this.tone({ type: 'triangle', f0: NOTE(76 + n), dur: 0.16, gain: 0.05, delay: 0.03 + i * 0.05 }));
+    this.tone({ type: 'sine', f0: NOTE(100), dur: 0.35, gain: 0.025, delay: 0.22 });
+    this.crowd(2);
+  }
+
+  /** Alpha 1.9.8 — SHOWTIME: a short brass «cue» fanfare (two notes up). */
+  showtime(): void {
+    if (!this.throttle('showtime', 120)) return;
+    [0, 7].forEach((n, i) => this.tone({ type: 'square', f0: NOTE(72 + n), dur: 0.12, gain: 0.045, delay: i * 0.07, filter: { type: 'lowpass', f0: 3600 } }));
+    this.crowd(1);
+  }
+
+  /** Alpha 1.9.8 — MAGNET PULL: a rising magnetic hum, a soft clunk if it caught the opponent. */
+  magnet(hit: boolean): void {
+    if (!this.throttle('magnet', 80)) return;
+    this.tone({ type: 'sawtooth', f0: 90, f1: 260, dur: 0.32, gain: 0.06, filter: { type: 'bandpass', f0: 600, f1: 1400, q: 3 } });
+    if (hit) this.tone({ type: 'sine', f0: 180, f1: 120, dur: 0.12, gain: 0.12, delay: 0.24 });
+  }
+
+  /** Alpha 1.9.8 — SAFE CUT: a soft tape click when raised; a crisp splice «snip» when it cuts a hit. */
+  safeCut(cut: boolean): void {
+    if (!this.throttle('safecut', 80)) return;
+    if (!cut) {
+      this.noise({ dur: 0.04, gain: 0.06, type: 'bandpass', f0: 2400, q: 2 });
+      return;
+    }
+    this.noise({ dur: 0.05, gain: 0.16, type: 'highpass', f0: 3200 });
+    this.tone({ type: 'triangle', f0: NOTE(88), f1: NOTE(81), dur: 0.16, gain: 0.05, delay: 0.03 });
+  }
+
+  /** Alpha 1.9.8 — STAR TURN: a tiny gold «ting» when the star shot is ready. */
+  starTurn(): void {
+    if (!this.throttle('star', 200)) return;
+    this.tone({ type: 'sine', f0: NOTE(93), f1: NOTE(95), dur: 0.14, gain: 0.03 });
+    this.tone({ type: 'triangle', f0: NOTE(100), dur: 0.1, gain: 0.015, delay: 0.05 });
+  }
+
   /** Alpha 1.5 — FALSE START read an attack: a whip-crack snap and a rising sting. */
   feintCounter(): void {
     this.noise({ dur: 0.05, gain: 0.26, type: 'highpass', f0: 2800 });
@@ -788,6 +845,10 @@ export class AudioSystem {
         this.noise({ dur: 0.18, gain: 0.08, type: 'highpass', f0: 3500 });
         return;
       case 'neonSign':
+      // Alpha 1.9.8 — NEON NEWSROOM: the ON AIR sign, the monitors and the tally lamps buzz and pop like a neon sign
+      case 'onAirSign':
+      case 'monitor':
+      case 'tallyLamp':
         // electric buzz + spark crackle; the outage pops
         this.tone({ type: 'sawtooth', f0: 120, dur: 0.25, gain: 0.06, filter: { type: 'bandpass', f0: 900, q: 4 } });
         this.noise({ dur: 0.12, gain: 0.14 * k, type: 'highpass', f0: 4000 });
@@ -809,6 +870,8 @@ export class AudioSystem {
         if (broke) for (let i = 0; i < 4; i++) this.noise({ dur: 0.06, gain: 0.08, type: 'bandpass', f0: 1200 + i * 300, q: 2, delay: 0.12 + i * 0.07 });
         return;
       case 'spotlight':
+      // Alpha 1.9.8: a studio camera on its pedestal clanks like the backlot's lamp
+      case 'newsCam':
         // the lamp swings with a metallic clank; broken: a pop and a buzzing filament
         this.tone({ type: 'triangle', f0: 620, f1: 410, dur: 0.25, gain: 0.08 * k });
         this.tone({ type: 'sine', f0: 1310, dur: 0.18, gain: 0.03 });

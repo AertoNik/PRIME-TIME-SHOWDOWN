@@ -115,7 +115,7 @@ check('the effects and styles are wired (dash, victory, card style, frame, title
 // =========================================================== 4. CRAX
 section('КРЭКС и ДВЕНАДЦАТЫЙ УДАР');
 const C = FIGHTERS.crax;
-check('CRAX: a seasonal star of winter-2026 (no contract), the carbine class (3-shot burst), MAINSPRING, TWELFTH STRIKE', C.seasonal?.eventId === EV.id && C.contract === null && C.stats.attack.weapon === 'tech_carbine' && C.stats.attack.burst?.count === 3 && C.passive === 'mainspring' && C.signature === 'twelfth_strike' && FIGHTER_ORDER[7] === 'crax');
+check('CRAX: a seasonal star of winter-2026 (no contract), the carbine class (3-shot burst), MAINSPRING, TWELFTH STRIKE', C.seasonal?.eventId === EV.id && C.contract === null && C.stats.attack.weapon === 'tech_carbine' && C.stats.attack.burst?.count === 3 && C.passive === 'mainspring' && C.signature === 'twelfth_strike' && FIGHTER_ORDER[FIGHTER_ORDER.length - 1] === 'crax'); // (1.9.8: last of the roster, after ACE and LUCIEN)
 check('his look: the CLOCKWORK RIFLE model on the carbine class (same muzzle), the key, the gears, a shako and a tunic', LOOKS.crax.weapon === 'tech_carbine' && LOOKS.crax.weaponModel === 'clockwork' && LOOKS.crax.accessories.includes('windkey') && LOOKS.crax.hair.style === 'shako' && LOOKS.crax.top.style === 'tunic' && LOOKS.crax.face?.wooden === true);
 check('TWELFTH STRIKE: 3 energy, his exclusive, a league attack card, OVERDRIVE → it is a SUPERSTAR MOVE', CARDS.twelfth_strike.cost === 3 && CARDS.twelfth_strike.exclusive === 'crax' && CARD_KIND.twelfth_strike === 'attack' && COMBOS.find((c) => c.id === 'superstar')!.second.includes('twelfth_strike'));
 // real fights of CRAX: the clock's events in order
@@ -240,7 +240,7 @@ for (let i = 0; i < 16; i++) {
 }
 check(`16 fights on the set end normally (KO or time), the longest ${maxT.toFixed(0)} s`, ended === 16);
 check(`the cover breaks in real fights (${breaks} pieces in 16 fights) and a fighter never stands inside a standing piece (${inside} frames)`, breaks >= 16 && inside === 0);
-check('BOSS FIGHT is never held among the gifts (HOLIDAY → the Original Prime Arena)', read('src/game/Game.ts').includes("return id === 'holiday' ? 'original' : 'haunted';"));
+check('BOSS FIGHT is never held among the gifts (HOLIDAY → the Original Prime Arena)', read('src/game/Game.ts').includes("return id === 'graveyard' ? 'haunted' : 'original';") && ARENAS.holiday.covers!.length > 0);
 
 // =========================================================== 6. music, lobby, wiring
 section('Музыка, лобби, интерфейс');

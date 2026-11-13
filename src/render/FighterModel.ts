@@ -16,6 +16,8 @@ import {
   Object3D,
   Quaternion,
   ShaderMaterial,
+  Shape,
+  ExtrudeGeometry,
   SphereGeometry,
   TorusGeometry,
   Vector2,
@@ -82,6 +84,13 @@ class PartSet {
     return merged;
   }
 }
+
+/**
+ * Alpha 1.9.8 polish — CUE MASTER's eyeshade (head radii, metres, radians): the brim's half arc, its reach in front and
+ * its half width (an ellipse — deepest over the eyes, tapering at the temples), the inner edge hidden in the hair, the
+ * thickness, the height and the forward tilt; the band's radius, height and tilt.
+ */
+export const EYESHADE = { arc: 1.22, reach: 1.36, wide: 1.04, inner: 0.95, thick: 0.009, y: 0.62, z: 0.01, tilt: 0.3, band: 1.0, bandY: 0.47, bandTilt: 0.1 };
 
 // ------------------------------------------------------------ primitives
 const sph = (r: number, w = 18, h = 14) => new SphereGeometry(r, w, h);
@@ -563,6 +572,17 @@ export function getRigGeometry(lookId: string): RigGeometry {
         TLG.add(rbox(0.006, 0.4, 0.008, 0.003), look.glow, { p: [ss * 0.152, -0.25, -0.012], r: rot }, GLOW * 0.55);
       }
     }
+    if (look.top.style === 'tux') {
+      // Alpha 1.9.8 (ACE): the dinner jacket's fitted skirt — the fronts open below the waist button and curve away
+      // over the hips (a cutaway), side panels and a short back with a centre vent; a gold line on the front edges
+      const tm = look.top.main;
+      for (const ss of [1, -1]) {
+        P.add(rbox(0.17, 0.15, 0.035, 0.015), tm, { p: [ss * 0.13, -0.06, d.pelvisD * 0.5 + 0.012], r: [-0.12, ss * 0.12, ss * 0.22] });
+        P.add(rbox(0.012, 0.15, 0.037, 0.005), look.top.accent, { p: [ss * 0.05, -0.05, d.pelvisD * 0.5 + 0.018], r: [-0.12, ss * 0.12, ss * 0.22] });
+        P.add(rbox(0.03, 0.17, 0.22, 0.012), tm, { p: [ss * d.pelvisW * 0.52, -0.06, -0.03], r: [0.06, 0, ss * 0.08] });
+        P.add(rbox(0.13, 0.17, 0.03, 0.012), tm, { p: [ss * 0.075, -0.06, -d.pelvisD * 0.5 - 0.012], r: [0.08, 0, ss * 0.04] });
+      }
+    }
   }
 
   // ----------------------------------------------------------------- legs
@@ -994,6 +1014,90 @@ export function getRigGeometry(lookId: string): RigGeometry {
         TG.add(sph(0.022, 10, 8), look.glow, { p: [-0.17, h * 0.74, zf(h * 0.74) + 0.03] }, GLOW * 0.6);
         break;
       }
+      case 'tux': {
+        // Alpha 1.9.8 (ACE): a fitted cream dinner jacket — black-satin peak lapels piped in gold rolling down to one gold
+        // waist button, a black shirt with a gold bow tie, structured shoulders, a turquoise pocket square and a small
+        // glowing ace-of-spades pin on the left lapel; a gold line at the hem
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        // the shirt in the V of the lapels, its collar points and the bow tie
+        T.add(rbox(0.16, h * 0.44, 0.03, 0.02), top.inner, { p: [0, h * 0.74, zf(h * 0.74) - 0.004] });
+        for (const ss of [1, -1]) T.add(rbox(0.05, 0.035, 0.02, 0.008), top.inner, { p: [ss * 0.03, h * 0.95, zf(h * 0.95) + 0.01], r: [0, 0, ss * 0.55] });
+        for (const ss of [1, -1]) T.add(sph(0.036, 10, 8), top.accent, { p: [ss * 0.034, h * 0.91, zf(h * 0.91) + 0.022], s: [1.25, 0.72, 0.5], r: [0, 0, ss * 0.32] });
+        T.add(sph(0.016, 8, 6), shade(top.accent, 0.78), { p: [0, h * 0.91, zf(h * 0.91) + 0.03], s: [1, 1.2, 0.8] });
+        for (const ss of [1, -1]) {
+          const lr: V3 = [0, ss * 0.3, -ss * 0.36];
+          // the satin lapel, its gold piping and the peak
+          T.add(rbox(0.09, h * 0.52, 0.03, 0.014), top.trim, { p: [ss * 0.112, h * 0.64, zf(h * 0.64) + 0.008], r: lr });
+          T.add(rbox(0.011, h * 0.5, 0.032, 0.005), top.accent, { p: [ss * 0.068, h * 0.64, zf(h * 0.64) + 0.016], r: lr });
+          T.add(rbox(0.075, 0.045, 0.028, 0.01), top.trim, { p: [ss * 0.165, h * 0.87, zf(h * 0.87) + 0.004], r: [0, ss * 0.3, -ss * 0.95] });
+          // structured shoulders (a fitted line, not padded)
+          T.add(sph(0.12, 14, 10), top.main, { p: [ss * d.shoulderX * 0.95, d.shoulderY + 0.03, 0], s: [1.15, 0.46, 1.02], r: [0, 0, -ss * 0.18] });
+        }
+        // one gold waist button where the lapels meet
+        T.add(sph(0.022, 10, 8), top.accent, { p: [0, h * 0.4, zf(h * 0.4) + 0.012] });
+        // turquoise pocket square (right chest) and the glowing ace-of-spades pin (left lapel)
+        T.add(rbox(0.07, 0.035, 0.022, 0.008), look.glow, { p: [0.17, h * 0.68, zf(h * 0.68) + 0.006], r: [0, 0.3, 0.1] });
+        T.add(rbox(0.074, 0.012, 0.024, 0.004), top.accent, { p: [0.17, h * 0.655, zf(h * 0.655) + 0.008], r: [0, 0.3, 0.1] });
+        TG.add(sph(0.016, 8, 6), look.glow, { p: [-0.15, h * 0.76, zf(h * 0.76) + 0.03], s: [1, 1.15, 0.6] }, GLOW * 0.7);
+        TG.add(rbox(0.006, 0.014, 0.006, 0.002), look.glow, { p: [-0.15, h * 0.74, zf(h * 0.74) + 0.03] }, GLOW * 0.7);
+        // (no hem band: a gold line round the waist read as a belt and cut the jacket in two)
+        break;
+      }
+      case 'hustler': {
+        // Alpha 1.9.8 (KAI — CUE MASTER): a pool-hall ace — a cream shirt with an open collar, an emerald waistcoat in a
+        // V over it with a mahogany back and three brass buttons, a loose dark tie, a brass watch chain to the pocket and a
+        // small 8-ball pin with a chalk-blue glint
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.inner);
+        // the waistcoat: closed below, open in a V above, its back in mahogany
+        T.add(torsoShell(d, 0.02, h * 0.5, 0.016), top.main);
+        T.add(torsoShell(d, h * 0.5, h * 0.86, 0.016, 0.42, Math.PI * 2 - 0.84), top.main);
+        T.add(torsoShell(d, 0.04, h * 0.84, 0.02, Math.PI - 0.95, 1.9), top.trim);
+        for (const ss of [1, -1]) T.add(rbox(0.05, h * 0.42, 0.028, 0.012), top.main, { p: [ss * 0.07, h * 0.66, zf(h * 0.66) + 0.008], r: [0, ss * 0.25, -ss * 0.34] });
+        T.add(torsoRing(d, 0.035, 0.018, 0.022), shade(top.main, 0.75));
+        for (let i = 0; i < 3; i++) {
+          const y = h * (0.14 + i * 0.12);
+          T.add(sph(0.019, 10, 8), top.accent, { p: [0, y, zf(y) + 0.02], s: [1, 1, 0.6] });
+        }
+        // the open shirt collar and the loose tie
+        for (const ss of [1, -1]) T.add(rbox(0.07, 0.035, 0.02, 0.008), top.inner, { p: [ss * 0.045, h * 0.95, zf(h * 0.95) + 0.006], r: [0.2, 0, ss * 0.6] });
+        T.add(sph(0.028, 10, 8), 0x1a1410, { p: [0, h * 0.89, zf(h * 0.89) + 0.018], s: [1.2, 0.9, 0.6] });
+        T.add(rbox(0.045, h * 0.3, 0.018, 0.01), 0x1a1410, { p: [0.008, h * 0.72, zf(h * 0.72) + 0.014], r: [0.05, 0, -0.06] });
+        // the watch chain from the middle button to the side pocket
+        T.add(tor(0.07, 0.006, Math.PI, 12), top.accent, { p: [0.075, h * 0.26, zf(h * 0.26) + 0.022], r: [0, 0.1, Math.PI] });
+        // the 8-ball pin on the left side of the waistcoat
+        const py = h * 0.62;
+        T.add(sph(0.026, 12, 10), 0x111114, { p: [-0.15, py, zf(py) + 0.012], s: [1, 1, 0.7] });
+        T.add(sph(0.011, 8, 6), 0xf2ead8, { p: [-0.148, py + 0.004, zf(py) + 0.03], s: [1, 1, 0.5] });
+        TG.add(sph(0.006, 6, 4), look.glow, { p: [-0.14, py + 0.016, zf(py) + 0.032] }, GLOW * 0.8);
+        break;
+      }
+      case 'nomad': {
+        // Alpha 1.9.8 (RINA — DUNE MIRAGE): a desert courier's wrap jacket — sand, a terracotta panel wrapping across the
+        // chest from the right shoulder to the left hip, the indigo under-layer at the neck, a hood lying on the shoulders,
+        // a leather sash with a brass buckle set with turquoise and three turquoise bead charms at the hip
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(torsoShell(d, h * 0.86, h, 0.006, -0.5, 1.0), top.inner);
+        T.add(rbox(0.15, h * 0.98, 0.03, 0.014), top.accent, { p: [-0.02, h * 0.5, zf(h * 0.5) + 0.012], r: [0, 0, 0.48] });
+        T.add(rbox(0.016, h * 0.98, 0.032, 0.006), top.trim, { p: [0.05, h * 0.52, zf(h * 0.52) + 0.018], r: [0, 0, 0.48] });
+        // the hood: a soft fold lying round the back of the neck
+        T.add(sph(0.2, 16, 12, ), top.main, { p: [0, h * 0.97, -0.12], s: [1.25, 0.55, 0.85] });
+        T.add(tor(0.17, 0.03, Math.PI * 1.2, 18), shade(top.main, 0.82), { p: [0, h * 1.0, -0.06], r: [Math.PI / 2, 0, Math.PI * 1.1], s: [1.1, 1, 0.9] });
+        // the sash, its buckle and the bead charms
+        T.add(torsoRing(d, h * 0.16, 0.024, 0.032), top.trim);
+        const by = h * 0.16;
+        T.add(rbox(0.07, 0.06, 0.026, 0.012), 0xc8a050, { p: [0.05, by, zf(by) + 0.034] });
+        TG.add(sph(0.016, 10, 8), look.glow, { p: [0.05, by, zf(by) + 0.05], s: [1, 1, 0.6] }, GLOW * 0.8);
+        for (let k = 0; k < 3; k++) {
+          T.add(rbox(0.006, 0.05, 0.006, 0.002), top.trim, { p: [-0.13 + k * 0.022, by - 0.05, zf(by) + 0.02] });
+          TG.add(sph(0.012, 8, 6), look.glow, { p: [-0.13 + k * 0.022, by - 0.08, zf(by) + 0.022] }, GLOW * 0.6);
+        }
+        // stitched leather patch on the left shoulder
+        T.add(rbox(0.09, 0.07, 0.024, 0.01), top.trim, { p: [-0.17, h * 0.84, zf(h * 0.84) - 0.01], r: [0, -0.4, 0] });
+        break;
+      }
       case 'pads': {
         // sleeveless jersey with a hazard-stripe badge (shoulder pads below)
         T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
@@ -1110,6 +1214,20 @@ export function getRigGeometry(lookId: string): RigGeometry {
       T.add(ch, look.top.trim, { p: [0, d.neckY - 0.03, 0.005] });
       TG.add(sph(0.026, 10, 8), look.glow, { p: [0, d.neckY - 0.045, d.neckR * 1.2], s: [1, 1.2, 0.6] }, GLOW);
     }
+    if (look.accessories.includes('scarf')) {
+      // Alpha 1.9.8 (DUNE MIRAGE): an indigo desert scarf wound round the neck, one end hanging over the chest with a
+      // turquoise fringe
+      // (low on the shoulders and out in front: the big head hides anything right under the chin)
+      const sc = look.top.inner;
+      const wind = tor(d.neckR * 1.75, 0.06, Math.PI * 2, 24);
+      wind.rotateX(Math.PI / 2);
+      T.add(wind, sc, { p: [0, d.neckY - 0.1, 0.02], s: [1.05, 1, 0.95] });
+      T.add(sph(0.07, 12, 10), shade(sc, 1.2), { p: [-0.09, d.neckY - 0.15, torsoR(d, d.neckY - 0.15) * d.depth + 0.02], s: [1.1, 0.85, 0.7] });
+      const ty = d.neckY - 0.3;
+      T.add(rbox(0.09, 0.26, 0.028, 0.012), sc, { p: [-0.12, ty, torsoR(d, ty) * d.depth + 0.034], r: [0.1, 0, 0.16] });
+      T.add(rbox(0.092, 0.018, 0.03, 0.006), shade(sc, 1.45), { p: [-0.12, ty + 0.06, torsoR(d, ty) * d.depth + 0.04], r: [0.1, 0, 0.16] });
+      for (let k = 0; k < 4; k++) TG.add(rbox(0.009, 0.034, 0.009, 0.003), look.glow, { p: [-0.152 + k * 0.021, ty - 0.145 + k * 0.003, torsoR(d, ty - 0.14) * d.depth + 0.04] }, GLOW * 0.6);
+    }
     if (look.accessories.includes('chain')) {
       const ch = tor(0.2, 0.026, Math.PI * 2, 30);
       T.add(ch, 0xffc23a, { p: [0, d.neckY - 0.08, 0.13], r: [1.15, 0, 0], s: [1.25, 1, 1] });
@@ -1119,6 +1237,8 @@ export function getRigGeometry(lookId: string): RigGeometry {
 
   // ----------------------------------------------------------------- arms
   const sleeveMain = look.top.style === 'vest' || look.top.style === 'puffer' || look.top.style === 'pads' ? skin : look.top.main;
+  // Alpha 1.9.8 (CUE MASTER): the shirt sleeves rolled up to the elbow — cream upper sleeve, bare forearm
+  const rolled = look.top.style === 'hustler';
   for (const side of ['L', 'R'] as const) {
     const s = side === 'L' ? 1 : -1;
     const U = B.t(side === 'L' ? 'upperArmL' : 'upperArmR');
@@ -1127,8 +1247,8 @@ export function getRigGeometry(lookId: string): RigGeometry {
     const ar = d.armR;
     const top = look.top;
     const bare = sleeveMain === skin;
-    U.add(sph(ar * (bare ? 1.35 : 1.45), 14, 10), bare ? (top.style === 'puffer' ? top.inner : top.inner) : top.main, { p: [0, -0.02, 0] });
-    U.add(cap(ar * (bare ? 1.1 : 1.22), d.upperArm * 0.6), sleeveMain, { p: [0, -d.upperArm * 0.5, 0] });
+    U.add(sph(ar * (bare ? 1.35 : 1.45), 14, 10), bare || rolled ? top.inner : top.main, { p: [0, -0.02, 0] });
+    U.add(cap(ar * (bare ? 1.1 : 1.22), d.upperArm * 0.6), rolled ? top.inner : sleeveMain, { p: [0, -d.upperArm * 0.5, 0] });
     if (bare) {
       // tee sleeve + bicep
       U.add(cap(ar * 1.32, 0.04), top.inner, { p: [0, -0.07, 0] });
@@ -1175,6 +1295,9 @@ export function getRigGeometry(lookId: string): RigGeometry {
       // Alpha 1.9.5: an orange flight stripe on the navy sleeve and a white pocket patch
       U.add(rbox(0.03, d.upperArm * 0.76, 0.05, 0.012), top.accent, { p: [s * ar * 1.14, -d.upperArm * 0.5, 0] });
       U.add(rbox(0.05, 0.06, 0.03, 0.01), top.trim, { p: [s * ar * 1.0, -d.upperArm * 0.36, ar * 0.9] });
+    } else if (top.style === 'tux') {
+      // Alpha 1.9.8 (ACE): a clean fitted sleeve — just a fine gold seam
+      U.add(rbox(0.01, d.upperArm * 0.66, 0.018, 0.004), top.accent, { p: [s * ar * 1.2, -d.upperArm * 0.5, 0] });
     } else if (top.style === 'suit') {
       // Alpha 1.8.8: a fine gold seam on the black sleeve
       U.add(rbox(0.012, d.upperArm * 0.7, 0.02, 0.005), top.accent, { p: [s * ar * 1.22, -d.upperArm * 0.5, 0] });
@@ -1183,9 +1306,36 @@ export function getRigGeometry(lookId: string): RigGeometry {
       const ring = tor(ar * 1.24, 0.026);
       ring.rotateX(Math.PI / 2);
       U.add(ring, top.accent, { p: [0, -d.upperArm * 0.7, 0] });
+    } else if (rolled) {
+      // Alpha 1.9.8 (CUE MASTER): the thick roll of the sleeve just above the elbow
+      const roll = tor(ar * 1.2, 0.04);
+      roll.rotateX(Math.PI / 2);
+      U.add(roll, shade(top.inner, 0.92), { p: [0, -d.upperArm * 0.86, 0] });
+    } else if (top.style === 'nomad') {
+      // Alpha 1.9.8 (DUNE MIRAGE): a terracotta band and a stitched seam down the sand sleeve
+      const ring = tor(ar * 1.24, 0.02);
+      ring.rotateX(Math.PI / 2);
+      U.add(ring, top.accent, { p: [0, -d.upperArm * 0.55, 0] });
+      U.add(rbox(0.01, d.upperArm * 0.7, 0.016, 0.004), top.trim, { p: [s * ar * 1.2, -d.upperArm * 0.5, 0] });
+    }
+    // Alpha 1.9.8 (CUE MASTER): crimson sleeve garters with a brass clasp
+    if (look.accessories.includes('armbands')) {
+      const band = tor(ar * 1.26, 0.018);
+      band.rotateX(Math.PI / 2);
+      U.add(band, 0x8a1c26, { p: [0, -d.upperArm * 0.42, 0] });
+      U.add(rbox(0.026, 0.026, 0.014, 0.005), look.top.accent, { p: [s * ar * 1.24, -d.upperArm * 0.42, 0] });
     }
     // forearm
-    F.add(cap(ar * (bare ? 1.05 : 1.12), d.foreArm * 0.55), sleeveMain, { p: [0, -d.foreArm * 0.45, 0] });
+    F.add(cap(ar * (bare || rolled ? 1.05 : 1.12), d.foreArm * 0.55), rolled ? skin : sleeveMain, { p: [0, -d.foreArm * 0.45, 0] });
+    if (top.style === 'nomad') {
+      // Alpha 1.9.8 (DUNE MIRAGE): the forearms wrapped in sand cloth, a turquoise bead bracelet
+      for (let k = 0; k < 4; k++) {
+        const wrap = tor(ar * 1.16, 0.014);
+        wrap.rotateX(Math.PI / 2 + (k % 2 ? 0.18 : -0.18));
+        F.add(wrap, shade(top.main, k % 2 ? 0.88 : 1.06), { p: [0, -d.foreArm * (0.5 + k * 0.08), 0] });
+      }
+      FG.add(tor(ar * 1.18, 0.012), look.glow, { p: [0, -d.foreArm * 0.84, 0], r: [Math.PI / 2, 0, 0] }, GLOW * 0.5);
+    }
     if (top.style === 'racer') F.add(rbox(0.03, d.foreArm * 0.62, 0.038, 0.012), top.accent, { p: [s * ar * 1.12, -d.foreArm * 0.42, 0] });
     if (top.style === 'track') {
       for (const [off, c] of [
@@ -1220,6 +1370,16 @@ export function getRigGeometry(lookId: string): RigGeometry {
       F.add(cyl(ar * 1.16, ar * 1.12, 0.07, 16), top.inner, { p: [0, -d.foreArm * 0.86, 0] });
       F.add(sph(0.024, 8, 6), top.accent, { p: [s * ar * 1.18, -d.foreArm * 0.86, 0] });
     }
+    if (top.style === 'tux') {
+      // Alpha 1.9.8 (ACE): the black shirt cuff showing well below the cream sleeve, its gold cufflink catching the light
+      // — the cuff he adjusts before MAIN EVENT (it rides on the forearm, so it moves with every gesture)
+      F.add(cyl(ar * 1.17, ar * 1.12, 0.085, 16), top.inner, { p: [0, -d.foreArm * 0.87, 0] });
+      const edge = tor(ar * 1.17, 0.008);
+      edge.rotateX(Math.PI / 2);
+      F.add(edge, top.accent, { p: [0, -d.foreArm * 0.83, 0] });
+      F.add(rbox(0.03, 0.03, 0.016, 0.006), top.accent, { p: [s * ar * 1.19, -d.foreArm * 0.88, 0], r: [0, 0, Math.PI / 4] });
+      FG.add(sph(0.008, 6, 4), look.glow, { p: [s * ar * 1.21, -d.foreArm * 0.88, 0] }, GLOW * 0.8);
+    }
     if (top.style === 'tailcoat') {
       // Alpha 1.7: a turned-back bordeaux cuff with a metal band, a thin crimson line down the forearm
       F.add(cyl(ar * 1.3, ar * 1.2, 0.08, 16), top.accent, { p: [0, -d.foreArm * 0.8, 0] });
@@ -1228,7 +1388,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
       F.add(band, top.trim, { p: [0, -d.foreArm * 0.74, 0] });
       FG.add(rbox(0.008, d.foreArm * 0.45, 0.01, 0.003), look.glow, { p: [s * ar * 1.12, -d.foreArm * 0.45, 0] }, GLOW * 0.5);
     }
-    if (!bare) {
+    if (!bare && !rolled) {
       const cuff = tor(ar * 1.1, 0.035);
       cuff.rotateX(Math.PI / 2);
       if (top.style === 'tech') FG.add(cuff, top.accent, { p: [0, -d.foreArm * 0.85, 0] }, GLOW);
@@ -1459,6 +1619,26 @@ export function getRigGeometry(lookId: string): RigGeometry {
         for (const s of [1, -1]) H.add(rbox(0.05, 0.1, 0.07, 0.02), h2, { p: [s * R * 0.92, cy + 0.02, 0.1] });
         break;
       }
+      case 'wave': {
+        // Alpha 1.9.8 (ACE): a modern wave — a side part on his right, the volume rising over the brow and swept across
+        // to the left in two soft rolls, a warm caramel sheen on the crest, short neat sides and a tapered nape
+        H.add(new SphereGeometry(R * 1.04, 26, 14, 0, Math.PI * 2, 0, 1.2), hc, { p: [0, cy + 0.01, -0.03], r: [-0.32, 0, 0] });
+        H.add(new SphereGeometry(R * 1.03, 22, 12, Math.PI, Math.PI, 0.5, 1.45), hc, { p: [0, cy, 0.0] });
+        // the main roll, rising from the part and sweeping across
+        H.add(sph(0.28, 18, 12), hc, { p: [-0.04, cy + R * 0.92, R * 0.36], s: [1.12, 0.58, 1.0], r: [0.5, 0, 0.16] });
+        H.add(sph(0.22, 16, 12), hc, { p: [-0.13, cy + R * 0.86, R * 0.66], s: [1.0, 0.55, 0.72], r: [0.85, 0.2, 0.32] });
+        // the crest catching the light, a lighter lock falling towards the left temple
+        H.add(sph(0.18, 14, 10), shade(hc, 1.2), { p: [-0.02, cy + R * 1.06, R * 0.22], s: [1.15, 0.45, 1.15], r: [0.25, 0, 0.12] });
+        H.add(sph(0.1, 12, 10), h2, { p: [-0.07, cy + R * 1.12, R * 0.3], s: [1.3, 0.42, 1.25], r: [0.3, 0, 0.18] });
+        H.add(sph(0.09, 12, 8), shade(hc, 1.12), { p: [-0.26, cy + R * 0.6, R * 0.74], s: [0.7, 0.9, 0.55], r: [0.6, 0.4, 0.7] });
+        // the part line on his right and the short side under it
+        H.add(rbox(0.016, 0.03, R * 0.62, 0.006), shade(hc, 0.55), { p: [0.15, cy + R * 0.92, R * 0.18], r: [0.42, 0, -0.32] });
+        // back volume and a neat tapered nape
+        H.add(sph(0.24, 16, 12), hc, { p: [0, cy + R * 0.66, -R * 0.42], s: [1.15, 0.62, 1.05], r: [-0.35, 0, 0] });
+        H.add(sph(0.2, 14, 10), hc, { p: [0, cy - R * 0.1, -R * 0.78], s: [1.4, 0.9, 0.7] });
+        for (const s of [1, -1]) H.add(rbox(0.045, 0.11, 0.07, 0.02), shade(hc, 0.85), { p: [s * R * 0.92, cy, 0.08] });
+        break;
+      }
       case 'slick': {
         // slicked-back champion hair: smooth cap swept to the back, volume on top, a gold streak
         H.add(new SphereGeometry(R * 1.045, 26, 14, 0, Math.PI * 2, 0, 1.25), hc, { p: [0, cy + 0.01, -0.04], r: [-0.42, 0, 0] });
@@ -1650,6 +1830,41 @@ export function getRigGeometry(lookId: string): RigGeometry {
       frame.rotateX(Math.PI / 2);
       frame.rotateY((arc + 0.25) / 2 - Math.PI / 2);
       H.add(frame, look.top.trim, { p: [0, cy + R * 0.4 + 0.035, -0.04], r: [-0.18, 0, 0], s: [1, 1, 0.95] });
+    }
+    if (look.accessories.includes('eyeshade')) {
+      // Alpha 1.9.8 (CUE MASTER): a green dealer's eyeshade. 1.9.8 polish: a slim crescent brim — deepest over the eyes,
+      // tapering to nothing at the temples (no longer wider than the head), its reach cut by ~15 %, thinner, a gentler tilt;
+      // a narrow band hugging the head instead of a ring floating over the hair; a fine brass edge along the brim.
+      const EY = EYESHADE;
+      const crescent = new Shape();
+      const n = 18;
+      for (let i = 0; i <= n; i++) {
+        const t = -EY.arc + (2 * EY.arc * i) / n;
+        const x = Math.sin(t) * EY.wide * R;
+        const z = Math.cos(t) * EY.reach * R;
+        if (i === 0) crescent.moveTo(x, z);
+        else crescent.lineTo(x, z);
+      }
+      for (let i = n; i >= 0; i--) {
+        const t = -EY.arc + (2 * EY.arc * i) / n;
+        crescent.lineTo(Math.sin(t) * EY.inner * R, Math.cos(t) * EY.inner * R);
+      }
+      const brim = new ExtrudeGeometry(crescent, { depth: EY.thick, bevelEnabled: false, curveSegments: 4 });
+      // the shape's +y is the brim's forward: lay it flat (extruded downwards), its top at the band
+      brim.rotateX(Math.PI / 2);
+      const at: PartOpts = { p: [0, cy + R * EY.y, EY.z], r: [EY.tilt, 0, 0] };
+      H.add(brim, 0x1f8a5a, at);
+      // the brass edge: an elliptic arc along the brim's outer rim (a torus arc squeezed across)
+      const edge = tor(EY.reach * R, 0.007, 2 * EY.arc, 24);
+      edge.rotateX(Math.PI / 2);
+      edge.rotateY(EY.arc - Math.PI / 2);
+      edge.scale(EY.wide / EY.reach, 1, 1);
+      edge.translate(0, -EY.thick / 2, 0);
+      H.add(edge, look.top.accent, at);
+      // the band: round the head just above the brim line, close to the hair (a touch lower at the back)
+      const band = tor(R * EY.band, 0.014, Math.PI * 2, 32);
+      band.rotateX(Math.PI / 2);
+      H.add(band, 0x1a3a2a, { p: [0, cy + R * EY.bandY, -0.01], r: [EY.bandTilt, 0, 0], s: [1, 1, 0.97] });
     }
     if (look.accessories.includes('shades')) {
       // Alpha 1.5 (Kai): retro oval shades pushed up into the hair, turquoise-mirrored lenses
@@ -1949,6 +2164,46 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(tor(0.05, 0.012, Math.PI, 12), wd, { p: [0, 0.02, 0.07], r: [Math.PI, Math.PI / 2, 0] });
     W.add(rbox(0.03, 0.05, 0.05, 0.01), wc, { p: [0, 0.2, -0.06], r: [0.5, 0, 0] });
     muzzleR = [0, 0.14, 0.77];
+  } else if (look.weapon === 'revolver') {
+    // Alpha 1.9.8 — ACE's GOLDEN ACE: a compact retro-futurist duel revolver — a white frame, a fluted gold cylinder with
+    // six glowing turquoise chambers, a short barrel under a gold top rib with a turquoise energy line along each side, a
+    // gold crown at the muzzle, a dark hammer and trigger guard, a white grip with a gold ace-of-spades inlay. One-handed;
+    // small enough to read cleanly in his hand on a phone.
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    const gold = 0xe0b84c;
+    W.add(rbox(0.1, 0.13, 0.27, 0.035), wc, { p: [0, 0.1, 0.08] });
+    const drum = cyl(0.092, 0.092, 0.14, 12);
+    drum.rotateX(Math.PI / 2);
+    W.add(drum, gold, { p: [0, 0.115, 0.16] });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      // the flutes between the chambers, and the chambers glowing on the front face
+      W.add(rbox(0.014, 0.026, 0.13, 0.004), shade(gold, 0.62), { p: [Math.cos(a + 0.52) * 0.09, 0.115 + Math.sin(a + 0.52) * 0.09, 0.16], r: [0, 0, a + 0.52] });
+      WG.add(sph(0.016, 8, 6), gl, { p: [Math.cos(a) * 0.056, 0.115 + Math.sin(a) * 0.056, 0.233] }, GLOW);
+    }
+    // a short white barrel under a dark ventilated rib (the dark line reads the barrel's length on a phone)
+    const barrel = cyl(0.04, 0.044, 0.24, 14);
+    barrel.rotateX(Math.PI / 2);
+    W.add(barrel, wc, { p: [0, 0.13, 0.4] });
+    W.add(rbox(0.046, 0.03, 0.36, 0.01), wd, { p: [0, 0.18, 0.34] });
+    for (const sg of [1, -1]) WG.add(rbox(0.006, 0.012, 0.22, 0.003), gl, { p: [sg * 0.044, 0.13, 0.4] }, GLOW * 0.9);
+    W.add(tor(0.044, 0.013, Math.PI * 2, 16), gold, { p: [0, 0.13, 0.52] });
+    WG.add(tor(0.027, 0.009, Math.PI * 2, 14), gl, { p: [0, 0.13, 0.535] }, GLOW * 1.2);
+    // front sight and the hammer
+    W.add(rbox(0.012, 0.03, 0.02, 0.004), gold, { p: [0, 0.2, 0.5] });
+    W.add(rbox(0.03, 0.05, 0.05, 0.01), wd, { p: [0, 0.2, -0.07], r: [0.55, 0, 0] });
+    // trigger guard and trigger
+    W.add(tor(0.045, 0.011, Math.PI, 12), wd, { p: [0, 0.02, 0.07], r: [Math.PI, Math.PI / 2, 0] });
+    W.add(rbox(0.012, 0.04, 0.016, 0.004), wd, { p: [0, 0.03, 0.06], r: [0.3, 0, 0] });
+    // the grip: white with a gold ace-of-spades inlay on each side, a gold butt cap
+    W.add(rbox(0.075, 0.2, 0.088, 0.03), wc, { p: [0, -0.05, -0.04], r: [-0.35, 0, 0] });
+    for (const sg of [1, -1]) {
+      W.add(sph(0.022, 10, 8), gold, { p: [sg * 0.039, -0.04, -0.035], s: [0.35, 1.1, 1], r: [-0.35, 0, 0] });
+      W.add(rbox(0.008, 0.03, 0.012, 0.003), gold, { p: [sg * 0.039, -0.075, -0.045], r: [-0.35, 0, 0] });
+    }
+    W.add(rbox(0.08, 0.025, 0.094, 0.01), gold, { p: [0, -0.145, -0.075], r: [-0.35, 0, 0] });
+    muzzleR = [0, 0.13, 0.55];
   } else if (look.weapon === 'stinger') {
     // Alpha 1.5 — Rina's compact twin-barrel blaster with a wrist brace and coral emitters,
     // held close (one hand on the grip, the other bracing the wrist)
@@ -2185,6 +2440,39 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(rbox(0.09, 0.05, 0.14, 0.02), look.top.trim, { p: [0, 0.14, -0.2] });
     WG.add(rbox(0.06, 0.014, 0.014, 0.004), look.glow, { p: [0, 0.135, 0.46] }, GLOW * 0.9);
   }
+  // Alpha 1.9.8 (CUE MASTER): the trick pistol of a pool hall — the drum as a black 8-ball (a white spot with an «8» on each
+  // side), a mahogany wrap round the barrel between brass rings, brass fins and a chalk-blue tip. Decoration only: the muzzle
+  // stays the base ricochet's.
+  if (look.weaponDeco === 'billiard' && look.weapon === 'ricochet') {
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    const ball = cyl(0.09, 0.09, 0.124, 18);
+    ball.rotateX(Math.PI / 2);
+    W.add(ball, 0x101014, { p: [0, 0.12, 0.2] });
+    for (const sg of [1, -1]) {
+      const spot = cyl(0.04, 0.04, 0.008, 16);
+      spot.rotateZ(Math.PI / 2);
+      W.add(spot, 0xf2ead8, { p: [sg * 0.091, 0.12, 0.2] });
+      for (const dy of [0.011, -0.011]) W.add(tor(0.009, 0.0035, Math.PI * 2, 10), 0x101014, { p: [sg * 0.096, 0.12 + dy, 0.2], r: [0, Math.PI / 2, 0] });
+    }
+    W.add(rbox(0.084, 0.09, 0.22, 0.028), look.top.trim, { p: [0, 0.14, 0.42] });
+    for (const z of [0.31, 0.53]) W.add(rbox(0.09, 0.096, 0.02, 0.008), look.top.accent, { p: [0, 0.14, z] });
+    for (const sg of [1, -1]) W.add(rbox(0.014, 0.064, 0.124, 0.005), look.top.accent, { p: [sg * 0.06, 0.15, 0.66], r: [0, sg * 0.45, 0] });
+    WG.add(tor(0.046, 0.01, Math.PI * 2, 16), look.glow, { p: [0, 0.14, 0.735] }, GLOW);
+  }
+  // Alpha 1.9.8 (DUNE MIRAGE): the blaster of a desert courier — copper bands round the body, a leather-wrapped grip,
+  // a turquoise gem on each side and a small brass compass on top. Decoration only: the muzzle stays the base stinger's.
+  if (look.weaponDeco === 'dune' && look.weapon === 'stinger') {
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    for (const z of [0.0, 0.2]) W.add(rbox(0.142, 0.162, 0.03, 0.012), 0xc8743a, { p: [0, 0.09, z] });
+    W.add(rbox(0.08, 0.15, 0.09, 0.026), look.top.trim, { p: [0, -0.06, 0.0], r: [-0.25, 0, 0] });
+    for (let k = 0; k < 3; k++) W.add(rbox(0.084, 0.012, 0.094, 0.004), shade(look.top.trim, 1.3), { p: [0, -0.02 - k * 0.04, 0.012 - k * 0.01], r: [-0.25, 0, 0] });
+    for (const sg of [1, -1]) WG.add(sph(0.02, 10, 8), look.glow, { p: [sg * 0.068, 0.11, 0.12], s: [0.5, 1, 1] }, GLOW * 0.8);
+    const compass = cyl(0.03, 0.03, 0.014, 14);
+    W.add(compass, 0xc8a050, { p: [0, 0.205, 0.0] });
+    WG.add(rbox(0.004, 0.003, 0.04, 0.002), look.glow, { p: [0, 0.214, 0.0], r: [0, 0.5, 0] }, GLOW * 0.9);
+  }
 
   // Alpha 1.6.5 — the robot's face lives on its visor: amber eye slots (they blink like eyes),
   // a red «X X» when it is knocked out (powered down), visor brows, a speaker LED for a mouth
@@ -2354,6 +2642,11 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   attach('head', head);
   // 1.9.1: a smaller head is the same head scaled about the neck (the face keeps its proportions)
   if (look.headScale) head.scale.setScalar(look.headScale);
+  // 1.9.8 (ACE): a touch longer and leaner face — the head's own proportions on top of headScale (hair and features follow)
+  if (look.headShape) {
+    const k = look.headScale ?? 1;
+    head.scale.set(k * look.headShape.w, k * look.headShape.h, k * look.headShape.w);
+  }
 
   const eyes = new Mesh(G.eyes, eyeMat);
   eyes.position.set(G.eyePivot[0], G.eyePivot[1], G.eyePivot[2]);

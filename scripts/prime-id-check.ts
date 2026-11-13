@@ -539,7 +539,7 @@ function career(data?: SaveData): { sys: SaveSystem; career: CareerSystem; st: M
   check(`Hall of Fame: every visible fighter (${hof.cards.length}), LUCIEN included once owned`, hof.cards.length === FIGHTER_ORDER.length && hof.cards.some((x) => x.id === 'lucien' && x.unlocked));
   check(`Hall of Fame badges: MOST WINS ${hof.badges.mostWins}, MOST PLAYED ${hof.badges.mostPlayed}`, hof.badges.mostWins === 'ray' && hof.badges.mostPlayed === 'ray');
   const order = hof.cards.map((x) => x.id);
-  check(`Hall of Fame sorted by wins, locked fighters last (${order.join(', ')})`, order[0] === 'ray' && order.slice(-2).join() === 'rina,crax'); // (1.9.7: during WINTER SHOWDOWN the locked CRAX is shown, last)
+  check(`Hall of Fame sorted by wins, locked fighters last (${order.join(', ')})`, order[0] === 'ray' && order.slice(-3).join() === 'rina,ace,crax'); // (1.9.7: during WINTER SHOWDOWN the locked CRAX is shown, last; 1.9.8: the locked ACE before him)
   const fresh = career();
   fresh.sys.data = defaultSave();
   const em2 = new EventManager(fresh.sys, { clock: () => Date.parse('2026-12-10T12:00:00Z'), settings: { mode: 'auto', forcedEventId: 'none' } });

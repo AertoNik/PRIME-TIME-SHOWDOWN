@@ -273,14 +273,61 @@ export class LeagueScreen implements Screen {
   private busy = false;
   /** The attacker's league deck being edited (null: closed). */
   private deckDraft: CardId[] | null = null;
+  /**
+   * 1.9.8: the horizontal fighter strips (data-strip). A finger on one, or its momentum, defers a redraw the player did
+   * not ask for (league data arriving) until it settles — the strip never jumps back under the finger.
+   */
+  private stripTouch = false;
+  private stripScrollAt = 0;
+  private stripRedraw = 0;
+  /** After onShow: the selected fighter is brought into view once (never on later redraws). */
+  private revealPick = false;
 
   constructor(private readonly g: Game) {
     this.el = el('div', 'league');
     this.pick = readLeaguePick(g.account?.playing ?? null) ?? g.save.data.selected;
     this.el.addEventListener('click', (e) => this.onClick(e));
     g.league.onChange(() => {
-      if (this.g.ui.current === 'league') this.render();
+      if (this.g.ui.current === 'league') this.renderSoon();
     });
+    const onStrip = (e: Event) => (e.target as Element | null)?.closest?.('[data-strip]') != null;
+    this.el.addEventListener('touchstart', (e) => {
+      if (onStrip(e)) this.stripTouch = true;
+    }, { passive: true });
+    const lift = () => {
+      if (!this.stripTouch) return;
+      this.stripTouch = false;
+      this.stripScrollAt = performance.now();
+    };
+    this.el.addEventListener('touchend', lift, { passive: true });
+    this.el.addEventListener('touchcancel', lift, { passive: true });
+    // scroll does not bubble: listen in the capture phase for every strip at once
+    this.el.addEventListener('scroll', (e) => {
+      if ((e.target as HTMLElement | null)?.dataset?.strip) this.stripScrollAt = performance.now();
+    }, { capture: true, passive: true });
+  }
+
+  /** True while a finger is on a fighter strip or it is still gliding (iOS momentum). */
+  private stripBusy(): boolean {
+    return this.stripTouch || performance.now() - this.stripScrollAt < 450;
+  }
+
+  /** A redraw nobody asked for (league data arrived): waits while a strip is being scrolled. */
+  private renderSoon(): void {
+    if (!this.stripBusy()) {
+      this.render();
+      return;
+    }
+    if (this.stripRedraw) return;
+    const retry = () => {
+      if (this.stripBusy()) {
+        this.stripRedraw = window.setTimeout(retry, 150);
+        return;
+      }
+      this.stripRedraw = 0;
+      if (this.g.ui.current === 'league') this.render();
+    };
+    this.stripRedraw = window.setTimeout(retry, 150);
   }
 
   onShow(params?: { tab?: Tab }): void {
@@ -289,6 +336,7 @@ export class LeagueScreen implements Screen {
     // 1.9.7: the league's own fighter (another PRIME ID on this device has its own choice)
     const kept = readLeaguePick(this.g.account?.playing ?? null);
     if (kept) this.pick = kept;
+    this.revealPick = true;
     this.render();
     void this.load();
   }
@@ -385,14 +433,45 @@ export class LeagueScreen implements Screen {
     // top, away from the button it was scrolling to) and the keyboard keeps the control it just used
     const prev = this.el.querySelector('.lg-scroll') as HTMLElement | null;
     const keepY = prev && viewKey === this.viewKey ? prev.scrollTop : 0;
+    // 1.9.8: …and every horizontal fighter strip keeps its own place (rebuilt strips started at 0: a tap on a fighter
+    // in the scrolled part, or league data arriving mid-swipe, threw the strip back to its start)
+    const keepX = viewKey === this.viewKey ? Array.from(this.el.querySelectorAll<HTMLElement>('[data-strip]'), (s) => [s.dataset.strip!, s.scrollLeft] as const) : [];
+    if (this.stripRedraw) {
+      clearTimeout(this.stripRedraw);
+      this.stripRedraw = 0;
+    }
     const a = document.activeElement as HTMLElement | null;
     const focusSel = a && a !== this.el && this.el.contains(a) ? FOCUS_KEYS.filter((k) => a.hasAttribute(k)).map((k) => `[${k}="${CSS.escape(a.getAttribute(k) ?? '')}"]`).join('') : '';
     this.el.innerHTML = `${head}<div class="fill scroll lg-scroll">${body}</div>`;
     this.viewKey = viewKey;
     if (keepY) (this.el.querySelector('.lg-scroll') as HTMLElement).scrollTop = keepY;
+    for (const [k, x] of keepX) {
+      const strip = this.el.querySelector<HTMLElement>(`[data-strip="${k}"]`);
+      if (strip && x) strip.scrollLeft = x;
+    }
+    this.showPick();
     if (focusSel) (this.el.querySelector(focusSel) as HTMLElement | null)?.focus({ preventScroll: true });
     const ch = me?.ceremony;
     if (ch && ch.kind === 'rank' && this.g.ui.current === 'league') showCeremony(this.g, ch.rank, !!ch.challenge);
+  }
+
+  /**
+   * 1.9.8: once after the screen opens, the chosen fighter is brought into view if the strip hides it (at once, no
+   * smooth scrolling that would fight a finger). Later redraws keep the strip where the player left it.
+   */
+  private showPick(): void {
+    if (!this.revealPick) return;
+    const strip = this.el.querySelector<HTMLElement>('[data-strip="duel"]');
+    if (!strip) return;
+    this.revealPick = false;
+    const on = strip.querySelector<HTMLElement>('.lg-fpick.on');
+    if (!on) return;
+    const sr = strip.getBoundingClientRect();
+    const or = on.getBoundingClientRect();
+    // the pick's place inside the strip's content (whatever the strip is scrolled to now)
+    const left = or.left - sr.left + strip.scrollLeft;
+    const right = left + or.width;
+    if (left < strip.scrollLeft || right > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = Math.max(0, left - (strip.clientWidth - or.width) / 2);
   }
 
   /** What the league is — for everyone, signed in or not (nobody plays it without a confirmed PRIME ID). */
@@ -489,7 +568,7 @@ export class LeagueScreen implements Screen {
     return `${this.rankCard(me)}${banner}${challengeCard}
       <div class="lg-card lg-duel">
         <div class="lg-k">${tr('ВАШ БОЕЦ', 'YOUR FIGHTER')}</div>
-        <div class="lg-fpicks">${picks}</div>
+        <div class="lg-fpicks" data-strip="duel">${picks}</div>
         <div class="lg-deck"><span>${this.deckDraft ? tr('Новая колода', 'New deck') : leagueDeck ? tr('Колода лиги', 'League deck') : tr('Колода из карьеры', 'Career deck')}:</span>${deck}${this.deckDraft ? '' : `<button class="lg-mini" data-act="deck-edit">${UI_ICONS.pencil} ${tr('Колода для лиги', 'League deck')}</button>`}</div>${deckEditor}
         <small class="muted">${esc(f.name)} ${tr('сражается сам — вы командуете картами, как в карьере.', 'fights on its own — you command the cards, as in the career.')}</small>
         ${cta}
@@ -498,7 +577,7 @@ export class LeagueScreen implements Screen {
         <div class="lg-mode squad">
           <div class="lg-mode-head"><span class="lg-mode-ico" aria-hidden="true">${SQUAD_ICON}</span><div><div class="lg-k">PRIME SQUAD</div><div class="lg-mode-chips"><span>${LEAGUE.squad.size} ${tr('бойца', 'fighters')}</span><span>${LEAGUE.squad.toWin} ${tr('из', 'of')} ${LEAGUE.squad.size}</span><span>RP</span></div></div></div>
           <p>${tr('Три ваших бойца против трёх защитников одного соперника. Три дуэли подряд, победа — 2 из 3. Один итог RP за весь отряд.', 'Three of your fighters against one opponent’s three defenders. Three duels in a row, 2 of 3 wins. One RP result for the squad.')}</p>
-          ${squadOk ? `<div class="lg-fpicks mini">${own.map((id) => `<button class="lg-fpick ${this.squadPick.includes(id) ? 'on' : ''}" data-act="squadpick" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${this.squadPick.includes(id) ? this.squadPick.indexOf(id) + 1 : ''}</span></button>`).join('')}</div>` : `<small class="muted">${tr('Нужно три бойца в ростере.', 'Needs three fighters in the roster.')}</small>`}
+          ${squadOk ? `<div class="lg-fpicks mini" data-strip="squad">${own.map((id) => `<button class="lg-fpick ${this.squadPick.includes(id) ? 'on' : ''}" data-act="squadpick" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${this.squadPick.includes(id) ? this.squadPick.indexOf(id) + 1 : ''}</span></button>`).join('')}</div>` : `<small class="muted">${tr('Нужно три бойца в ростере.', 'Needs three fighters in the roster.')}</small>`}
           <button class="btn teal wide" data-act="squad" ${squadOk && this.squadPick.length === LEAGUE.squad.size && !me.active && !sq ? '' : 'disabled'}>${tr('Собрать отряд', 'Field the squad')} (${this.squadPick.length}/3)</button>
         </div>
         <div class="lg-mode rush">
@@ -575,7 +654,7 @@ export class LeagueScreen implements Screen {
       <p class="muted lg-defnote">${tr('От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS и эфирных очков (с общим дневным пределом: пять слотов не дают пятикратного дохода).', '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
       ${cards || this.empty(UI_ICONS.shieldMini, tr('Защита пуста', 'No defence yet'), tr('Выберите бойца ниже — он будет защищать ваш рейтинг, пока вас нет в эфире.', 'Pick a fighter below — they will guard your rating while you are off air.'))}
       ${preview}
-      ${slots.length < LEAGUE.defense.slots && free.length ? `<div class="lg-k">${tr('ДОБАВИТЬ БОЙЦА', 'ADD A FIGHTER')}</div><div class="lg-add" role="list">${free.map((id) => `<button class="lg-fpick" data-act="slot-add" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('')}${lockedPicks(g)}</div>` : ''}
+      ${slots.length < LEAGUE.defense.slots && free.length ? `<div class="lg-k">${tr('ДОБАВИТЬ БОЙЦА', 'ADD A FIGHTER')}</div><div class="lg-add" role="list" data-strip="add">${free.map((id) => `<button class="lg-fpick" data-act="slot-add" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('')}${lockedPicks(g)}</div>` : ''}
       <button class="btn big wide lg-cta" data-act="def-save" ${dirty && slots.length && !this.busy ? '' : 'disabled'}><span class="shine"></span>${tr('Сохранить защиту', 'Save the defence')}</button>`;
   }
 

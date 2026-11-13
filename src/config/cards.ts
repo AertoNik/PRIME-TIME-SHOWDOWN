@@ -166,6 +166,20 @@ export const CARDS: Record<CardId, CardDef> = {
     exclusive: 'crax',
     heavy: true,
   },
+  // Alpha 1.9.8 — CONTENT EXPANSION: ACE's signature — PERFECT TAKE, the duel shot of the show's headliner
+  main_event: {
+    id: 'main_event',
+    name: 'MAIN EVENT',
+    cost: 4,
+    role: 'Фирменная',
+    short: 'Главный выход',
+    desc: `ГЛАВНЫЙ ВЫХОД. Айз встаёт в дуэльную стойку, поправляет манжету — над ним загорается золотой софит — и делает один точный выстрел из GOLDEN ACE: ${T.main_event.damage} урона и лёгкий толчок. Попадание — PERFECT TAKE: +${ru(T.main_event.energyRefund)} энергии. Промах, щит, рывок или укрытие — без бонуса. Софит — только сцена: соперника он не метит.`,
+    counter: 'Стойку и софит видно заранее: DASH в сторону, SHIELD или FALSE START. Без попадания энергия не возвращается.',
+    color: '#e8c25a',
+    color2: '#1c2a3a',
+    exclusive: 'ace',
+    heavy: true,
+  },
   // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
   directors_cut: {
     id: 'directors_cut',
@@ -394,6 +408,49 @@ export const CARDS: Record<CardId, CardDef> = {
     cast: 'device',
     shop: { price: 650, level: 5, stage: 'rising' },
   },
+  // ---------------------------------------------- Alpha 1.9.8 — CONTENT EXPANSION: three universal cards
+  showtime: {
+    id: 'showtime',
+    name: 'SHOWTIME',
+    cost: 2,
+    role: 'Шоу · темп',
+    short: 'Выход по сигналу',
+    desc: `Боец даёт знак режиссёру — эфир ускоряется. ${T.showtime.duration} с: скорость +${pct(T.showtime.speed)}, темп стрельбы +${pct(T.showtime.fireRate)}. Следующая карта в течение ${T.showtime.window} с выходит «по сигналу»: её подготовка на ${Math.round((1 - T.showtime.windupMult) * 100)}% короче. Один раз; второй SHOWTIME только обновляет сигнал. Энергия и цены карт не меняются.`,
+    counter: 'Ускорение короткое. Подготовку «по сигналу» встречайте SHIELD или DASH чуть раньше обычного.',
+    color: '#ffb23f',
+    color2: '#7a1f6a',
+    family: 'show',
+    cast: 'signal',
+    shop: { price: 300, level: 3 },
+  },
+  magnet_pull: {
+    id: 'magnet_pull',
+    name: 'MAGNET PULL',
+    cost: 3,
+    role: 'Контроль · позиция',
+    short: 'Магнитный импульс',
+    desc: `Магнитный импульс притягивает соперника, если он ближе ${ru(T.magnet_pull.range)} м: он скользит к бойцу примерно на ${ru(T.magnet_pull.force / T.pulse_push.decay)} м, но не ближе ${ru(T.magnet_pull.stopAt)} м. Барьер, укрытия и борт останавливают скольжение, рывок уходит от импульса, поднятый SHIELD ослабляет его вдвое. Без урона и оглушения, удержания нет.`,
+    counter: `Держите дистанцию больше ${ru(T.magnet_pull.range)} м или стойте за укрытием. Рывок в момент импульса и поднятый SHIELD помогают.`,
+    color: '#5aa8ff',
+    color2: '#3a1f8f',
+    family: 'control',
+    cast: 'device',
+    shop: { price: 400, level: 4 },
+  },
+  safe_cut: {
+    id: 'safe_cut',
+    name: 'SAFE CUT',
+    cost: 2,
+    role: 'Защита · монтаж',
+    short: 'Безопасная склейка',
+    desc: `Монтажная склейка спасает дубль: ${ru(T.safe_cut.duration)} с обычные попадания слабее на ${Math.round(T.safe_cut.lightCut * 100)}%, а первый опасный удар (тяжёлая карта или ${T.safe_cut.threshold}+ урона) — на ${Math.round((1 - T.safe_cut.heavyMult) * 100)}%, и его толчок и оглушение вдвое короче. После этого склейка заканчивается. Неуязвимости нет: удар проходит, только слабее. Поднятый SHIELD поглощает раньше склейки.`,
+    counter: 'Склейка гасит один мощный удар: сначала обычные выстрелы, тяжёлый приём — после.',
+    color: '#9ef0d0',
+    color2: '#1d4a5a',
+    family: 'defense',
+    cast: 'guard',
+    shop: { price: 350, level: 3 },
+  },
 };
 
 export const UNIVERSAL_CARDS: CardId[] = ['dash', 'power_shot', 'shield', 'smoke', 'shock', 'overdrive'];
@@ -415,6 +472,10 @@ export const NEW_CARDS: CardId[] = [
   'high_stakes',
   'second_take',
   'freeze_frame',
+  // Alpha 1.9.8
+  'showtime',
+  'magnet_pull',
+  'safe_cut',
 ];
 
 export const CARD_FAMILIES: { id: CardFamily; label: string }[] = [
@@ -472,7 +533,7 @@ export const COMBOS: ComboDef[] = [
     id: 'superstar',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
-    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite', 'twelfth_strike'],
+    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite', 'twelfth_strike', 'main_event'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
@@ -683,6 +744,47 @@ export const COMBOS: ComboDef[] = [
     desc: `FREEZE FRAME → DASH: рывок сквозь замедленное время на ${pct(CT.timeSlipDist)} длиннее, а кольцо искажения держится на ${ru(CT.timeSlipExtend)} с дольше.`,
     bonus: 'длинный рывок + время',
   },
+  // ---------------------------------------------- Alpha 1.9.8 — the new cards with each other, the old ones and MAIN EVENT
+  {
+    id: 'standing_ovation',
+    name: 'STANDING OVATION',
+    tag: 'ОВАЦИЯ',
+    first: ['showtime'],
+    second: ['main_event', 'power_shot'],
+    rating: 10,
+    desc: `SHOWTIME → MAIN EVENT или POWER SHOT: выстрел «по сигналу» — короче подготовка и +${pct(CT.ovationMult)} урона.`,
+    bonus: `+${pct(CT.ovationMult)} урона`,
+  },
+  {
+    id: 'close_up',
+    name: 'CLOSE-UP',
+    tag: 'КРУПНЫЙ ПЛАН',
+    first: ['magnet_pull'],
+    second: ['main_event', 'power_shot'],
+    rating: 9,
+    desc: `MAGNET PULL → MAIN EVENT или POWER SHOT: притянутый соперник — крупным планом. Выстрел берёт упреждение и наносит +${pct(CT.closeUpMult)} урона.`,
+    bonus: `упреждение, +${pct(CT.closeUpMult)}`,
+  },
+  {
+    id: 'star_pull',
+    name: 'STAR PULL',
+    tag: 'ЗВЁЗДНЫЙ МАГНИТ',
+    first: ['showtime'],
+    second: ['magnet_pull'],
+    rating: 8,
+    desc: `SHOWTIME → MAGNET PULL: импульс дотягивается на ${ru(CT.starPullRange)} м дальше и тянет на ${pct(CT.starPullForce)} сильнее.`,
+    bonus: 'дальше и сильнее',
+  },
+  {
+    id: 'clean_exit',
+    name: 'CLEAN EXIT',
+    tag: 'ЧИСТЫЙ УХОД',
+    first: ['safe_cut'],
+    second: ['dash'],
+    rating: 8,
+    desc: `SAFE CUT → DASH: склейка и уход из-под удара — рывок на ${pct(CT.cleanExitDist)} длиннее.`,
+    bonus: 'рывок длиннее',
+  },
 ];
 
 export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c])) as Record<ComboId, ComboDef>;
@@ -729,6 +831,12 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
     id: 'mainspring',
     name: 'MAINSPRING',
     desc: `Заводная пружина. Один раз за бой, когда здоровье Крэкса падает ниже ${Math.round(PT.mainspring.threshold * 100)}%, пружина подзаводится: +${PT.mainspring.energy} энергии и ${PT.mainspring.duration} с ускоренной стрельбы (+${pct(PT.mainspring.fireRate)}).`,
+  },
+  // Alpha 1.9.8 — ACE
+  star_turn: {
+    id: 'star_turn',
+    name: 'STAR TURN',
+    desc: `Звёздный выход. ${PT.star_turn.every} попадания подряд из GOLDEN ACE — и следующий выстрел Айза звёздный: +${pct(PT.star_turn.mult)} урона. Промах, уклонение соперника или блок щитом сбрасывают серию.`,
   },
 };
 

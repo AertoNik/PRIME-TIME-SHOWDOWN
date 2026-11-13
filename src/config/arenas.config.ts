@@ -5,10 +5,11 @@
 // selection rules: src/meta/ArenaSelection.ts. Guide: docs/ARENAS.md.
 // Alpha 1.7.5: the one exception is GRAVEYARD BROADCAST — its `covers` stand on the
 // fighting floor itself (destructible tombstones, columns and pumpkins; see COVER_TUNING).
+// (1.9.7: HOLIDAY BROADCAST; 1.9.8: NEON NEWSROOM — the same cover system, their own pieces.)
 import { ARENA } from './balance';
 import type { ThemeId } from './themes.config';
 
-export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted' | 'graveyard' | 'holiday';
+export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted' | 'graveyard' | 'holiday' | 'newsroom';
 /** What the player picked: a stage or a random available one. */
 export type ArenaPref = ArenaId | 'random';
 
@@ -29,7 +30,12 @@ export type PropKind =
   // Alpha 1.9.7 — HOLIDAY BROADCAST
   | 'giftStack'
   | 'snowLamp'
-  | 'clockSign';
+  | 'clockSign'
+  // Alpha 1.9.8 — NEON NEWSROOM
+  | 'onAirSign'
+  | 'newsCam'
+  | 'monitor'
+  | 'tallyLamp';
 
 export interface ArenaPropDef {
   kind: PropKind;
@@ -56,7 +62,12 @@ export type CoverKind =
   | 'gift'
   | 'snowgen'
   | 'clocktower'
-  | 'console';
+  | 'console'
+  // Alpha 1.9.8 — NEON NEWSROOM: an anchor desk, a mobile tech panel, an equipment rack, a studio camera pedestal
+  | 'newsdesk'
+  | 'techpanel'
+  | 'rack'
+  | 'pedestal';
 
 export interface ArenaCoverDef {
   kind: CoverKind;
@@ -336,9 +347,60 @@ export const ARENAS: Record<ArenaId, ArenaDef> = {
     nativeSeason: 'winter',
     colors: { a: '#7fe3ff', b: '#ffcc4d', ink: '#0a0e24' },
   },
+
+  // Alpha 1.9.8 — CONTENT EXPANSION: a PERMANENT set, every day, every mode, RANDOM and PRIME LEAGUE included. A big
+  // retro-futuristic TV newsroom: the LED video wall with the live picture, BREAKING NEWS and the ticker, the anchor desk,
+  // studio cameras and signal panels — blue, cyan and violet with small red and warm accents. Destructible cover by the
+  // GRAVEYARD system (src/combat/Covers.ts), its own pieces: two anchor-desk segments beside the centre lane, mobile tech
+  // panels in front of the spawns, equipment racks against the side walls and camera pedestals near the corners.
+  newsroom: {
+    id: 'newsroom',
+    name: 'NEON NEWSROOM',
+    show: 'BREAKING SHOWDOWN',
+    description: 'Неоновая студия новостей PRIME TIME: LED-стена с прямым эфиром, бегущая строка, стол ведущих и камеры. Укрытия — столы, технические панели, стойки и камеры — можно разбить.',
+    availability: { kind: 'permanent' },
+    caption: 'NEXT BROADCAST — NEON NEWSROOM',
+    props: [
+      { kind: 'onAirSign', x: 0, z: -N - 0.3, hp: 1, respawn: 0, radius: 1.6, reactive: true, cooldown: 2.2 },
+      { kind: 'monitor', x: -2.6, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'monitor', x: 2.6, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'newsCam', x: -CX - 0.15, z: -CZ - 0.15, hp: 3, respawn: 0, radius: 1.3, reactive: true, cooldown: 0.45 },
+      { kind: 'newsCam', x: CX + 0.15, z: -CZ - 0.15, hp: 3, respawn: 0, radius: 1.3, reactive: true, cooldown: 0.45 },
+      { kind: 'monitor', x: -W - 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'monitor', x: W + 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'tallyLamp', x: -W - 0.15, z: 1.9, hp: 1, respawn: 0 },
+      { kind: 'tallyLamp', x: W + 0.15, z: 1.9, hp: 1, respawn: 0 },
+    ],
+    // point-symmetric (each piece has its twin at (−x, −z)); the centre lane stays open; every passage between two pieces
+    // leaves ≥ 0.5 m beside a fighter; between a piece and the barrier a fighter always has ≥ 0.3 m to spare, so nobody
+    // can be pinned between the cover and the barrier (the cover pushes out, the barrier pushes back)
+    covers: [
+      { kind: 'newsdesk', x: 2.2, z: 0.55, yaw: 0.35 },
+      { kind: 'newsdesk', x: -2.2, z: -0.55, yaw: 0.35 },
+      { kind: 'techpanel', x: 1.75, z: -3.2, yaw: -0.2 },
+      { kind: 'techpanel', x: -1.75, z: 3.2, yaw: -0.2 },
+      { kind: 'rack', x: -3.35, z: -2.6 },
+      { kind: 'rack', x: 3.35, z: 2.6 },
+      { kind: 'pedestal', x: 3.3, z: -5.0 },
+      { kind: 'pedestal', x: -3.3, z: 5.0 },
+    ],
+    // blue first: cyan and violet fills, a cool key; the red stays an accent of the set itself (LIVE, BREAKING, tallies)
+    lighting: {
+      hemiSky: 0x8fb0ff,
+      hemiGround: 0x101a48,
+      key: 0xeef4ff,
+      fillA: 0x22d8ff,
+      fillB: 0x6a4dff,
+      rim: 0x5ab8ff,
+      fog: 0x040a1e,
+      intensity: { hemi: 1.2, key: 2.3, fill: 0.85, rim: 1.3 },
+    },
+    themeTint: 0.35,
+    colors: { a: '#3ae6ff', b: '#8a4dff', ink: '#060b22' },
+  },
 };
 
-export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted', 'graveyard', 'holiday'];
+export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted', 'graveyard', 'holiday', 'newsroom'];
 
 export function isArenaId(v: unknown): v is ArenaId {
   return typeof v === 'string' && v in ARENAS;

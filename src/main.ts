@@ -56,4 +56,8 @@ if (!stage || !ui) {
   if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;
   // 1.9.1: ?preview=league — the league screens with made-up data, no server (dev builds only, never published)
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('preview')) void import('./dev/leaguePreview').then((m) => m.installLeaguePreview(game));
+  // 1.9.8: __occlusion('backlot') / __occlusionAll() — does a set hang between the battle camera and the fighters (dev only)
+  if (import.meta.env.DEV) void import('./dev/occlusionProbe').then((m) => m.installOcclusionProbe(game));
+  // 1.9.8: __tapAudit() / __tapAuditAll() — controls covered by something on top (dead taps on a phone; dev only)
+  if (import.meta.env.DEV) void import('./dev/tapAudit').then((m) => m.installTapAudit(game));
 }

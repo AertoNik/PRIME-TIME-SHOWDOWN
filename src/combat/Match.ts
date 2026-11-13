@@ -21,7 +21,7 @@ import type { CardFailReason, Decoy, MatchEvent, MatchPhase, MatchResultData, Pr
 import { dm } from '../core/dmath';
 
 /** Cards that need the fighter's body free (no charge, rush or recovery running); a DASH-like move defers them. */
-const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack', 'bat_bite']);
+const NEEDS_BODY = new Set<CardId>(['dash', 'power_shot', 'knockout', 'charged_shot', 'directors_cut', 'bank_shot', 'false_start', 'split_shot', 'rebound_disc', 'backtrack', 'bat_bite', 'main_event']);
 const tmpClamp: ClampResult = { x: 0, z: 0, hit: false, nx: 0, nz: 0 };
 
 export interface MatchConfig {

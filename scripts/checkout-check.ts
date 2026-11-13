@@ -297,7 +297,8 @@ function safetyChecks(): void {
   // 1.9.7: the candidate is revision 6 (universal) for a PROVISIONAL release moment (20.11.2026 12:00 МСК — re-built with the real
   // one at approval); privacy v6, parents v5 and the Metrika consent with it (Р-28); not registered, nothing installed
   if (!r6) check('1.9.7 the candidate (docs/legal-drafts/site-candidate, private): offer № 6 complete — no field or draft mark, no goods table in the offer, the catalog shop.html with 23 goods (the five winter ones «За рубли — с 4 января 2027 года»); privacy v6 and parents v5 with Metrika, the consent page; refunds, seller, terms byte for byte as published; Р-27 / Р-28 proposed; revision 6 NOT in SHOP_OFFERS', /data-version="6"/.test(candOffer) && /Редакция № 6 · действует с \d{1,2} [а-я]+ \d{4} года \(с \d\d:\d\d по московскому времени\)/.test(candOffer) && !/\{\{|class="todo"|ЧЕРНОВИК/.test(candOffer) && candRows === 0 && (read(`${cand}/ru/shop.html`).match(/<tr><td><b>/g) ?? []).length === 23 && (read(`${cand}/ru/shop.html`).match(/За рубли — с 4 января 2027 года, 00:00/g) ?? []).length === 5 && /data-version="6"/.test(read(`${cand}/ru/privacy.html`)) && /Яндекс Метрик/.test(read(`${cand}/ru/privacy.html`)) && /data-version="5"/.test(read(`${cand}/ru/parents.html`)) && /data-pt-page="analytics"/.test(read(`${cand}/ru/analytics.html`)) && ['refunds', 'seller', 'terms'].every((p) => read(`${cand}/ru/${p}.html`) === read(`public/legal/ru/${p}.html`)) && dec.R27_offer6_text_and_date?.status === 'proposed' && dec.R28_analytics_metrika?.status === 'proposed' && !SHOP_OFFERS.some((o) => o.revision === 6));
-  else check('1.9.7 revision 6 installed at the release (Р-27 approved): universal (no list), the page offer.html is its exact registered text, № 5 kept byte for byte at offer-r5.html; the catalog shop.html lists the 23 goods', dec.R27_offer6_text_and_date?.status === 'approved' && !r6.items && r6.fighters === true && r6.minors === true && sha('public/legal/ru/offer.html') === r6.sha256 && sha('public/legal/ru/offer-r5.html') === 'b27d40719feb62e6ef326dca1e8d2b956c708b99d2f1bd300e7b6b1211bd42b4' && (read('public/legal/ru/shop.html').match(/<tr><td><b>/g) ?? []).length === 23);
+  // (1.9.8: + KAI: CUE MASTER and RINA: DUNE MIRAGE, 149 ₽ each — the catalog page only, the offer's text byte for byte the same)
+  else check('1.9.7 revision 6 installed at the release (Р-27 approved): universal (no list), the page offer.html is its exact registered text, № 5 kept byte for byte at offer-r5.html; the catalog shop.html lists every priced good (1.9.8: 25)', dec.R27_offer6_text_and_date?.status === 'approved' && !r6.items && r6.fighters === true && r6.minors === true && sha('public/legal/ru/offer.html') === r6.sha256 && r6.sha256.startsWith('45862f5d') && sha('public/legal/ru/offer-r5.html') === 'b27d40719feb62e6ef326dca1e8d2b956c708b99d2f1bd300e7b6b1211bd42b4' && (read('public/legal/ru/shop.html').match(/<tr><td><b>/g) ?? []).length === 25 && SHOP_ITEMS.filter((i) => approvedPriceRub(i.sku) !== null).length === 25);
   check('1.9.5 Р-20 approved by the owner (06.11.2026): the text of the candidate, the 18 goods, the moment 2026-11-08T06:00:00Z (09:00 МСК); publication not later than 07.11.2026 09:00 МСК', /2026-11-08T06:00:00Z/.test(JSON.stringify(dec.R20_offer5_text_and_date)) && /b27d4071/.test(JSON.stringify(dec.R20_offer5_text_and_date)) && dec.R20_offer5_text_and_date?.status === 'approved');
   const rel = read('scripts/legal-release.ts');
   check('legal:release never installs pages while a condition of decisions.json is «proposed», the name/ИНН is not allowed, or an empty phone has no recorded decision — and it prints the Robokassa phone risk', /decisions\.json/.test(rel) && /\(approved \? problems : warnings\)\.push\('не утверждены условия/.test(rel) && /decided\('publishNameAndInn'\) !== true/.test(rel) && /decided\('phone'\) !== 'not_published'/.test(rel) && /Страницы этому требованию НЕ соответствуют/.test(rel));
@@ -493,19 +494,26 @@ async function serverChecks(): Promise<void> {
   // A accepts the offer in force today (its consent above was to the synthetic test text; since 30.10.2026 revision 3 is in force)
   const inForce4 = currentOffer()!;
   await http('POST', '/api/prime/shop/offer/accept', A.tok, { revision: inForce4.revision, sha256: inForce4.sha256 });
-  const approvedCos = SKUS.filter((s) => s !== 'fighter_lucien' && approvedPriceRub(s) !== null && offerSells(OFFERS_IN_FORCE(), s));
+  // (1.9.8: under the universal revision 6 a seasonal item is «sold» by the offer, but before its season ends the server
+  // answers seasonal_only — it is checked with the waiting items below)
+  const inSeason = (s: string): boolean => {
+    const se = seasonOf(SHOP_ITEMS.find((i) => i.sku === s)!);
+    return !!se?.event.end && Date.now() < Date.parse(se.event.end);
+  };
+  const approvedCos = SKUS.filter((s) => s !== 'fighter_lucien' && approvedPriceRub(s) !== null && offerSells(OFFERS_IN_FORCE(), s) && !inSeason(s));
   const real4 = await Promise.all(approvedCos.map((s) => http('POST', '/api/prime/shop/checkout', A.tok, { sku: s })));
   // (1.9.7: the count follows the offer in force — 6 under revision 4, every approved cosmetic under revision 5 since 08.11.2026)
   check('this release on a server with the switch open but no Robokassa: every approved cosmetic → payments_unavailable with its approved price — no order', real4.length >= 6 && real4.length === approvedCos.length && real4.every((r, i) => r.status === 503 && r.j.code === 'payments_unavailable' && r.j.quote?.priceKop === rubToKop(approvedPriceRub(approvedCos[i]))), real4.map((r) => r.j.code + ':' + r.j.quote?.priceKop).join(' '));
   // 1.9.5: an APPROVED price alone never sells — the eleven of 06.11.2026 are not in the Appendix 1 of revisions 1–4: 409
   // not_in_offer on this release's real rules (no quote, no order), until revision 5 takes effect
-  const waiting = SKUS.filter((s) => !offerSells(OFFERS_IN_FORCE(), s) && s !== 'fighter_lucien');
+  const waiting = SKUS.filter((s) => s !== 'fighter_lucien' && (!offerSells(OFFERS_IN_FORCE(), s) || inSeason(s)));
   const pend = await Promise.all(waiting.map((s) => http('POST', '/api/prime/shop/checkout', A.tok, { sku: s })));
   // 1.9.7: by the real date — before revision 5 the eleven approved items wait for it (not_in_offer); since then the items
   // no revision lists are WINTER SHOWDOWN's five: «seasonal_only» until 04.01.2027 00:00 MSK, «not_in_offer» after it
-  const winterOver = Date.now() >= Date.parse('2027-01-03T21:00:00Z');
-  const want = (s: string) => (seasonOf(SHOP_ITEMS.find((i) => i.sku === s)!)?.event.id === 'winter-2026' && !winterOver ? 'seasonal_only' : 'not_in_offer');
-  check('1.9.5: an item the offer in force does not list → 409 (no quote, no order): the eleven approved new items before revision 5; 1.9.7: the five WINTER SHOWDOWN items — seasonal_only during and before their season, not_in_offer after it', waiting.length > 0 && pend.every((r, i) => r.status === 409 && r.j.code === want(waiting[i]) && !r.j.quote), pend.map((r, i) => waiting[i] + ':' + r.j.code).join(' '));
+  // 1.9.8: by the real date and the revision in force — an item whose season has not ended answers seasonal_only (before
+  // and during it), one no revision in force sells answers not_in_offer; every SKU but LUCIEN is in one of the two lists
+  const want = (s: string) => (inSeason(s) ? 'seasonal_only' : 'not_in_offer');
+  check('1.9.5: an item the offer in force does not list → 409 (no quote, no order): the eleven approved new items before revision 5; 1.9.7: the five WINTER SHOWDOWN items — seasonal_only during and before their season, not_in_offer after it (1.9.8: every SKU is either sold or here)', approvedCos.length + waiting.length === SKUS.length - 1 && pend.every((r, i) => r.status === 409 && r.j.code === want(waiting[i]) && !r.j.quote), pend.map((r, i) => waiting[i] + ':' + r.j.code).join(' '));
   // the revision in force NOW (1.8.9.5: revision 3 is registered ahead of its date; until then revision 2, archived)
   const pubRev = currentOffer();
   const pubOffer = (await http('GET', '/api/prime/shop/offer')).j.offer;

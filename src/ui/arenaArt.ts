@@ -104,6 +104,28 @@ const HOLIDAY = S(`
   ${[[60, 64, 7, '#c4122f'], [100, 72, 7, '#c4122f'], [44, 76, 5, '#2a6aff'], [118, 58, 5, '#2a6aff']].map(([x, y, r, c]) => `<g><rect x="${+x - +r}" y="${+y - +r}" width="${+r * 2}" height="${+r * 2}" fill="${c}"/><rect x="${+x - 1}" y="${+y - +r}" width="2" height="${+r * 2}" fill="#ffcc4d"/><rect x="${+x - +r}" y="${+y - 1}" width="${+r * 2}" height="2" fill="#ffcc4d"/></g>`).join('')}
   <g fill="#e0b84c"><rect x="70" y="80" width="6" height="7"/><rect x="88" y="52" width="5" height="7"/></g>`);
 
+// Alpha 1.9.8 — NEON NEWSROOM: the LED video wall with BREAKING NEWS, the ticker, the anchor desk, the news globe
+const NEWSROOM = S(`
+  <rect width="160" height="90" fill="#060b22"/>
+  <rect x="0" y="0" width="160" height="46" fill="#0d1450"/>
+  <g fill="#1a2a8a">${[0, 1, 2].map((i) => `<rect x="${3 + i * 7}" y="6" width="6" height="30" rx="1"/><rect x="${136 + i * 7}" y="6" width="6" height="30" rx="1"/>`).join('')}</g>
+  <g fill="#3ae6ff" opacity=".7">${[0, 1, 2, 3, 4].map((i) => `<rect x="${4 + (i % 3) * 7}" y="${8 + i * 6}" width="4" height="4"/><rect x="${137 + ((i + 1) % 3) * 7}" y="${10 + i * 5}" width="4" height="4"/>`).join('')}</g>
+  <rect x="44" y="4" width="72" height="30" rx="2" fill="#101a5a" stroke="#3ae6ff" stroke-width="1.5"/>
+  <rect x="44" y="9" width="72" height="8" fill="#ff2f55"/>
+  <text x="80" y="15.6" font-family="Arial Black,sans-serif" font-size="6.5" font-weight="900" fill="#fff" text-anchor="middle">BREAKING NEWS</text>
+  <text x="80" y="27" font-family="Arial Black,sans-serif" font-size="6" font-weight="900" fill="#3ae6ff" text-anchor="middle">NEON NEWSROOM</text>
+  <rect x="24" y="36" width="112" height="5" fill="#0a0f36"/><rect x="24" y="36" width="18" height="5" fill="#ff2f55"/>
+  <path d="M52 46 L56 40 L104 40 L108 46 Z" fill="#18215e"/><rect x="54" y="40" width="52" height="1.4" fill="#3ae6ff"/>
+  <path d="${FLOOR}" fill="#121c62"/>
+  <path d="${RIM}" fill="none" stroke="#3ae6ff" stroke-width="2"/>
+  <ellipse cx="80" cy="67" rx="15" ry="7" fill="none" stroke="#3ae6ff" stroke-width="1.2"/>
+  <ellipse cx="80" cy="67" rx="7" ry="7" fill="none" stroke="#3ae6ff" stroke-width=".8"/>
+  <ellipse cx="80" cy="67" rx="19" ry="9" fill="none" stroke="#a87aff" stroke-width="1.4"/>
+  <rect x="62" y="56" width="12" height="4" rx="2" fill="#1c2670" stroke="#3ae6ff" stroke-width=".6" transform="rotate(-12 68 58)"/>
+  <rect x="86" y="74" width="12" height="4" rx="2" fill="#1c2670" stroke="#3ae6ff" stroke-width=".6" transform="rotate(-12 92 76)"/>
+  <rect x="45" y="61" width="5" height="8" rx="1" fill="#2a3070"/><rect x="110" y="66" width="5" height="8" rx="1" fill="#2a3070"/>
+  <circle cx="122" cy="16" r="2" fill="#ff2f55"/>`);
+
 const RANDOM = S(`
   <rect width="160" height="90" fill="#0b0e2c"/>
   <rect x="0" y="0" width="80" height="45" fill="#141c52"/><rect x="80" y="0" width="80" height="45" fill="#5a0f1c"/>
@@ -118,5 +140,6 @@ export const ARENA_ART: Record<ArenaPref, string> = {
   haunted: HAUNTED,
   graveyard: GRAVEYARD,
   holiday: HOLIDAY,
+  newsroom: NEWSROOM,
   random: RANDOM,
 };

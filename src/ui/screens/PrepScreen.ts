@@ -1,7 +1,6 @@
 import { REWARDS } from '../../config/career';
-import { cardPrice } from '../../config/careerPrices';
 import { ARENA_ORDER, arenaById, type ArenaPref } from '../../config/arenas.config';
-import { CARDS, CARD_FAMILIES, COMBOS, NEW_CARDS, deckCombos } from '../../config/cards';
+import { deckCombos } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
 import { bossById } from '../../config/boss.config';
@@ -12,6 +11,7 @@ import { arenaAvailable, availableArenas } from '../../meta/ArenaSelection';
 import { inRoster } from '../../meta/roster';
 import { formatChallengeValue } from '../../meta/GameModes';
 import { ARENA_ART } from '../arenaArt';
+import { cardCatalog, cardDetailHTML, cardStanding, catalogStats } from '../cardCatalog';
 import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
@@ -87,27 +87,11 @@ export class PrepScreen implements Screen {
       this.render();
       return;
     }
-    if (act === 'shop') {
-      // Alpha 1.6: a card from the shop — show what it does, how it opens and its price
+    if (act === 'cards') {
+      // Alpha 1.9.8: buying and browsing cards moved to the CARDS section of the main menu — the deck built so far is kept
       g.audio.ui('click');
-      this.focus = t.dataset.card as CardId;
-      this.render();
-      return;
-    }
-    if (act === 'buy') {
-      const c = t.dataset.card as CardId;
-      const can = g.career.canBuyCard(c);
-      if (!can.ok) {
-        g.audio.ui('deny');
-        g.ui.toast(can.reason);
-        return;
-      }
-      if (g.career.buyCard(c)) {
-        g.audio.ui('coin');
-        g.ui.toast(`${CARDS[c].name} — ваша карта навсегда. Добавьте её в колоду, когда захотите.`, true);
-        this.focus = c;
-        this.render();
-      }
+      if (this.deck.length === 4) g.career.setDeck(g.save.data.selected, this.deck);
+      g.goto('cards', { back: 'prep' });
       return;
     }
     if (act === 'coll') {
@@ -176,8 +160,10 @@ export class PrepScreen implements Screen {
     const covers = !!def?.covers?.length;
     const randomCovers = pref === 'random' && availableArenas(g.events.themeId).some((id) => !!arenaById(id).covers?.length);
     const holiday = def?.id === 'holiday';
-    const where = holiday ? 'В праздничной студии' : 'На кладбище';
-    const pieces = holiday ? 'подарки, снежные пушки, часовые колонны и пульты студии' : 'надгробия, колонны и тыквы';
+    // Alpha 1.9.8: NEON NEWSROOM — the champion is fought in the Original Prime Arena, as on the New Year set
+    const newsroom = def?.id === 'newsroom';
+    const where = holiday ? 'В праздничной студии' : newsroom ? 'В студии новостей' : 'На кладбище';
+    const pieces = holiday ? 'подарки, снежные пушки, часовые колонны и пульты студии' : newsroom ? 'столы ведущих, технические панели, стойки оборудования и камеры' : 'надгробия, колонны и тыквы';
     const coverSets = availableArenas(g.events.themeId).filter((id) => !!arenaById(id).covers?.length).map((id) => arenaById(id).show);
     const note =
       this.mode.kind === 'survival'
@@ -185,7 +171,7 @@ export class PrepScreen implements Screen {
         : this.mode.kind === 'challenge'
           ? `Правила испытания одинаковы в любом павильоне.${covers ? ` ${where} стоят разрушаемые укрытия.` : ''}`
           : this.mode.kind === 'boss'
-            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.${covers || randomCovers ? (holiday ? ' Среди укрытий чемпион не выступает: бой пройдёт в ORIGINAL PRIME ARENA.' : ' Среди надгробий чемпион не выступает: вместо кладбища бой пройдёт в HAUNTED PRIME SET.') : ''}`
+            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.${covers || randomCovers ? (holiday || newsroom ? ' Среди укрытий чемпион не выступает: бой пройдёт в ORIGINAL PRIME ARENA.' : covers ? ' Среди надгробий чемпион не выступает: вместо кладбища бой пройдёт в HAUNTED PRIME SET.' : ' Среди укрытий чемпион не выступает: кладбище заменит HAUNTED PRIME SET, другие павильоны с укрытиями — ORIGINAL PRIME ARENA.') : ''}`
             : covers
               ? `${where} стоят разрушаемые укрытия: ${pieces} останавливают выстрелы, пока их не разобьют.`
               : randomCovers
@@ -387,59 +373,26 @@ export class PrepScreen implements Screen {
     return null;
   }
 
-  /** Alpha 1.6: what the focused card does and how to answer it; shop cards add how they open and the price. */
+  /** What the focused deck card does and how to answer it (the same description as in the CARDS section; no purchase here). */
   private cardDetail(c: CardId): string {
     const g = this.g;
-    const fc = CARDS[c];
-    const shop = fc.shop;
-    const owned = !shop || g.career.owns(c);
-    const pairs = COMBOS.filter((x) => (x.first.includes(c) || x.second.includes(c)) && !x.after)
-      .slice(0, 4)
-      .map((x) => esc(x.name))
-      .join(' · ');
-    let buy = '';
-    if (!owned && shop) {
-      const can = g.career.canBuyCard(c);
-      const open = g.career.cardOpen(c);
-      buy = `<div class="cd-buy">
-          <span class="cd-req ${open ? 'open' : ''}">${open ? UI_ICONS.check.replace('<svg', '<svg width="11" height="11"') + ' Открыта для покупки' : UI_ICONS.lock.replace('<svg', '<svg width="11" height="11"') + ' ' + esc(g.career.cardRequirement(c))}</span>
-          <button class="btn small ${can.ok ? '' : 'disabled'}" data-act="buy" data-card="${c}">Купить · $${cardPrice(c)}</button>
-          ${can.ok || !open ? '' : `<span class="cd-why">${esc(can.reason)}</span>`}
-        </div>`;
-    }
-    return `<div class="card-detail ${owned ? '' : 'shop'}"><div class="cd-head"><span class="cd-name">${esc(fc.name)}</span><span class="chip">${esc(fc.role)}</span><span class="chip teal">${fc.cost} ЭНЕРГИИ</span>${fc.exclusive ? '<span class="chip gold">ФИРМЕННАЯ</span>' : ''}${shop && owned ? '<span class="chip gold">КУПЛЕНА</span>' : ''}</div><p>${esc(fc.desc)}</p>${
-      fc.counter ? `<p class="cd-counter"><b>Ответ соперника:</b> ${esc(fc.counter)}</p>` : ''
-    }${shop && pairs ? `<p class="cd-pairs"><b>Комбо:</b> ${pairs}</p>` : ''}${buy}</div>`;
+    return cardDetailHTML(cardStanding(g.career, g.save.data, c, (f) => inRoster(g.save.data, f)), { buy: false });
   }
 
-  /** Alpha 1.6: the new cards the producer has not bought yet, by family, with their price or lock. */
-  private shopSection(): string {
+  /**
+   * Alpha 1.9.8: the prep screen builds the deck only — new cards are browsed and bought in the CARDS section of the main
+   * menu. A short line here says how many can be bought now and leads there (the deck built so far is kept).
+   */
+  private cardsLink(): string {
     const g = this.g;
-    const left = g.career.shopCards();
-    const owned = NEW_CARDS.length - left.length;
-    const focusInShop = this.focus !== null && left.includes(this.focus);
-    const groups = CARD_FAMILIES.map((fam) => {
-      const cards = left.filter((c) => CARDS[c].family === fam.id);
-      if (!cards.length) return '';
-      const items = cards
-        .map((c) => {
-          const open = g.career.cardOpen(c);
-          const price = cardPrice(c);
-          const tag = open ? `<span class="shop-tag ${g.save.data.money >= price ? 'ok' : ''}">$${price}</span>` : `<span class="shop-tag lock">${UI_ICONS.lock.replace('<svg', '<svg width="10" height="10"')} УР. ${CARDS[c].shop!.level}</span>`;
-          return `<div data-act="shop" data-card="${c}" class="shop-item ${open ? 'open' : 'locked'}">${cardHTML(c, `${this.focus === c ? 'focus' : ''} ${open ? 'buyable' : 'sealed'}`, false)}${tag}</div>`;
-        })
-        .join('');
-      return `<div class="label shop-fam">${esc(fam.label)}</div><div class="collection shop">${items}</div>`;
-    }).join('');
-    if (!left.length) {
-      return `<div class="section panel card-shop"><div class="section-title"><span class="h2">Новые карты</span><span class="label">все ${NEW_CARDS.length} куплены</span></div><p class="shop-note">Вся коллекция CARD REVOLUTION ваша — комбинируйте!</p></div>`;
-    }
-    return `<div class="section panel card-shop">
-        <div class="section-title"><span class="h2">Новые карты</span><span class="label">куплено ${owned}/${NEW_CARDS.length} · $${Math.floor(g.save.data.money).toLocaleString('ru-RU')}</span></div>
-        <p class="shop-note">Пока закрыты: открываются уровнем продюсера или этапом карьеры, покупаются один раз за гонорары — навсегда и для всех бойцов. В колоду сами не попадают.</p>
-        ${groups}
-        ${focusInShop ? this.cardDetail(this.focus!) : ''}
-      </div>`;
+    const st = catalogStats(cardCatalog(g.career, g.save.data, (f) => inRoster(g.save.data, f)));
+    const line = st.bought === st.shop ? `Все ${st.shop} новых карт ваши.` : st.buyable ? `Можно купить сейчас: ${st.buyable}.` : `Куплено новых карт: ${st.bought} из ${st.shop}.`;
+    return `<button class="section panel cards-link" data-act="cards">
+        <span class="cl-ico">${UI_ICONS.cards}</span>
+        <span class="cl-text"><b>Новые карты — в разделе «Карты»</b><small>${esc(line)} Эффекты, комбо и покупка за гонорары.</small></span>
+        ${st.buyable ? `<span class="badge-dot">${st.buyable}</span>` : ''}
+        <span class="cl-go">${UI_ICONS.next}</span>
+      </button>`;
   }
 
   private render(keep = true): void {
@@ -519,7 +472,7 @@ export class PrepScreen implements Screen {
               : '<div class="combo-item"><span>Нет пар для комбо. Попробуйте DASH + POWER SHOT или SHOCK + POWER SHOT.</span></div>'
           }</div>
         </div>
-        ${this.shopSection()}
+        ${this.cardsLink()}
       </div>
       <div style="padding:8px 12px 0">
         <button class="btn big wide ${this.deck.length === 4 && !mp?.locked ? '' : 'disabled'}" data-act="start"><span class="shine"></span>${mp ? mp.start : 'Начать эфир'}</button>

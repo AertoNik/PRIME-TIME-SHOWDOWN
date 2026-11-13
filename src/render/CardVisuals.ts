@@ -393,6 +393,14 @@ interface FighterVis {
   frameFlash: number;
   /** HOLO DECOY projector ring under the hologram. */
   holoRing: Mesh;
+  /** Alpha 1.9.8 — ACE's MAIN EVENT: the golden follow-spot on him (cone, floor pool) and how far it is lit (0..1). */
+  main: Group;
+  mainCone: Mesh;
+  mainPool: Mesh;
+  mainT: number;
+  /** Alpha 1.9.8 — SAFE CUT's mint ring at the feet; SHOWTIME's gold ring (tempo) and the cue sparkle. */
+  safeAura: Mesh;
+  showAura: Mesh;
 }
 
 const _v = new Vector3();
@@ -495,8 +503,29 @@ export class CardVisuals {
     const holoRing = new Mesh(this.floorGeo, addMat(0xff7ad9, 0.6, ringTexture()));
     holoRing.visible = false;
     holoRing.renderOrder = 2;
-    this.root.add(tag, tether, frame, holoRing);
-    return { tag, tagCone, tagPool, tagGem, tagRing, tether, tetherRing, tetherPost, cable, frame, frameT: 0, frameFlash: 0, holoRing };
+    // Alpha 1.9.8 — MAIN EVENT: a narrow golden follow-spot from high above on ACE himself and a soft gold pool at his feet.
+    // A stage accent only: no marker over the head and no ring (those belong to SPOTLIGHT TAG on a target)
+    const main = new Group();
+    const mainCone = new Mesh(this.coneGeo, addMat(0xffc94a, 0.3, glowTexture()));
+    mainCone.position.y = 3.6;
+    mainCone.scale.set(0.72, 1.35, 0.72);
+    mainCone.renderOrder = 7;
+    const mainPool = new Mesh(this.floorGeo, addMat(0xffd36a, 0.55, glowTexture()));
+    mainPool.position.y = 0.05;
+    mainPool.scale.setScalar(1.45);
+    mainPool.renderOrder = 2;
+    main.add(mainCone, mainPool);
+    main.visible = false;
+    const safeAura = new Mesh(this.floorGeo, addMat(0xb8ffe6, 0.85, ringTexture()));
+    safeAura.position.y = 0.065;
+    safeAura.renderOrder = 3;
+    safeAura.visible = false;
+    const showAura = new Mesh(this.floorGeo, addMat(0xffb23f, 0.55, ringTexture()));
+    showAura.position.y = 0.06;
+    showAura.renderOrder = 3;
+    showAura.visible = false;
+    this.root.add(tag, tether, frame, holoRing, main, safeAura, showAura);
+    return { tag, tagCone, tagPool, tagGem, tagRing, tether, tetherRing, tetherPost, cable, frame, frameT: 0, frameFlash: 0, holoRing, main, mainCone, mainPool, mainT: 0, safeAura, showAura };
   }
 
   private build(kind: StageKind): ObjVis {
@@ -871,6 +900,36 @@ export class CardVisuals {
   }
 
   private syncFighter(fv: FighterVis, f: FighterSim, m: Match, t: number, dt: number, p: Vector3): void {
+    // Alpha 1.9.8 — MAIN EVENT: the follow-spot finds ACE as he reaches for his cuff and stays on him through the shot, then
+    // fades in a third of a second
+    const a = f.action;
+    if (a.kind === 'windup' && a.card === 'main_event' && !f.ko) fv.mainT = Math.max(fv.mainT, clamp01((a.t / Math.max(0.05, a.total) - 0.12) / 0.2));
+    else fv.mainT = Math.max(0, fv.mainT - dt * 3);
+    fv.main.visible = fv.mainT > 0.01;
+    // Alpha 1.9.8 — SAFE CUT: a mint ring at the feet while the splice waits; SHOWTIME: a gold ring (tempo / the cue)
+    const safe = f.safeCut > 0 && !f.ko;
+    fv.safeAura.visible = safe;
+    if (safe) {
+      fv.safeAura.position.set(p.x, 0.065, p.z);
+      // outside the fighter's own ring, so «the editor's cut» reads at a glance
+      fv.safeAura.scale.setScalar(2.05 + Math.sin(t * 8) * 0.06);
+      fv.safeAura.rotation.y = t * 1.5;
+      (fv.safeAura.material as MeshBasicMaterial).opacity = f.safeCut < 0.5 ? (Math.sin(t * 24) > 0 ? 0.85 : 0.25) : 0.85;
+    }
+    const show = (f.showtime > 0 || f.cue > 0) && !f.ko;
+    fv.showAura.visible = show;
+    if (show) {
+      fv.showAura.position.set(p.x, 0.06, p.z);
+      fv.showAura.scale.setScalar((f.cue > 0 ? 2.1 : 1.85) + Math.sin(t * 10) * 0.05);
+      fv.showAura.rotation.y = -t * 2.2;
+      (fv.showAura.material as MeshBasicMaterial).opacity = f.cue > 0 ? 0.7 : 0.45;
+    }
+    if (fv.main.visible) {
+      fv.main.position.set(p.x, 0, p.z);
+      (fv.mainCone.material as MeshBasicMaterial).opacity = (0.26 + 0.05 * Math.sin(t * 9)) * fv.mainT;
+      (fv.mainPool.material as MeshBasicMaterial).opacity = 0.55 * fv.mainT;
+      fv.mainPool.scale.setScalar(1.35 + 0.1 * fv.mainT);
+    }
     // SPOTLIGHT TAG: a studio lamp over the head, a gold marker and a gold ring at the feet
     const tagged = f.tag > 0 && !f.ko && m.phase === 'fight';
     fv.tag.visible = tagged;

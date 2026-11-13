@@ -8,6 +8,7 @@ import { CasinoStage } from './stages/CasinoStage';
 import { GraveyardStage } from './stages/GraveyardStage';
 import { HauntedStage } from './stages/HauntedStage';
 import { HolidayStage } from './stages/HolidayStage';
+import { NewsroomStage } from './stages/NewsroomStage';
 import { OriginalStage } from './stages/OriginalStage';
 import type { Stage, StageShared } from './stages/StageKit';
 import { canvasTexture, makeCanvas } from './textures';
@@ -80,6 +81,7 @@ const STAGE_TYPES: Record<ArenaId, new (sh: StageShared) => Stage> = {
   haunted: HauntedStage,
   graveyard: GraveyardStage,
   holiday: HolidayStage,
+  newsroom: NewsroomStage,
 };
 
 const _a = new Color();

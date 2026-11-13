@@ -288,6 +288,17 @@ export class FighterSim {
   mainspring = 0;
   mainspringUsed = false;
 
+  // ------------------------------------------------ Alpha 1.9.8 — CONTENT EXPANSION (ACE)
+  /** STAR TURN: regular shots landed in a row (towards the next star shot) and whether the next shot is the star. */
+  starStreak = 0;
+  starReady = false;
+  /** SHOWTIME: seconds of tempo left; seconds the cue waits for the next card (0 = none). */
+  showtime = 0;
+  cue = 0;
+  /** SAFE CUT: seconds left; whether the dangerous-hit cut is still waiting. */
+  safeCut = 0;
+  safeCutHeavy = false;
+
   readonly m: FighterMatchStats = {
     damageDealt: 0,
     damageTaken: 0,
@@ -330,6 +341,7 @@ export class FighterSim {
     if (this.overdrive > 0) m *= CARD_TUNING.overdrive.speed;
     if (this.momentum > 0) m *= PASSIVE_TUNING.momentum.speed;
     if (this.adrenaline > 0) m *= CARD_TUNING.adrenaline.speed;
+    if (this.showtime > 0) m *= CARD_TUNING.showtime.speed;
     // slows never stack: the strongest one counts (weapon slow, Alpha 1.6 GRAVITY NET)
     let slowF = this.slow > 0 ? 1 - this.slowAmount : 1;
     if (this.netSlow < slowF) slowF = this.netSlow;
@@ -347,6 +359,7 @@ export class FighterSim {
     if (this.momentum > 0) m *= PASSIVE_TUNING.momentum.fireRate;
     if (this.glitch > 0) m *= CARD_TUNING.system_overload.fireRateMult;
     if (this.mainspring > 0) m *= PASSIVE_TUNING.mainspring.fireRate;
+    if (this.showtime > 0) m *= CARD_TUNING.showtime.fireRate;
     return m;
   }
 

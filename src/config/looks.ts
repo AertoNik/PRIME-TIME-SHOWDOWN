@@ -1,14 +1,18 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour' | 'shako';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot' | 'tunic';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour' | 'shako' | 'wave';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot' | 'tunic' | 'tux'
+  // Alpha 1.9.8: PRIME SHOP skins of KAI (CUE MASTER) and RINA (DUNE MIRAGE)
+  | 'hustler' | 'nomad';
 export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
 export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker'
   // Alpha 1.8.8: PRIME SHOP skins
   | 'facepaint' | 'neon_strips' | 'rings' | 'lowshades' | 'goatee'
   // Alpha 1.9.7: CRAX — the wind-up key on his back, brass gears on the uniform, a painted moustache
-  | 'windkey' | 'gears' | 'moustache';
+  | 'windkey' | 'gears' | 'moustache'
+  // Alpha 1.9.8: CUE MASTER — a green dealer's eyeshade, sleeve garters; DUNE MIRAGE — an indigo desert scarf
+  | 'eyeshade' | 'armbands' | 'scarf';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -19,7 +23,7 @@ export interface LookDef {
    */
   base?: string;
   /** Alpha 1.8.8: skin decoration on the weapon (never moves the muzzle). */
-  weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot';
+  weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot' | 'billiard' | 'dune';
   /**
    * Alpha 1.9.7: another MODEL of the same weapon class (CRAX's CLOCKWORK RIFLE is a tech_carbine for the fight): the
    * muzzle point stays the class's, so shots leave exactly where the simulation and the effects expect them.
@@ -57,6 +61,11 @@ export interface LookDef {
    * ZOE (0.93) — their heads read largest next to the 1.9.1 RAY; the heavy bodies, LUCIEN and VALE stay as they are.
    */
   headScale?: number;
+  /**
+   * Alpha 1.9.8 (ACE): the head's own proportions — `w` across (and in depth), `h` up — on top of headScale, about the
+   * neck: a touch longer and leaner face (hair and features follow, so they stay in proportion). Visual only.
+   */
+  headShape?: { w: number; h: number };
 }
 
 export interface FaceTraits {
@@ -347,6 +356,35 @@ export const LOOKS: Record<string, LookDef> = {
     rim: 0xffe2a0,
     headScale: 0.94,
   },
+  // Alpha 1.9.8 — ACE (АЙЗ) «HEADLINER»: the show's young star — an athletic, lean build, a slightly longer and leaner face
+  // with expressive brows and a confident grin, a modern voluminous wave of dark-chestnut hair swept to one side with a
+  // warm caramel sheen; a fitted cream dinner jacket with black-satin peak lapels piped in gold, a black shirt with a gold
+  // bow tie, a turquoise pocket square and a glowing ace-of-spades pin; black shirt cuffs with gold cufflinks showing under
+  // the sleeves (his signature gesture), black tuxedo trousers with a gold side stripe, polished black shoes — and GOLDEN
+  // ACE, a white-and-gold duel revolver with a turquoise energy line.
+  ace: {
+    id: 'ace',
+    body: 'athletic',
+    skin: 0xe9bf9b,
+    hair: { style: 'wave', color: 0x2a1a12, color2: 0xb07a45 },
+    top: { style: 'tux', main: 0xf1e9d6, accent: 0xe0b84c, trim: 0x15171e, inner: 0x13161f },
+    pants: { style: 'tailored', main: 0x15171e, accent: 0xe0b84c },
+    shoes: { main: 0x111319, accent: 0x6e5a2c, sole: 0x1a1c22 },
+    gloves: 0xe9bf9b,
+    fingerless: false,
+    eyes: 0x6a3f1e,
+    brow: 'cocky',
+    mouth: 'smile',
+    accessories: [],
+    face: { cheekbones: 0.6, jaw: 0.55, eyeHeight: 0.95, archedBrows: true, grin: true, browFlash: true, sharp: true },
+    weapon: 'revolver',
+    weaponColor: 0xf4f0e6,
+    weaponDark: 0x1b1e27,
+    glow: 0x3fe0d0,
+    rim: 0xffe2a0,
+    headScale: 0.92,
+    headShape: { w: 0.93, h: 1.07 },
+  },
   // Crash: heavy brawler in a sleeveless black jersey with big pink shoulder pads
   // and a tall hot-pink quiff — a different silhouette from Bruno and Tank.
   crash: {
@@ -478,6 +516,63 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDeco: 'pilot',
     glow: 0xffa03a,
     rim: 0xc99a68,
+    headScale: 0.93,
+  },
+  // ------------------------------------------------ Alpha 1.9.8: CONTENT EXPANSION skins
+  // KAI — CUE MASTER: the pool-hall ace of PRIME NETWORK (his BANK SHOT is a billiard bank shot). Same lean body, face,
+  // curtains and RICOCHET; a cream shirt with the sleeves rolled to the elbow and crimson sleeve garters, an emerald
+  // waistcoat with a mahogany back and brass buttons, a loose dark tie, a brass watch chain and a little lit 8-ball pin,
+  // a green dealer's eyeshade instead of the shades; the pistol in black lacquer with an 8-ball drum, a mahogany barrel
+  // wrap, brass rings and a chalk-blue glow.
+  kai_cue_master: {
+    id: 'kai_cue_master',
+    base: 'kai',
+    body: 'lean',
+    skin: 0xd9a27a,
+    hair: { style: 'curtain', color: 0x1e140f, color2: 0xc8823a },
+    top: { style: 'hustler', main: 0x0f5a3c, accent: 0xc89a48, trim: 0x5a2a18, inner: 0xf2ead8 },
+    pants: { style: 'tailored', main: 0x2a211c, accent: 0x0f5a3c },
+    shoes: { main: 0x5a2a18, accent: 0xf2ead8, sole: 0x1a120e },
+    gloves: 0x2a1a12,
+    fingerless: true,
+    eyes: 0x4a2a18,
+    brow: 'cocky',
+    mouth: 'smile',
+    accessories: ['eyeshade', 'armbands', 'earring'],
+    face: { cheekbones: 1, jaw: 1, eyeHeight: 0.9, archedBrows: true, grin: true, browFlash: true },
+    weapon: 'ricochet',
+    weaponColor: 0x1c1c22,
+    weaponDark: 0x2a1a12,
+    weaponDeco: 'billiard',
+    glow: 0x4ab8ff,
+    rim: 0xa8dcff,
+    headScale: 0.93,
+  },
+  // RINA — DUNE MIRAGE: a courier of the desert of the future (her MIRAGE). Same slim body, face, bob and STINGER; a sand
+  // wrap jacket crossed by a terracotta panel, a hood lying on the shoulders, a leather sash with a brass-and-turquoise
+  // buckle and turquoise bead charms, an indigo scarf, wrapped forearms, goggles pushed up on the forehead, desert boots;
+  // a turquoise streak in the dark bob; the blaster with copper bands, a leather grip, turquoise gems and a brass compass.
+  rina_dune_mirage: {
+    id: 'rina_dune_mirage',
+    base: 'rina',
+    body: 'slim',
+    skin: 0xf5d2bc,
+    hair: { style: 'bob', color: 0x14182e, color2: 0x2ee6c8 },
+    top: { style: 'nomad', main: 0xe8cb92, accent: 0xc4542e, trim: 0x6a3a22, inner: 0x2a3a8a },
+    pants: { style: 'cargo', main: 0x5e4a36, accent: 0xc4542e },
+    shoes: { main: 0x6a3e22, accent: 0x2ee6c8, sole: 0x2a1a12, boots: true },
+    gloves: 0x7a4a2a,
+    fingerless: true,
+    eyes: 0x7a3e2a,
+    brow: 'sly',
+    mouth: 'smirk',
+    accessories: ['goggles', 'scarf', 'earring'],
+    weapon: 'stinger',
+    weaponColor: 0x3a2a22,
+    weaponDark: 0x1e1612,
+    weaponDeco: 'dune',
+    glow: 0x2ee6c8,
+    rim: 0xffc890,
     headScale: 0.93,
   },
   vale: {

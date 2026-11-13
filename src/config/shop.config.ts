@@ -43,12 +43,16 @@ export type ShopSku =
   | 'season_candy_comet'
   | 'season_frostlight_live'
   | 'season_midnight_confetti'
-  | 'fighter_crax';
+  | 'fighter_crax'
+  // Alpha 1.9.8 — CONTENT EXPANSION: two epic skins, 149 ₽ each (the owner's brief of 13.11.2026, section 5). Sold under the
+  // universal offer № 6 (no item list: the priced catalogue) — no new revision; the server holds the price.
+  | 'skin_kai_cue_master'
+  | 'skin_rina_dune_mirage';
 
 export type ShopCategory = 'skins' | 'effects' | 'fighters';
 
 /** Alpha 1.8.8: alternate looks of existing fighters. */
-export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot';
+export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot' | 'kai_cue_master' | 'rina_dune_mirage';
 
 export interface SkinDef {
   id: SkinId;
@@ -63,6 +67,9 @@ export const SKINS: Record<SkinId, SkinDef> = {
   bruno_casino_boss: { id: 'bruno_casino_boss', fighter: 'bruno', look: 'bruno_casino_boss', name: 'CASINO BOSS' },
   nika_stage_idol: { id: 'nika_stage_idol', fighter: 'nika', look: 'nika_stage_idol', name: 'STAGE IDOL' },
   vega_star_pilot: { id: 'vega_star_pilot', fighter: 'vega', look: 'vega_star_pilot', name: 'STAR PILOT' },
+  // Alpha 1.9.8
+  kai_cue_master: { id: 'kai_cue_master', fighter: 'kai', look: 'kai_cue_master', name: 'CUE MASTER' },
+  rina_dune_mirage: { id: 'rina_dune_mirage', fighter: 'rina', look: 'rina_dune_mirage', name: 'DUNE MIRAGE' },
 };
 
 export function isSkinId(id: unknown): id is SkinId {
@@ -168,6 +175,43 @@ export const SHOP_ITEMS: ShopItemDef[] = [
     rarity: 'epic',
     skin: 'vega_star_pilot',
     fighter: 'vega',
+    preview: 'model',
+    isNew: true,
+  },
+  // Alpha 1.9.8 — CONTENT EXPANSION: KAI and RINA (epic, 149 ₽ each)
+  {
+    sku: 'skin_kai_cue_master',
+    category: 'skins',
+    name: 'KAI: CUE MASTER',
+    kind: '3D-скин · Кай «Трикшот»',
+    desc: 'Мастер кия PRIME NETWORK: бильярдный ас, чей BANK SHOT — настоящий удар от борта. Изумрудный жилет, рубашка с закатанными рукавами и зелёный козырёк крупье.',
+    highlights: [
+      'Изумрудный жилет с латунными пуговицами и спинкой из красного дерева поверх кремовой рубашки',
+      'Рукава закатаны до локтя, на них — бордовые подвязки с латунной застёжкой; свободный тёмный галстук и цепочка часов',
+      'Зелёный козырёк крупье с латунным кантом вместо очков, значок-«восьмёрка» с голубым бликом',
+      'Пистолет в чёрном лаке: барабан-шар «8», обмотка ствола из красного дерева, латунные кольца и голубой «мел» на дуле',
+    ],
+    rarity: 'epic',
+    skin: 'kai_cue_master',
+    fighter: 'kai',
+    preview: 'model',
+    isNew: true,
+  },
+  {
+    sku: 'skin_rina_dune_mirage',
+    category: 'skins',
+    name: 'RINA: DUNE MIRAGE',
+    kind: '3D-скин · Рина «Мираж»',
+    desc: 'Мираж дюн: курьер пустыни будущего. Песочная куртка-запах с капюшоном на плечах, индиговый шарф, очки на лбу и бирюзовые акценты.',
+    highlights: [
+      'Песочная куртка с терракотовой полосой наискосок, капюшон на плечах и кожаная нашивка',
+      'Кожаный пояс с латунной пряжкой и бирюзовым камнем, бирюзовые бусины-обереги',
+      'Индиговый шарф с бирюзовой бахромой, обмотанные предплечья, пустынные ботинки',
+      'Боб с бирюзовой прядью и очки на лбу; бластер с медными кольцами, кожаной рукоятью, бирюзовыми камнями и компасом',
+    ],
+    rarity: 'epic',
+    skin: 'rina_dune_mirage',
+    fighter: 'rina',
     preview: 'model',
     isNew: true,
   },
@@ -525,6 +569,9 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   season_frostlight_live: 'approved',
   season_midnight_confetti: 'approved',
   fighter_crax: 'approved',
+  // 1.9.8: APPROVED in the owner's brief of 13.11.2026 (section 5: «Цена каждого: 149 ₽»)
+  skin_kai_cue_master: 'approved',
+  skin_rina_dune_mirage: 'approved',
 };
 
 /** When the owner approved the approved prices (shown nowhere in the game; for the documents and checks). */
@@ -550,6 +597,9 @@ export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
   season_frostlight_live: '2026-11-12',
   season_midnight_confetti: '2026-11-12',
   fighter_crax: '2026-11-12',
+  // 1.9.8: the two epic skins, approved in the brief of 13.11.2026
+  skin_kai_cue_master: '2026-11-13',
+  skin_rina_dune_mirage: '2026-11-13',
 };
 
 /**
@@ -583,6 +633,9 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number | null> = {
   season_frostlight_live: 69,
   season_midnight_confetti: 69,
   fighter_crax: 249,
+  // 1.9.8 — CONTENT EXPANSION, approved 13.11.2026
+  skin_kai_cue_master: 149,
+  skin_rina_dune_mirage: 149,
 };
 
 /**
@@ -649,6 +702,8 @@ export const SHOP_TEST_PRICES_RUB: Record<ShopSku, number> = {
   season_frostlight_live: 10,
   season_midnight_confetti: 10,
   fighter_crax: 10,
+  skin_kai_cue_master: 10,
+  skin_rina_dune_mirage: 10,
 };
 
 /** The paid way to open a fighter (LUCIEN after his season) — the sku its purchase record carries. */

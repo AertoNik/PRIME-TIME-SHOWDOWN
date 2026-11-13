@@ -33,11 +33,13 @@ console.log('\n— Бой и карьера (1.9.6: прогрессивные �
 check(`the game and the server carry one SIM_VERSION (${SIM_VERSION}; 1.9.7 changed it for CRAX and HOLIDAY BROADCAST)`, (SIM_VERSION as string) !== '76236bbb2e281ec4' && /^[0-9a-f]{16}$/.test(SIM_VERSION));
 const fightCosts = (Object.keys(FIGHTERS) as FighterId[]).reduce((t, f) => t + (FIGHTERS[f].contract?.cost ?? 0), 0);
 const fightPrices = (Object.keys(CARDS) as CardId[]).reduce((t, c) => t + (CARDS[c].shop?.price ?? 0), 0);
-check('the BASE prices in the fight files are as they were (6 000 $ contracts, 6 850 $ cards) — the career prices them by tier on top', fightCosts === 6000 && fightPrices === 6850);
+// (1.9.6: 6 000 $ contracts, 6 850 $ cards; Alpha 1.9.8 adds ACE's contract 1 850 $ and SHOWTIME 300 + MAGNET PULL 400 + SAFE CUT 350 $)
+check('the BASE prices in the fight files are those of 1.9.6 plus the 1.9.8 additions (7 850 $ contracts, 7 900 $ cards) — the career prices them by tier on top', fightCosts === 6000 + 1850 && fightPrices === 6850 + 1050);
 const sink = careerSink();
-check(`the career's prices: ${sink.contracts} $ contracts + ${sink.cards} $ cards = ${sink.total} $ (Alpha 1.9.5: 12 850 $)`, sink.total === 29050 && sink.contractCount === 5 && sink.cardCount === 15);
+// (1.9.6: 29 050 $ for 5 contracts and 15 cards; 1.9.8: + ACE 5 900 $ + the three cards 1 900 $)
+check(`the career's prices: ${sink.contracts} $ contracts + ${sink.cards} $ cards = ${sink.total} $ (Alpha 1.9.5: 12 850 $; 1.9.6: 29 050 $)`, sink.total === 29050 + 5900 + 1900 && sink.contractCount === 6 && sink.cardCount === 18);
 check('a comfortable start: the first contract (500 $) and the five level-2 cards (250–300 $) cost what they did', contractCost('bruno') === 500 && (Object.keys(CARDS) as CardId[]).filter((c) => CARDS[c].shop?.level === 2).every((c) => cardPrice(c) === CARDS[c].shop!.price));
-check('the price curve only rises with the unlock level (×1 → ×1.5 → ×2.2 → ×3.2), so a later item costs more than an earlier one', PRICE_TIER[2] === 1 && PRICE_TIER[2] < PRICE_TIER[3] && PRICE_TIER[3] < PRICE_TIER[4] && PRICE_TIER[4] < PRICE_TIER[5] && contractCost('nika') < contractCost('vega') && contractCost('vega') < contractCost('kai') && contractCost('kai') < contractCost('rina'));
+check('the price curve only rises with the unlock level (×1 → ×1.5 → ×2.2 → ×3.2), so a later item costs more than an earlier one', PRICE_TIER[2] === 1 && PRICE_TIER[2] < PRICE_TIER[3] && PRICE_TIER[3] < PRICE_TIER[4] && PRICE_TIER[4] < PRICE_TIER[5] && contractCost('nika') < contractCost('vega') && contractCost('vega') < contractCost('kai') && contractCost('kai') < contractCost('rina') && contractCost('rina') < contractCost('ace'));
 check('career rewards: purse 150/80/50, KO 40, rating ×2.2, combo 25 ×5, the start 150 $ — unchanged; sponsors up to 160 (was 240); dollars by difficulty ×1 / ×1.3 / ×1.6 (was ×1 / ×1.6 / ×2.4)', REWARDS.purse.win === 150 && REWARDS.purse.draw === 80 && REWARDS.purse.loss === 50 && REWARDS.koBonus === 40 && REWARDS.ratingMoney === 2.2 && REWARDS.comboMoney === 25 && REWARDS.comboCap === 5 && REWARDS.starPowerK === 1.25 && REWARDS.starPowerCap === 160 && CAREER_START.money === 150 && REWARDS.difficultyMoney?.rookie === 1 && REWARDS.difficultyMoney?.pro === 1.3 && REWARDS.difficultyMoney?.champion === 1.6);
 const careerSamples = sampleFights(24);
 const career = (id: string, v: CareerVariant = { id: '196', ru: '' }) => {
@@ -53,7 +55,9 @@ const rg0 = career('regular', CAREER_195);
 check(`a beginner's first contract and first card come in the first fights as before (fights ${nb.at.firstContract} / ${nb.at.firstCard}; 1.9.5: ${nb0.at.firstContract} / ${nb0.at.firstCard})`, (nb.at.firstContract ?? 99) <= 3 && (nb.at.firstCard ?? 99) <= 3 && nb.at.firstContract === nb0.at.firstContract);
 check(`never weeks of saving for one item: at most ${Math.max(nb.maxGap, rg.maxGap, ac.maxGap)} fights between two purchases (≤ 10; a beginner plays ~9 a week)`, nb.maxGap <= 10 && rg.maxGap <= 10 && ac.maxGap <= 10);
 check(`a skilled regular player no longer buys nearly everything in half an hour: half the prices after ${rg.at.half} fights, everything after ${rg.at.everything} (1.9.5: ${rg0.at.half} / ${rg0.at.everything})`, (rg.at.half ?? 0) >= 12 && (rg.at.everything ?? 0) >= 30 && (rg.at.everything ?? 999) <= 60);
-check(`progress is felt all along: the first 10 purchases within ${rg.buys[9]} fights, the last 5 spread over ${rg.buys[19] - rg.buys[14]} fights`, rg.buys.length === 20 && rg.buys[9] <= 8 && rg.buys[19] - rg.buys[14] >= 10);
+// (1.9.8: 24 purchases — 6 contracts, 18 cards; «the last 5» are the last five of them)
+const nBuys = rg.buys.length;
+check(`progress is felt all along: the first 10 purchases within ${rg.buys[9]} fights, the last 5 spread over ${rg.buys[nBuys - 1] - rg.buys[nBuys - 6]} fights`, nBuys === 24 && rg.buys[9] <= 8 && rg.buys[nBuys - 1] - rg.buys[nBuys - 6] >= 10);
 const slowNb = (nb.at.everything ?? 999) / (nb0.at.everything ?? 1);
 const slowRg = (rg.at.everything ?? 999) / (rg0.at.everything ?? 1);
 check(`a beginner is slowed down no more than a skilled player (×${slowNb.toFixed(2)} vs ×${slowRg.toFixed(2)} fights to everything)`, slowNb <= slowRg);

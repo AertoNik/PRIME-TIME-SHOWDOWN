@@ -255,8 +255,8 @@ export const LEAGUE = {
     /** Starts per account per hour. */
     startsPerHour: 40,
   },
-  /** Permanent sets the server picks from (seasonal sets stay out). */
-  arenas: ['original', 'casino', 'backlot', 'graveyard'],
+  /** Permanent sets the server picks from (seasonal sets stay out). Alpha 1.9.8: + NEON NEWSROOM (a permanent set). */
+  arenas: ['original', 'casino', 'backlot', 'graveyard', 'newsroom'],
   /** League fights are of the standard length. */
   fans: FIGHT_FANS,
   /** PRIME TOKENS (PRIME_LEAGUE_TOKENS=on). Never roubles, never PRIME SHOP. */

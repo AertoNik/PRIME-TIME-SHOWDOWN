@@ -37,6 +37,7 @@ import { VFX } from '../render/VFX';
 import { BattleHUD } from '../ui/screens/BattleHUD';
 import { CareerScreen } from '../ui/screens/CareerScreen';
 import { CollectionScreen } from '../ui/screens/CollectionScreen';
+import { CardsScreen } from '../ui/screens/CardsScreen';
 import { EventsScreen } from '../ui/screens/EventsScreen';
 import { MenuScreen } from '../ui/screens/MenuScreen';
 import { ModesScreen } from '../ui/screens/ModesScreen';
@@ -60,7 +61,7 @@ import { LeagueRuntime, leagueLook } from './LeagueRuntime';
 import { ProducerRuntime } from './ProducerRuntime';
 import { LeagueResultScreen, LeagueScreen } from '../ui/screens/LeagueScreen';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival' | 'league' | 'leagueResult';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival' | 'league' | 'leagueResult' | 'cards';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -101,7 +102,8 @@ function devEventOverrides(): { settings: EventSettings; clock?: () => number } 
 }
 const bootT = performance.now();
 
-const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
+// (1.9.8: ACE is a permanent roster star — drawn at boot with the others; the seasonal CRAX is drawn on first use)
+const ALL_LOOKS = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'ace', 'lucien', 'dex', 'tank', 'zoe', 'crash', 'vale', 'bot'];
 
 /** Next frame, with a timer fallback in case rAF is throttled or paused. */
 const nextFrame = () =>
@@ -319,6 +321,8 @@ export class Game {
     this.ui.register('career', new CareerScreen(this));
     this.ui.register('events', new EventsScreen(this));
     this.ui.register('collection', new CollectionScreen(this));
+    // Alpha 1.9.8: CARDS — browse and buy cards from the main menu (the deck stays on the prep screen)
+    this.ui.register('cards', new CardsScreen(this));
     this.ui.register('modes', new ModesScreen(this));
     this.ui.register('profile', new ProfileScreen(this));
     this.ui.register('shop', new ShopScreen(this));
@@ -614,8 +618,8 @@ export class Game {
     const id = resolveArena(this.save.data.arena, season, () => rng.next());
     // Alpha 1.7.5: the champion is not fought among tombstones — BOSS FIGHT keeps its tuned open floor
     // (the cemetery's Halloween neighbour hosts it instead)
-    // (Alpha 1.9.7: HOLIDAY BROADCAST's cover too — its fight goes to the Original Prime Arena)
-    if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'holiday' ? 'original' : 'haunted';
+    // (Alpha 1.9.7: HOLIDAY BROADCAST's cover too — its fight goes to the Original Prime Arena; 1.9.8: NEON NEWSROOM's too)
+    if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'graveyard' ? 'haunted' : 'original';
     return id;
   }
 
@@ -1443,7 +1447,14 @@ export class Game {
         // Alpha 1.7.5: cover on the floor sounds like the set's own stone and pumpkins (no new sounds):
         // every crack, break and heavy blow is heard; a plain chip only shows (no rattle under fire)
         const c = this.match?.covers.list[e.index];
-        if (c && (e.what !== 'hit' || e.heavy)) a.prop(c.kind === 'pumpkin' ? 'pumpkin' : 'gravestone', e.what === 'break', e.heavy || c.kind === 'column');
+        // (1.9.8 NEON NEWSROOM: the desk sounds like the backlot's wood, the panel and the rack like a neon sign, the
+        // pedestal like a studio lamp — still no new sounds)
+        if (c && (e.what !== 'hit' || e.heavy))
+          a.prop(
+            c.kind === 'pumpkin' ? 'pumpkin' : c.kind === 'newsdesk' ? 'crate' : c.kind === 'techpanel' || c.kind === 'rack' ? 'neonSign' : c.kind === 'pedestal' ? 'spotlight' : 'gravestone',
+            e.what === 'break',
+            e.heavy || c.kind === 'column' || c.kind === 'rack',
+          );
         break;
       }
       case 'dodge':
@@ -1494,12 +1505,31 @@ export class Game {
       case 'trickShot':
         a.trickShot();
         break;
+      // Alpha 1.9.8 — ACE: the duel shot landed / the star shot is ready
+      case 'perfectTake':
+        a.perfectTake();
+        break;
+      case 'starTurn':
+        if (e.what === 'ready' && e.side === 0) a.starTurn();
+        break;
+      // Alpha 1.9.8 — the three new cards
+      case 'showtime':
+        if (e.what === 'on') a.showtime();
+        break;
+      case 'magnet':
+        a.magnet(e.hit);
+        break;
+      case 'safeCut':
+        if (e.what !== 'end') a.safeCut(e.what === 'cut');
+        break;
       case 'feintCounter':
         a.feintCounter();
         break;
       case 'telegraph':
         // the champion's SPOTLIGHT SHOT gets its own warning sting
         if (e.side === 1 && this.match?.boss && e.card === 'charged_shot') a.bossWarn();
+        // Alpha 1.9.8 — ACE's MAIN EVENT: the cuff, the follow-spot switching on
+        if (e.card === 'main_event') a.mainEvent();
         break;
       case 'cutStart':
         a.cutStart(e.empowered);

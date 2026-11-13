@@ -14,7 +14,9 @@ import {
   SHOP_PRICE_STATUS,
   SHOP_PROMOS,
   SHOP_PRICES_APPROVED_LATER,
+  MINOR_PURCHASES,
   approvedPriceRub,
+  receiptNameOf,
   rubToKop,
   SHOP_SALES_OPEN,
   SKINS,
@@ -31,7 +33,7 @@ import { EventManager } from '../src/meta/EventManager';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
 import { Shop } from '../src/meta/Shop';
 import { DASH_FX, VICTORY_FX } from '../src/render/cosmeticFx';
-import { getRigGeometry } from '../src/render/FighterModel';
+import { EYESHADE, getRigGeometry } from '../src/render/FighterModel';
 import { defaultInput, FighterAnimator, type AnimInput } from '../src/render/FighterAnimator';
 import { defForLook, ModelCache } from '../src/render/ModelCache';
 import type { FighterRig } from '../src/render/FighterModel';
@@ -89,11 +91,20 @@ const CATALOG_ORDER: ShopSku[] = ['skin_ray_neon_runner', 'skin_bruno_casino_bos
 // … and Alpha 1.9.7: WINTER SHOWDOWN's four items and CRAX, sold after their season — NO price yet (the owner's decision)
 const WINTER_197: ShopSku[] = ['season_clockwork_gold', 'season_candy_comet', 'season_frostlight_live', 'season_midnight_confetti', 'fighter_crax'];
 const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'victory_golden_confetti', 'card_vhs'];
+// … and Alpha 1.9.8 — CONTENT EXPANSION: two epic skins (KAI, RINA), 149 ₽ each, right after the 1.9.5 skins
+const SKINS_198: ShopSku[] = ['skin_kai_cue_master', 'skin_rina_dune_mirage'];
+const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...CATALOG_ORDER.slice(4), ...WINTER_197];
 
 // ------------------------------------------------------------------ the catalog
 {
-  check('catalog: the seven approved items, the eleven of 1.9.5 Part 1 and the five of WINTER SHOWDOWN (1.9.7), in catalog order', SHOP_ITEMS.length === 23 && SHOP_ITEMS.map((i) => i.sku).join() === [...CATALOG_ORDER, ...WINTER_197].join());
-  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 23);
+  check('catalog: the seven approved items, the eleven of 1.9.5 Part 1, the two skins of 1.9.8 (after the other skins) and the five of WINTER SHOWDOWN (1.9.7), in catalog order', SHOP_ITEMS.length === 25 && SHOP_ITEMS.map((i) => i.sku).join() === CATALOG_198.join());
+  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 25);
+  // 1.9.8 — the owner's brief of 13.11.2026, section 5
+  const k198 = SHOP_ITEMS.filter((i) => SKINS_198.includes(i.sku));
+  check('1.9.8 skins: exactly two — KAI: CUE MASTER and RINA: DUNE MIRAGE, epic, 149 ₽ each, APPROVED (13.11.2026), new arrivals, a 3D look of an existing fighter (fitting room «model»)', k198.length === 2 && k198.every((i) => i.rarity === 'epic' && i.category === 'skins' && i.preview === 'model' && i.isNew === true && SHOP_PRICES_RUB[i.sku] === 149 && SHOP_PRICE_STATUS[i.sku] === 'approved' && approvedPriceRub(i.sku) === 149 && SHOP_PRICES_APPROVED_LATER[i.sku] === '2026-11-13') && SKINS.kai_cue_master.fighter === 'kai' && SKINS.rina_dune_mirage.fighter === 'rina');
+  check('1.9.8 skins: their own looks built on the fighter (base), the same weapon — never a recolour (their own cut, accessories and weapon decoration)', LOOKS.kai_cue_master.base === 'kai' && LOOKS.rina_dune_mirage.base === 'rina' && LOOKS.kai_cue_master.weapon === LOOKS.kai.weapon && LOOKS.rina_dune_mirage.weapon === LOOKS.rina.weapon && LOOKS.kai_cue_master.top.style !== LOOKS.kai.top.style && LOOKS.rina_dune_mirage.top.style !== LOOKS.rina.top.style && !!LOOKS.kai_cue_master.weaponDeco && !!LOOKS.rina_dune_mirage.weaponDeco && Object.values(LOOKS).filter((l) => l.top.style === 'hustler' || l.top.style === 'nomad').length === 2);
+  check('1.9.8 skins: sold under the universal offer № 6 (no list) — in no list of revisions 1–5; a buyer of 14–17 may buy them (149 ≤ 299 ₽ an item)', SHOP_OFFERS.filter((o) => o.revision <= 5).every((o) => SKINS_198.every((s) => !offerSells(o, s))) && SKINS_198.every((s) => offerSells({ ...OFFER_R6_PLAN, url: '', sha256: '', effectiveFrom: '2026-11-13' }, s)) && 149 <= MINOR_PURCHASES.itemMaxRub);
+  check('1.9.8 skins: the receipt name of a look («Цифровой облик бойца …»), the winter items and every other price unchanged', k198.every((i) => receiptNameOf(i) === `Цифровой облик бойца ${i.name} для игры PRIME TIME: SHOWDOWN`) && WINTER_197.map((s) => SHOP_PRICES_RUB[s]).join() === '49,59,69,69,249' && [...ALL_SKUS, ...NEW_195].map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,249,149,149,69,69,59,59,49,49,49,49,59');
   check('1.9.7 WINTER SHOWDOWN after the season: the owner\'s prices (Р-25, 12.11.2026) — CRAX 249, CLOCKWORK GOLD 49, CANDY COMET 59, FROSTLIGHT LIVE 69, MIDNIGHT CONFETTI 69 ₽, approved; in no list of revisions 1–5; WINTER CHAMPION has no sku', WINTER_197.map((s) => SHOP_PRICES_RUB[s]).join() === '49,59,69,69,249' && WINTER_197.every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s] && SHOP_PRICES_APPROVED_LATER[s] === '2026-11-12' && SHOP_OFFERS.filter((o) => o.revision <= 5).every((o) => Array.isArray(o.items) && !o.items.includes(s))) && !SHOP_ITEMS.some((i) => i.cosmetic === 'title_winter_champion'));
   // 1.9.7 (the owner, 13.11.2026): revision 6 is UNIVERSAL — no list of goods; the shop's catalog and approved prices decide
   // (before the owner's approval revision 6 is only planned; at the release legal:release registers it — both states pass)
@@ -105,7 +116,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check(
     'catalog: the names',
     SHOP_ITEMS.map((i) => i.name).join('|') ===
-      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR|CLOCKWORK GOLD|CANDY COMET|FROSTLIGHT LIVE|MIDNIGHT CONFETTI|CRAX: THE MIDNIGHT GUARD',
+      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|KAI: CUE MASTER|RINA: DUNE MIRAGE|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR|CLOCKWORK GOLD|CANDY COMET|FROSTLIGHT LIVE|MIDNIGHT CONFETTI|CRAX: THE MIDNIGHT GUARD',
   );
   // 1.9.5: one item, one id — the Halloween items sold after the season are the exchange's own cosmetics
   const exch = new Set(EVENTS.flatMap((e) => e.shop.map((x) => x.cosmetic)));
@@ -336,13 +347,21 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
       claim.cosmetics.owned = ['card_vhs'];
       // (1.9.7: a save of today's game lists CRAX — a server before 1.9.7 does not know him and refuses it: the 1.9.7
       // server is released before the site; without CRAX the old server still takes the 1.8.8 fields)
+      // (1.9.8: the same for ACE — a server before 1.9.8 does not know him)
       const noCrax = (o: any) => {
+        const c = JSON.parse(JSON.stringify(o));
+        delete c.fighters.crax;
+        delete c.fighters.ace;
+        return c;
+      };
+      const onlyAce = (o: any) => {
         const c = JSON.parse(JSON.stringify(o));
         delete c.fighters.crax;
         return c;
       };
       check('live 1.8.4 server: accepts a 1.8.8 save, with and without wardrobe choices (no server update needed for them)', ok184(noCrax(plain)) && ok184(noCrax(worn)));
       check('1.9.7: a server before 1.9.7 refuses a save with CRAX («unknown fighter») — the 1.9.7 server goes live BEFORE the site', !ok184(plain));
+      check('1.9.8: an old server refuses a save with ACE («unknown fighter») — the 1.9.8 server goes live BEFORE the site', !ok184(onlyAce(plain)));
       check('live 1.8.4 server: refuses a save claiming a PRIME SHOP item (an id it does not know)', !ok184(claim));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -382,8 +401,11 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
     season_frostlight_live: 'epic',
     season_midnight_confetti: 'epic',
     fighter_crax: 'legendary',
+    // 1.9.8: the owner's brief (13.11.2026, section 5) — both new skins EPIC
+    skin_kai_cue_master: 'epic',
+    skin_rina_dune_mirage: 'epic',
   };
-  check('rarity: the approved honest classification of every item — BRUNO the one legendary skin; RAY, NIKA, VEGA epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
+  check('rarity: the approved honest classification of every item — BRUNO the one legendary skin; RAY, NIKA, VEGA (1.9.8: KAI, RINA) epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
   check('rarity: not everything paid is epic or legendary — all four tiers are used', RARITY_ORDER.every((r) => SHOP_ITEMS.some((i) => i.rarity === r)));
   check('rarity: PURPLE PHANTOM rare (an exclusive Halloween reward, not sold), LEGENDARY PRODUCTION rare (the same build as SPOOKY BROADCAST); the titles keep theirs (a title and its own victory screen)', COSMETICS.dash_phantom.rarity === 'rare' && COSMETICS.frame_legendary.rarity === 'rare' && COSMETICS.frame_spooky.rarity === 'rare' && COSMETICS.title_halloween_champion.rarity === 'legendary' && COSMETICS.title_prime_legend.rarity === 'legendary' && COSMETICS.title_prime_star.rarity === 'epic');
   check('rarity: the prices did not move with the tiers (the seven of № 4 and the eleven of 1.9.5)', ALL_SKUS.map((k) => SHOP_PRICES_RUB[k]).join() === '99,149,49,49,49,49,249' && NEW_195.map((k) => SHOP_PRICES_RUB[k]).join() === '149,149,69,69,59,59,49,49,49,49,59');
@@ -416,6 +438,18 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
     const tris = (geo: typeof g) => Object.values(geo.bones).reduce((n: number, b: any) => n + [b.toon, b.glow].reduce((m: number, x: any) => m + (x ? (x.index ? x.index.count : x.attributes.position.count) / 3 : 0), 0), 0);
     const vale = tris(getRigGeometry('vale'));
     check(`${sk.name}: mobile budget — ${Math.round(tris(g) / 1000)}k triangles (the original ${Math.round(tris(gb) / 1000)}k, largest existing look ${Math.round(vale / 1000)}k)`, tris(g) < tris(gb) * 1.5 && tris(g) < vale);
+  }
+  // 1.9.8 polish — CUE MASTER's eyeshade: a slim crescent that stays within the head's width (the first version's flat brim
+  // stuck out at the temples) and reaches no more than ~0.15 m beyond KAI's face; the brim itself ~14 % shorter
+  {
+    const bb = (look: string) => {
+      const t = (getRigGeometry(look).bones as any).head.toon;
+      t.computeBoundingBox();
+      return t.boundingBox;
+    };
+    const k = bb('kai');
+    const c = bb('kai_cue_master');
+    check(`CUE MASTER eyeshade: within KAI's head width (${c.max.x.toFixed(3)} ≤ ${k.max.x.toFixed(3)} m), ${(c.max.z - k.max.z).toFixed(3)} m beyond the face, a crescent ≤ 1.36 head radii deep, thin`, c.max.x <= k.max.x + 1e-6 && c.min.x >= k.min.x - 1e-6 && c.max.z - k.max.z <= 0.15 && EYESHADE.reach <= 1.36 && EYESHADE.wide <= 1.05 && EYESHADE.thick < 0.012);
   }
 
   // animation: a skin moves exactly like its fighter — same random stream, same inputs, same joints

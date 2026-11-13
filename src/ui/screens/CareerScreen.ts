@@ -11,57 +11,123 @@ import { REWARD_ART } from '../eventArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { currencyIcon } from './EventsScreen';
+import { STUDIO_NAME_MAX, StudioNameEdit, type NameOutcome } from '../studioName';
 import type { Screen } from '../UI';
 
 export class CareerScreen implements Screen {
   readonly el: HTMLElement;
   private g: Game;
-  private editing = false;
+  /** 1.9.8: the studio name editor (src/ui/studioName.ts — why 1.9.7 failed on a real iPhone is written there). */
+  private readonly name: StudioNameEdit;
+  private settleTimer = 0;
 
   constructor(g: Game) {
     this.g = g;
     this.el = el('div', 'career');
+    this.name = new StudioNameEdit(
+      () => this.g.save.data.orgName,
+      (n) => this.g.career.rename(n),
+    );
     this.el.addEventListener('click', (e) => this.onClick(e));
-    // 1.9.7: the studio name field — Enter / «Готово» saves, Escape restores the previous name
+    // Enter / «готово» ON the keyboard / ✓ submit the form
     this.el.addEventListener('submit', (e) => {
       e.preventDefault();
-      this.g.audio.ui('confirm');
-      this.commitName();
+      this.done(this.name.submit(this.nameField()?.value ?? ''));
     });
     this.el.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Escape' && this.editing) this.cancelName();
+      if ((e as KeyboardEvent).key === 'Escape' && this.name.editing) this.done(this.name.cancel());
+    });
+    // a press on ✓ / × is known before the blur it causes (iOS: pointerdown → blur → click)
+    this.el.addEventListener(
+      'pointerdown',
+      (e) => {
+        const aim = (e.target as HTMLElement).closest<HTMLElement>('[data-name-aim]')?.dataset.nameAim;
+        if (aim === 'save' || aim === 'cancel') this.name.aim(aim);
+      },
+      { capture: true },
+    );
+    // the field lost the focus: «Готово» above the iPhone keyboard, a tap elsewhere — the typed name is kept
+    this.el.addEventListener('focusout', (e) => {
+      if (!(e.target as HTMLElement).matches?.('.org-name input')) return;
+      const r = this.name.blurred((e.target as HTMLInputElement).value);
+      if (r) {
+        this.done(r);
+        return;
+      }
+      // a press on ✓ / × whose click does not come (the finger slid off the button) still finishes the edit
+      clearTimeout(this.settleTimer);
+      this.settleTimer = window.setTimeout(() => {
+        const f = this.nameField();
+        if (this.name.editing && document.activeElement !== f) this.done(this.name.settle(f?.value ?? ''));
+      }, 600);
     });
   }
 
   onHide(): void {
-    // leaving the screen while typing keeps the old name (nothing half-typed is saved)
-    this.editing = false;
+    // leaving the screen while typing = the field loses the focus: the typed name is kept (an empty one is not)
+    if (this.name.editing) {
+      const v = this.nameField()?.value ?? '';
+      this.done(this.name.blurred(v) ?? this.name.settle(v));
+    }
   }
 
   onShow(): void {
-    this.editing = false;
+    if (this.name.editing) this.name.cancel();
     const s = this.g.save.data;
     const f = FIGHTERS[s.selected];
     this.g.showcase.show(this.g.fighterLook(f.id), f.theme.accent);
     this.render(false);
   }
 
-  private commitName(): void {
-    const input = this.el.querySelector<HTMLInputElement>('.org-name input');
-    const name = input?.value.trim() ?? '';
-    if (input && !name) {
-      // an empty name is not saved: the previous one comes back
-      this.g.ui.toast('Название студии не может быть пустым — оставлено прежнее');
-    } else if (input) this.g.career.rename(name);
-    input?.blur();
-    this.editing = false;
-    this.render();
+  private nameField(): HTMLInputElement | null {
+    return this.el.querySelector<HTMLInputElement>('.org-name input');
   }
 
-  private cancelName(): void {
-    this.el.querySelector<HTMLInputElement>('.org-name input')?.blur();
-    this.editing = false;
-    this.render();
+  /**
+   * The pencil, or a tap on the name: the SAME field (never rebuilt) becomes editable and takes the focus inside the
+   * tap — iOS opens the keyboard only for a focus asked for inside the user's own gesture.
+   */
+  private beginName(): void {
+    const input = this.nameField();
+    const form = input?.form;
+    if (!input || !form) return;
+    clearTimeout(this.settleTimer);
+    if (this.name.editing) {
+      // already typing: a tap inside the field places the caret itself; the pencil only brings the keyboard back
+      if (document.activeElement !== input) input.focus({ preventScroll: true });
+      return;
+    }
+    // a tap on the read-only name already focused it without a keyboard: let it go BEFORE the edit starts (that blur
+    // must not count as the end of an edit), then focus again once it is editable
+    if (document.activeElement === input) input.blur();
+    input.value = this.name.begin();
+    input.readOnly = false;
+    form.dataset.editing = '1';
+    input.focus({ preventScroll: true });
+    clearTimeout(this.settleTimer);
+    const n = input.value.length;
+    try {
+      input.setSelectionRange(n, n);
+    } catch {
+      /* some keyboards refuse a caret position — the field is focused anyway */
+    }
+  }
+
+  /** The edit is over: the field shows the stored name, read-only again; the player is told what happened. */
+  private done(r: NameOutcome | null): void {
+    if (!r) return;
+    clearTimeout(this.settleTimer);
+    const input = this.nameField();
+    if (input) {
+      input.value = r.name;
+      input.readOnly = true;
+      if (input.form) input.form.dataset.editing = '0';
+      if (document.activeElement === input) input.blur();
+    }
+    if (r.kind === 'saved') {
+      this.g.audio.ui('confirm');
+      this.g.ui.toast(`Название студии сохранено: ${r.name}`);
+    } else if (r.kind === 'empty') this.g.ui.toast('Название студии не может быть пустым — оставлено прежнее');
   }
 
   private onClick(e: Event): void {
@@ -73,19 +139,11 @@ export class CareerScreen implements Screen {
       g.audio.ui('click');
       g.goto('menu');
     } else if (act === 'edit') {
-      g.audio.ui('click');
-      this.editing = true;
-      this.render();
-      // focus in the same tap: iOS opens the keyboard only inside the user's gesture
-      const input = this.el.querySelector<HTMLInputElement>('.org-name input');
-      if (input) {
-        input.focus();
-        const n = input.value.length;
-        input.setSelectionRange(n, n);
-      }
+      if (!this.name.editing) g.audio.ui('click');
+      this.beginName();
     } else if (act === 'cancel-name') {
       g.audio.ui('click');
-      this.cancelName();
+      this.done(this.name.cancel());
     } else if (act === 'claim') {
       const id = t.dataset.goal as GoalId;
       const r = g.career.claim(id);
@@ -174,11 +232,7 @@ export class CareerScreen implements Screen {
       </div>
       <div class="fill scroll" style="padding-bottom:14px">
         <div class="org-card panel">
-          ${
-            this.editing
-              ? `<form class="org-name" action="#" autocomplete="off"><input type="text" name="studio" maxlength="28" value="${esc(s.orgName)}" aria-label="Название студии" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done"/><button type="submit" class="icon-btn org-x" aria-label="Сохранить">${UI_ICONS.check}</button><button type="button" class="icon-btn org-x" data-act="cancel-name" aria-label="Отменить"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></form>`
-              : `<div class="org-name"><span class="fill">${esc(s.orgName)}</span><button class="icon-btn" data-act="edit" aria-label="Переименовать" style="width:34px;height:34px">${UI_ICONS.pencil}</button></div>`
-          }
+          <form class="org-name" action="#" autocomplete="off" data-editing="0"><input type="text" name="studio" maxlength="${STUDIO_NAME_MAX}" value="${esc(s.orgName)}" readonly data-act="edit" aria-label="Название студии" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done"/><button type="button" class="icon-btn org-edit" data-act="edit" aria-label="Переименовать">${UI_ICONS.pencil}</button><button type="submit" class="icon-btn org-x" data-name-aim="save" aria-label="Сохранить">${UI_ICONS.check}</button><button type="button" class="icon-btn org-x" data-act="cancel-name" data-name-aim="cancel" aria-label="Отменить"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></form>
           <div class="row" style="margin-top:12px;gap:12px">
             <div class="lvl-badge" style="width:52px;height:52px;font-size:20px">${lvl.level}</div>
             <div class="fill">

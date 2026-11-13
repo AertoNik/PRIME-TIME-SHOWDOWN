@@ -100,10 +100,11 @@ function rulesChecks(): void {
   // TWELFTH STRIKE, MAINSPRING and HOLIDAY BROADCAST's cover — so the server and the game must be released together)
   check(`1.9.7: a NEW SIM_VERSION for the new fighter and set (${SIM_VERSION}, was 76236bbb2e281ec4) — server and game together`, (SIM_VERSION as string) !== '76236bbb2e281ec4');
   const LR = req('./league_rules.js');
-  check('1.9.3: the permanent sets are the four of 1.9.0, CURSED CEMETERY included all year', JSON.stringify(LR.arenas) === JSON.stringify(['original', 'casino', 'backlot', 'graveyard']) && JSON.stringify(LEAGUE_ARENAS) === JSON.stringify(LR.arenas) && availableArenas('none').includes('graveyard'));
+  // (1.9.8: + NEON NEWSROOM, a permanent set — five permanent sets)
+  check('1.9.3: the permanent sets are the four of 1.9.0, CURSED CEMETERY included all year — 1.9.8: + NEON NEWSROOM', JSON.stringify(LR.arenas) === JSON.stringify(['original', 'casino', 'backlot', 'graveyard', 'newsroom']) && JSON.stringify(LEAGUE_ARENAS) === JSON.stringify(LR.arenas) && availableArenas('none').includes('graveyard'));
   const cat = leagueArenaCatalog();
   const hw = cat.find((a) => a.id === 'haunted');
-  check('1.9.3: the seasonal sets come from the game\'s own catalogue and calendar (no second list): HAUNTED with the dated Halloween events, HOLIDAY (1.9.7) with WINTER SHOWDOWN only; a theme without a dated event (WINTER GALA preview) opens nothing', JSON.stringify(LR.arenaCatalog) === JSON.stringify(cat) && !!hw && hw.windows!.every((w) => EVENTS.some((e) => e.id === w.event && e.themeId === 'halloween' && e.start === w.from && e.end === w.until)) && cat.filter((a) => a.windows).every((a) => a.windows!.length > 0) && cat.length === 6 && JSON.stringify(cat.find((a) => a.id === 'holiday')?.windows) === JSON.stringify([{ event: 'winter-2026', from: '2026-12-02T21:00:00Z', until: '2027-01-03T21:00:00Z' }]), JSON.stringify(cat));
+  check('1.9.3: the seasonal sets come from the game\'s own catalogue and calendar (no second list): HAUNTED with the dated Halloween events, HOLIDAY (1.9.7) with WINTER SHOWDOWN only; a theme without a dated event (WINTER GALA preview) opens nothing', JSON.stringify(LR.arenaCatalog) === JSON.stringify(cat) && !!hw && hw.windows!.every((w) => EVENTS.some((e) => e.id === w.event && e.themeId === 'halloween' && e.start === w.from && e.end === w.until)) && cat.filter((a) => a.windows).every((a) => a.windows!.length > 0) && cat.length === 7 && !cat.find((a) => a.id === 'newsroom')?.windows && JSON.stringify(cat.find((a) => a.id === 'holiday')?.windows) === JSON.stringify([{ event: 'winter-2026', from: '2026-12-02T21:00:00Z', until: '2027-01-03T21:00:00Z' }]), JSON.stringify(cat));
   // the game's own calendar (EventManager, auto mode) at the same moments as the server's rule
   const clientSets = (t: number) => {
     const em = new EventManager({ data: defaultSave(), save() {} } as unknown as SaveSystem, { clock: () => t, settings: { mode: 'auto', forcedEventId: 'none' } });
@@ -125,7 +126,7 @@ function rulesChecks(): void {
     const nyEvent = { ...EVENTS[1], id: 'newyear-2027', start: '2027-02-10T00:00:00Z', end: '2027-03-01T00:00:00Z' };
     const fut = leagueArenaCatalog({ ...ARENAS, newyear_gala: winterSet } as any, [...ARENA_ORDER, 'newyear_gala'], [...EVENTS, nyEvent]);
     const at = (d: string) => LS.arenasIn(fut, T(d)).join();
-    check('1.9.3: a future seasonal set (made-up NEW YEAR GALA + a dated winter event) needs no league code: catalogued from the set and the calendar, open only inside its event, the same rule on both sides', at('2027-02-09T23:59:59Z') === 'original,casino,backlot,graveyard' && at('2027-02-15T12:00:00Z') === 'original,casino,backlot,graveyard,holiday,newyear_gala' && at('2027-03-01T00:00:00Z') === 'original,casino,backlot,graveyard' && ['2026-10-25T00:00:00Z', '2027-02-15T12:00:00Z'].every((d) => LS.arenasIn(fut, T(d)).join() === leagueArenasAt(fut, T(d)).join()), [at('2027-02-09T23:59:59Z'), at('2027-02-15T12:00:00Z'), at('2027-03-01T00:00:00Z')].join(' | '));
+    check('1.9.3: a future seasonal set (made-up NEW YEAR GALA + a dated winter event) needs no league code: catalogued from the set and the calendar, open only inside its event, the same rule on both sides', at('2027-02-09T23:59:59Z') === 'original,casino,backlot,graveyard,newsroom' && at('2027-02-15T12:00:00Z') === 'original,casino,backlot,graveyard,holiday,newsroom,newyear_gala' && at('2027-03-01T00:00:00Z') === 'original,casino,backlot,graveyard,newsroom' && ['2026-10-25T00:00:00Z', '2027-02-15T12:00:00Z'].every((d) => LS.arenasIn(fut, T(d)).join() === leagueArenasAt(fut, T(d)).join()), [at('2027-02-09T23:59:59Z'), at('2027-02-15T12:00:00Z'), at('2027-03-01T00:00:00Z')].join(' | '));
   }
   check('1.9.3: HAUNTED is a choice only inside its event (before / after → «closed», 409 arena_unavailable); forged ids stay RANDOM', LS.arenaChoice('haunted', T('2026-10-25T00:00:00Z')) === 'haunted' && LS.arenaChoice('haunted', T('2026-11-04T00:00:00Z')) === null && LS.arenaChoice('haunted', T('2026-10-19T00:00:00Z')) === null && LS.arenaChoice('moon', T('2026-10-25T00:00:00Z')) === 'random' && LS.arenaChoice('graveyard', T('2027-03-01T00:00:00Z')) === 'graveyard');
   check('8 major ranks in rising order, III → II → I inside each, the last without divisions', RANKS.length === 8 && RANKS.every((r, i) => i === 0 || r.base > RANKS[i - 1].base) && LM.rankOf(0).division === 'III' && LM.rankOf(299).division === 'I' && LM.rankOf(4200).division === null);
@@ -375,7 +376,7 @@ async function serverChecks(): Promise<void> {
   await giveSave(H1, ['ray', 'vega'], []);
   await call(H1, 'POST', '/api/prime/league/join', { accept: true, rules: 1 });
   const meH = await call(H1, 'GET', '/api/prime/league/me');
-  check(`the server opens HAUNTED PRIME SET while Halloween runs (${new Date(clock).toISOString().slice(0, 16)}): 5 sets, its closing time 4 Nov 00:00 UTC`, meH.j.arenas?.join() === 'original,casino,backlot,haunted,graveyard' && meH.j.arenaUntil?.haunted === Date.parse('2026-11-04T00:00:00Z'), JSON.stringify({ a: meH.j.arenas, u: meH.j.arenaUntil }));
+  check(`the server opens HAUNTED PRIME SET while Halloween runs (${new Date(clock).toISOString().slice(0, 16)}): 6 sets (1.9.8: the permanent NEON NEWSROOM too), its closing time 4 Nov 00:00 UTC`, meH.j.arenas?.join() === 'original,casino,backlot,haunted,graveyard,newsroom' && meH.j.arenaUntil?.haunted === Date.parse('2026-11-04T00:00:00Z'), JSON.stringify({ a: meH.j.arenas, u: meH.j.arenaUntil }));
   const startH = (body: any = {}) => call(H1, 'POST', '/api/prime/league/match/start', { mode: 'duel', fighter: 'vega', deck: FIGHTERS.vega.defaultDeck, sim: SIM_VERSION, op: op(), ...body });
   const mh = (await startH({ arena: 'haunted' })).j.match;
   const th = botTaps(snapFrom(mh), 0.3);
@@ -781,7 +782,7 @@ async function serverChecks(): Promise<void> {
   tick(HOUR_MS + 60000);
   // (1.9.7: these December moments fall inside WINTER SHOWDOWN — its HOLIDAY BROADCAST is open with the permanent four)
   const openNow = leagueArenasAt(leagueArenaCatalog(), clock);
-  check(`1.9.7: on ${when} the open sets are the permanent four + HOLIDAY BROADCAST (WINTER SHOWDOWN runs) — ${openNow.join()}`, openNow.join() === 'original,casino,backlot,graveyard,holiday');
+  check(`1.9.7: on ${when} the open sets are the permanent ones (1.9.8: five, NEON NEWSROOM included) + HOLIDAY BROADCAST (WINTER SHOWDOWN runs) — ${openNow.join()}`, openNow.join() === 'original,casino,backlot,graveyard,holiday,newsroom');
   // RANDOM: an old game sends nothing, a new one sends «random»
   const rnd: string[] = [];
   let rndPick = true;
@@ -801,14 +802,14 @@ async function serverChecks(): Promise<void> {
     fz.push(`${JSON.stringify(f)}→${r.j.match?.arena}/${r.j.match?.arenaPick}`);
     if (r.j.match) await quit(RIV, r.j.match);
   }
-  check('a forged set (unknown ids, «__proto__», «toString», a number, an object, wrong case) never reaches a fight: RANDOM among the sets open now', fz.every((x) => /→(original|casino|backlot|graveyard|holiday)\/random$/.test(x)), fz.join(' '));
+  check('a forged set (unknown ids, «__proto__», «toString», a number, an object, wrong case) never reaches a fight: RANDOM among the sets open now', fz.every((x) => /→(original|casino|backlot|graveyard|holiday|newsroom)\/random$/.test(x)), fz.join(' '));
   // after Halloween: the seasonal set is closed for new fights — and kept where it was fixed before
   const meAfter = await call(RIV, 'GET', '/api/prime/league/me');
-  check(`after the Halloween event (${when}) the server opens the 4 permanent sets — and (1.9.7) HOLIDAY BROADCAST of the running WINTER SHOWDOWN, until its end`, meAfter.j.arenas?.join() === 'original,casino,backlot,graveyard,holiday' && Object.keys(meAfter.j.arenaUntil ?? {}).join() === 'holiday');
+  check(`after the Halloween event (${when}) the server opens the permanent sets (1.9.8: five) — and (1.9.7) HOLIDAY BROADCAST of the running WINTER SHOWDOWN, until its end`, meAfter.j.arenas?.join() === 'original,casino,backlot,graveyard,holiday,newsroom' && Object.keys(meAfter.j.arenaUntil ?? {}).join() === 'holiday');
   const closedDuel = await startR({ arena: 'haunted' });
   const seriesBefore = (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}"` })).length;
   const closedRush = await call(RIV, 'POST', '/api/prime/league/series/start', { kind: 'rush', sim: SIM_VERSION, op: op(), lineup: [{ fighter: 'ray', deck: FIGHTERS.ray.defaultDeck }], arena: 'haunted' });
-  check('HAUNTED after its event: a new duel or series on it → 409 arena_unavailable with the sets open now; no match, no series made', closedDuel.status === 409 && closedDuel.j.code === 'arena_unavailable' && closedDuel.j.arenas.join() === 'original,casino,backlot,graveyard,holiday' && closedRush.j?.code === 'arena_unavailable' && (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}"` })).length === seriesBefore && !(await call(RIV, 'GET', '/api/prime/league/me')).j.active);
+  check('HAUNTED after its event: a new duel or series on it → 409 arena_unavailable with the sets open now; no match, no series made', closedDuel.status === 409 && closedDuel.j.code === 'arena_unavailable' && closedDuel.j.arenas.join() === 'original,casino,backlot,graveyard,holiday,newsroom' && closedRush.j?.code === 'arena_unavailable' && (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}"` })).length === seriesBefore && !(await call(RIV, 'GET', '/api/prime/league/me')).j.active);
   const hNext = await call(H1, 'POST', '/api/prime/league/series/next', { kind: 'rush' });
   check('the run started on HAUNTED during Halloween goes on there after the event (fixed in the series)', hNext.status === 200 && hNext.j.match.arena === 'haunted' && hNext.j.series.arena === 'haunted');
   const hNextDone = await call(H1, 'POST', `/api/prime/league/match/${hNext.j.match.id}/finish`, { inputs: [[0, -1]] });
@@ -862,7 +863,8 @@ async function serverChecks(): Promise<void> {
   check('the next duel of the run stays on BACKLOT — a set sent mid-run is ignored', ru2.status === 200 && ru2.j.match.arena === 'backlot' && ru2.j.series.arena === 'backlot');
   await quit(RIV, ru2.j.match);
   const ru3 = await ser(RIV, 'rush', [{ fighter: 'vega', deck: FIGHTERS.vega.defaultDeck }]);
-  check('a run started by an older game (no set): RANDOM for each duel', ru3.status === 200 && ru3.j.series.arena === 'random' && ru3.j.match.arenaPick === 'random' && LEAGUE.arenas.includes(ru3.j.match.arena));
+  // (1.9.8: RANDOM draws among the sets open NOW — the rule of the checks above; in December that includes HOLIDAY BROADCAST)
+  check('a run started by an older game (no set): RANDOM for each duel', ru3.status === 200 && ru3.j.series.arena === 'random' && ru3.j.match.arenaPick === 'random' && leagueArenasAt(leagueArenaCatalog(), clock).includes(ru3.j.match.arena));
   // a series opened before 1.9.3 (its state has no set) goes on with RANDOM
   const ruRow3 = (await admin.collection('league_series').getFullList({ filter: `owner = "${RIV.id}" && kind = "rush" && status = "active"` }))[0];
   const { arena: _sa, ...oldState } = ruRow3.state;

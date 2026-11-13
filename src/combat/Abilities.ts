@@ -27,6 +27,10 @@ const CAST_CARDS = new Set<CardId>([
   'high_stakes',
   'second_take',
   'freeze_frame',
+  // Alpha 1.9.8
+  'showtime',
+  'magnet_pull',
+  'safe_cut',
 ]);
 
 /** Card effects. Every card changes the simulation state — nothing is cosmetic only. */
@@ -41,6 +45,12 @@ export class Abilities {
     const foe = m.foe(f.side);
     const comboId = combo?.id ?? null;
     if (CAST_CARDS.has(card)) m.emit({ type: 'cast', side: f.side, card });
+    // Alpha 1.9.8 SHOWTIME: the next card after it comes out on cue (its wind-up shorter) — once
+    const onCue = card !== 'showtime' && f.cue > 0;
+    if (onCue) {
+      f.cue = 0;
+      m.emit({ type: 'showtime', side: f.side, what: 'cue', x: f.x, z: f.z });
+    }
     switch (card) {
       case 'dash': {
         const t = CARD_TUNING.dash;
@@ -65,6 +75,8 @@ export class Abilities {
         }
         // Alpha 1.6 TIME SLIP: a longer dash out of the slow-motion zone
         if (comboId === 'time_slip') dist *= COMBO_TUNING.timeSlipDist;
+        // Alpha 1.9.8 CLEAN EXIT: SAFE CUT, then a longer dash out
+        if (comboId === 'clean_exit') dist *= COMBO_TUNING.cleanExitDist;
         // Alpha 1.6 CATCH & RELEASE: the caught shot is fired back when the dash lands
         if (comboId === 'catch_release' && f.caught > 0) {
           f.releaseDmg = Math.min(f.caughtDmg * COMBO_TUNING.releaseShare, COMBO_TUNING.releaseCap);
@@ -100,8 +112,10 @@ export class Abilities {
       case 'charged_shot':
       case 'bank_shot':
       case 'knockout':
-      case 'bat_bite': {
-        // (Alpha 1.7: BAT BITE's predatory coil is a windup like the others — readable, interruptible)
+      case 'bat_bite':
+      case 'main_event': {
+        // (Alpha 1.7: BAT BITE's predatory coil is a windup like the others — readable, interruptible;
+        // 1.9.8: so is ACE's MAIN EVENT stance — the cuff, the spotlight, then the shot)
         const t =
           card === 'power_shot'
             ? CARD_TUNING.power_shot
@@ -111,9 +125,11 @@ export class Abilities {
                 ? CARD_TUNING.bank_shot
                 : card === 'bat_bite'
                   ? CARD_TUNING.bat_bite
-                  : CARD_TUNING.knockout;
+                  : card === 'main_event'
+                    ? CARD_TUNING.main_event
+                    : CARD_TUNING.knockout;
         const telegraph = f.side === 1;
-        const total = telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup;
+        const total = (telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup) * (onCue ? CARD_TUNING.showtime.windupMult : 1);
         // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
         m.combat.windupAim(f, card, comboId, aim);
         let dx = aim.x - f.x;
@@ -378,6 +394,22 @@ export class Abilities {
       case 'freeze_frame':
         m.objects.spawnFreeze(f);
         break;
+      // ---- Alpha 1.9.8 — three universal cards
+      case 'showtime': {
+        const t = CARD_TUNING.showtime;
+        f.cue = t.window;
+        f.showtime = t.duration;
+        m.emit({ type: 'showtime', side: f.side, what: 'on', x: f.x, z: f.z });
+        break;
+      }
+      case 'magnet_pull':
+        m.combat.magnetPull(f, foe, comboId);
+        break;
+      case 'safe_cut':
+        f.safeCut = CARD_TUNING.safe_cut.duration;
+        f.safeCutHeavy = true;
+        m.emit({ type: 'safeCut', side: f.side, what: 'up', x: f.x, z: f.z });
+        break;
       case 'twelfth_strike': {
         // Alpha 1.9.7 — CRAX turns the key: the clock runs, his landed shots move the hand (CombatSystem.clockShot)
         f.clock = CARD_TUNING.twelfth_strike.window;
@@ -469,6 +501,9 @@ export class Abilities {
     else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
     else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
     else if (a.combo === 'jackpot') mult = COMBO_TUNING.jackpotMult;
+    // Alpha 1.9.8: SHOWTIME → the shot (STANDING OVATION) / MAGNET PULL → the shot (CLOSE-UP)
+    else if (a.combo === 'standing_ovation') mult = COMBO_TUNING.ovationMult;
+    else if (a.combo === 'close_up') mult = COMBO_TUNING.closeUpMult;
 
     if (a.card === 'bank_shot') {
       // re-solve the bank path from where Kai stands now (the AI's telegraph keeps its locked line)
@@ -508,6 +543,16 @@ export class Abilities {
         },
         charged,
       );
+      f.fireTimer = Math.max(f.fireTimer, 0.35);
+    } else if (a.card === 'main_event') {
+      // Alpha 1.9.8 — ACE's duel shot (PERFECT TAKE: energy back on a landed hit — see CombatSystem)
+      m.combat.fireMain(f, dirX, dirZ, CARD_TUNING.main_event.damage * mult * f.outgoingDamageMult(), {
+        crit: a.combo !== null,
+        electric: a.combo === 'electro_blast',
+        stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+        combo: a.combo,
+        boost: mult,
+      });
       f.fireTimer = Math.max(f.fireTimer, 0.35);
     } else if (a.card === 'bat_bite') {
       // Alpha 1.7 — the swarm lunge (see updateBite)

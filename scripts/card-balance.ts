@@ -109,6 +109,10 @@ function fight(fighter: FighterId, rival: RivalId, diff: Difficulty, mode: Mode,
       if (e.type === 'erase') cs('freeze_frame').landed++;
       if (e.type === 'stakes') cs('high_stakes').landed++;
       if (e.type === 'rewind') cs('backtrack').landed++;
+      // Alpha 1.9.8: the pulse reached its target / the cue was used by a card / the cut softened a dangerous hit
+      if (e.type === 'magnet' && e.hit) cs('magnet_pull').landed++;
+      if (e.type === 'showtime' && e.what === 'cue') cs('showtime').landed++;
+      if (e.type === 'safeCut' && e.what === 'cut') cs('safe_cut').landed++;
     }
     if (track && foe.netSlow < 1 && m.phase === 'fight') netHeld += dt;
   }
@@ -158,7 +162,7 @@ for (const card of [...OLD_SWAPS, ...NEW_CARDS]) {
   perCard.set(card, pc);
 }
 console.log('baseline (default decks):', FIGHTER_ORDER.map((f) => `${f} ${pct(base.get(f)!.wins / base.get(f)!.fights)}`).join(' '));
-console.log('card              cost  win(avg)  Δ vs default per fighter (ray bruno nika vega kai rina)');
+console.log(`card              cost  win(avg)  Δ vs default per fighter (${FIGHTER_ORDER.join(' ')})`);
 for (const card of [...OLD_SWAPS, ...NEW_CARDS]) {
   const pc = perCard.get(card)!;
   if (card === NEW_CARDS[0]) console.log('--- new cards');

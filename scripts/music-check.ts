@@ -23,7 +23,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
 
 // ---------------------------------------------------------------- files
 const ids = Object.keys(MUSIC_TRACKS) as MusicId[];
-check(`files: exactly the 9 tracks of the soundtrack (1.9.7: + the two WINTER SHOWDOWN songs) (${ids.length})`, ids.length === 9);
+check(`files: exactly the 10 tracks of the soundtrack (1.9.7: + the two WINTER SHOWDOWN songs; 1.9.8: + NEON NEWSROOM) (${ids.length})`, ids.length === 10);
 const bad: string[] = [];
 for (const id of ids) {
   const def = MUSIC_TRACKS[id];
@@ -54,6 +54,7 @@ check("mapping: BOSS FIGHT plays victor_boss first, whatever the set", /spec\.bo
 check('mapping: the seasonal menu follows the active event (EventManager), not the theme of a screen — 1.9.7: by MENU_MUSIC', /const theme = this\.events\.active\?\.themeId;\s*return \(theme && MENU_MUSIC\[theme\]\) \|\| 'prime_menu';/.test(game));
 check("mapping (1.9.7): Halloween keeps its menu song, WINTER SHOWDOWN has its own, every other theme the standard one", MENU_MUSIC.halloween === 'prime_menu_halloween' && MENU_MUSIC.winter === 'prime_menu_winter' && MENU_MUSIC.default === undefined && MENU_MUSIC.champion === undefined);
 check('mapping (1.9.7): the winter fight song plays only on HOLIDAY BROADCAST (the other sets keep theirs)', ARENA_MUSIC.holiday === 'winter_arena' && ARENA_ORDER.filter((a) => ARENA_MUSIC[a] === 'winter_arena').join() === 'holiday');
+check('mapping (1.9.8): the owner\'s neon_newsroom.mp3 plays only on NEON NEWSROOM, a fight track, its measured loudness', ARENA_MUSIC.newsroom === 'neon_newsroom' && ARENA_ORDER.filter((a) => ARENA_MUSIC[a] === 'neon_newsroom').join() === 'newsroom' && MUSIC_TRACKS.neon_newsroom.file === 'audio/music/neon_newsroom.mp3' && MUSIC_TRACKS.neon_newsroom.role === 'battle' && MUSIC_TRACKS.neon_newsroom.lufs === -11.51 && MUSIC_TRACKS.neon_newsroom.phone === -13.28);
 
 // ----------------------------------------------------------------- mix
 const at = (id: MusicId, key: 'lufs' | 'phone') => MUSIC_TRACKS[id][key] + 20 * Math.log10(trackGain(id) * 0.32);

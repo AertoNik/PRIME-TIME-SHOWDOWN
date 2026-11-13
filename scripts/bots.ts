@@ -74,13 +74,15 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
       }
       const locked = fa.kind === 'rush' || (fa.kind === 'windup' && fa.locked);
       // Alpha 1.6: a frame or a screen also answers a POWER / BANK SHOT that is about to leave
-      const shot = fa.kind === 'windup' && (fa.card === 'power_shot' || fa.card === 'bank_shot');
+      const shot = fa.kind === 'windup' && (fa.card === 'power_shot' || fa.card === 'bank_shot' || fa.card === 'main_event');
       const fci = h.hand.indexOf('frame_catch');
       const bi = h.hand.indexOf('stage_barrier');
       if (fa.kind === 'windup' && !fa.locked && shi >= 0 && h.energy >= 4) m.playCard(0, shi);
       else if (locked && di >= 0 && h.energy >= 2) m.playCard(0, di);
       else if (locked && fi >= 0 && h.energy >= 3 && me.feint <= 0) m.playCard(0, fi);
       else if (locked && si >= 0 && h.energy >= 3) m.playCard(0, si);
+      // Alpha 1.9.8: SAFE CUT cuts the shot that is about to leave
+      else if (locked && h.hand.indexOf('safe_cut') >= 0 && h.energy >= 2 && me.safeCut <= 0 && me.shield <= 0) m.playCard(0, h.hand.indexOf('safe_cut'));
       else if (locked && shot && fci >= 0 && h.energy >= 2 && me.frame <= 0) m.playCard(0, fci);
       else if (locked && shot && bi >= 0 && h.energy >= 3) m.playCard(0, bi);
       return;
@@ -134,6 +136,13 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
   if (ti >= 0 && gap < 7.5 && me.clock <= 0 && foe.shield <= 0 && foe.invuln <= 0) {
     if (h.energy >= CARDS.twelfth_strike.cost && m.playCard(0, ti) === null) return;
   }
+  // Alpha 1.9.8: ACE's MAIN EVENT — a duel shot into an opening (no shield, no DASH in the air), within its reach; the
+  // energy only comes back on a hit, so a DASH is kept in reserve
+  const mi = h.hand.indexOf('main_event');
+  if (mi >= 0 && gap < 9.5 && foe.shield <= 0 && foe.invuln <= 0 && foe.feint <= 0) {
+    const reserve = h.hand.includes('dash') ? 2 : 0;
+    if (h.energy >= CARDS.main_event.cost + reserve && m.playCard(0, mi) === null) return;
+  }
   // don't sit on full energy
   if (h.energy >= 9.5) {
     const order = [0, 1, 2].sort((x, y) => CARDS[h.hand[y]].cost - CARDS[h.hand[x]].cost);
@@ -169,6 +178,13 @@ function newCardMove(m: Match): boolean {
         return me.tether > 0 || m.objects.list.some((o) => o.owner === 1 && o.kind === 'prop' && Math.hypot(o.x - me.x, o.z - me.z) < o.radius);
       case 'high_stakes':
         return h.energy <= 4 && me.hpFrac > 0.55 && h.hand.some((x) => x !== 'high_stakes' && CARDS[x].cost >= 4);
+      // Alpha 1.9.8: SHOWTIME before a card shot or a pull; MAGNET PULL on a kiting opponent; SAFE CUT under pressure
+      case 'showtime':
+        return h.hand.some((x) => x === 'main_event' || x === 'power_shot' || x === 'magnet_pull') && h.energy >= 6 && me.cue <= 0;
+      case 'magnet_pull':
+        return dist > me.stats.preferredRange + 1 && dist < 6.5 && foe.invuln <= 0;
+      case 'safe_cut':
+        return threatened && me.safeCut <= 0 && me.shield <= 0;
       case 'gravity_net':
       case 'cable_snare':
       case 'pressure_mine':
@@ -247,7 +263,7 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
       }
       if (e.type === 'combo') events.set((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo, (events.get((e.side === 0 ? 'combo:' : 'rivalCombo:') + e.combo) ?? 0) + 1);
       if (e.type === 'hit' && e.source === 0 && e.kind !== 'auto' && lastCard) {
-        const key: CardId = e.echo ? 'second_take' : HIT_CARD[e.kind] ?? (e.kind === 'power' ? (lastCard === 'charged_shot' ? 'charged_shot' : 'power_shot') : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : lastCard);
+        const key: CardId = e.echo ? 'second_take' : HIT_CARD[e.kind] ?? (e.kind === 'power' ? (lastCard === 'charged_shot' || lastCard === 'main_event' ? lastCard : 'power_shot') : e.kind === 'knockout' || e.kind === 'slam' ? 'knockout' : lastCard);
         cardDamage.set(key, (cardDamage.get(key) ?? 0) + e.damage);
       }
       if (e.type === 'card' && e.side === 1) events.set('rivalCard:' + e.card, (events.get('rivalCard:' + e.card) ?? 0) + 1);
