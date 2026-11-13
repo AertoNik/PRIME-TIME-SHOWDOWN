@@ -583,7 +583,43 @@ export class AudioSystem {
         this.tone({ type: 'sawtooth', f0: 70, f1: 140, dur: 0.38, gain: 0.07, filter: { type: 'lowpass', f0: 400, f1: 900 } });
         this.tone({ type: 'triangle', f0: NOTE(75), f1: NOTE(74), dur: 0.35, gain: 0.03, delay: 0.05 });
         break;
+      case 'twelfth_strike':
+        // Alpha 1.9.7: the wind-up key — a brass ratchet turning, then a low spring hum
+        for (let i = 0; i < 8; i++) this.noise({ dur: 0.018, gain: 0.12, type: 'bandpass', f0: 3200 + (i % 2) * 600, q: 6, delay: i * 0.06 });
+        this.tone({ type: 'triangle', f0: 180, f1: 260, dur: 0.5, gain: 0.05, delay: 0.05, filter: { type: 'lowpass', f0: 900 } });
+        break;
     }
+  }
+
+  /** Alpha 1.9.7 — TWELFTH STRIKE: one tick of the clock (the hand moved), louder at twelve. */
+  clockTick(ready: boolean): void {
+    if (!this.throttle('clockTick', 40)) return;
+    this.noise({ dur: 0.012, gain: ready ? 0.22 : 0.14, type: 'bandpass', f0: ready ? 2400 : 3600, q: 8 });
+    this.tone({ type: 'sine', f0: ready ? 1760 : 2640, dur: 0.05, gain: ready ? 0.06 : 0.03 });
+    if (ready) this.tone({ type: 'triangle', f0: NOTE(84), dur: 0.5, gain: 0.04, delay: 0.04, attack: 0.01 });
+  }
+
+  /** The hour strikes: a deep festive bell over a bright shimmer (a blocked strike: a dull clang). */
+  clockChime(blocked: boolean): void {
+    if (blocked) {
+      this.tone({ type: 'triangle', f0: NOTE(57), dur: 0.35, gain: 0.12 });
+      this.noise({ dur: 0.08, gain: 0.12, type: 'bandpass', f0: 1800, q: 3 });
+      return;
+    }
+    for (const [n, g, d] of [
+      [48, 0.2, 1.6],
+      [60, 0.12, 1.3],
+      [67, 0.07, 1.0],
+      [72, 0.05, 0.8],
+    ] as [number, number, number][])
+      this.tone({ type: 'sine', f0: NOTE(n), dur: d, gain: g, attack: 0.004 });
+    this.noise({ dur: 0.05, gain: 0.25, type: 'highpass', f0: 3000 });
+    for (let i = 0; i < 6; i++) this.tone({ type: 'sine', f0: NOTE(88 + (i % 3) * 3), dur: 0.25, gain: 0.025, delay: 0.05 + i * 0.05 });
+  }
+
+  /** The clock stopped before it struck (a soft spring unwinding). */
+  clockStop(): void {
+    this.tone({ type: 'triangle', f0: 520, f1: 180, dur: 0.35, gain: 0.04 });
   }
 
   /** Alpha 1.7 — a cane strike: a quick swish through the air (the contact is the hit sound). */

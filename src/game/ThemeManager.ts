@@ -89,6 +89,7 @@ export class ThemeManager {
     else if (card === 'card_vhs') root.dataset.cardStyle = 'vhs';
     else if (card === 'card_holo') root.dataset.cardStyle = 'holo';
     else if (card === 'card_league_ranked') root.dataset.cardStyle = 'ranked';
+    else if (card === 'card_clockwork_gold') root.dataset.cardStyle = 'clockwork';
     else delete root.dataset.cardStyle;
     if (equipped.broadcastFrame === 'frame_spooky') root.dataset.frame = 'spooky';
     else if (equipped.broadcastFrame === 'frame_legendary') root.dataset.frame = 'legendary';
@@ -96,11 +97,13 @@ export class ThemeManager {
     else if (equipped.broadcastFrame === 'frame_arcade') root.dataset.frame = 'arcade';
     else if (equipped.broadcastFrame === 'frame_daily_live') root.dataset.frame = 'daily';
     else if (equipped.broadcastFrame === 'frame_league_arena') root.dataset.frame = 'ranked';
+    else if (equipped.broadcastFrame === 'frame_frostlight_live') root.dataset.frame = 'frostlight';
     else delete root.dataset.frame;
     if (equipped.title === 'title_halloween_champion') root.dataset.title = 'halloween-champion';
     else if (equipped.title === 'title_prime_legend') root.dataset.title = 'prime-legend';
     else if (equipped.title === 'title_prime_star') root.dataset.title = 'prime-star';
     else if (equipped.title === 'title_daily_regular') root.dataset.title = 'daily-regular';
+    else if (equipped.title === 'title_winter_champion') root.dataset.title = 'winter-champion';
     else delete root.dataset.title;
     this.battle.style.dashFx = (equipped.dashFx && DASH_FX[equipped.dashFx]) || null;
     this.battle.style.victoryFx = (equipped.victoryFx && VICTORY_FX[equipped.victoryFx]) || null;

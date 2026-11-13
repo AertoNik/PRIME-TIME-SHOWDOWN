@@ -51,7 +51,7 @@ const AUTO = { mode: 'auto' as const, forcedEventId: 'none' };
 
 // ------------------------------------------------------------- the roster
 {
-  check('roster: LUCIEN «THE NIGHT STAR» is the seventh fighter', FIGHTER_ORDER.length === 7 && FIGHTER_ORDER[6] === 'lucien' && L.name === 'LUCIEN' && L.nickname === 'THE NIGHT STAR');
+  check('roster: LUCIEN «THE NIGHT STAR» is the seventh fighter (1.9.7: CRAX joins after him)', FIGHTER_ORDER.length === 8 && FIGHTER_ORDER[6] === 'lucien' && FIGHTER_ORDER[7] === 'crax' && L.name === 'LUCIEN' && L.nickname === 'THE NIGHT STAR');
   check('roster: a seasonal star of Halloween Premiere — no contract to sign', L.contract === null && L.seasonal?.eventId === 'halloween-2026' && !!LOOKS[L.look] && L.look === 'lucien');
   check('roster: never an opponent (not in any rotation, Survival, Challenge or Boss)', !RIVAL_ORDER.includes('lucien' as RivalId) && !Object.values(RIVALS).some((r) => r.look === 'lucien' || r.archetype === 'lucien') && SURVIVAL.waves.length > 0 && !Object.values(BOSSES).some((b) => (b.rival as string) === 'lucien'));
   check('weapon: VAMPIRE CANE BLASTER — bolts from afar, strikes up close (one weapon, one attack timer)', L.stats.attack.weapon === 'cane' && !!L.stats.attack.melee && L.stats.attack.melee.exit > L.stats.attack.melee.enter && L.stats.attack.melee.exit <= L.stats.attack.melee.reach + 0.55 * 0.5);
@@ -115,7 +115,7 @@ const AUTO = { mode: 'auto' as const, forcedEventId: 'none' };
   check('dates (UTC): 20 Oct 00:00:00 — on sale, shown locked', b2.playable && b2.fighterOffer('lucien')?.cost === 500 && b2.fighterVisible('lucien'));
   check('dates (UTC): 3 Nov 23:59:59 — still on sale', b3.playable && b3.fighterOffer('lucien') !== null);
   check('dates (UTC): 4 Nov 00:00:00 — over: no offer, an unopened Lucien disappears again', !b4.playable && b4.fighterOffer('lucien') === null && !b4.fighterVisible('lucien'));
-  check('dates: every contract fighter is always visible', FIGHTER_ORDER.filter((f) => f !== 'lucien').every((f) => b1.fighterVisible(f) && b4.fighterVisible(f)));
+  check('dates: every contract fighter is always visible', FIGHTER_ORDER.filter((f) => !FIGHTERS[f].seasonal).every((f) => b1.fighterVisible(f) && b4.fighterVisible(f)));
   // a manual theme preview outside the dates is not an exchange
   const pv = new EventManager(new MemSave() as unknown as SaveSystem, { clock: () => T('2026-10-10T12:00:00Z'), settings: { mode: 'manual', forcedEventId: 'halloween-2026' } });
   check('preview: a manual Halloween look outside the dates sells nothing', pv.fighterOffer('lucien') === null && !pv.buyFighter('lucien').ok);

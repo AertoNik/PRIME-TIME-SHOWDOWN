@@ -38,7 +38,11 @@ class MemSave {
 }
 
 // ------------------------------------------------------------ availability
-check('five sets registered in order (1.7.5: + graveyard)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
+check('six sets registered in order (1.7.5: + graveyard; 1.9.7: + holiday)', ARENA_ORDER.join() === 'original,casino,backlot,haunted,graveyard,holiday' && ARENA_ORDER.every((id) => ARENAS[id].id === id));
+// Alpha 1.9.7 — HOLIDAY BROADCAST: the New Year set, open only with the winter theme of WINTER SHOWDOWN
+check('holiday set is seasonal (winter theme), dressed for the winter itself', ARENAS.holiday.availability.kind === 'seasonal' && ARENAS.holiday.availability.themeId === 'winter' && ARENAS.holiday.nativeSeason === 'winter');
+check('holiday: closed in the standard season and at Halloween, open in winter (with every permanent set)', !availableArenas('default').includes('holiday') && !availableArenas('halloween').includes('holiday') && availableArenas('winter').join() === 'original,casino,backlot,graveyard,holiday');
+check('holiday: a saved choice falls back to the original studio after the season, stays during it', validArenaPref('holiday', 'default') === 'original' && validArenaPref('holiday', 'winter') === 'holiday');
 check('standard season: the permanent sets are open — 1.8.9.5: the cemetery among them', availableArenas('default').join() === 'original,casino,backlot,graveyard');
 check('Halloween: the haunted set and the cemetery open too', availableArenas('halloween').join() === 'original,casino,backlot,haunted,graveyard');
 check('another season (winter preview): the haunted set closed, the cemetery open (permanent)', !availableArenas('winter').includes('haunted') && availableArenas('winter').includes('graveyard'));
@@ -79,7 +83,7 @@ for (const id of ARENA_ORDER) {
 check('original studio keeps its speakers exactly as before', ARENAS.original.props.length === ARENA.props.length && ARENAS.original.props.every((p, i) => p.kind === 'speaker' && p.x === ARENA.props[i].x && p.z === ARENA.props[i].z && p.respawn === ARENA.propRespawn));
 check('the new sets stay damaged until the next fight (no respawn farming)', (['casino', 'backlot', 'haunted', 'graveyard'] as ArenaId[]).every((id) => ARENAS[id].props.every((p) => p.respawn === 0)));
 // Alpha 1.7.5: cover on the fighting floor exists only on GRAVEYARD BROADCAST (npm run graveyard checks it)
-check('cover on the floor only on the cemetery set', ARENA_ORDER.every((id) => (id === 'graveyard') === !!ARENAS[id].covers?.length));
+check('cover on the floor only on the cemetery and the New Year set', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday') === !!ARENAS[id].covers?.length));
 
 /** Hammer every set piece many times: breaks are finite, reactive pieces never break. */
 for (const id of ARENA_ORDER) {

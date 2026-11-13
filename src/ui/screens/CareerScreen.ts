@@ -22,9 +22,20 @@ export class CareerScreen implements Screen {
     this.g = g;
     this.el = el('div', 'career');
     this.el.addEventListener('click', (e) => this.onClick(e));
-    this.el.addEventListener('keydown', (e) => {
-      if ((e as KeyboardEvent).key === 'Enter') this.commitName();
+    // 1.9.7: the studio name field — Enter / «Готово» saves, Escape restores the previous name
+    this.el.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.g.audio.ui('confirm');
+      this.commitName();
     });
+    this.el.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Escape' && this.editing) this.cancelName();
+    });
+  }
+
+  onHide(): void {
+    // leaving the screen while typing keeps the old name (nothing half-typed is saved)
+    this.editing = false;
   }
 
   onShow(): void {
@@ -36,8 +47,19 @@ export class CareerScreen implements Screen {
   }
 
   private commitName(): void {
-    const input = this.el.querySelector('input') as HTMLInputElement | null;
-    if (input) this.g.career.rename(input.value);
+    const input = this.el.querySelector<HTMLInputElement>('.org-name input');
+    const name = input?.value.trim() ?? '';
+    if (input && !name) {
+      // an empty name is not saved: the previous one comes back
+      this.g.ui.toast('Название студии не может быть пустым — оставлено прежнее');
+    } else if (input) this.g.career.rename(name);
+    input?.blur();
+    this.editing = false;
+    this.render();
+  }
+
+  private cancelName(): void {
+    this.el.querySelector<HTMLInputElement>('.org-name input')?.blur();
     this.editing = false;
     this.render();
   }
@@ -54,12 +76,16 @@ export class CareerScreen implements Screen {
       g.audio.ui('click');
       this.editing = true;
       this.render();
-      const input = this.el.querySelector('input') as HTMLInputElement | null;
-      input?.focus();
-      input?.select();
-    } else if (act === 'save-name') {
-      g.audio.ui('confirm');
-      this.commitName();
+      // focus in the same tap: iOS opens the keyboard only inside the user's gesture
+      const input = this.el.querySelector<HTMLInputElement>('.org-name input');
+      if (input) {
+        input.focus();
+        const n = input.value.length;
+        input.setSelectionRange(n, n);
+      }
+    } else if (act === 'cancel-name') {
+      g.audio.ui('click');
+      this.cancelName();
     } else if (act === 'claim') {
       const id = t.dataset.goal as GoalId;
       const r = g.career.claim(id);
@@ -148,13 +174,11 @@ export class CareerScreen implements Screen {
       </div>
       <div class="fill scroll" style="padding-bottom:14px">
         <div class="org-card panel">
-          <div class="org-name">
-            ${
-              this.editing
-                ? `<input maxlength="28" value="${esc(s.orgName)}" aria-label="Название студии"/><button class="icon-btn" data-act="save-name" aria-label="Сохранить">${UI_ICONS.check}</button>`
-                : `<span class="fill">${esc(s.orgName)}</span><button class="icon-btn" data-act="edit" aria-label="Переименовать" style="width:34px;height:34px">${UI_ICONS.pencil}</button>`
-            }
-          </div>
+          ${
+            this.editing
+              ? `<form class="org-name" action="#" autocomplete="off"><input type="text" name="studio" maxlength="28" value="${esc(s.orgName)}" aria-label="Название студии" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done"/><button type="submit" class="icon-btn org-x" aria-label="Сохранить">${UI_ICONS.check}</button><button type="button" class="icon-btn org-x" data-act="cancel-name" aria-label="Отменить"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></form>`
+              : `<div class="org-name"><span class="fill">${esc(s.orgName)}</span><button class="icon-btn" data-act="edit" aria-label="Переименовать" style="width:34px;height:34px">${UI_ICONS.pencil}</button></div>`
+          }
           <div class="row" style="margin-top:12px;gap:12px">
             <div class="lvl-badge" style="width:52px;height:52px;font-size:20px">${lvl.level}</div>
             <div class="fill">

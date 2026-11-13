@@ -5,7 +5,7 @@
 // than the fights, the match-end fade, and the crowd's limits (bed level, one reaction at a time).
 // The browser plays and decodes the real files; that part is checked in the game, not here.
 import { ARENA_ORDER } from '../src/config/arenas.config';
-import { ARENA_MUSIC, MUSIC_MIX, MUSIC_TRACKS, trackGain, type MusicId } from '../src/config/music.config';
+import { ARENA_MUSIC, MENU_MUSIC, MUSIC_MIX, MUSIC_TRACKS, trackGain, type MusicId } from '../src/config/music.config';
 import { loopWindow } from '../src/audio/MusicPlayer';
 import { CROWD_SR, VOICES, addClapper, addVoice, edgeLevel, normalize, type Stereo } from '../src/audio/CrowdKit';
 
@@ -23,7 +23,7 @@ const check = (name: string, pass: boolean) => checks.push([name, pass]);
 
 // ---------------------------------------------------------------- files
 const ids = Object.keys(MUSIC_TRACKS) as MusicId[];
-check(`files: exactly the 7 tracks of the soundtrack (${ids.length})`, ids.length === 7);
+check(`files: exactly the 9 tracks of the soundtrack (1.9.7: + the two WINTER SHOWDOWN songs) (${ids.length})`, ids.length === 9);
 const bad: string[] = [];
 for (const id of ids) {
   const def = MUSIC_TRACKS[id];
@@ -51,15 +51,21 @@ check('mapping: original → prime_arena, casino → casino_arena, backlot → m
 check('mapping: the menu tracks are menu music, the rest fight music', ids.every((id) => (MUSIC_TRACKS[id].role === 'menu') === id.startsWith('prime_menu')));
 const game = readFileSync('src/game/Game.ts', 'utf8');
 check("mapping: BOSS FIGHT plays victor_boss first, whatever the set", /spec\.boss \? 'victor_boss' : ARENA_MUSIC\[stage\]/.test(game));
-check('mapping: the Halloween menu follows the active event (EventManager), not the theme of a screen', /events\.active\?\.themeId === 'halloween' \? 'prime_menu_halloween' : 'prime_menu'/.test(game));
+check('mapping: the seasonal menu follows the active event (EventManager), not the theme of a screen — 1.9.7: by MENU_MUSIC', /const theme = this\.events\.active\?\.themeId;\s*return \(theme && MENU_MUSIC\[theme\]\) \|\| 'prime_menu';/.test(game));
+check("mapping (1.9.7): Halloween keeps its menu song, WINTER SHOWDOWN has its own, every other theme the standard one", MENU_MUSIC.halloween === 'prime_menu_halloween' && MENU_MUSIC.winter === 'prime_menu_winter' && MENU_MUSIC.default === undefined && MENU_MUSIC.champion === undefined);
+check('mapping (1.9.7): the winter fight song plays only on HOLIDAY BROADCAST (the other sets keep theirs)', ARENA_MUSIC.holiday === 'winter_arena' && ARENA_ORDER.filter((a) => ARENA_MUSIC[a] === 'winter_arena').join() === 'holiday');
 
 // ----------------------------------------------------------------- mix
 const at = (id: MusicId, key: 'lufs' | 'phone') => MUSIC_TRACKS[id][key] + 20 * Math.log10(trackGain(id) * 0.32);
 const fullRange = ids.map((id) => at(id, 'lufs'));
 const phone = ids.map((id) => at(id, 'phone'));
 const spread = (v: number[]) => Math.max(...v) - Math.min(...v);
-check(`mix: the seven tracks come out within 0.5 dB of each other on a phone speaker (${phone.map((v) => v.toFixed(1)).join(', ')} dB at the music bus)`, spread(phone) <= 0.5);
-check(`mix: …and within 0.5 dB full-range (${fullRange.map((v) => v.toFixed(1)).join(', ')} LUFS at the music bus)`, spread(fullRange) <= 0.5);
+// 1.9.7: the two winter songs have a flatter spectrum (phone − full-range gap 1.5 dB, the others 2.4–2.7): levelled on the
+// average they sit ≈0.3 dB brighter on a phone and ≈0.3 dB softer full range than the rest — 0.7 dB keeps «no track
+// noticeably louder» (about 1 dB is the smallest step most listeners notice); the seven older tracks stay within 0.5 dB
+const old7 = ids.filter((id) => id !== 'prime_menu_winter' && id !== 'winter_arena');
+check(`mix: the nine tracks come out within 0.7 dB of each other on a phone speaker (${phone.map((v) => v.toFixed(1)).join(', ')} dB at the music bus)`, spread(phone) <= 0.7 && spread(old7.map((id) => at(id, 'phone'))) <= 0.5);
+check(`mix: …and within 0.7 dB full-range (${fullRange.map((v) => v.toFixed(1)).join(', ')} LUFS at the music bus)`, spread(fullRange) <= 0.7 && spread(old7.map((id) => at(id, 'lufs'))) <= 0.5);
 check('mix: the menu is not louder than the fights (same role level)', MUSIC_MIX.menu <= MUSIC_MIX.battle);
 check(`mix: the music sits around −31 LUFS at the music bus (${(fullRange.reduce((a, v) => a + v, 0) / fullRange.length).toFixed(1)})`, Math.abs(fullRange.reduce((a, v) => a + v, 0) / fullRange.length + 31) < 0.6);
 check('mix: no track gain above unity (nothing is pushed into the limiter)', ids.every((id) => trackGain(id) < 1));

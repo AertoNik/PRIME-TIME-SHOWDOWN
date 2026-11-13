@@ -41,7 +41,13 @@ export type CosmeticId =
   // Alpha 1.9.6: PRIME LEAGUE exchange for PRIME TOKENS (earned — the server's token ledger confirms it)
   | 'card_league_ranked'
   | 'dash_league_arc'
-  | 'frame_league_arena';
+  | 'frame_league_arena'
+  // Alpha 1.9.7: WINTER SHOWDOWN exchange for CANDY CANES and its grand prize (earned — the server's season ledger)
+  | 'card_clockwork_gold'
+  | 'dash_candy_comet'
+  | 'frame_frostlight_live'
+  | 'victory_midnight_confetti'
+  | 'title_winter_champion';
 
 /**
  * Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP; 1.9.6: 'daily' — a DAILY STREAK
@@ -89,6 +95,11 @@ export interface CosmeticDef {
    * to wear it lives apart in save.shop.equip.
    */
   paid?: boolean;
+  /**
+   * Alpha 1.9.7 (R-22): an item of a `secure` seasonal event (WINTER SHOWDOWN) — bought for the SERVER's currency in
+   * the server's exchange (or its grand prize): a cloud save may list it only when the season ledger has it.
+   */
+  serverSeason?: boolean;
 }
 
 export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
@@ -156,6 +167,77 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     source: 'season',
     sourceLabel: 'Halloween Premiere 2026',
     howTo: 'Главный приз: выполните 6 заданий Halloween Premiere',
+  },
+  // ---------------------------------------------- Alpha 1.9.7 — WINTER SHOWDOWN 2026–2027 (CANDY CANES, server-confirmed)
+  card_clockwork_gold: {
+    id: 'card_clockwork_gold',
+    slot: 'cardStyle',
+    name: 'CLOCKWORK GOLD',
+    desc: 'Карты в золотой часовой оправе: латунные шестерёнки по углам, гравировка циферблата и тёплый блик.',
+    where: 'Карты в бою и в колоде',
+    art: 'card',
+    rarity: 'rare',
+    eventId: 'winter-2026',
+    source: 'season',
+    sourceLabel: 'Winter Showdown 2026–2027',
+    howTo: 'Обмен на 180 карамельных тростей во время WINTER SHOWDOWN',
+    serverSeason: true,
+  },
+  dash_candy_comet: {
+    id: 'dash_candy_comet',
+    slot: 'dashFx',
+    name: 'CANDY COMET',
+    desc: 'DASH оставляет красно-белый карамельный след и мерцающие искры, как хвост праздничной кометы.',
+    where: 'Рывок DASH в бою',
+    art: 'phantom',
+    rarity: 'rare',
+    eventId: 'winter-2026',
+    source: 'season',
+    sourceLabel: 'Winter Showdown 2026–2027',
+    howTo: 'Обмен на 220 карамельных тростей во время WINTER SHOWDOWN',
+    serverSeason: true,
+  },
+  frame_frostlight_live: {
+    id: 'frame_frostlight_live',
+    slot: 'broadcastFrame',
+    name: 'FROSTLIGHT LIVE',
+    desc: 'Праздничная рамка эфира: морозный неон, золотые огоньки гирлянды и плашка LIVE со снежинкой.',
+    where: 'Экран боя и табличка бойца',
+    art: 'frame',
+    rarity: 'epic',
+    eventId: 'winter-2026',
+    source: 'season',
+    sourceLabel: 'Winter Showdown 2026–2027',
+    howTo: 'Обмен на 300 карамельных тростей во время WINTER SHOWDOWN',
+    serverSeason: true,
+  },
+  victory_midnight_confetti: {
+    id: 'victory_midnight_confetti',
+    slot: 'victoryFx',
+    name: 'MIDNIGHT CONFETTI',
+    desc: 'Победа под бой курантов: золотые искры, снежинки и праздничное конфетти над победителем.',
+    where: 'Экран победы',
+    art: 'victory',
+    rarity: 'epic',
+    eventId: 'winter-2026',
+    source: 'season',
+    sourceLabel: 'Winter Showdown 2026–2027',
+    howTo: 'Обмен на 380 карамельных тростей во время WINTER SHOWDOWN',
+    serverSeason: true,
+  },
+  title_winter_champion: {
+    id: 'title_winter_champion',
+    slot: 'title',
+    name: 'WINTER CHAMPION',
+    desc: 'Главный приз новогоднего сезона: титул на табличке бойца. Только за задания — никогда не продаётся.',
+    where: 'Меню и экран победы',
+    art: 'crown',
+    rarity: 'legendary',
+    eventId: 'winter-2026',
+    source: 'season',
+    sourceLabel: 'Winter Showdown 2026–2027',
+    howTo: 'Главный приз: выполните 7 заданий WINTER SHOWDOWN',
+    serverSeason: true,
   },
   // Alpha 1.3.1: awarded once for the first win in BOSS FIGHT (not tied to a season)
   title_prime_legend: {
@@ -461,12 +543,18 @@ export const COSMETIC_ORDER: CosmeticId[] = [
   'card_league_ranked',
   'dash_league_arc',
   'frame_league_arena',
+  // Alpha 1.9.7: WINTER SHOWDOWN (shown once owned, like every seasonal item)
+  'title_winter_champion',
+  'victory_midnight_confetti',
+  'frame_frostlight_live',
+  'dash_candy_comet',
+  'card_clockwork_gold',
 ];
 
 /** Alpha 1.9.6: items whose ownership the PRIME NETWORK server proves (a DAILY STREAK milestone or a PRIME LEAGUE exchange). */
 export function isServerEarned(id: CosmeticId): boolean {
   const s = COSMETICS[id].source;
-  return s === 'daily' || s === 'league';
+  return s === 'daily' || s === 'league' || COSMETICS[id].serverSeason === true;
 }
 
 export const COSMETIC_SLOTS: CosmeticSlot[] = ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'];

@@ -104,7 +104,7 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
   check('HAUNTED PRIME SET: its data is exactly as in 1.7.1 (props, light, colours, availability)', hash(JSON.stringify(ARENAS.haunted)) === DATA.haunted && !ARENAS.haunted.covers);
   check('HAUNTED PRIME SET: its stage code is untouched', hash(readFileSync('src/render/stages/HauntedStage.ts', 'utf8')) === CODE.HauntedStage);
   check('the three permanent sets: data and stage code untouched', (['original', 'casino', 'backlot'] as const).every((id) => hash(JSON.stringify(ARENAS[id])) === DATA[id]) && ['OriginalStage', 'CasinoStage', 'BacklotStage'].every((n) => hash(readFileSync(`src/render/stages/${n}.ts`, 'utf8')) === CODE[n]));
-  check('only the cemetery has cover on the floor', ARENA_ORDER.every((id) => (id === 'graveyard') === !!ARENAS[id].covers?.length));
+  check('only the cemetery (and, 1.9.7, the New Year set) has cover on the floor', ARENA_ORDER.every((id) => (id === 'graveyard' || id === 'holiday') === !!ARENAS[id].covers?.length));
 }
 
 // ------------------------------------------------------- 3. UTC availability
@@ -697,7 +697,7 @@ function autoFight(fighter: FighterId, rival: RivalId, seed: number, mode: 'smar
   const game = readFileSync('src/game/Game.ts', 'utf8');
   check('bonus: once per match — Game hands the set over and clears the event id right after paying', /applyMatch\(this\.matchEventId, m\.result, meta\.difficulty, m\.cfg\.arena\);\s*this\.matchEventId = null;/.test(game));
   check('bonus: not from FIRST BROADCAST, Survival waves report per attempt as before', game.includes("mode.kind !== 'survival' && mode.kind !== 'tutorial' && this.events.playable"));
-  check('BOSS FIGHT never takes place among the tombstones (the cemetery hands it to HAUNTED PRIME SET)', game.includes("if (mode.kind === 'boss' && arenaById(id).covers?.length) return 'haunted';"));
+  check('BOSS FIGHT never takes place among the tombstones (the cemetery hands it to HAUNTED PRIME SET)', game.includes("if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'holiday' ? 'original' : 'haunted';"));
   // economy: real fights through the real exchange — days to LUCIEN (500) with and without the bonus
   class Bare {
     data: SaveData = defaultSave();

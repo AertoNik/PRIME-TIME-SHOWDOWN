@@ -172,20 +172,24 @@ export class PrepScreen implements Screen {
     const def = pref === 'random' ? null : arenaById(pref);
     const n = availableArenas(g.events.themeId).length;
     const halloween = g.events.themeId === 'halloween';
-    // Alpha 1.7.5: the cemetery is the one set with cover on the floor
+    // Alpha 1.7.5: the cemetery has cover on the floor (1.9.7: and the New Year set)
     const covers = !!def?.covers?.length;
     const randomCovers = pref === 'random' && availableArenas(g.events.themeId).some((id) => !!arenaById(id).covers?.length);
+    const holiday = def?.id === 'holiday';
+    const where = holiday ? 'В праздничной студии' : 'На кладбище';
+    const pieces = holiday ? 'подарки, снежные пушки, часовые колонны и пульты студии' : 'надгробия, колонны и тыквы';
+    const coverSets = availableArenas(g.events.themeId).filter((id) => !!arenaById(id).covers?.length).map((id) => arenaById(id).show);
     const note =
       this.mode.kind === 'survival'
-        ? `Павильон выбирается при старте марафона и остаётся на все 5 волн.${covers ? ' На кладбище стоят разрушаемые укрытия.' : ''}`
+        ? `Павильон выбирается при старте марафона и остаётся на все 5 волн.${covers ? ` ${where} стоят разрушаемые укрытия.` : ''}`
         : this.mode.kind === 'challenge'
-          ? `Правила испытания одинаковы в любом павильоне.${covers ? ' На кладбище стоят разрушаемые укрытия.' : ''}`
+          ? `Правила испытания одинаковы в любом павильоне.${covers ? ` ${where} стоят разрушаемые укрытия.` : ''}`
           : this.mode.kind === 'boss'
-            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.${covers || randomCovers ? ' Среди надгробий чемпион не выступает: вместо кладбища бой пройдёт в HAUNTED PRIME SET.' : ''}`
+            ? `Чемпион оформит павильон в стиле LEGENDARY SHOWDOWN — ${halloween ? 'HALLOWEEN SPECIAL' : 'CHAMPIONSHIP EDITION'}.${covers || randomCovers ? (holiday ? ' Среди укрытий чемпион не выступает: бой пройдёт в ORIGINAL PRIME ARENA.' : ' Среди надгробий чемпион не выступает: вместо кладбища бой пройдёт в HAUNTED PRIME SET.') : ''}`
             : covers
-              ? 'На кладбище стоят разрушаемые укрытия: надгробия, колонны и тыквы останавливают выстрелы, пока их не разобьют.'
+              ? `${where} стоят разрушаемые укрытия: ${pieces} останавливают выстрелы, пока их не разобьют.`
               : randomCovers
-                ? 'Павильоны отличаются оформлением; только на кладбище CURSED CEMETERY есть разрушаемые укрытия.'
+                ? `Павильоны отличаются оформлением; разрушаемые укрытия есть только в ${coverSets.join(' и ')}.`
                 : 'Павильон меняет только оформление: размеры арены, правила и баланс везде одинаковы.';
     return `<div class="section panel arena-pick" data-act="arena" role="button" aria-label="Выбрать павильон эфира">
         <div class="ap-thumb">${ARENA_ART[pref]}</div>

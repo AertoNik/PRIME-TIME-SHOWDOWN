@@ -145,7 +145,7 @@ function protocolChecks(): void {
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
   // (1.9.5: the eleven approved on 06.11.2026 carry a price too — 18 in all; what is SOLD is still the offer's Appendix 1)
-  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items', sold.length === 18 && sold.includes('fighter_lucien') && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
+  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items', sold.length === 23 && sold.includes('fighter_lucien') && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
     return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
@@ -264,7 +264,8 @@ function protocolChecks(): void {
   const sha = (t: string) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
   const rnames = Object.keys(realRules().catalog).map((k: string) => PAYJS.receiptName(k));
-  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 18 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
+  // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced)
+  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 23 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
 }
 
 // ======================================================================== safety
@@ -308,8 +309,18 @@ const TEST_ENV = { PRIME_SERVER_ROLE: 'dev', PRIME_PAY_MODE: 'test', ROBOKASSA_M
 const LIVE_ENV = { PRIME_SERVER_ROLE: 'production', PRIME_PAY_MODE: 'live', ROBOKASSA_MERCHANT_LOGIN: LOGIN, ROBOKASSA_HASH_ALGORITHM: 'md5', ROBOKASSA_PASSWORD_1: LIVE_P1, ROBOKASSA_PASSWORD_2: LIVE_P2, ROBOKASSA_PASSWORD_3: LIVE_P3, PRIME_SHOP_SALES: 'open', ROBOKASSA_RECEIPT: 'on' };
 const CLEAN = Object.fromEntries(['PRIME_SERVER_ROLE', 'PRIME_PAY_MODE', 'ROBOKASSA_MERCHANT_LOGIN', 'ROBOKASSA_HASH_ALGORITHM', 'ROBOKASSA_TEST_PASSWORD_1', 'ROBOKASSA_TEST_PASSWORD_2', 'ROBOKASSA_PASSWORD_1', 'ROBOKASSA_PASSWORD_2', 'ROBOKASSA_PASSWORD_3', 'PRIME_SHOP_SALES', 'PRIME_PAY_DEV_GATEWAY', 'ROBOKASSA_RESULT_IPS', 'ROBOKASSA_RECEIPT', 'PRIME_PAY_REFUND_API', 'PRIME_DEMO_UNTIL', 'PRIME_PAY_RELAY_URL', 'PRIME_PAY_RELAY_PUBLIC_URL', 'PRIME_SHOP_MINORS'].map((k) => [k, '']));
 
+/**
+ * 1.9.7: the shop's CALENDAR for the dev / staging-role servers of this check (lib/payments.js shopNow — the season's test
+ * clock, read only with PRIME_SERVER_ROLE=dev|staging): 06.11.2026 12:00 UTC — revision 3 in force, Halloween over — the
+ * world these expectations describe. A production-role server never reads it: its sections follow the real date.
+ */
+const SHOP_AT = Date.parse('2026-11-06T12:00:00Z');
+const shopClockFile = path.join(os.tmpdir(), `payments-shop-clock-${proc.pid}.txt`);
+fs.writeFileSync(shopClockFile, String(SHOP_AT));
+const SHOP_CLOCK_ENV = { PRIME_SEASON_CLOCK_FILE: shopClockFile };
+
 async function startPb(env: Record<string, string>): Promise<void> {
-  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { ...CLEAN, PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: GAME, PRIME_SESSIONS: 'off', ...env }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
+  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { ...CLEAN, PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: GAME, PRIME_SESSIONS: 'off', ...SHOP_CLOCK_ENV, ...env }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 2000) pbLog.splice(0, pbLog.length - 2000);
@@ -896,7 +907,7 @@ async function serverChecks(): Promise<void> {
   const liveOffer = (await http('GET', '/api/prime/shop/offer', P.tok)).j.offer;
   // (the revision in force by the date: 2 at its archived page until 30.10.2026 00:00 UTC, then 3 — the page of the site)
   const inForce = realRules().offers.filter((o: any) => Date.parse(o.effectiveFrom.length <= 10 ? o.effectiveFrom + 'T00:00:00Z' : o.effectiveFrom) <= Date.now()).sort((a: any, b: any) => b.revision - a.revision)[0];
-  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3, 4].includes(liveOffer.revision), JSON.stringify(liveOffer));
+  check(`…the terms are the published offer in force (revision ${inForce.revision}, ${inForce.url.split('/').pop()}, its SHA-256) — never the test 9001 or the demo 9002 stand-in`, liveOffer?.revision === inForce.revision && liveOffer.url === inForce.url && liveOffer.sha256 === inForce.sha256 && [2, 3, 4, 5].includes(liveOffer.revision), JSON.stringify(liveOffer));
   const noConsent = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fx_prime_broadcast' });
   check('an ordinary PRIME ID (verified, documents, 18+) without the offer accepted → offer_consent_required, no order', noConsent.status === 409 && noConsent.j.code === 'offer_consent_required' && noConsent.j.quote?.priceKop === 4900 && sqlite(`select count(*) from shop_orders where user='${P.id}';`) === '0');
   await http('POST', '/api/prime/shop/offer/accept', M.tok, { revision: liveOffer.revision, sha256: liveOffer.sha256 });
@@ -910,7 +921,9 @@ async function serverChecks(): Promise<void> {
   const pRc = pf.Receipt ? JSON.parse(decodeURIComponent(pf.Receipt)) : null;
   check('…then a REAL order: 49 ₽ from the server catalog (the request\'s price / IsTest / Receipt ignored), a LIVE invoice number, env live, no IsTest', pb1.status === 200 && pb1.j.order.amountKop === 4900 && pf.OutSum === '49.00' && pb1.j.order.env === 'live' && pb1.j.order.inv >= PAYJS.invFloor('live', Date.now() - 60000) && pb1.j.order.inv < 500000000000000 && !('IsTest' in pf), JSON.stringify(pb1.j).slice(0, 200));
   check('…SHA256 over "login:49.00:InvId:Receipt:<LIVE Password#1>:Shp_order=…"; the Receipt is {name = the receipt name, quantity 1, sum 49, tax none}', pf.SignatureValue === H.sha256(`${LOGIN}:49.00:${pb1.j.order.inv}:${pf.Receipt}:${LIVE_P1}:Shp_order=${pId}`) && !!pRc && Object.keys(pRc.items[0]).join() === 'name,quantity,sum,tax' && pRc.items[0].sum === 49 && pRc.items[0].name === 'Цифровой предмет оформления PRIME BROADCAST для игры PRIME TIME: SHOWDOWN' && pRc.items[0].tax === 'none');
-  const realLucien = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'fighter_lucien' });
+  // (1.9.7: a fresh adult who has not accepted the revision in force — P accepted it above, so P would go on to an order)
+  const Luc = await mk('lucien-check@payments.test');
+  const realLucien = await http('POST', '/api/prime/shop/checkout', Luc.tok, { sku: 'fighter_lucien' });
   // 1.9.4: after his season the live server answers not_in_offer first (offer № 3 does not sell characters), price_pending
   // only once a revision does and his price is still not approved
   check(`…LUCIEN under the offer in force (revision ${OFFERS.currentOffer()?.revision}): ${r4InForce ? 'offered — the next check is the consent' : 'not sold for roubles — not_in_offer'}, no order`, realLucien.status === 409 && (r4InForce ? realLucien.j.code === 'offer_consent_required' : ['seasonal_only', 'not_in_offer'].includes(realLucien.j.code)) && sqlite(`select count(*) from shop_orders where sku='fighter_lucien' and env='live';`) === '0', realLucien.j.code);
@@ -957,6 +970,89 @@ async function serverChecks(): Promise<void> {
   await off({ ...PUB_ENV, ROBOKASSA_PASSWORD_2: '' }, 'LIVE without the live Password#2', 'passwords_missing');
   await off({ ...PUB_ENV, ROBOKASSA_HASH_ALGORITHM: '' }, 'LIVE without the signature algorithm', 'algorithm_missing');
   await off({ ...PUB_ENV, ROBOKASSA_MERCHANT_LOGIN: '' }, 'LIVE without the shop login', 'merchant_login_missing');
+
+  // ---------------------------------------------------------------- 1.9.7: the universal revision 6, winter goods, promotions
+  section('1.9.7: универсальная оферта № 6, новые товары без новой редакции, зима до и после 04.01, акции, 14–17, повтор');
+  {
+    // the server's calendar (dev role): moved by rewriting the clock file — the server reads it on every decision
+    const at = (iso: string) => fs.writeFileSync(shopClockFile, String(Date.parse(iso)));
+    // revision 6: the registered one once the owner approved it (its own moment), else a stand-in from 20.11.2026 09:00 UTC —
+    // the same checks either way (before / after the approval)
+    const REG6 = realRules().offers.find((o: { revision: number }) => o.revision === 6);
+    const R6_AT: string = REG6 ? REG6.effectiveFrom : '2026-11-20T09:00:00Z';
+    const nearR6 = (min: number) => new Date(Date.parse(R6_AT) + min * 60000).toISOString();
+    const NEW = 'fx_test_new_item';
+    const rules6 = (promo: { from: string; to: string } | null = null): any => {
+      const r = JSON.parse(JSON.stringify(realRules()));
+      // revision 6 as registered at the release (universal: no list of goods) — or, before that, a stand-in from R6_AT
+      if (!REG6) r.offers = [...r.offers, { ...OFFERS.OFFER_R6_PLAN, url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: R6_AT, sha256: 'd'.repeat(64) }];
+      // an item added to the catalog after revision 5 (in no list): only its catalog entry and its approved price
+      r.catalog[NEW] = { kind: 'cosmetic', item: 'card_holo' };
+      r.titles[NEW] = 'TEST NEW ITEM';
+      r.receiptNames[NEW] = 'Цифровой предмет оформления TEST NEW ITEM для игры PRIME TIME: SHOWDOWN';
+      r.prices[NEW] = 79;
+      r.priceStatus[NEW] = 'approved';
+      r.test.prices[NEW] = 10;
+      r.promos = promo ? [{ sku: 'fx_phantom_dash', priceRub: 29, from: promo.from, to: promo.to }] : [];
+      return r;
+    };
+    testHooks(rules6());
+    at(nearR6(-1));
+    await startPb({ ...TEST_ENV, PRIME_SHOP_MINORS: 'on' });
+    const W = await mk('winter-buyer@payments.test');
+    const tOff = (await http('GET', '/api/prime/shop/offer', W.tok)).j.offer;
+    await http('POST', '/api/prime/shop/offer/accept', W.tok, { revision: tOff.revision, sha256: tOff.sha256 });
+    const pre = await http('POST', '/api/prime/shop/checkout', W.tok, { sku: NEW });
+    check('1.9.7 a minute before revision 6: revision 5 (its own list) is in force — an item added to the catalog later is not sold (not_in_offer, no order)', pre.status === 409 && pre.j.code === 'not_in_offer' && sqlite(`select count(*) from shop_orders where user='${W.id}';`) === '0', String(pre.j.code));
+    at(nearR6(1));
+    const post = await http('POST', '/api/prime/shop/checkout', W.tok, { sku: NEW });
+    check('1.9.7 under the universal revision 6 the same new item is sold with no new revision: the order fixes the item, its receipt name and the test amount', post.status === 200 && post.j.order?.sku === NEW && post.j.order?.amountKop === 1000 && sqlite(`select title from shop_orders where sku='${NEW}';`) === 'Цифровой предмет оформления TEST NEW ITEM для игры PRIME TIME: SHOWDOWN', JSON.stringify(post.j).slice(0, 160));
+    const champ = await http('POST', '/api/prime/shop/checkout', W.tok, { sku: 'season_winter_champion' });
+    check('1.9.7 WINTER CHAMPION is no catalog item — never sold (404 unknown_item)', champ.status === 404 && champ.j.code === 'unknown_item');
+    // WINTER SHOWDOWN's five: the season's end by the server's clock decides, then the universal terms sell them
+    at('2027-01-03T20:59:00Z');
+    const early = await Promise.all(['fighter_crax', 'season_clockwork_gold', 'season_candy_comet', 'season_frostlight_live', 'season_midnight_confetti'].map((s) => http('POST', '/api/prime/shop/checkout', W.tok, { sku: s })));
+    check('1.9.7 03.01.2027 23:59 МСК: the five winter goods are not sold for roubles — 409 seasonal_only (candy canes only), no quote, no order', early.every((r) => r.status === 409 && r.j.code === 'seasonal_only' && r.j.event === 'winter-2026' && !r.j.quote) && sqlite(`select count(*) from shop_orders where sku in ('fighter_crax','season_clockwork_gold','season_candy_comet','season_frostlight_live','season_midnight_confetti');`) === '0', early.map((r) => r.j.code).join());
+    const cfgEarly = (await http('GET', '/api/prime/config')).j.shop;
+    at('2027-01-03T21:00:00Z');
+    const cfgJan = (await http('GET', '/api/prime/config')).j.shop;
+    check('1.9.7 the public config: the owner\'s list prices (CRAX 249, 49, 59, 69, 69 ₽) all along; the test charge appears only from 04.01.2027 00:00 МСК', cfgJan.prices.fighter_crax === 24900 && cfgJan.prices.season_clockwork_gold === 4900 && cfgJan.prices.season_candy_comet === 5900 && cfgJan.prices.season_frostlight_live === 6900 && cfgJan.prices.season_midnight_confetti === 6900 && cfgEarly.prices.fighter_crax === 24900 && cfgJan.charge.fighter_crax === 1000);
+    const crax = await http('POST', '/api/prime/shop/checkout', W.tok, { sku: 'fighter_crax' });
+    const cId = sqlite(`select id from shop_orders where invId=${crax.j.order?.inv};`);
+    check('1.9.7 04.01.2027 00:00 МСК: CRAX is sold by itself — an order (no publication needed)', crax.status === 200 && crax.j.order?.sku === 'fighter_crax', String(crax.j.code ?? crax.status));
+    const paid = await notify(signedNote(crax.j.order.inv, '10.000000', cId, TEST_P2, 'sha256'));
+    const owned = (await http('GET', '/api/prime/shop/purchases', W.tok)).j.owned;
+    const again = await http('POST', '/api/prime/shop/checkout', W.tok, { sku: 'fighter_crax' });
+    check('1.9.7 …the signed (test) ResultURL delivers CRAX to the account; buying him again → 409 owned', paid.text === `OK${crax.j.order.inv}` && owned.includes('fighter_crax') && again.status === 409 && again.j.code === 'owned', JSON.stringify([paid.text, owned, again.j.code]));
+    // 14–17: CRAX like LUCIEN — characters allowed by revision 6's limits when the server switch is on
+    const teen = await mk('winter-teen@payments.test', true, false);
+    for (const d of ['terms', 'consent']) await http('POST', '/api/collections/consents/records', su, { user: teen.id, doc: d, version: cfg.legal[d].v, lang: 'ru', action: 'register' });
+    await http('POST', '/api/collections/consents/records', su, { user: teen.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '14-17' });
+    await http('POST', '/api/prime/shop/offer/accept', teen.tok, { revision: tOff.revision, sha256: tOff.sha256 });
+    const tCrax = await http('POST', '/api/prime/shop/checkout', teen.tok, { sku: 'fighter_crax' });
+    const tSt = (await http('GET', '/api/prime/shop/status', teen.tok)).j;
+    check('1.9.7 a buyer aged 14–17 (switch on): CRAX is open to them under revision 6 (characters, 500 ₽ an order, 2 000 ₽ in 30 days)', tCrax.status === 200 && tSt.minors?.characters === true && tSt.minors?.orderKop === 50000 && tSt.minors?.per30DaysKop === 200000, String(tCrax.j.code ?? tCrax.status));
+    await stopPb();
+    at(new Date(SHOP_AT).toISOString());
+    // promotions — a LIVE server (production role, the real clock, artificial passwords): the charge drops in its window,
+    // the order fixes it, and an order keeps its amount after the promotion ends
+    const now = Date.now();
+    testHooks(rules6({ from: new Date(now - 3600000).toISOString(), to: new Date(now + 3600000).toISOString() }));
+    await startPb(PUB_ENV);
+    const Pr = await mk('promo-buyer@payments.test');
+    const liveOff = (await http('GET', '/api/prime/shop/offer', Pr.tok)).j.offer;
+    await http('POST', '/api/prime/shop/offer/accept', Pr.tok, { revision: liveOff.revision, sha256: liveOff.sha256 });
+    const pCfg = (await http('GET', '/api/prime/config')).j.shop;
+    const pOrd = await http('POST', '/api/prime/shop/checkout', Pr.tok, { sku: 'fx_phantom_dash', priceKop: 1 });
+    check('1.9.7 a promotion in its window: the list price stays 49 ₽, the charge is 29 ₽; the order fixes 29 ₽ (the request\'s price is ignored)', pCfg.prices.fx_phantom_dash === 4900 && pCfg.charge.fx_phantom_dash === 2900 && pOrd.status === 200 && pOrd.j.order?.amountKop === 2900 && pOrd.j.payment?.fields?.OutSum === '29.00', JSON.stringify([pCfg.charge.fx_phantom_dash, pOrd.j.code, pOrd.j.order?.amountKop]));
+    await stopPb();
+    testHooks(rules6({ from: new Date(now - 7200000).toISOString(), to: new Date(now - 3600000).toISOString() }));
+    await startPb(PUB_ENV);
+    const pCfg2 = (await http('GET', '/api/prime/config')).j.shop;
+    check('1.9.7 …the promotion over: the charge is the price again (49 ₽); the order made during it keeps 29 ₽ and its revision', pCfg2.charge.fx_phantom_dash === 4900 && sqlite(`select amountKop||'|'||offerRevision from shop_orders where invId=${pOrd.j.order.inv};`) === `2900|${liveOff.revision}`);
+    await stopPb();
+    testHooks(null);
+  }
 
   // ---------------------------------------------------------------- 1.8.9.5: buyers aged 14–17 (a server switch + the offer)
   section('Покупки 14–17 лет: серверный флаг PRIME_SHOP_MINORS и редакция оферты (по умолчанию — только 18+)');
@@ -1037,6 +1133,8 @@ async function serverChecks(): Promise<void> {
   check(`…four parallel requests against 98 ₽ left: ${parK4.map((r) => r.status).join('/')} — exactly two pass, the total stays ${k4sum / 100} ₽ ≤ 1 500 ₽`, parK4.filter((r) => r.status === 200).length === 2 && parK4.filter((r) => r.j.code === 'minor_limit').length === 2 && k4sum === 150000);
   const kOld = await http('POST', '/api/prime/shop/checkout', Kold.tok, { sku: 'fx_golden_confetti' });
   check('…an account made before 1.8.9.5 with the group «13-17» counts as under 18 (the same rules)', kOld.status === 200 && kOld.j.order?.env === 'live');
+  // (1.9.7: in this world revision 3 is in force — P accepts it, as P did when the real offer in force was revision 3)
+  await http('POST', '/api/prime/shop/offer/accept', P.tok, { revision: offK.revision, sha256: offK.sha256 });
   const adultBig = await http('POST', '/api/prime/shop/checkout', P.tok, { sku: 'skin_ray_neon_runner' });
   check('…an adult is not limited (300 ₽ goes through for 18+)', adultBig.status === 200 && adultBig.j.order.amountKop === 30000, String(adultBig.j.code ?? adultBig.status));
   await stopPb();

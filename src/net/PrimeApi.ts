@@ -166,6 +166,26 @@ export interface ServerConfig {
   league: { on: boolean; rules: number; sim: string | null };
   /** 1.9.0 PRIME PRODUCER AVATARS on this server: the catalogue version (0: a server before 1.9.0). */
   producer: number;
+  /** 1.9.7 WINTER SHOWDOWN: this server keeps the seasonal wallet of these secure events (a server before 1.9.7: none). */
+  season: { on: boolean; events: string[] };
+}
+
+/** 1.9.7 (R-22) — a secure event's wallet as the server states it (lib/season.js view). */
+export interface SeasonWallet {
+  event: string;
+  phase: 'none' | 'announce' | 'running' | 'over';
+  now: number;
+  day: string;
+  balance: number;
+  earned: number;
+  fights: number;
+  spent: number;
+  dayCareer: number;
+  dayLeague: number;
+  caps: { career: number; league: number };
+  quests: Record<string, { p: number; claimed: boolean }>;
+  grandClaimed: boolean;
+  owned: { cosmetics: string[]; fighters: string[] };
 }
 
 /** 1.8.9 DAILY PRIME STREAK — one day's reward as the server states it (the table: src/config/daily.config.ts). */
@@ -533,7 +553,18 @@ export class PrimeApi {
         return { on: l.on === true, rules: int(l.rules), sim: typeof l.sim === 'string' ? l.sim : null };
       })(),
       producer: int(r.producer),
+      season: (() => {
+        const v = (r.season ?? {}) as Rec;
+        return { on: v.on === true, events: Array.isArray(v.events) ? v.events.filter((x): x is string => typeof x === 'string') : [] };
+      })(),
     };
+  }
+
+  // ------------------------------------------------------- 1.9.7 WINTER SHOWDOWN (R-22)
+  /** The account's wallet of a secure event (GET), or one of its actions (POST — with this page's game session). */
+  async season<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
+    const b = method === 'POST' ? { ...(body ?? {}), ...this.sessionBody() } : undefined;
+    return this.call((o) => this.pb.send<T>('/api/prime/season' + path, { ...o, method, ...(b ? { body: b } : {}) }));
   }
 
   /** 1.9.0: the signed-in account's producer look (the server's — never a local copy). */

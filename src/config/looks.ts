@@ -1,12 +1,14 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour';
-export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour' | 'shako';
+export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot' | 'tunic';
 export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
 export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker'
   // Alpha 1.8.8: PRIME SHOP skins
-  | 'facepaint' | 'neon_strips' | 'rings' | 'lowshades' | 'goatee';
+  | 'facepaint' | 'neon_strips' | 'rings' | 'lowshades' | 'goatee'
+  // Alpha 1.9.7: CRAX — the wind-up key on his back, brass gears on the uniform, a painted moustache
+  | 'windkey' | 'gears' | 'moustache';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -18,6 +20,11 @@ export interface LookDef {
   base?: string;
   /** Alpha 1.8.8: skin decoration on the weapon (never moves the muzzle). */
   weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot';
+  /**
+   * Alpha 1.9.7: another MODEL of the same weapon class (CRAX's CLOCKWORK RIFLE is a tech_carbine for the fight): the
+   * muzzle point stays the class's, so shots leave exactly where the simulation and the effects expect them.
+   */
+  weaponModel?: 'clockwork';
   body: BodyType;
   skin: number;
   hair: { style: HairStyle; color: number; color2: number };
@@ -71,6 +78,18 @@ export interface FaceTraits {
   narrowBrows?: boolean;
   /** Alpha 1.7: two small neat fangs under the upper lip, a fine line on the upper eyelids. */
   fangs?: boolean;
+  /**
+   * Alpha 1.9.7 (CRAX): a carved, lacquered face — fine grain lines on the forehead and cheeks, painted cheek spots and the
+   * seams of a hinged jaw (stylised, never a toy's blank face: the eyes, brows and mouth keep all their mimicry).
+   */
+  wooden?: boolean;
+  /** Alpha 1.9.7 (CRAX): a broad, square jaw with a defined chin block. */
+  squareJaw?: boolean;
+  /**
+   * Alpha 1.9.7 final polish (CRAX): calm, symmetric guardsman's brows — one gently arched stroke each, in the
+   * moustache's colour (hair.color2), neither cocked nor broken.
+   */
+  guardBrows?: boolean;
 }
 
 export const LOOKS: Record<string, LookDef> = {
@@ -296,6 +315,37 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x3c3f4c,
     glow: 0xff2a4a,
     rim: 0xff7a92,
+  },
+  // Alpha 1.9.7 — CRAX «THE MIDNIGHT GUARD»: a living wind-up guard of the studio's toy parade — a lacquered, lightly
+  // carved face (soft cheekbones in the head's shape) with a square hinged jaw and a painted moustache, a tall navy shako with a gold band and a brass
+  // gear badge, a bordeaux parade tunic (two rows of gold buttons, ivory cross belts, gold epaulettes, brass gears),
+  // navy trousers with a gold stripe, tall black boots, white gloves, a brass wind-up key on his back — and the
+  // CLOCKWORK RIFLE (a dark-red body, brass gears and a glowing amber core).
+  crax: {
+    id: 'crax',
+    body: 'athletic',
+    skin: 0xebc9a2,
+    hair: { style: 'shako', color: 0x18213f, color2: 0x2a1910 },
+    top: { style: 'tunic', main: 0x8e1b2e, accent: 0xe0b84c, trim: 0xf1eadb, inner: 0x16203f },
+    pants: { style: 'tailored', main: 0x16203f, accent: 0xe0b84c },
+    shoes: { main: 0x0f1320, accent: 0xe0b84c, sole: 0x2a1a10, boots: true },
+    gloves: 0xf2eee4,
+    fingerless: false,
+    // (1.9.7 final polish: a deeper, calmer blue — the bright one read as watery next to the white of the eye)
+    eyes: 0x2a52b4,
+    brow: 'stern',
+    // a small even smile under the moustache (the crooked smirk crowded the moustache)
+    mouth: 'smile',
+    accessories: ['windkey', 'gears', 'moustache'],
+    // (1.9.7 polish: no added cheekbone pieces — carvedHead shapes them softly in the head itself)
+    face: { cheekbones: 0, jaw: 1, eyeHeight: 0.96, archedBrows: false, grin: false, browFlash: true, wooden: true, squareJaw: true, guardBrows: true },
+    weapon: 'tech_carbine',
+    weaponModel: 'clockwork',
+    weaponColor: 0x6a1222,
+    weaponDark: 0x8c6a2a,
+    glow: 0xffc24a,
+    rim: 0xffe2a0,
+    headScale: 0.94,
   },
   // Crash: heavy brawler in a sleeveless black jersey with big pink shoulder pads
   // and a tall hot-pink quiff — a different silhouette from Bruno and Tank.

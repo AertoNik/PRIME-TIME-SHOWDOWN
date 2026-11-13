@@ -152,6 +152,20 @@ export const CARDS: Record<CardId, CardDef> = {
     exclusive: 'lucien',
     heavy: true,
   },
+  // Alpha 1.9.7 — WINTER SHOWDOWN: CRAX's signature — a clockwork countdown that ends in one struck hour
+  twelfth_strike: {
+    id: 'twelfth_strike',
+    name: 'TWELFTH STRIKE',
+    cost: 3,
+    role: 'Фирменная',
+    short: 'Двенадцатый удар',
+    desc: `ДВЕНАДЦАТЫЙ УДАР. Крэкс поворачивает заводной ключ, и на груди оживает циферблат. Каждое попадание его обычных выстрелов двигает стрелку на ${T.twelfth_strike.marksPerHit} часа. Когда она дойдёт до двенадцати, следующее попадание бьёт полночь: +${T.twelfth_strike.damage} урона и короткий толчок. Часы останавливаются через ${T.twelfth_strike.window} с после завода, а с полной стрелкой ждут ${ru(T.twelfth_strike.ready)} с. Самонаведения и гарантированного попадания нет.`,
+    counter: 'Щит, рывок и приманка не дают стрелке двигаться. Поднятый вовремя SHIELD принимает удар полуночи как PERFECT BLOCK.',
+    color: '#c9a227',
+    color2: '#3a0d1e',
+    exclusive: 'crax',
+    heavy: true,
+  },
   // Alpha 1.3.2: boss-only card (Victor Vale). Not in any collection or player deck.
   directors_cut: {
     id: 'directors_cut',
@@ -458,7 +472,7 @@ export const COMBOS: ComboDef[] = [
     id: 'superstar',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
-    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite'],
+    second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite', 'twelfth_strike'],
     rating: 18,
     desc: `OVERDRIVE → фирменная карта: фирменный приём усиливается на ${pct(CT.superstarMult)}.`,
     bonus: `фирменный приём +${pct(CT.superstarMult)}`,
@@ -709,6 +723,12 @@ export const PASSIVES: Record<PassiveId, PassiveDef> = {
     id: 'duelist',
     name: 'CANE DUEL',
     desc: 'Трость Люсьена — и бластер, и шпага. Издалека он стреляет багровыми зарядами, а когда соперник рядом, сам переходит на быстрые уколы тростью: их не обойти шагом в сторону, но они короче и слабее выстрела. Атака одна — режим меняется, урон не удваивается.',
+  },
+  // Alpha 1.9.7 — CRAX
+  mainspring: {
+    id: 'mainspring',
+    name: 'MAINSPRING',
+    desc: `Заводная пружина. Один раз за бой, когда здоровье Крэкса падает ниже ${Math.round(PT.mainspring.threshold * 100)}%, пружина подзаводится: +${PT.mainspring.energy} энергии и ${PT.mainspring.duration} с ускоренной стрельбы (+${pct(PT.mainspring.fireRate)}).`,
   },
 };
 

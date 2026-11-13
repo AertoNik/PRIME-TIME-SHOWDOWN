@@ -52,9 +52,39 @@ export const ICONS = {
     `<rect x="8" y="12" width="48" height="44" rx="7" fill="none" stroke="currentColor" stroke-width="5"/>
      <path d="M8 26 H56 M20 6 V16 M44 6 V16" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>`,
   ),
+  // ---------------------------------------------- Alpha 1.9.7 — WINTER SHOWDOWN
+  // CANDY CANES: a glossy red-and-white cane with a gold band (the season's currency)
+  cane: S(
+    `<path d="M40 57 V25 A11 11 0 0 0 18 25" stroke="#7a0f1d" stroke-width="13" stroke-linecap="round" fill="none"/>
+     <path d="M40 57 V25 A11 11 0 0 0 18 25" stroke="#fff4ee" stroke-width="10" stroke-linecap="round" fill="none"/>
+     <path d="M40 57 V25 A11 11 0 0 0 18 25" stroke="#e3172e" stroke-width="10" stroke-dasharray="5.5 6.5" fill="none"/>
+     <path d="M37.5 53 V25.5 A8.5 8.5 0 0 0 22 22" stroke="#fff" stroke-opacity=".6" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+     <rect x="33.5" y="41" width="13" height="5.5" rx="2.2" fill="#e0b84c" stroke="#7a4d10" stroke-width="1.2"/>`,
+  ),
+  gift: S(
+    `<rect x="9" y="26" width="46" height="31" rx="4" fill="#c4122f" stroke="#5a0714" stroke-width="2.5"/>
+     <rect x="6" y="18" width="52" height="11" rx="3" fill="#e3203a" stroke="#5a0714" stroke-width="2.5"/>
+     <rect x="28" y="18" width="8" height="39" fill="#e0b84c"/>
+     <path d="M32 18 C24 6 12 10 18 17 Z M32 18 C40 6 52 10 46 17 Z" fill="#ffd36a" stroke="#7a4d10" stroke-width="2"/>`,
+  ),
+  snow: S(
+    `<g stroke="#9fe8ff" stroke-width="4.5" stroke-linecap="round" fill="none">
+      <path d="M32 7 V57 M10.5 19.5 L53.5 44.5 M10.5 44.5 L53.5 19.5"/>
+      <path d="M26 11 L32 17 L38 11 M26 53 L32 47 L38 53"/>
+    </g><circle cx="32" cy="32" r="5" fill="#ffffff"/>`,
+  ),
+  bell: S(
+    `<path d="M32 8 C20 8 16 20 16 30 V40 L10 48 H54 L48 40 V30 C48 20 44 8 32 8 Z" fill="#e0b84c" stroke="#7a4d10" stroke-width="2.5" stroke-linejoin="round"/>
+     <circle cx="32" cy="52" r="5" fill="#c4122f"/><path d="M22 22 C24 16 28 14 32 14" stroke="#fff3c4" stroke-width="3" stroke-linecap="round" fill="none"/>`,
+  ),
+  /** CRAX's clockwork: a brass gear (the season star's badge). */
+  gear: S(
+    `<path d="M32 6 L36 13 L44 10 L45 18 L53 19 L50 27 L57 32 L50 37 L53 45 L45 46 L44 54 L36 51 L32 58 L28 51 L20 54 L19 46 L11 45 L14 37 L7 32 L14 27 L11 19 L19 18 L20 10 L28 13 Z" fill="#e0b84c" stroke="#7a4d10" stroke-width="2" stroke-linejoin="round"/>
+     <circle cx="32" cy="32" r="10" fill="#3a0d1e" stroke="#7a4d10" stroke-width="2"/><path d="M32 25 V32 L37 35" stroke="#ffe7a0" stroke-width="3" stroke-linecap="round" fill="none"/>`,
+  ),
 };
 
-export type QuestIcon = 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv';
+export type QuestIcon = 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv' | 'gift' | 'cane' | 'snow' | 'bell';
 
 /** Large preview art for reward cards. */
 export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio', string> = {

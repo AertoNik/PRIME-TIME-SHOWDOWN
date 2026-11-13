@@ -24,8 +24,8 @@ export function nameHTML(name: string): string {
  * 1.9.5: the CSS style of each broadcast frame / card style — the same names ThemeManager sets on <html>
  * (data-frame, data-card-style); the shop's previews use them as classes (.fd-screen.<key>, .<key>-set).
  */
-export const FRAME_STYLE: Partial<Record<CosmeticId, string>> = { frame_prime_broadcast: 'prime', frame_arcade: 'arcade', frame_spooky: 'spooky' };
-export const CARD_STYLE: Partial<Record<CosmeticId, string>> = { card_vhs: 'vhs', card_holo: 'holo', card_pumpkin: 'pumpkin' };
+export const FRAME_STYLE: Partial<Record<CosmeticId, string>> = { frame_prime_broadcast: 'prime', frame_arcade: 'arcade', frame_spooky: 'spooky', frame_frostlight_live: 'frostlight' };
+export const CARD_STYLE: Partial<Record<CosmeticId, string>> = { card_vhs: 'vhs', card_holo: 'holo', card_pumpkin: 'pumpkin', card_clockwork_gold: 'clockwork' };
 /** The words on a frame's plate in its preview («ON AIR», «PLAYER 1», «LIVE»). */
 const FRAME_TAG: Record<string, string> = { prime: 'ON AIR', arcade: 'PLAYER 1', spooky: 'LIVE' };
 

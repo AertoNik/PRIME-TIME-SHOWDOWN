@@ -277,6 +277,17 @@ export class FighterSim {
   bleedDmg = 0;
   bleedBy: Side = 0;
 
+  // ------------------------------------------------ Alpha 1.9.7 — WINTER SHOWDOWN (CRAX)
+  /** TWELFTH STRIKE: seconds the clock still runs (0 = no clock), the hand (marks of 12) and whether it reached twelve. */
+  clock = 0;
+  clockMarks = 0;
+  clockReady = false;
+  /** SUPERSTAR MOVE (OVERDRIVE → TWELFTH STRIKE): the strike's damage multiplier. */
+  clockMult = 1;
+  /** MAINSPRING: seconds of the faster trigger left; whether the spring already rewound this fight. */
+  mainspring = 0;
+  mainspringUsed = false;
+
   readonly m: FighterMatchStats = {
     damageDealt: 0,
     damageTaken: 0,
@@ -335,6 +346,7 @@ export class FighterSim {
     if (this.overdrive > 0) m *= CARD_TUNING.overdrive.fireRate;
     if (this.momentum > 0) m *= PASSIVE_TUNING.momentum.fireRate;
     if (this.glitch > 0) m *= CARD_TUNING.system_overload.fireRateMult;
+    if (this.mainspring > 0) m *= PASSIVE_TUNING.mainspring.fireRate;
     return m;
   }
 

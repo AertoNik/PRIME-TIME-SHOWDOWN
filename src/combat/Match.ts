@@ -426,6 +426,8 @@ export class Match implements BroadcastHost {
     // one read window at a time
     if (card === 'false_start' && f.feint > 0) return no('busy');
     if (card === 'adrenaline' && (a === 'windup' || a === 'rush' || a === 'cut' || a === 'bite')) return no('busy');
+    // Alpha 1.9.7: one TWELFTH STRIKE clock at a time
+    if (card === 'twelfth_strike' && f.clock > 0) return no('busy');
     return { fail: null, defer };
   }
 
@@ -638,6 +640,8 @@ export class Match implements BroadcastHost {
     target.shield = 0;
     target.overdrive = 0;
     target.adrenaline = 0;
+    // Alpha 1.9.7: a knocked-out CRAX's clock stops
+    if (target.clock > 0) this.combat.stopClock(target);
     // Alpha 1.7: a knocked-out fighter stops bleeding and swinging
     target.strikeT = 0;
     if (target.bleedTicks > 0) {
@@ -681,6 +685,8 @@ export class Match implements BroadcastHost {
     for (const f of this.fighters) {
       f.adrenaline = 0;
       f.overdrive = 0;
+      f.mainspring = 0;
+      if (f.clock > 0) this.combat.stopClock(f);
       this.abilities.cancelCut(f);
       if (f.action.kind !== 'none') f.action = { kind: 'none' };
       // Alpha 1.6: marks, cables, frames and pushes end with the fight

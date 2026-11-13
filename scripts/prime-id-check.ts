@@ -220,7 +220,8 @@ function loadRaw(raw: unknown): { sys: SaveSystem; st: MemoryStorage } {
   const keepTop = ['orgName', 'money', 'reputation', 'matches', 'wins', 'losses', 'draws', 'bestRating', 'totalEarned', 'fansEarned', 'bestCombosInMatch', 'bestPerfectsInMatch', 'proWins', 'championWins', 'selected', 'difficulty', 'nextRival', 'lastRival', 'seed', 'hintsSeen', 'arena', 'careerClaimed', 'tutorial'] as const;
   check('1.7.6: money, reputation, statistics, studio name, selection and arena kept exactly', keepTop.every((k) => same(d[k], raw[k])));
   const fighterKeys = ['unlocked', 'fans', 'wins', 'losses', 'draws', 'matches', 'classicWins', 'bestRating', 'deck'] as const;
-  check('1.7.6: every fighter keeps unlock, fans, record and deck', FIGHTER_ORDER.every((id) => fighterKeys.every((k) => same(d.fighters[id][k], raw.fighters[id][k]))));
+  check('1.7.6: every fighter keeps unlock, fans, record and deck', FIGHTER_ORDER.filter((id) => raw.fighters[id]).every((id) => fighterKeys.every((k) => same(d.fighters[id][k], raw.fighters[id][k]))));
+  check('1.9.7: the 1.7.6 save gets CRAX from the defaults — locked, his own deck, nothing else changed', !raw.fighters.crax && d.fighters.crax?.unlocked === false && d.fighters.crax.deck.join() === 'dash,shield,overdrive,twelfth_strike');
   check('LUCIEN: still opened (roster + the Halloween exchange record with its date)', d.fighters.lucien.unlocked && same(d.events['halloween-2026'].fighters, raw.events['halloween-2026'].fighters) && d.selected === 'lucien');
   check('cards: bought cards and custom decks kept (SECOND TAKE, SPLIT SHOT, BACKTRACK in decks)', same(d.cards.owned, NEW_CARDS.filter((c) => raw.cards.owned.includes(c))) && same(d.fighters.ray.deck, raw.fighters.ray.deck) && same(d.fighters.vega.deck, raw.fighters.vega.deck));
   check('collection: cosmetics, titles, history, "seen" marks and personal rewards kept', same(d.cosmetics, raw.cosmetics));
@@ -538,7 +539,7 @@ function career(data?: SaveData): { sys: SaveSystem; career: CareerSystem; st: M
   check(`Hall of Fame: every visible fighter (${hof.cards.length}), LUCIEN included once owned`, hof.cards.length === FIGHTER_ORDER.length && hof.cards.some((x) => x.id === 'lucien' && x.unlocked));
   check(`Hall of Fame badges: MOST WINS ${hof.badges.mostWins}, MOST PLAYED ${hof.badges.mostPlayed}`, hof.badges.mostWins === 'ray' && hof.badges.mostPlayed === 'ray');
   const order = hof.cards.map((x) => x.id);
-  check(`Hall of Fame sorted by wins, locked fighters last (${order.join(', ')})`, order[0] === 'ray' && order[order.length - 1] === 'rina');
+  check(`Hall of Fame sorted by wins, locked fighters last (${order.join(', ')})`, order[0] === 'ray' && order.slice(-2).join() === 'rina,crax'); // (1.9.7: during WINTER SHOWDOWN the locked CRAX is shown, last)
   const fresh = career();
   fresh.sys.data = defaultSave();
   const em2 = new EventManager(fresh.sys, { clock: () => Date.parse('2026-12-10T12:00:00Z'), settings: { mode: 'auto', forcedEventId: 'none' } });

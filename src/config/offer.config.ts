@@ -79,6 +79,26 @@ export const GOODS_R5: string[] = [
 ];
 
 /**
+ * Alpha 1.9.7 — revision 6, APPROVED (Р-27, 13.11.2026) and registered in SHOP_OFFERS below: the UNIVERSAL terms (the
+ * owner's decision of 13.11.2026). No list of goods: the goods, their descriptions and prices are those PRIME SHOP offers (the server's catalog:
+ * an approved price — SHOP_PRICE_STATUS, an optional promotion — SHOP_PROMOS, a season's end — seasonal.ts); the order
+ * fixes the item, the price and the revision when it is made. New goods need no new revision while the general terms stay.
+ * Every other check stays: verified email, documents, consent to exactly the revision in force, buyers 14–17 within its
+ * limits (CRAX like LUCIEN — Р-26), `owned` (rights, the cloud save, the season ledger), sales switch, Robokassa.
+ * It takes effect WHEN THE RELEASE IS PUBLISHED: `legal:release --approved --date=<day> --time=<HH:MM МСК>` installs the
+ * page and prints the line for SHOP_OFFERS ({ ...OFFER_R6_PLAN, url, effectiveFrom, sha256 }); revision 5 stays at
+ * offer-r5.html byte for byte. WINTER SHOWDOWN's five are then sold by themselves from 04.01.2027 00:00 MSK (server time).
+ * docs/legal-drafts/OFFER_R6_DRAFT.md.
+ */
+export const OFFER_R6_PLAN: Omit<OfferRevision, 'url' | 'sha256' | 'effectiveFrom'> = {
+  revision: 6,
+  title: 'Публичная оферта PRIME SHOP',
+  minors: true,
+  fighters: true,
+  minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true },
+};
+
+/**
  * Approved, published revisions (oldest first). A revision is never edited once published: its text stays at its
  * own address with the same SHA-256 (what its buyers accepted), and any change of the text is a new revision.
  * 1 — approved by the owner and published on 24.10.2026; kept byte for byte as offer-r1.html.
@@ -100,7 +120,10 @@ export const SHOP_OFFERS: OfferRevision[] = [
   // by the server's clock (3.5), looks and items obtained for tokens (9.5, 9.10); approved by the owner 06.11.2026 (Р-18…Р-20),
   // in force 08.11.2026 09:00 Moscow time — the exact moment (06:00 UTC); until then the server sells under revision 4 (and,
   // until 07.11.2026 00:00 UTC, revision 3) at their archived addresses
-  { revision: 5, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-11-08T06:00:00Z', sha256: 'b27d40719feb62e6ef326dca1e8d2b956c708b99d2f1bd300e7b6b1211bd42b4', minors: true, fighters: true, minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true }, items: GOODS_R5 },
+  { revision: 5, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r5.html', effectiveFrom: '2026-11-08T06:00:00Z', sha256: 'b27d40719feb62e6ef326dca1e8d2b956c708b99d2f1bd300e7b6b1211bd42b4', minors: true, fighters: true, minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true }, items: GOODS_R5 },
+  // Alpha 1.9.7 (Р-27, approved 13.11.2026): the UNIVERSAL terms — no list of goods (the whole priced catalog), in force
+  // from the release, 13.11.2026 05:00 MSK; revision 5 is kept byte for byte at offer-r5.html
+  { ...OFFER_R6_PLAN, url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-11-13T02:00:00Z', sha256: '45862f5d820774ca3f4592329d2a4a67b0acf633368fbabdc2624cecb85c5978' },
 ];
 
 /**

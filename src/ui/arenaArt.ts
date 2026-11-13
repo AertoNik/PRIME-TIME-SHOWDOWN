@@ -86,6 +86,24 @@ const GRAVEYARD = S(`
   <g fill="#5e5a6c"><rect x="99" y="52" width="6" height="11"/><rect x="98" y="51" width="8" height="2"/><rect x="54" y="72" width="7" height="13"/><rect x="53" y="71" width="9" height="2"/></g>
   ${[[80, 66, 7], [42, 70, 5], [120, 62, 5]].map(([x, y, r]) => `<g><rect x="${x - r}" y="${y + r * 0.4}" width="${r * 2}" height="${r * 0.6}" fill="#b8902e"/><ellipse cx="${x}" cy="${y}" rx="${r}" ry="${r * 0.8}" fill="#ff7a1a"/><path d="M${x - r * 0.5} ${y - 1} l${r * 0.25} -${r * 0.35} l${r * 0.2} ${r * 0.35} Z M${x + r * 0.1} ${y - 1} l${r * 0.25} -${r * 0.35} l${r * 0.2} ${r * 0.35} Z" fill="#ffe08a"/><rect x="${x - 0.8}" y="${y - r * 0.8 - 2}" width="1.6" height="2.4" fill="#4a7a2a"/></g>`).join('')}`);
 
+// Alpha 1.9.7 — HOLIDAY BROADCAST: the New Year studio before midnight — a clock at 11:59, a tree, garlands, gift boxes
+const HOLIDAY = S(`
+  <rect width="160" height="90" fill="#0a0e24"/>
+  <rect x="0" y="0" width="160" height="46" fill="#141a44"/>
+  ${[[14, 8], [36, 20], [58, 6], [104, 12], [126, 24], [150, 9], [86, 26]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#dff6ff"/>`).join('')}
+  <circle cx="80" cy="20" r="13" fill="#0d1230" stroke="#ffcc4d" stroke-width="2.4"/>
+  <path d="M80 20 V10.5 M80 20 L78.6 11" stroke="#fff4d0" stroke-width="2" stroke-linecap="round"/>
+  <path d="M8 4 Q40 16 80 6 Q120 16 152 4" stroke="#ffcc4d" stroke-width="1" fill="none"/>
+  ${[16, 28, 40, 52, 64, 96, 108, 120, 132, 144].map((x, i) => `<circle cx="${x}" cy="${8 + (i % 2) * 3}" r="1.6" fill="${['#ff5a7a', '#7fe3ff', '#ffcc4d'][i % 3]}"/>`).join('')}
+  <path d="M26 46 L36 22 L46 46 Z M29 38 L36 18 L43 38 Z" fill="#1f6b4a"/><circle cx="36" cy="18" r="2.2" fill="#ffcc4d"/>
+  <path d="M114 46 L124 24 L134 46 Z" fill="#1f6b4a"/><circle cx="124" cy="23" r="2" fill="#ffcc4d"/>
+  <rect x="0" y="40" width="160" height="8" fill="#7fe3ff" opacity=".14"/>
+  <path d="${FLOOR}" fill="#1a1640"/>
+  <path d="${RIM}" fill="none" stroke="#7fe3ff" stroke-width="2"/>
+  <path d="M80 50 L80 88" stroke="#3a3466" stroke-width="5" stroke-dasharray="4 2"/>
+  ${[[60, 64, 7, '#c4122f'], [100, 72, 7, '#c4122f'], [44, 76, 5, '#2a6aff'], [118, 58, 5, '#2a6aff']].map(([x, y, r, c]) => `<g><rect x="${+x - +r}" y="${+y - +r}" width="${+r * 2}" height="${+r * 2}" fill="${c}"/><rect x="${+x - 1}" y="${+y - +r}" width="2" height="${+r * 2}" fill="#ffcc4d"/><rect x="${+x - +r}" y="${+y - 1}" width="${+r * 2}" height="2" fill="#ffcc4d"/></g>`).join('')}
+  <g fill="#e0b84c"><rect x="70" y="80" width="6" height="7"/><rect x="88" y="52" width="5" height="7"/></g>`);
+
 const RANDOM = S(`
   <rect width="160" height="90" fill="#0b0e2c"/>
   <rect x="0" y="0" width="80" height="45" fill="#141c52"/><rect x="80" y="0" width="80" height="45" fill="#5a0f1c"/>
@@ -99,5 +117,6 @@ export const ARENA_ART: Record<ArenaPref, string> = {
   backlot: BACKLOT,
   haunted: HAUNTED,
   graveyard: GRAVEYARD,
+  holiday: HOLIDAY,
   random: RANDOM,
 };

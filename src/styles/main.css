@@ -3322,17 +3322,25 @@ input {
 .org-name input {
   flex: 1;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: 10px;
   border: 0;
   background: rgba(0, 0, 0, 0.35);
   color: #fff;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 14px;
+  /* 1.9.7: 16px — iOS Safari zooms into a smaller field, and the locked page then left it off-screen */
+  font-size: 16px;
   text-transform: uppercase;
   box-shadow: inset 0 0 0 1px var(--teal);
   outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.org-name .org-x {
+  width: 34px;
+  height: 34px;
+  flex: none;
 }
 .goal {
   display: flex;
@@ -4848,13 +4856,6 @@ input {
 }
 
 /* ---- seasonal menu on short / narrow phones: keep the 3D fighter visible */
-.menu-org {
-  letter-spacing: 0.06em;
-  max-width: calc(100% - 24px);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 @media (max-height: 700px) {
   .menu .plate-abilities {
     display: none;
@@ -7886,10 +7887,6 @@ input {
     transform: scale(1.28);
   }
 }
-.menu-org[data-act] {
-  cursor: pointer;
-}
-
 /* a soft scrim over the studio behind the dossier (readability while it scrolls) */
 .profile::before {
   content: '';
@@ -14134,6 +14131,8 @@ button.pid-mini:active {
 .lg-fpicks {
   display: flex;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding: 2px 2px 6px;
@@ -14194,6 +14193,24 @@ button.pid-mini:active {
   display: block;
   min-width: 0;
 }
+/* 1.9.7: the deck being edited — empty places show how many cards are still to pick */
+.lg-dslot {
+  aspect-ratio: 0.72;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.22);
+}
+.lg-dslot i {
+  font-style: normal;
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.35);
+}
+.lg-editor.full .lg-cardpick:not(.on) .card {
+  filter: saturate(0.3) brightness(0.55);
+}
 .lg-mcard .gem {
   top: -6px;
   left: -6px;
@@ -14203,10 +14220,12 @@ button.pid-mini:active {
 }
 .lg-modes {
   display: grid;
-  grid-template-columns: 1fr;
+  /* 1.9.7: minmax(0, …) — a plain 1fr grew to the width of the squad's portrait strip and pushed the cards off an iPhone */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .lg-mode {
+  min-width: 0;
   padding: 13px 14px;
   border-radius: var(--radius);
   background: linear-gradient(180deg, var(--panel-a), var(--panel-b));
@@ -14264,6 +14283,16 @@ button.pid-mini:active {
   font-size: 12.5px;
   line-height: 1.4;
   color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.lg-mode > .btn {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.15;
+}
+.lg-mode-head > div {
+  min-width: 0;
 }
 .lg-report-row {
   display: flex;
@@ -16847,4 +16876,235 @@ button.lg-arena:active {
   .dps-reveal-item {
     animation: none;
   }
+}
+
+/* =====================================================================
+   Alpha 1.9.7 — WINTER SHOWDOWN cosmetics (looks only; the server's season ledger proves the ownership)
+   ===================================================================== */
+
+/* WINTER CHAMPION (title, grand prize): a gold-and-frost nameplate title with a small snowflake, a festive ribbon */
+:root[data-title='winter-champion'] .plate-title {
+  color: #ffd36a;
+  text-shadow: 0 0 8px rgba(127, 227, 255, 0.55);
+}
+:root[data-title='winter-champion'] .plate-title::before {
+  content: '❄';
+  margin-right: 5px;
+  color: #9fe8ff;
+}
+:root[data-title='winter-champion'] .champ-ribbon {
+  background: linear-gradient(90deg, #b8861e, #ffd36a 35%, #9fe8ff 50%, #ffd36a 65%, #b8861e);
+  color: #1a0f00;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 204, 77, 0.5);
+}
+
+/* FROSTLIGHT LIVE (frame): frost-blue neon edges, a string of gold lights along the top, snowflake corners */
+:root[data-frame='frostlight'] .bc-frame,
+.fd-screen.frostlight .fd-frame {
+  display: block;
+  position: absolute;
+  inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
+  pointer-events: none !important;
+  z-index: 2;
+  background:
+    radial-gradient(circle, #ffd36a 0 2.2px, transparent 2.6px) 0 1px / 22px 6px repeat-x,
+    linear-gradient(90deg, transparent, rgba(127, 227, 255, 0.85) 12%, rgba(127, 227, 255, 0.85) 88%, transparent) top / 100% 1.5px no-repeat,
+    linear-gradient(90deg, transparent, rgba(127, 227, 255, 0.6) 12%, rgba(255, 90, 122, 0.55) 50%, rgba(127, 227, 255, 0.6) 88%, transparent) bottom / 100% 1.5px no-repeat;
+  filter: drop-shadow(0 0 4px rgba(127, 227, 255, 0.55));
+}
+.fd-screen.frostlight .fd-frame {
+  inset: 3px;
+  background-size: 12px 4px, 100% 1px, 100% 1px;
+}
+:root[data-frame='frostlight'] .bc-frame i,
+.fd-screen.frostlight .fd-frame i {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-top: 2.5px solid #9fe8ff;
+  border-left: 2.5px solid #9fe8ff;
+  border-radius: 9px 0 0 0;
+}
+.fd-screen.frostlight .fd-frame i {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+}
+:root[data-frame='frostlight'] .bc-frame i::after,
+.fd-screen.frostlight .fd-frame i::after {
+  content: '❄';
+  position: absolute;
+  left: 3px;
+  top: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: #ffd36a;
+  text-shadow: 0 0 6px rgba(255, 204, 77, 0.9);
+}
+.fd-screen.frostlight .fd-frame i::after {
+  font-size: 6px;
+  left: 1px;
+}
+:root[data-frame='frostlight'] .bc-frame .tl,
+.fd-screen.frostlight .fd-frame .tl {
+  left: 0;
+  top: 0;
+}
+:root[data-frame='frostlight'] .bc-frame .tr,
+.fd-screen.frostlight .fd-frame .tr {
+  right: 0;
+  top: 0;
+  transform: scaleX(-1);
+}
+:root[data-frame='frostlight'] .bc-frame .bl,
+.fd-screen.frostlight .fd-frame .bl {
+  left: 0;
+  bottom: 0;
+  transform: scaleY(-1);
+}
+:root[data-frame='frostlight'] .bc-frame .br,
+.fd-screen.frostlight .fd-frame .br {
+  right: 0;
+  bottom: 0;
+  transform: scale(-1, -1);
+}
+:root[data-frame='frostlight'] .bc-frame::before,
+.fd-screen.frostlight .fd-frame::before {
+  content: 'HOLIDAY LIVE';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 7px 2px;
+  border-radius: 4px 0 0 4px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 7.5px;
+  letter-spacing: 0.2em;
+  color: #0a0e24;
+  background: linear-gradient(180deg, #ffd36a, #9fe8ff);
+  box-shadow: 0 0 10px rgba(127, 227, 255, 0.55);
+  opacity: 0.92;
+}
+.fd-screen.frostlight .fd-frame::before {
+  padding: 4px 1px;
+  font-size: 5px;
+}
+:root[data-frame='frostlight'] .timer-box,
+.fd-screen.frostlight .fd-timer {
+  background: linear-gradient(180deg, #121a46, #070a1e);
+  box-shadow: 0 0 0 1.5px #9fe8ff, 0 0 14px rgba(127, 227, 255, 0.45);
+}
+:root[data-frame='frostlight'] .timer-box .live,
+.fd-screen.frostlight .fd-live {
+  background: linear-gradient(90deg, #ff3a5a, #ffd36a);
+  color: #200008;
+}
+:root[data-frame='frostlight'] .fighter-plate {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 0 1.5px #9fe8ff, 0 0 20px rgba(255, 204, 77, 0.3);
+}
+
+/* CLOCKWORK GOLD (card style): a brass clock bezel, a small gear in the corner and a faint dial engraving; text as before */
+:root[data-card-style='clockwork'] .card,
+.clockwork-set .card {
+  box-shadow:
+    0 5px 0 rgba(0, 0, 0, 0.45),
+    inset 0 0 0 2px #e0b84c,
+    inset 0 0 0 3.5px rgba(90, 20, 36, 0.95),
+    0 0 10px rgba(255, 204, 77, 0.35);
+}
+:root[data-card-style='clockwork'] .card .art::before,
+.clockwork-set .card .art::before {
+  background:
+    repeating-conic-gradient(from 0deg at 50% 46%, rgba(255, 220, 140, 0.16) 0 2deg, transparent 2deg 30deg),
+    radial-gradient(circle at 50% 46%, transparent 0 38%, rgba(224, 184, 76, 0.28) 39% 41%, transparent 42%),
+    linear-gradient(180deg, rgba(40, 8, 16, 0.2), transparent 30%, transparent 64%, rgba(30, 6, 12, 0.55) 88%);
+}
+:root[data-card-style='clockwork'] .card::before,
+.clockwork-set .card::before {
+  content: '';
+  position: absolute;
+  right: 6%;
+  top: 5%;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #3a0d1e 0 2px, transparent 2.5px), repeating-conic-gradient(#e0b84c 0 20deg, transparent 20deg 45deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 1.6px, #000 2px);
+  mask: radial-gradient(circle, transparent 0 1.6px, #000 2px);
+  filter: drop-shadow(0 0 2px rgba(255, 204, 77, 0.9));
+  animation: clockGear 12s linear infinite;
+  pointer-events: none;
+}
+.clockwork-set .card:not(.in-deck)::after {
+  content: none;
+}
+:root[data-card-style='clockwork'] .card .nm,
+.clockwork-set .card .nm {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 6px rgba(255, 204, 77, 0.55);
+}
+:root[data-card-style='clockwork'] .hand-card.combo-ready {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 3px #ffe27a, 0 0 24px rgba(255, 210, 58, 0.85), 0 0 10px rgba(255, 204, 77, 0.5);
+}
+:root[data-card-style='clockwork'] .card.exclusive {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #fff2b0, inset 0 0 0 3.5px rgba(90, 20, 36, 0.95), 0 0 14px rgba(255, 210, 58, 0.45);
+}
+:root[data-card-style='clockwork'] .card.focus {
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.5);
+}
+@keyframes clockGear {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-card-style='clockwork'] .card::before,
+  .clockwork-set .card::before {
+    animation: none;
+  }
+}
+:root[data-motion='off'][data-card-style='clockwork'] .card::before,
+:root[data-motion='off'] .clockwork-set .card::before {
+  animation: none;
+}
+
+/* WINTER SHOWDOWN — the PRIME ID notes of the server-kept wallet (Events, results) */
+.ev-secure {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid rgba(127, 227, 255, 0.35);
+  background: rgba(20, 30, 70, 0.45);
+}
+.ev-secure svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+}
+.ev-secure.ok {
+  color: #9fe8ff;
+  border-color: rgba(127, 227, 255, 0.2);
+  background: rgba(20, 30, 70, 0.25);
+  font-size: 11px;
+}
+.ev-secure.guest {
+  border-color: rgba(255, 204, 77, 0.45);
+}
+.evr-sec {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted, #9aa3c0);
+}
+.evr-sec.ok {
+  color: #9fe8ff;
+}
+.evr-sec.evr-guest {
+  color: #ffd36a;
+}
+.btn.busy {
+  opacity: 0.6;
+  pointer-events: none;
 }

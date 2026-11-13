@@ -21,14 +21,17 @@ import {
   Quaternion,
   ShaderMaterial,
   SphereGeometry,
+  BoxGeometry,
+  TorusGeometry,
   Vector3,
   type Material,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ARENA } from '../config/balance';
+import type { ArenaId } from '../config/arenas.config';
 import type { AmbientKind, DecorKind } from '../config/themes.config';
 import { Rng } from '../core/math';
-import type { DecorLayout, DecorSpot } from './stages/StageKit';
+import { FLOOR_TOP, GROUND_Y, WALL_TOP, type DecorLayout, type DecorSpot } from './stages/StageKit';
 import { canvasTexture, makeCanvas } from './textures';
 
 // Seasonal 3D decoration layered over the current studio set. Everything sits
@@ -45,6 +48,31 @@ const _q = new Quaternion();
 const _s = new Vector3();
 const _p = new Vector3();
 const _up = new Vector3(0, 1, 0);
+const _c = new Color();
+
+/** A point at distance `d` along a rounded rectangle (half sizes hx, hz, corner radius r), from its back-left. */
+function ringPoint(hx: number, hz: number, r: number, d: number): Vector3 {
+  const sx = 2 * (hx - r);
+  const sz = 2 * (hz - r);
+  const arc = (Math.PI / 2) * r;
+  const corner = (cx: number, cz: number, a: number) => new Vector3(cx + Math.cos(a) * r, 0, cz + Math.sin(a) * r);
+  const segs: [number, (u: number) => Vector3][] = [
+    [sx, (u) => new Vector3(-hx + r + u, 0, -hz)],
+    [arc, (u) => corner(hx - r, -hz + r, -Math.PI / 2 + u / r)],
+    [sz, (u) => new Vector3(hx, 0, -hz + r + u)],
+    [arc, (u) => corner(hx - r, hz - r, u / r)],
+    [sx, (u) => new Vector3(hx - r - u, 0, hz)],
+    [arc, (u) => corner(-hx + r, hz - r, Math.PI / 2 + u / r)],
+    [sz, (u) => new Vector3(-hx, 0, hz - r - u)],
+    [arc, (u) => corner(-hx + r, -hz + r, Math.PI + u / r)],
+  ];
+  let left = d;
+  for (const [len, f] of segs) {
+    if (left <= len) return f(left);
+    left -= len;
+  }
+  return new Vector3(-hx + r, 0, -hz);
+}
 
 function placeInstances(mesh: InstancedMesh, spots: Spot[], faceCentre: boolean, rng: Rng): void {
   spots.forEach(([x, y, z, s], i) => {
@@ -304,23 +332,49 @@ function floorDecal(kind: DecorKind): Mesh {
           g.fill();
         }
       } else {
-        g.strokeStyle = 'rgba(220, 245, 255, 0.5)';
-        for (let i = 0; i < 3; i++) {
+        // 1.9.7: a snowflake with little branches in each corner
+        g.strokeStyle = 'rgba(225, 246, 255, 0.6)';
+        g.lineCap = 'round';
+        for (let i = 0; i < 6; i++) {
           g.rotate(Math.PI / 3);
           g.beginPath();
-          g.moveTo(0, -18);
-          g.lineTo(0, 18);
+          g.moveTo(0, 0);
+          g.lineTo(0, -24);
+          for (const s of [-1, 1]) {
+            g.moveTo(0, -13);
+            g.lineTo(s * 7, -19);
+          }
           g.stroke();
         }
       }
       g.restore();
     }
   }
+  if (kind === 'frost') {
+    // 1.9.7: frost creeping in from the barrier — a soft white edge, and a dusting of frost sparkles
+    const fr = g.createRadialGradient(W / 2, H / 2, H * 0.44, W / 2, H / 2, H * 0.62);
+    fr.addColorStop(0, 'rgba(200, 235, 255, 0)');
+    fr.addColorStop(1, 'rgba(220, 242, 255, 0.13)');
+    g.fillStyle = fr;
+    g.fillRect(0, 0, W, H);
+    const rng = new Rng(404);
+    for (let k = 0; k < 160; k++) {
+      const x = rng.range(0, W);
+      const y = rng.range(0, H);
+      const edge = Math.max(Math.abs(x / W - 0.5) * 2, Math.abs(y / H - 0.5) * 2);
+      if (edge < 0.55) continue;
+      g.fillStyle = `rgba(235, 248, 255, ${rng.range(0.15, 0.45) * edge})`;
+      g.fillRect(x, y, 2, 2);
+    }
+  }
   const tex = canvasTexture(c);
   const mat = new MeshBasicMaterial({ map: tex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
   const mesh = new Mesh(new PlaneGeometry(hx * 2, hz * 2), mat);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.012;
+  // 1.9.7: the winter decal lies on the floor plate's top (FLOOR_TOP since 1.7.5). The other decals keep their old
+  // height (0.012 — under that top, so they do not show): lifting them would change the BOSS FIGHT and Halloween look
+  // outside this release (noted for the owner)
+  mesh.position.y = kind === 'frost' ? FLOOR_TOP + 0.008 : 0.012;
   mesh.renderOrder = 0;
   return mesh;
 }
@@ -412,6 +466,10 @@ export class SeasonalDecor {
   private bats: InstancedMesh | null = null;
   private batData: Bat[] = [];
   private glowMats: MeshStandardMaterial[] = [];
+  /** 1.9.7: the ice crystals' soft glow (breathes slowly). */
+  private glowMatsIce: MeshStandardMaterial[] = [];
+  /** Alpha 1.9.7: twinkling lights (the lobby tree's only while the lobby shows) and their own colours. */
+  private twinkles: { mesh: InstancedMesh; base: Color[]; menu: boolean }[] = [];
   private t = 0;
 
   private layout: DecorLayout;
@@ -421,11 +479,18 @@ export class SeasonalDecor {
    * @param native the set already dresses itself for this season (HAUNTED PRIME SET at
    *   Halloween): only ambience and BOSS FIGHT pieces are added, no second set of pumpkins
    */
-  constructor(kind: DecorKind, ambient: AmbientKind, ambientColors: number[], lowQuality: boolean, layout: DecorLayout, native = false) {
+  /** Alpha 1.9.7: which set this decor dresses (each wears the winter in its own style) and its barrier set pieces. */
+  private stage: ArenaId | null;
+  private barrierProps: { x: number; z: number }[];
+
+  constructor(kind: DecorKind, ambient: AmbientKind, ambientColors: number[], lowQuality: boolean, layout: DecorLayout, native = false, opts: { stage?: ArenaId; props?: { x: number; z: number }[] } = {}) {
     this.layout = layout;
+    this.stage = opts.stage ?? null;
+    this.barrierProps = opts.props ?? [];
     this.group.add(this.menuGroup);
     if (kind === 'pumpkins' && !native) this.buildHalloween(layout.spots);
-    else if (kind === 'frost') this.buildFrost();
+    // (1.9.7: on the New Year set — which dresses itself — only the lobby pieces)
+    else if (kind === 'frost') this.buildFrost(native);
     else if (kind === 'champion') this.buildChampion(layout.spots, false);
     else if (kind === 'championHalloween') {
       // BOSS FIGHT during Halloween: champion pylons and banners in the season's colours,
@@ -522,8 +587,10 @@ export class SeasonalDecor {
     this.group.add(new Mesh(webGeo, webMat));
   }
 
-  private buildFrost(): void {
+  private buildFrost(lobbyOnly = false): void {
     const rng = new Rng(53);
+    this.buildHolidayLobby();
+    if (lobbyOnly) return;
     // snow mounds where the pumpkins would be
     const mound = new SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
     mound.scale(1.3, 0.55, 1.1);
@@ -557,6 +624,8 @@ export class SeasonalDecor {
       stars.setMatrixAt(i, _m);
     });
     this.group.add(stars);
+    // 1.9.7: the set's own winter style (lights on its barrier, and its own pieces)
+    this.buildWinterStyle(rng);
 
     // snowmen beside the menu pedestal
     const sm: BufferGeometry[] = [];
@@ -579,6 +648,301 @@ export class SeasonalDecor {
       snowmen.setMatrixAt(i, _m);
     });
     this.menuGroup.add(snowmen);
+  }
+
+  /**
+   * Alpha 1.9.7 — WINTER SHOWDOWN: the lobby as a New Year special — a tall tree with a gold star and twinkling lights
+   * behind the pedestal on the right, gift boxes and two big candy canes beside it. Everything stands beside and behind
+   * the fighter (|x| ≥ 1.2, z ≤ 0.9): the fighter, the buttons and the information stay clear.
+   */
+  private buildHolidayLobby(): void {
+    const rng = new Rng(61);
+    // the tree stands behind the fighter's left shoulder (screen right), close enough to show on a phone too
+    const TX = 1.85;
+    const TZ = -3.9;
+    const TS = 1.05;
+    const parts: BufferGeometry[] = [];
+    for (let i = 0; i < 4; i++) parts.push(colorAttr(new ConeGeometry(1.15 - i * 0.24, 1.15, 12).translate(0, 0.95 + i * 0.68, 0), new Color(0x1c6646).multiplyScalar(1 - i * 0.06)));
+    parts.push(colorAttr(new CylinderGeometry(0.16, 0.2, 0.5, 8).translate(0, 0.25, 0), new Color(0x5a3a22)));
+    // gift boxes under the tree and beside the pedestal (paper + gold ribbon)
+    const gifts: [number, number, number, number, number][] = [
+      [2.75, -2.55, 0.5, 0xc4122f, 0.4],
+      [1.75, -2.35, 0.38, 0x1f4fd8, -0.3],
+      [-2.35, -1.2, 0.46, 0x157a4a, 0.2],
+      [-1.55, -1.75, 0.32, 0xe0b84c, 0.6],
+    ];
+    const giftParts: BufferGeometry[] = [];
+    for (const [x, z, sz, col, yaw] of gifts) {
+      const box = colorAttr(new BoxGeometry(sz, sz * 0.82, sz), new Color(col));
+      const r1 = colorAttr(new BoxGeometry(sz * 1.02, sz * 0.84, sz * 0.16), new Color(0xe0b84c));
+      const r2 = colorAttr(new BoxGeometry(sz * 0.16, sz * 0.84, sz * 1.02), new Color(0xe0b84c));
+      const bow = colorAttr(new TorusGeometry(sz * 0.16, sz * 0.05, 6, 10).translate(0, sz * 0.48, 0), new Color(0xffd36a));
+      for (const g of [box, r1, r2, bow]) {
+        g.rotateY(yaw);
+        g.translate(x, sz * 0.41, z);
+        giftParts.push(g);
+      }
+    }
+    // two candy canes: red and white bands, a hook
+    for (const [x, z, sc] of [
+      [-2.75, -0.45, 1],
+      [2.6, 0.2, 0.85],
+    ] as [number, number, number][]) {
+      for (let k = 0; k < 7; k++) giftParts.push(colorAttr(new CylinderGeometry(0.07 * sc, 0.07 * sc, 0.2 * sc, 10).translate(x, (0.1 + k * 0.2) * sc, z), new Color(k % 2 ? 0xd8162e : 0xfaf4ee)));
+      giftParts.push(colorAttr(new TorusGeometry(0.22 * sc, 0.07 * sc, 8, 14, Math.PI).translate(x - 0.22 * sc * Math.sign(x), 1.4 * sc, z), new Color(0xd8162e)));
+    }
+    const mat = new MeshLambertMaterial({ vertexColors: true, emissive: new Color(0x0c1426) });
+    const treeGeo = mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
+    parts.forEach((p) => p.dispose());
+    const tree = new Mesh(treeGeo, mat);
+    tree.position.set(TX, 0, TZ);
+    tree.scale.setScalar(TS);
+    this.menuGroup.add(tree);
+    const giftGeo = mergeGeometries(giftParts.map((p) => p.toNonIndexed()))!;
+    giftParts.forEach((p) => p.dispose());
+    this.menuGroup.add(new Mesh(giftGeo, mat));
+    const star = new Mesh(new OctahedronGeometry(0.22, 0), new MeshBasicMaterial({ color: new Color(0xfff2a0).multiplyScalar(3) }));
+    star.position.set(TX, 3.75 * TS, TZ);
+    this.menuGroup.add(star);
+    // the tree's lights (instanced, a few twinkle each frame)
+    const n = 34;
+    const lights = new InstancedMesh(new SphereGeometry(0.055, 6, 4), new MeshBasicMaterial({ toneMapped: false }), n);
+    const cols = [0xff3a5a, 0xffcc4d, 0x7fe3ff, 0x7aff9a];
+    for (let i = 0; i < n; i++) {
+      const h = 0.6 + (i / n) * 2.6;
+      const rad = Math.max(0.18, 1.08 - h * 0.33) * TS;
+      const a = i * 2.4 + rng.range(-0.2, 0.2);
+      _m.compose(_p.set(TX + Math.cos(a) * rad, (0.3 + h) * TS, TZ + Math.sin(a) * rad), _q.identity(), _s.setScalar(1));
+      lights.setMatrixAt(i, _m);
+      const c = new Color(cols[i % cols.length]).multiplyScalar(2.2);
+      this.twinkleBase.push(c);
+      lights.setColorAt(i, c);
+    }
+    this.menuGroup.add(lights);
+    this.twinkles.push({ mesh: lights, base: this.twinkleBase, menu: true });
+  }
+
+  private twinkleBase: Color[] = [];
+
+  // ------------------------------------------------------------ 1.9.7: a winter style per set
+  /**
+   * Every set wears the New Year in its own way — all of it outside the fighting area (on top of or outside the
+   * barrier, on the walls, under the screens), so collisions, cover, the camera and the fighters are untouched:
+   *   ORIGINAL PRIME ARENA  a cool «winter gala»: ice-blue and white lights on the barrier, ice crystal sculptures
+   *   PRIME CASINO          red and gold: gold and red lights, towers of gifts with gold ribbons, baubles under the screens
+   *   STUDIO BACKLOT        a snowy street: warm retro multicolour bulbs, icicles on the barrier, wreaths on the walls
+   *   GRAVEYARD BROADCAST   a frozen night: icy blue and violet lights, icicles, ice crystals
+   */
+  private buildWinterStyle(rng: Rng): void {
+    const st = this.stage;
+    if (!st || st === 'holiday') return;
+    const ground = this.layout.spots.filter((s) => s[1] <= 0.35);
+    this.snowDrifts(rng);
+    if (st === 'original') {
+      this.barrierLights([0x9fe8ff, 0xffffff, 0x7fb8ff], 0.42, 0.05, rng);
+      this.iceCrystals(ground.filter((_, i) => i % 2 === 0), rng);
+      this.wreaths(0x9fe8ff);
+    } else if (st === 'casino') {
+      this.barrierLights([0xffcc4d, 0xff3a5a, 0xfff1c4], 0.38, 0.055, rng);
+      this.giftTowers(ground.filter((_, i) => i % 2 === 1), rng);
+      this.screenBaubles([0xd8162e, 0xe0b84c, 0xd8162e]);
+      this.wreaths(0xffcc4d);
+    } else if (st === 'backlot') {
+      this.barrierLights([0xff5a3a, 0xffcc4d, 0x5ad0ff, 0x7aff7a, 0xff7ad9], 0.46, 0.07, rng);
+      this.icicles(rng);
+      this.wreaths(0xd8162e);
+    } else if (st === 'graveyard' || st === 'haunted') {
+      this.barrierLights([0x7fd8ff, 0xb48cff, 0xe8f6ff], 0.5, 0.05, rng);
+      this.icicles(rng);
+      this.iceCrystals(ground.filter((_, i) => i % 2 === 0), rng);
+    }
+  }
+
+  /** Bulbs along the top of the barrier (none where a set piece stands on it); a few twinkle each frame. */
+  private barrierLights(colors: number[], step: number, size: number, rng: Rng): void {
+    const off = 0.24;
+    const hx = ARENA.wallX + off;
+    const hz = ARENA.wallZ + off;
+    const r = ARENA.wallCorner + off;
+    const per = 2 * (2 * (hx - r) + 2 * (hz - r)) + 2 * Math.PI * r;
+    const pts: Vector3[] = [];
+    for (let i = 0, n = Math.round(per / step); i < n; i++) {
+      const p = ringPoint(hx, hz, r, (i / n) * per);
+      if (this.barrierProps.some((b) => Math.hypot(b.x - p.x, b.z - p.z) < 0.6)) continue;
+      pts.push(p);
+    }
+    if (!pts.length) return;
+    const mesh = new InstancedMesh(new SphereGeometry(size, 8, 6), new MeshBasicMaterial({ toneMapped: false }), pts.length);
+    const base: Color[] = [];
+    pts.forEach((p, i) => {
+      _m.compose(_p.set(p.x, WALL_TOP + size + 0.02 + rng.range(0, 0.02), p.z), _q.identity(), _s.setScalar(1));
+      mesh.setMatrixAt(i, _m);
+      const c = new Color(colors[i % colors.length]).multiplyScalar(2.1);
+      base.push(c);
+      mesh.setColorAt(i, c);
+    });
+    this.group.add(mesh);
+    this.twinkles.push({ mesh, base, menu: false });
+  }
+
+  /** Low snow drifts against the outside of the barrier (they never rise over it). */
+  private snowDrifts(rng: Rng): void {
+    const off = 0.64;
+    const hx = ARENA.wallX + off;
+    const hz = ARENA.wallZ + off;
+    const r = ARENA.wallCorner + off;
+    const per = 2 * (2 * (hx - r) + 2 * (hz - r)) + 2 * Math.PI * r;
+    const n = Math.round(per / 0.75);
+    const mesh = new InstancedMesh(new SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new MeshLambertMaterial({ color: 0xb8c8e8, emissive: new Color(0x1a3058), emissiveIntensity: 0.3 }), n);
+    for (let i = 0; i < n; i++) {
+      const p = ringPoint(hx, hz, r, (i / n) * per);
+      const s = rng.range(0.45, 0.8);
+      _q.setFromAxisAngle(_up, rng.range(0, 3));
+      _m.compose(_p.set(p.x, GROUND_Y, p.z), _q, _s.set(s, rng.range(0.22, 0.42), s * rng.range(0.6, 1)));
+      mesh.setMatrixAt(i, _m);
+    }
+    this.group.add(mesh);
+  }
+
+  /** Icicles under the outer lip of the barrier. */
+  private icicles(rng: Rng): void {
+    const off = 0.46;
+    const hx = ARENA.wallX + off;
+    const hz = ARENA.wallZ + off;
+    const r = ARENA.wallCorner + off;
+    const per = 2 * (2 * (hx - r) + 2 * (hz - r)) + 2 * Math.PI * r;
+    const n = Math.round(per / 0.32);
+    const cone = new ConeGeometry(1, 1, 6);
+    cone.rotateX(Math.PI);
+    cone.translate(0, -0.5, 0);
+    const mesh = new InstancedMesh(cone, new MeshLambertMaterial({ color: 0xcfefff, emissive: new Color(0x3a78b8), emissiveIntensity: 0.55, transparent: true, opacity: 0.88 }), n);
+    for (let i = 0; i < n; i++) {
+      const p = ringPoint(hx, hz, r, (i / n) * per);
+      const len = rng.range(0.1, 0.32);
+      _m.compose(_p.set(p.x, WALL_TOP + 0.01, p.z), _q.identity(), _s.set(rng.range(0.025, 0.045), len, rng.range(0.025, 0.045)));
+      mesh.setMatrixAt(i, _m);
+    }
+    this.group.add(mesh);
+  }
+
+  /** Ice crystal sculptures (clusters of tall glowing crystals) beside the arena. */
+  private iceCrystals(spots: Spot[], rng: Rng): void {
+    if (!spots.length) return;
+    const parts: BufferGeometry[] = [];
+    for (const [dx, h, tilt] of [
+      [0, 1.4, 0],
+      [0.32, 0.95, -0.35],
+      [-0.3, 1.05, 0.3],
+      [0.08, 0.7, 0.55],
+    ] as [number, number, number][]) {
+      const c = new OctahedronGeometry(0.22, 0);
+      c.scale(1, h / 0.44, 1);
+      c.rotateZ(tilt);
+      c.translate(dx, h * 0.5, dx * 0.3);
+      parts.push(c);
+    }
+    const geo = mergeGeometries(parts.map((q) => q.toNonIndexed()))!;
+    parts.forEach((q) => q.dispose());
+    const mat = new MeshStandardMaterial({ color: 0xbfeaff, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.86, emissive: new Color(0x5ac8ff), emissiveIntensity: 0.6 });
+    this.glowMatsIce.push(mat);
+    const mesh = new InstancedMesh(geo, mat, spots.length);
+    spots.forEach(([x, y, z, s], i) => {
+      _q.setFromAxisAngle(_up, rng.range(0, Math.PI * 2));
+      _m.compose(_p.set(x + Math.sign(x) * 0.55, y, z), _q, _s.setScalar(s * 1.6));
+      mesh.setMatrixAt(i, _m);
+    });
+    this.group.add(mesh);
+  }
+
+  /** Towers of gifts with gold ribbons (PRIME CASINO). */
+  private giftTowers(spots: Spot[], rng: Rng): void {
+    if (!spots.length) return;
+    const parts: BufferGeometry[] = [];
+    let y = 0;
+    for (const [s, col, yaw] of [
+      [0.9, 0xc4122f, 0],
+      [0.66, 0x111111, 0.4],
+      [0.46, 0xe0b84c, -0.3],
+    ] as [number, number, number][]) {
+      const h = s * 0.8;
+      for (const g of [
+        colorAttr(new BoxGeometry(s, h, s), new Color(col)),
+        colorAttr(new BoxGeometry(s * 1.02, h * 1.02, s * 0.14), new Color(col === 0xe0b84c ? 0xd8162e : 0xe0b84c)),
+        colorAttr(new BoxGeometry(s * 0.14, h * 1.02, s * 1.02), new Color(col === 0xe0b84c ? 0xd8162e : 0xe0b84c)),
+      ]) {
+        g.rotateY(yaw);
+        g.translate(0, y + h / 2, 0);
+        parts.push(g);
+      }
+      y += h;
+    }
+    parts.push(colorAttr(new TorusGeometry(0.12, 0.04, 6, 12).rotateY(0.6).translate(-0.08, y + 0.08, 0), new Color(0xffd36a)));
+    parts.push(colorAttr(new TorusGeometry(0.12, 0.04, 6, 12).rotateY(-0.6).translate(0.08, y + 0.08, 0), new Color(0xffd36a)));
+    const geo = mergeGeometries(parts.map((q) => q.toNonIndexed()))!;
+    parts.forEach((q) => q.dispose());
+    const mesh = new InstancedMesh(geo, new MeshLambertMaterial({ vertexColors: true, emissive: new Color(0x1a0e06) }), spots.length);
+    spots.forEach(([x, gy, z, s], i) => {
+      _q.setFromAxisAngle(_up, rng.range(-0.5, 0.5));
+      _m.compose(_p.set(x + Math.sign(x) * 0.6, gy, z + 0.3), _q, _s.setScalar(s * 1.5));
+      mesh.setMatrixAt(i, _m);
+    });
+    this.group.add(mesh);
+  }
+
+  /** Big baubles hanging under the edge of each screen (built in the screen's own frame). */
+  private screenBaubles(colors: number[]): void {
+    const parts: BufferGeometry[] = [];
+    const frame = new Object3D();
+    const at = new Object3D();
+    frame.add(at);
+    for (const f of this.layout.screens) {
+      frame.position.set(f.x, f.y, f.z);
+      frame.rotation.set(f.rx, f.ry, 0);
+      [-0.32, 0, 0.32].forEach((u, k) => {
+        const drop = 0.45 + (k % 2) * 0.35;
+        const r = f.size * 0.16;
+        at.position.set(u * f.w, -f.h / 2 - drop, f.front + 0.1);
+        frame.updateMatrixWorld(true);
+        const ball = colorAttr(new SphereGeometry(r, 14, 10), new Color(colors[k % colors.length]));
+        const cap = colorAttr(new CylinderGeometry(r * 0.3, r * 0.34, r * 0.32, 8).translate(0, r * 1.02, 0), new Color(0xe0b84c));
+        const thread = colorAttr(new CylinderGeometry(0.012, 0.012, drop, 4).translate(0, r + drop / 2, 0), new Color(0xe0b84c));
+        for (const g of [ball, cap, thread]) {
+          g.applyMatrix4(at.matrixWorld);
+          parts.push(g);
+        }
+      });
+    }
+    if (!parts.length) return;
+    const geo = mergeGeometries(parts.map((q) => q.toNonIndexed()))!;
+    parts.forEach((q) => q.dispose());
+    this.group.add(new Mesh(geo, new MeshStandardMaterial({ vertexColors: true, roughness: 0.2, metalness: 0.6, emissive: new Color(0x1a1020), emissiveIntensity: 0.5 })));
+  }
+
+  /** Evergreen wreaths with a bow on the walls (at the banner anchors). */
+  private wreaths(bow: number): void {
+    const parts: BufferGeometry[] = [];
+    for (const [x, y, z, yaw] of this.layout.banners) {
+      const ring = colorAttr(new TorusGeometry(0.55, 0.17, 8, 22), new Color(0x1c6646));
+      const bw = [
+        colorAttr(new TorusGeometry(0.13, 0.05, 6, 12).scale(1, 0.75, 0.6).translate(-0.13, -0.55, 0.12), new Color(bow)),
+        colorAttr(new TorusGeometry(0.13, 0.05, 6, 12).scale(1, 0.75, 0.6).translate(0.13, -0.55, 0.12), new Color(bow)),
+        colorAttr(new SphereGeometry(0.07, 8, 6).translate(0, -0.55, 0.14), new Color(bow)),
+      ];
+      const berries: BufferGeometry[] = [];
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + 0.3;
+        berries.push(colorAttr(new SphereGeometry(0.06, 6, 4).translate(Math.cos(a) * 0.55, Math.sin(a) * 0.55, 0.16), new Color(k % 2 ? 0xd8162e : 0xffcc4d)));
+      }
+      for (const g of [ring, ...bw, ...berries]) {
+        g.rotateY(yaw);
+        g.translate(x + Math.sin(yaw) * 0.18, y - 1.6, z + Math.cos(yaw) * 0.18);
+        parts.push(g);
+      }
+    }
+    if (!parts.length) return;
+    const geo = mergeGeometries(parts.map((q) => q.toNonIndexed()))!;
+    parts.forEach((q) => q.dispose());
+    this.group.add(new Mesh(geo, new MeshLambertMaterial({ vertexColors: true, emissive: new Color(0x0c1a12) })));
   }
 
   /**
@@ -639,6 +1003,18 @@ export class SeasonalDecor {
     if (this.ambient) (this.ambient.material as ShaderMaterial).uniforms.uTime.value = t;
     // pumpkins breathe a little with the crowd
     for (const m of this.glowMats) m.emissiveIntensity = 2.4 + Math.sin(t * 2.2) * 0.25 + excite * 0.6;
+    // Alpha 1.9.7: the lights twinkle — a few per frame (the lobby tree only while the lobby shows)
+    for (const tw of this.twinkles) {
+      if (tw.menu && !this.menuGroup.visible) continue;
+      const m = tw.mesh;
+      for (let k = 0; k < 3; k++) {
+        const i = Math.floor((t * 23 + k * 11 + m.id) % m.count);
+        const on = Math.sin(t * 4 + i * 1.7) > -0.3;
+        m.setColorAt(i, _c.copy(tw.base[i]).multiplyScalar(on ? 1 + excite * 0.3 : 0.3));
+      }
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    for (const m of this.glowMatsIce) m.emissiveIntensity = 0.55 + Math.sin(t * 1.3) * 0.12 + excite * 0.2;
     if (this.bats) {
       for (let i = 0; i < this.batData.length; i++) {
         const b = this.batData[i];

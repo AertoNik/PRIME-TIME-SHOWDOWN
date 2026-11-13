@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "1.9.6-alpha",
+  "version": "1.9.7-alpha",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.8.2 Stage 1: PRIME Cloud closed beta — pre-deployment foundation)",
   "type": "module",
   "scripts": {
@@ -54,6 +54,10 @@
     "league:load": "tsx scripts/league-load.ts",
     "economy": "tsx scripts/economy-model.ts",
     "economy:check": "tsx scripts/economy-check.ts",
+    "winter": "tsx scripts/winter-check.ts",
+    "winter:economy": "tsx scripts/winter-economy.ts",
+    "winter:server": "tsx scripts/season-check.ts",
+    "metrika": "tsx scripts/metrika-check.ts",
     "viewport": "tsx scripts/viewport-check.ts",
     "producer:preview": "tsx scripts/producer-preview.ts"
   },

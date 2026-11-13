@@ -152,7 +152,8 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   const richer = save176();
   richer.version = 12;
   richer.fighters.rina.unlocked = true;
-  for (const id of FIGHTER_ORDER) richer.fighters[id].deck = richer.fighters[id].deck.slice();
+  // (1.9.7: a 1.7.6 save has no CRAX yet — the game adds him from the defaults, locked)
+  for (const id of FIGHTER_ORDER) if (richer.fighters[id]) richer.fighters[id].deck = richer.fighters[id].deck.slice();
   richer.cards.owned = NEW_CARDS.slice();
   richer.fighters.ray.deck = ['dash', NEW_CARDS[0], NEW_CARDS[1], NEW_CARDS[2]];
   fixtures.push(['all cards', richer]);
@@ -338,7 +339,7 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   check('the account claims only when the game is opened (in front), on «Повторить» after a failed claim, or before a first upload the player asked for — never from a timer', (rtm.match(/session\.claim\(\)|s\.claim\(\)/g) ?? []).length === 3 && /if \(document\.visibilityState === 'visible'\) void this\.activate\(\);/.test(rtm) && /\} else if \(!this\.activated\) \{/.test(rtm) && !/setInterval/.test(rtm));
   check('a match cannot start before the account\'s progress is loaded and compared with PRIME CLOUD; unknown server = sessions assumed (no false freedom offline)', /if \(!this\.ready\) return s\.state === 'unconfirmed' \? 'offline' : 'loading';/.test(rtm) && /return this\.serverConfig \? this\.serverConfig\.sessions : true;/.test(rtm));
   const api = read('src/net/PrimeApi.ts');
-  check('every cloud write (save, archive, restore, 1.8.9 daily reward) carries the page\'s game session', (api.match(/\.\.\.this\.sessionBody\(\)/g) ?? []).length === 4);
+  check('every cloud write (save, archive, restore, 1.8.9 daily reward, 1.9.7 the season wallet\'s actions) carries the page\'s game session', (api.match(/\.\.\.this\.sessionBody\(\)/g) ?? []).length === 5);
   const sync = read('src/net/SyncManager.ts');
   check('uploads only from the page holding the session; a refused write stops uploads; «Синхронизировано» only from the server', /if \(this\.o\.session && !this\.o\.session\.canWrite\) return this\.status;/.test(sync) && /case 'superseded':[\s\S]{0,300}this\.stop\(\);/.test(sync));
   const prime = read('backend/pb_hooks/lib/prime.js');
@@ -385,7 +386,14 @@ function buildInto(mode: string): { ok: boolean; files: string[]; js: string; ht
   const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)?.[1] ?? '';
   const scriptSrc = /script-src ([^;]+)/.exec(csp)?.[1] ?? '';
   // (1.8.8 stage 4: the one form the page may send is the purchase, to Robokassa's own payment page)
-  check('index.html has a Content Security Policy: scripts only from the game (no inline, no eval), no plugins, forms only to Robokassa\'s payment page', scriptSrc.trim() === "'self'" && /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action https:\/\/auth\.robokassa\.ru(;|$)/.test(csp) && /connect-src 'self' https:/.test(csp));
+  // 1.9.7: Yandex Metrika 114123351 — public/metrika.js outside the game bundle; the CSP opens its two script hosts
+  // only together with the owner's switch (ENABLED), and the counter only ever starts after «Разрешить»
+  const ym = read('public/metrika.js');
+  const ymOn = /var ENABLED = true;/.test(ym);
+  check(`Metrika: the owner's switch and the CSP agree (${ymOn ? 'ON: script-src has mc.yandex.ru + yastatic.net only' : 'OFF: no Yandex host in the CSP'})`, /var ENABLED = (true|false);/.test(ym) && (ymOn ? scriptSrc.trim() === "'self' https://mc.yandex.ru https://yastatic.net" : !/yandex|yastatic/.test(csp)));
+  check('Metrika: loaded by public/metrika.js only (no inline counter), after «Разрешить», on the official host and a clean address; nothing at all while switched off', /<script src="\.\/metrika\.js" defer><\/script>/.test(html) && !/mc\.yandex\.ru\/metrika/.test(html) && /choice\(\) !== 'granted' \|\| !cleanAddress\(\) \|\| fromPayment\(\)/.test(ym) && /function boot\(\) \{\s*if \(!ENABLED\) return;/.test(ym) && /'primetimeshowdown\.online': 1, 'www\.primetimeshowdown\.online': 1 \}/.test(ym));
+  check('Metrika: Webvisor, click map, link and hash tracking off; no user parameters or IDs sent', /webvisor: false, clickmap: false, trackLinks: false, trackHash: false/.test(ym) && !/userParams|setUserID|'params'|ecommerce/.test(ym.replace(/^\s*(\/\/|\*).*$/gm, '')));
+  check('index.html has a Content Security Policy: scripts only from the game (+ Metrika\'s two hosts when switched on; no inline, no eval), no plugins, forms only to Robokassa\'s payment page', (scriptSrc.trim() === "'self'" || (ymOn && scriptSrc.trim() === "'self' https://mc.yandex.ru https://yastatic.net")) && /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action https:\/\/auth\.robokassa\.ru(;|$)/.test(csp) && /connect-src 'self' https:/.test(csp));
   for (const page of ['backend/pb_public/auth/verify/index.html', 'backend/pb_public/auth/reset/index.html']) {
     const h = read(page);
     check(`${page.split('/').slice(-2).join('/')}: strict CSP (default-src 'none', script-src 'self'), no inline script`, /default-src 'none'; script-src 'self'/.test(h) && !/<script>[^<]/.test(h) && /<script src="\.\.\/auth\.js"><\/script>/.test(h));

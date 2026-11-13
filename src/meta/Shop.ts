@@ -21,6 +21,7 @@ import type { FighterId } from '../config/types';
 import type { Collection } from './Collection';
 import { devGrant, ownsPaid, paidSource } from './entitlements';
 import { isTestPay, type PayEnv } from './Payments';
+import { serverNow } from './serverClock';
 import type { EventManager } from './EventManager';
 import type { SaveSystem } from './SaveSystem';
 
@@ -99,6 +100,12 @@ export interface PurchaseRefusal {
   message: string;
 }
 
+/** «Открыть кого?» — the accusative of the fighters PRIME SHOP sells (the roster name otherwise). */
+const FIGHTER_ACC: Partial<Record<FighterId, string>> = { lucien: 'Люсьена', crax: 'Крэкса' };
+function fighterAcc(id: FighterId): string {
+  return FIGHTER_ACC[id] ?? FIGHTERS[id].name;
+}
+
 export class Shop {
   private store: SaveSystem;
   private events: EventManager;
@@ -106,10 +113,14 @@ export class Shop {
   /** The server's word on prices and selling (null: not known — no accounts in this build, or offline). */
   private server: ShopServerInfo | null = null;
 
-  constructor(store: SaveSystem, events: EventManager, collection: Collection) {
+  /** 1.9.7: when the offer revisions are read — the PRIME NETWORK server's clock (serverClock.ts) like the checkout; checks pin it. */
+  private offerNow: () => number;
+
+  constructor(store: SaveSystem, events: EventManager, collection: Collection, opts: { offerClock?: () => number } = {}) {
     this.store = store;
     this.events = events;
     this.collection = collection;
+    this.offerNow = opts.offerClock ?? serverNow;
   }
 
   // ------------------------------------------------------------ ownership
@@ -138,13 +149,25 @@ export class Shop {
    * terms that sell it take effect.
    */
   listed(item: ShopItemDef): boolean {
-    if ((approvedPriceRub(item.sku) !== null && offerSells(currentOffer(), item.sku)) || this.owns(item) || this.events.itemSeason(item)) return true;
+    if ((approvedPriceRub(item.sku) !== null && offerSells(currentOffer(this.offerNow()), item.sku)) || this.owns(item) || this.seasonShown(item)) return true;
     return !!import.meta.env?.DEV || this.server?.env === 'test';
+  }
+
+  /**
+   * 1.9.7: a seasonal item shows in PRIME SHOP from its event's announcement on (during and after the event as before);
+   * earlier it would give the coming season away (WINTER SHOWDOWN's items in November).
+   */
+  private seasonShown(item: ShopItemDef): boolean {
+    const s = this.events.itemSeason(item);
+    if (!s) return false;
+    if (s.phase !== 'before') return true;
+    const start = s.event.start ? Date.parse(s.event.start) : NaN;
+    return Number.isFinite(start) && s.event.announceDays > 0 && this.events.now() >= start - s.event.announceDays * 86400000;
   }
 
   /** 1.9.5: the item's price is approved, but the offer revision in force does not name it yet (it waits for the next one). */
   awaitsOffer(item: ShopItemDef): boolean {
-    return approvedPriceRub(item.sku) !== null && !offerSells(currentOffer(), item.sku);
+    return approvedPriceRub(item.sku) !== null && !offerSells(currentOffer(this.offerNow()), item.sku);
   }
 
   isWorn(item: ShopItemDef): boolean {
@@ -199,7 +222,10 @@ export class Shop {
   /** Price line: the official price in roubles once approved and known — never invented, never a test amount. */
   priceOf(sku: ShopSku): string {
     const kop = this.priceKop(sku);
-    return kop === null ? 'Цена уточняется' : formatKop(kop);
+    if (kop === null) return 'Цена уточняется';
+    // 1.9.7: a promotion (the server charges less than the list price — never a test amount)
+    const charge = this.server && !isTestPay(this.server.env) ? this.chargeKop(sku) : null;
+    return charge !== null && charge < kop ? `${formatKop(charge)} · акция (было ${formatKop(kop)})` : formatKop(kop);
   }
 
   /**
@@ -291,7 +317,7 @@ export class Shop {
         status: 'seasonal',
         chip: 'СЕЗОННЫЙ',
         price: `${season.cost} ${cur.name}`,
-        note: `Сейчас получается только за жетоны ${ev.title}: у вас ${have} ${plural(have, cur.short)}. За рубли во время события не продаётся.`,
+        note: `Сейчас получается только за ${cur.name} (${ev.title}): у вас ${have} ${plural(have, cur.short)}. За рубли во время события не продаётся.`,
         owned: false,
       };
     }
@@ -304,7 +330,7 @@ export class Shop {
         chip: !open ? 'ОЖИДАЕТ ПРОДАЖИ' : env === 'demo' ? 'ДЕМО-ОПЛАТА' : env === 'test' ? 'ТЕСТ-ОПЛАТА' : 'В ПРОДАЖЕ',
         price: this.priceOf(item.sku),
         note: open
-          ? `${ev.title} завершён — предмет сезона теперь можно купить в PRIME SHOP. Полученное за жетоны остаётся у игроков без покупки.`
+          ? `${ev.title} завершён — предмет сезона теперь можно купить в PRIME SHOP. Полученное за ${ev.currency?.name ?? 'жетоны события'} остаётся у игроков без покупки.`
           : this.priceKop(item.sku) !== null
             ? `${ev.title} завершён. Покупка откроется, когда предмет войдёт в действующую редакцию оферты PRIME SHOP.`
             : `${ev.title} завершён. Купить предмет за рубли можно будет, когда для него утвердят цену и условия продажи.`,
@@ -336,7 +362,7 @@ export class Shop {
         status: 'seasonal',
         chip: 'СЕЗОННЫЙ',
         price: `${offer.cost} ${cur.name}`,
-        note: `Сейчас открывается только за жетоны ${offer.event.title}: у вас ${have} ${plural(have, cur.short)}. За рубли не продаётся.`,
+        note: `Сейчас открывается только за ${cur.name} (${offer.event.title}): у вас ${have} ${plural(have, cur.short)}. За рубли не продаётся.`,
         owned: false,
       };
     }
@@ -349,13 +375,14 @@ export class Shop {
         status: open ? 'on_sale' : 'after_season',
         chip: open ? 'В ПРОДАЖЕ' : 'ОЖИДАЕТ ПРОДАЖИ',
         price: this.priceOf(item.sku),
-        // 1.9.4: the shop may well be selling — what is missing then is LUCIEN's own price and terms, not «sales»
+        // 1.9.4: the shop may well be selling — what is missing then is the fighter's own price and terms, not «sales».
+        // 1.9.7: the fighter's own name (CRAX after WINTER SHOWDOWN), not LUCIEN's
         note: open
-          ? `${season.event.title} завершён — Люсьена можно открыть в PRIME SHOP.`
+          ? `${season.event.title} завершён — ${fighterAcc(id)} можно открыть в PRIME SHOP.`
           : SHOP_ITEMS.some((i) => i.sku !== item.sku && this.selling(i.sku))
             ? this.priceKop(item.sku) !== null
-              ? `${season.event.title} завершён. Покупка Люсьена за ${this.priceOf(item.sku)} откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает продажу персонажей.`
-              : `${season.event.title} завершён. Открыть Люсьена за рубли можно будет, когда для него утвердят цену и условия покупки персонажа.`
+              ? `${season.event.title} завершён. Покупка ${fighterAcc(id)} за ${this.priceOf(item.sku)} откроется, когда вступит в силу редакция оферты PRIME SHOP, которая включает его продажу.`
+              : `${season.event.title} завершён. Открыть ${fighterAcc(id)} за рубли можно будет, когда для него утвердят цену и условия покупки персонажа.`
             : `${season.event.title} завершён. Продажи PRIME SHOP пока не открыты.`,
         owned: false,
       };
@@ -437,7 +464,7 @@ export class Shop {
       state: st,
       priceRub: approvedPriceRub(sku),
       salesOpen: SHOP_SALES_OPEN,
-      offer: currentOffer(),
+      offer: currentOffer(this.offerNow()),
       account: { state: signedIn ? 'ready' : 'guest', id: null, nickname: '', email: '' },
       acceptedRevision: 0,
       paymentsReady: CLIENT_PAYMENTS,

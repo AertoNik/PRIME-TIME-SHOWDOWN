@@ -12,6 +12,7 @@ import {
   SHOP_ITEMS,
   SHOP_PRICES_RUB,
   SHOP_PRICE_STATUS,
+  SHOP_PROMOS,
   SHOP_PRICES_APPROVED_LATER,
   approvedPriceRub,
   rubToKop,
@@ -23,7 +24,7 @@ import {
   type SkinId,
 } from '../src/config/shop.config';
 import { Rng } from '../src/core/math';
-import { GOODS_R5, SHOP_OFFERS, currentOffer, offerSells } from '../src/config/offer.config';
+import { GOODS_R5, OFFER_R6_PLAN, SHOP_OFFERS, currentOffer, offerSells } from '../src/config/offer.config';
 import { RARITY_LABEL, RARITY_ORDER } from '../src/config/cosmetics.config';
 import { devGrant, ownsPaid, paidSource, setEntitlements } from '../src/meta/entitlements';
 import { EventManager } from '../src/meta/EventManager';
@@ -66,12 +67,15 @@ class MemSave {
   }
 }
 const T = (iso: string) => Date.parse(iso);
+const OFFER_AT = '2026-11-07T12:00:00Z';
 function world(at: string, data?: SaveData) {
   const store = new MemSave();
   if (data) store.data = data;
   let now = T(at);
   const events = new EventManager(store as unknown as SaveSystem, { clock: () => now });
-  const shop = new Shop(store as unknown as SaveSystem, events, events.collection);
+  // 1.9.7: the offer revisions are read at a fixed moment — 07.11.2026 12:00 UTC, revision 4 in force (the day these
+  // expectations were written); they no longer move with the real date (revision 5 took effect on 08.11.2026)
+  const shop = new Shop(store as unknown as SaveSystem, events, events.collection, { offerClock: () => T(OFFER_AT) });
   return { store, events, shop, col: events.collection, setNow: (iso: string) => ((now = T(iso)), events.refresh()) };
 }
 // the seven items sold since 1.8.8 / 1.9.4 (approved prices) …
@@ -82,16 +86,26 @@ const NEW_FX_195: ShopSku[] = ['fx_studio_spotlights', 'fx_neon_fireworks', 'fx_
 const SEASON_195: ShopSku[] = ['season_halloween_cards', 'season_spooky_broadcast', 'season_pumpkin_victory'];
 const NEW_195: ShopSku[] = [...NEW_SKINS_195, ...NEW_FX_195, ...SEASON_195];
 const CATALOG_ORDER: ShopSku[] = ['skin_ray_neon_runner', 'skin_bruno_casino_boss', ...NEW_SKINS_195, 'fx_prime_broadcast', 'fx_phantom_dash', 'fx_golden_confetti', 'fx_vhs_card_frame', ...NEW_FX_195, ...SEASON_195, 'fighter_lucien'];
+// … and Alpha 1.9.7: WINTER SHOWDOWN's four items and CRAX, sold after their season — NO price yet (the owner's decision)
+const WINTER_197: ShopSku[] = ['season_clockwork_gold', 'season_candy_comet', 'season_frostlight_live', 'season_midnight_confetti', 'fighter_crax'];
 const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'victory_golden_confetti', 'card_vhs'];
 
 // ------------------------------------------------------------------ the catalog
 {
-  check('catalog: the seven approved items and the eleven of 1.9.5 Part 1, in catalog order', SHOP_ITEMS.length === 18 && SHOP_ITEMS.map((i) => i.sku).join() === CATALOG_ORDER.join());
-  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 18);
+  check('catalog: the seven approved items, the eleven of 1.9.5 Part 1 and the five of WINTER SHOWDOWN (1.9.7), in catalog order', SHOP_ITEMS.length === 23 && SHOP_ITEMS.map((i) => i.sku).join() === [...CATALOG_ORDER, ...WINTER_197].join());
+  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 23);
+  check('1.9.7 WINTER SHOWDOWN after the season: the owner\'s prices (Р-25, 12.11.2026) — CRAX 249, CLOCKWORK GOLD 49, CANDY COMET 59, FROSTLIGHT LIVE 69, MIDNIGHT CONFETTI 69 ₽, approved; in no list of revisions 1–5; WINTER CHAMPION has no sku', WINTER_197.map((s) => SHOP_PRICES_RUB[s]).join() === '49,59,69,69,249' && WINTER_197.every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s] && SHOP_PRICES_APPROVED_LATER[s] === '2026-11-12' && SHOP_OFFERS.filter((o) => o.revision <= 5).every((o) => Array.isArray(o.items) && !o.items.includes(s))) && !SHOP_ITEMS.some((i) => i.cosmetic === 'title_winter_champion'));
+  // 1.9.7 (the owner, 13.11.2026): revision 6 is UNIVERSAL — no list of goods; the shop's catalog and approved prices decide
+  // (before the owner's approval revision 6 is only planned; at the release legal:release registers it — both states pass)
+  const r5 = SHOP_OFFERS.find((o) => o.revision === 5)!;
+  const r6 = SHOP_OFFERS.find((o) => o.revision === 6);
+  check(`1.9.7 revision 6 (${r6 ? 'registered at the release' : 'prepared, not registered'}): universal terms — no Appendix list (items absent), sells characters, the same limits for 14–17 as № 5${r6 ? '; revision 5 kept at offer-r5.html' : '; its date is the release\'s'}`, !('items' in OFFER_R6_PLAN) && !('effectiveFrom' in OFFER_R6_PLAN) && OFFER_R6_PLAN.revision === 6 && OFFER_R6_PLAN.fighters === true && OFFER_R6_PLAN.minors === true && JSON.stringify(OFFER_R6_PLAN.minorLimits) === JSON.stringify(r5.minorLimits) && (r6 ? !r6.items && /legal\/ru\/offer\.html$/.test(r6.url) && /legal\/ru\/offer-r5\.html$/.test(r5.url) && /^[0-9a-f]{64}$/.test(r6.sha256) : /legal\/ru\/offer\.html$/.test(r5.url)));
+  check('1.9.7 a universal revision sells any catalog item with an approved price; a listed revision only its list (offerSells)', offerSells({ ...OFFER_R6_PLAN, url: '', sha256: '', effectiveFrom: '2026-11-20' }, 'fighter_crax') && offerSells({ ...OFFER_R6_PLAN, url: '', sha256: '', effectiveFrom: '2026-11-20' }, 'season_midnight_confetti') && !offerSells(r5, 'fighter_crax'));
+  check('1.9.7 promotions: none configured yet; a promotion is checked when the server rules are built (an approved item, lower price, real window)', SHOP_PROMOS.length === 0 && /SHOP_PROMOS \$\{p\.sku\}: an approved item, a lower whole-kopeck price/.test(read('scripts/backend.ts')) && /function promoKop\(sku, t\)/.test(read('backend/pb_hooks/lib/payments.js')));
   check(
     'catalog: the names',
     SHOP_ITEMS.map((i) => i.name).join('|') ===
-      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR',
+      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR|CLOCKWORK GOLD|CANDY COMET|FROSTLIGHT LIVE|MIDNIGHT CONFETTI|CRAX: THE MIDNIGHT GUARD',
   );
   // 1.9.5: one item, one id — the Halloween items sold after the season are the exchange's own cosmetics
   const exch = new Set(EVENTS.flatMap((e) => e.shop.map((x) => x.cosmetic)));
@@ -103,7 +117,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check('1.9.5 PURPLE PHANTOM is not in PRIME SHOP (an exclusive Halloween reward), PHANTOM DASH unchanged (49 ₽, its own id)', !SHOP_ITEMS.some((i) => i.cosmetic === 'dash_phantom') && SHOP_ITEMS.find((i) => i.sku === 'fx_phantom_dash')!.cosmetic === 'dash_prime_phantom' && SHOP_PRICES_RUB.fx_phantom_dash === 49);
   check('catalog: three categories (skins, effects, fighters), every item in one of them, none empty', SHOP_CATEGORIES.map((c) => c.id).join() === 'skins,effects,fighters' && SHOP_ITEMS.every((i) => SHOP_CATEGORIES.some((c) => c.id === i.category)) && SHOP_CATEGORIES.every((c) => SHOP_ITEMS.some((i) => i.category === c.id)));
   check('catalog: every card has a type line, a description and what changes', SHOP_ITEMS.every((i) => i.kind && i.desc.length > 40 && i.highlights.length >= 3));
-  check('catalog: skins point to existing fighters, cosmetics to PRIME SHOP items (or 1.9.5: an exchange\'s seasonal item) in the collection, LUCIEN to the seasonal star', SHOP_ITEMS.every((i) => (i.skin ? SKINS[i.skin].fighter === i.fighter && i.category === 'skins' : i.cosmetic ? ((COSMETICS[i.cosmetic].paid === true && COSMETICS[i.cosmetic].source === 'shop') || (exch.has(i.cosmetic) && COSMETICS[i.cosmetic].source === 'season')) && i.category === 'effects' : i.fighter === 'lucien' && !!FIGHTERS.lucien.seasonal)));
+  check('catalog: skins point to existing fighters, cosmetics to PRIME SHOP items (or 1.9.5: an exchange\'s seasonal item) in the collection, LUCIEN to the seasonal star', SHOP_ITEMS.every((i) => (i.skin ? SKINS[i.skin].fighter === i.fighter && i.category === 'skins' : i.cosmetic ? ((COSMETICS[i.cosmetic].paid === true && COSMETICS[i.cosmetic].source === 'shop') || (exch.has(i.cosmetic) && COSMETICS[i.cosmetic].source === 'season')) && i.category === 'effects' : (i.fighter === 'lucien' || i.fighter === 'crax') && !!FIGHTERS[i.fighter].seasonal)));
   check('catalog: each sku sells one thing (lookups both ways)', PAID.every((c) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_COSMETIC[c])?.cosmetic === c) && Object.values(SKINS).every((s) => SHOP_ITEMS.find((i) => i.sku === SKU_OF_SKIN[s.id])?.skin === s.id));
   // 1.8.8 final: the owner approved six prices on 23.10.2026 (item by item); LUCIEN's stays only proposed
   check('prices: approved by the owner item by item — RAY 99, BRUNO 149, PRIME BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49 ₽', ALL_SKUS.map((s) => SHOP_PRICES_RUB[s]).join() === '99,149,49,49,49,49,249' && ALL_SKUS.filter((s) => s !== 'fighter_lucien').every((s) => SHOP_PRICE_STATUS[s] === 'approved' && approvedPriceRub(s) === SHOP_PRICES_RUB[s]));
@@ -114,7 +128,7 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check('1.9.5 an approved new item waiting for its revision: its approved price, «ПОКА НЕ В ПРОДАЖЕ», not selling — and not listed on the official site (Shop.listed)', [...NEW_SKINS_195, ...NEW_FX_195].every((s) => { const it = SHOP_ITEMS.find((i) => i.sku === s)!; const st = w.shop.state(it); return st.price === `${SHOP_PRICES_RUB[s]} ₽` && st.status === 'soon' && st.chip === 'ПОКА НЕ В ПРОДАЖЕ' && !w.shop.selling(s) && w.shop.awaitsOffer(it) && !w.shop.listed(it); }));
   // …a server that sells everything else, with no charge for them (the 1.9.5 server under revision 4): the note names the revision
   const live = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, rubToKop(approvedPriceRub(i.sku))]));
-  const charge = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, offerSells(currentOffer(), i.sku) ? rubToKop(approvedPriceRub(i.sku)) : null]));
+  const charge = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, offerSells(currentOffer(T(OFFER_AT)), i.sku) ? rubToKop(approvedPriceRub(i.sku)) : null]));
   w.shop.setServer({ selling: true, env: 'live', pricesKop: live, chargeKop: charge });
   const nk = w.shop.state(SHOP_ITEMS.find((i) => i.sku === 'skin_nika_stage_idol')!);
   check('1.9.5 …on a live server selling the rest: «ПОКА НЕ В ПРОДАЖЕ 149 ₽», the note says the offer revision with this item opens it — never «sales are closed»', nk.status === 'soon' && nk.price === '149 ₽' && /вступит в силу редакция оферты PRIME SHOP с этим товаром/.test(nk.note) && !/Продажи PRIME SHOP пока не открыты/.test(nk.note), nk.note);
@@ -255,6 +269,41 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
   check(`old saves (schemas 1–11 and the rich 1.7.6 career): load with an empty wardrobe, every fighter in the standard look, the shop works`, bad.length === 0, bad.join());
   const rich = sanitize(JSON.parse(JSON.stringify(save176())));
   const rw = world('2026-10-22T12:00:00Z', rich);
+  // 1.9.7 WINTER SHOWDOWN after the season — what a player sees, by the calendar (production rules: not listed in dev only)
+  {
+    setEntitlements([]);
+    const winterItems = WINTER_197.map((s) => SHOP_ITEMS.find((i) => i.sku === s)!);
+    const nov = world('2026-11-20T12:00:00Z');
+    check('1.9.7 before WINTER SHOWDOWN\'s announcement (20.11.2026): CRAX and the four items are not in PRIME SHOP yet (no spoiler)', winterItems.every((i) => !nov.shop.listed(i)));
+    const ann = world('2026-11-27T12:00:00Z');
+    check('1.9.7 from the announcement (7 days before 03.12): listed as seasonal — not sold, never for roubles', winterItems.every((i) => ann.shop.listed(i) && !ann.shop.selling(i.sku) && ['seasonal', 'upcoming'].includes(ann.shop.state(i).status)), winterItems.map((i) => ann.shop.state(i).status).join());
+    const dec = world('2026-12-10T12:00:00Z');
+    check('1.9.7 during the event: listed, obtained only for CANDY CANES (never sold for roubles)', winterItems.every((i) => dec.shop.listed(i) && !dec.shop.selling(i.sku) && dec.shop.state(i).status !== 'on_sale'), winterItems.map((i) => dec.shop.state(i).status).join());
+    const jan = world('2027-01-05T12:00:00Z');
+    check('1.9.7 after the event (from 04.01.2027 00:00 MSK), no server known: «ОЖИДАЕТ ПРОДАЖИ» with the approved price — the purchase itself is the server\'s (offer in force, sales, Robokassa)', winterItems.every((i) => jan.shop.listed(i) && !jan.shop.selling(i.sku) && jan.shop.state(i).status === 'after_season' && jan.shop.state(i).price === `${SHOP_PRICES_RUB[i.sku]} ₽`), winterItems.map((i) => jan.shop.state(i).status + ':' + jan.shop.state(i).price).join());
+    const edge = world('2027-01-03T20:59:00Z');
+    const after = world('2027-01-03T21:00:00Z');
+    check('1.9.7 the exact moment: 23:59 MSK on 03.01 still the event, 00:00 MSK on 04.01 after it', winterItems.every((i) => edge.shop.state(i).status !== 'after_season' && after.shop.state(i).status === 'after_season'));
+    // the CRAX card after the event names CRAX — the fighter texts were LUCIEN's alone until 13.11
+    const crax = winterItems.find((i) => i.sku === 'fighter_crax')!;
+    const kop = Object.fromEntries(Object.keys(SHOP_PRICES_RUB).map((k) => [k, rubToKop(approvedPriceRub(k as ShopSku))]));
+    jan.shop.setServer({ selling: true, env: 'live', pricesKop: kop, chargeKop: { ...kop, fighter_crax: null } });
+    const cw = jan.shop.state(crax);
+    jan.shop.setServer({ selling: true, env: 'live', pricesKop: kop, chargeKop: kop });
+    const cs = jan.shop.state(crax);
+    jan.shop.setServer(null);
+    // the live server under the universal revision 6 prices the winter five at any time (its charge map) — before 04.01 the
+    // card still never offers roubles: the announcement and the event stay «СЕЗОННЫЙ», a purchase never starts
+    for (const [label, wld] of [['announcement', ann], ['event', dec]] as const) {
+      wld.shop.setServer({ selling: true, env: 'live', pricesKop: kop, chargeKop: kop });
+      const sts = winterItems.map((i) => wld.shop.state(i));
+      check(`1.9.7 the ${label} with a live server that prices the winter five (revision 6 in force): no rouble sale — never «В ПРОДАЖЕ», a purchase never starts (the server says seasonal_only too)`, sts.every((s) => s.status !== 'on_sale' && s.chip !== 'В ПРОДАЖЕ') && winterItems.every((i) => wld.shop.requestPurchase(i.sku, true).ok === false), sts.map((s) => s.status).join());
+      wld.shop.setServer(null);
+    }
+    const decNotes = winterItems.filter((i) => dec.shop.state(i).status === 'seasonal').map((i) => dec.shop.state(i).note);
+    check('1.9.7 during the event the cards name the event\'s own currency — КАРАМЕЛЬНЫЕ ТРОСТИ, not «жетоны» (CRAX and the four items)', decNotes.length === 5 && decNotes.every((n) => /только за КАРАМЕЛЬНЫЕ ТРОСТИ \(WINTER SHOWDOWN\)/.test(n) && !/жетон/.test(n)), decNotes[0]);
+    check('1.9.7 CRAX after the event: the card names CRAX, never LUCIEN — priced but not charged yet (249 ₽, waits for the revision) and on sale once the server charges him («В ПРОДАЖЕ 249 ₽»)', cw.status === 'after_season' && /Покупка Крэкса за 249 ₽/.test(cw.note) && cs.status === 'on_sale' && cs.chip === 'В ПРОДАЖЕ' && cs.price === '249 ₽' && /Крэкса можно открыть/.test(cs.note) && ![cw.note, cs.note].some((n) => /Люсьен/.test(n)), cw.note + ' | ' + cs.note);
+  }
   check('old saves: earned seasonal items, LUCIEN and the career stay as they were', rw.events.ownsFighter('lucien') && rw.shop.state(SHOP_ITEMS.find((i) => i.sku === 'fighter_lucien')!).status === 'received' && rich.cosmetics.owned.length === sanitize(JSON.parse(JSON.stringify(save176()))).cosmetics.owned.length && rich.money === save176().money);
 
   // PRIME CLOUD: the wardrobe goes up and comes back; a forged paid claim in the cloud text is cleaned
@@ -285,7 +334,15 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
       const worn = JSON.parse(JSON.stringify(mine));
       const claim = JSON.parse(JSON.stringify(defaultSave()));
       claim.cosmetics.owned = ['card_vhs'];
-      check('live 1.8.4 server: accepts a 1.8.8 save, with and without wardrobe choices (no server update needed for them)', ok184(plain) && ok184(worn));
+      // (1.9.7: a save of today's game lists CRAX — a server before 1.9.7 does not know him and refuses it: the 1.9.7
+      // server is released before the site; without CRAX the old server still takes the 1.8.8 fields)
+      const noCrax = (o: any) => {
+        const c = JSON.parse(JSON.stringify(o));
+        delete c.fighters.crax;
+        return c;
+      };
+      check('live 1.8.4 server: accepts a 1.8.8 save, with and without wardrobe choices (no server update needed for them)', ok184(noCrax(plain)) && ok184(noCrax(worn)));
+      check('1.9.7: a server before 1.9.7 refuses a save with CRAX («unknown fighter») — the 1.9.7 server goes live BEFORE the site', !ok184(plain));
       check('live 1.8.4 server: refuses a save claiming a PRIME SHOP item (an id it does not know)', !ok184(claim));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -319,6 +376,12 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
     season_spooky_broadcast: 'rare',
     season_pumpkin_victory: 'epic',
     fighter_lucien: 'legendary',
+    // 1.9.7: the WINTER SHOWDOWN items keep their MY COLLECTION tiers; CRAX legendary like LUCIEN
+    season_clockwork_gold: 'rare',
+    season_candy_comet: 'rare',
+    season_frostlight_live: 'epic',
+    season_midnight_confetti: 'epic',
+    fighter_crax: 'legendary',
   };
   check('rarity: the approved honest classification of every item — BRUNO the one legendary skin; RAY, NIKA, VEGA epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
   check('rarity: not everything paid is epic or legendary — all four tiers are used', RARITY_ORDER.every((r) => SHOP_ITEMS.some((i) => i.rarity === r)));

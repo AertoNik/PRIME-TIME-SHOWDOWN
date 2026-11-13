@@ -56,6 +56,16 @@ async function http(method: string, u: string, token = '', body?: unknown): Prom
 async function signIn(email: string, pw: string): Promise<string> {
   return (await http('POST', '/api/collections/users/auth-with-password', '', { identity: email, password: pw })).j.token ?? '';
 }
+/**
+ * 1.9.7: a save as the 1.8.4 game wrote it — without CRAX (a server before 1.9.7 does not know him; today's defaultSave()
+ * lists him, which is why the 1.9.7 server goes live before the site).
+ */
+function oldSave(): any {
+  const s = defaultSave() as any;
+  delete s.fighters.crax;
+  return s;
+}
+
 async function putSave(tok: string, data: unknown, base: number): Promise<{ status: number; j: any }> {
   const text = JSON.stringify(data);
   return http('PUT', '/api/prime/save', tok, { base, data: text, hash: crypto.createHash('sha256').update(text).digest('hex'), op: 'op_' + crypto.randomBytes(6).toString('hex'), device: 'upgrade-check', reason: 'sync', client: 'upgrade-check' });
@@ -92,7 +102,7 @@ async function main(): Promise<void> {
     for (const d of ['terms', 'consent']) await http('POST', '/api/collections/consents/records', suTok, { user: u.id, doc: d, version: cfg184.legal[d].v, lang: 'ru', action: 'register' });
     await http('POST', '/api/collections/consents/records', suTok, { user: u.id, doc: 'age', version: 0, lang: 'ru', action: 'declared', ageBand: '18+' });
     const tok = await signIn(email, pw);
-    const save = defaultSave() as any;
+    const save = oldSave();
     save.coins = 1234;
     const s1 = await putSave(tok, save, 0);
     save.coins = 1500;
@@ -137,7 +147,7 @@ async function main(): Promise<void> {
   const tokB = await signIn(players[1].email, pw);
   const meB = (await http('GET', '/api/prime/me', tokB)).j;
   check('after the way back: the accounts sign in, their saves are there', !!tokB && meB.id === players[1].id && meB.save?.revision === 2);
-  const s4 = await putSave(tokB, { ...defaultSave(), coins: 2000 }, 2);
+  const s4 = await putSave(tokB, { ...oldSave(), coins: 2000 }, 2);
   check('…and PRIME CLOUD writes again on 1.8.4', s4.status === 200 && s4.j.revision === 3, JSON.stringify(s4.j).slice(0, 200));
   await stop();
   check('nothing was lost on the way back (accounts, profiles unchanged)', dbCounts(db).users === countsBefore.users && dbCounts(db).profiles === countsBefore.profiles && afterNew.length > 0);

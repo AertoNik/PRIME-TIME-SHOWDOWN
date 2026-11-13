@@ -29,7 +29,8 @@ import { ROOT } from './lib/backendKit';
 import { crypto, fs, path, proc } from './lib/node';
 
 const DRAFTS = path.join(ROOT, 'docs', 'legal-drafts');
-const PAGES = ['offer', 'refunds', 'seller', 'shop', 'terms', 'privacy'];
+// 1.9.7: + «Информация для родителей» and the separate consent to Yandex Metrika (Р-28)
+const PAGES = ['offer', 'refunds', 'seller', 'shop', 'terms', 'privacy', 'parents', 'analytics'];
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const log = (s = '') => console.log(s);
 const stop = (msg: string): never => {
@@ -138,11 +139,23 @@ vals.FOOTER = `Продавец: ${vals.NAME}, самозанятый (нало�
 const sold = SHOP_ITEMS.filter((i) => approvedPriceRub(i.sku) !== null);
 const isFighter = (i: (typeof SHOP_ITEMS)[number]) => !!i.fighter && !i.skin;
 // 1.9.5: a seasonal effect or skin (an event's exchange item sold after its season — src/config/seasonal.ts) says the same
+// 1.9.7 (revision 6): the event's own currency by name — PUMPKIN TOKENS for Halloween, КАРАМЕЛЬНЫЕ ТРОСТИ for WINTER SHOWDOWN
+const currencyOf = (i: (typeof SHOP_ITEMS)[number]) => {
+  const c = seasonOf(i)?.event.currency;
+  return c ? `сезонную игровую валюту события (${c.name})` : 'сезонную игровую валюту события';
+};
+// 1.9.7: a seasonal item whose event has not ended by the page's date says from when it is sold for roubles (server time)
+const saleFromText = (i: (typeof SHOP_ITEMS)[number]) => {
+  const end = seasonOf(i)?.event.end;
+  if (!end || !/^\d{4}-\d{2}-\d{2}$/.test(dateArg) || Date.parse(end) <= Date.parse(dateArg + 'T00:00:00Z')) return '';
+  const msk = new Date(Date.parse(end) + 3 * 3600000).toISOString();
+  return ` За рубли — с ${dayText(msk.slice(0, 10))}, ${msk.slice(11, 16)} по московскому времени (после окончания события, по времени сервера Игры).`;
+};
 const what = (i: (typeof SHOP_ITEMS)[number]) =>
   isFighter(i)
-    ? `${i.desc} Покупка открывает персонажа в составе бойцов учётной записи PRIME ID. Во время своего события персонаж открывался за жетоны события; учётной записи, открывшей его за жетоны, он повторно не продаётся.`
+    ? `${i.desc} Покупка открывает персонажа в составе бойцов учётной записи PRIME ID. Во время своего события персонаж открывался за ${currencyOf(i)}; учётной записи, открывшей его за эту валюту, он повторно не продаётся.${saleFromText(i)}`
     : seasonOf(i)
-      ? `${i.desc} Во время своего события предмет получался за жетоны события; учётной записи, получившей его за жетоны, он повторно не продаётся.`
+      ? `${i.desc} Во время своего события предмет получался за ${currencyOf(i)}; учётной записи, получившей его за эту валюту, он повторно не продаётся.${saleFromText(i)}`
       : i.desc;
 vals.CATALOG = sold.map((i) => `  <tr><td><b>${esc(i.name)}</b><br /><small>${esc(i.kind)}</small></td><td>${esc(what(i))}</td><td>${esc(formatRub(approvedPriceRub(i.sku)!))}</td></tr>`).join('\n');
 // 1.9.5: every item of the catalog has an approved price (Р-18) — none may be missing from Appendix 1
@@ -239,6 +252,28 @@ const sellerTs = [
   '',
 ].join('\n');
 fs.writeFileSync(path.join(ROOT, 'src', 'config', 'seller.config.ts'), sellerTs);
+// 1.9.7 (Р-28): Yandex Metrika goes live together with its documents — the EN pages, the switch in public/metrika.js, the
+// two script hosts and the pixel hosts in index.html's CSP, and the privacy notice version on the server (lib/legal.js)
+const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dateEn = `${Number(dateArg.slice(8, 10))} ${MONTHS_EN[Number(dateArg.slice(5, 7)) - 1]} ${dateArg.slice(0, 4)}`;
+for (const p of ['privacy', 'parents', 'analytics']) {
+  const src = path.join(DRAFTS, 'site-analytics', 'en', `${p}.html`);
+  const html = (fs.readFileSync(src, 'utf8') as string).split('{{DATE_EN}}').join(dateEn);
+  if (/\{\{|class="todo"|DRAFT/.test(html)) stop(`en/${p}.html: осталась пометка черновика или незаполненное поле`);
+  fs.writeFileSync(path.join(ROOT, 'public', 'legal', 'en', `${p}.html`), html);
+}
+const ymPath = path.join(ROOT, 'public', 'metrika.js');
+fs.writeFileSync(ymPath, (fs.readFileSync(ymPath, 'utf8') as string).replace('var ENABLED = false;', 'var ENABLED = true;'));
+const YM_IMG = ['ru', 'az', 'by', 'co.il', 'com', 'com.am', 'com.ge', 'com.tr', 'ee', 'fr', 'kg', 'kz', 'lt', 'lv', 'md', 'tj', 'tm', 'uz'].map((d) => `https://mc.yandex.${d}`).join(' ');
+const idxPath = path.join(ROOT, 'index.html');
+let idx = fs.readFileSync(idxPath, 'utf8') as string;
+if (!/script-src 'self' https:\/\/mc\.yandex\.ru https:\/\/yastatic\.net;/.test(idx)) idx = idx.replace("script-src 'self';", "script-src 'self' https://mc.yandex.ru https://yastatic.net;");
+if (!/img-src 'self' data: blob: https:\/\/mc\.yandex/.test(idx)) idx = idx.replace("img-src 'self' data: blob:;", `img-src 'self' data: blob: ${YM_IMG};`);
+fs.writeFileSync(idxPath, idx);
+const privacyV = Number(/<meta name="prime-doc" content="privacy" data-version="(\d+)"/.exec(pages.privacy)?.[1] ?? 0);
+const legalPath = path.join(ROOT, 'backend', 'pb_hooks', 'lib', 'legal.js');
+fs.writeFileSync(legalPath, (fs.readFileSync(legalPath, 'utf8') as string).replace(/privacy: \{ version: \d+,/, `privacy: { version: ${privacyV},`));
+log(`Яндекс Метрика: public/metrika.js ENABLED = true, CSP index.html — хосты Метрики, EN privacy/parents/analytics (${dateEn}), lib/legal.js privacy ${privacyV}.`);
 const sha = sha256(fs.readFileSync(path.join(target, 'offer.html')) as Uint8Array);
 log(`Установлено: public/legal/ru/{${PAGES.join(',')}}.html и src/config/seller.config.ts.`);
 log('\nДальше (по порядку):');

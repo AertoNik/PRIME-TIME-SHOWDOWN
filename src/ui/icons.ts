@@ -88,6 +88,13 @@ export const CARD_ICONS: Record<CardId, string> = {
      <path d="M44 22 L47.5 33 L51 22 Z M52 21 L55 30.5 L57.5 20 Z" fill="#ff3a5c"/>
      <circle cx="54" cy="50" r="5" fill="#ff3a5c" opacity=".9"/><circle cx="54" cy="50" r="2" fill="#fff"/>`,
   ),
+  // Alpha 1.9.7 — CRAX's TWELFTH STRIKE: a clock face at twelve with a strike burst
+  twelfth_strike: S(
+    `<circle cx="30" cy="34" r="20" fill="#3a0d1e" stroke="#fff" stroke-width="4"/>
+     <g stroke="#ffd36a" stroke-width="3" stroke-linecap="round">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((k) => { const a = (k / 12) * Math.PI * 2; return `<line x1="${30 + Math.sin(a) * 15}" y1="${34 - Math.cos(a) * 15}" x2="${30 + Math.sin(a) * (k % 3 === 0 ? 11 : 13)}" y2="${34 - Math.cos(a) * (k % 3 === 0 ? 11 : 13)}"/>`; }).join('')}</g>
+     <path d="M30 34 V18 M30 34 V22" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+     <path d="M48 8 L52 18 L62 20 L53 26 L56 36 L48 30 L40 36 L43 26 L34 20 L44 18 Z" fill="#ffd36a" ${STROKE}/>`,
+  ),
   // three warning lines from the champion's rifle, the last one the widest (DIRECTOR'S CUT)
   directors_cut: S(
     `<path d="M10 34 L56 12" stroke="#ff4a3a" stroke-width="4" stroke-linecap="round" stroke-dasharray="7 5"/>
@@ -247,6 +254,11 @@ export const PASSIVE_ICONS: Record<PassiveId, string> = {
      <path d="M46 20 L52 14" stroke="#ff4d6d" stroke-width="4" stroke-linecap="round"/>
      <circle cx="56" cy="10" r="5" fill="#ff4d6d"/><circle cx="56" cy="10" r="2" fill="#fff"/>
      <path d="M14 30 C20 22 30 18 40 18" fill="none" stroke="#ffb3c1" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 4"/>`,
+  ),
+  // Alpha 1.9.7 — CRAX's MAINSPRING: a coiled spring with a wind-up key
+  mainspring: S(
+    `<path d="M32 32 m-4 0 a4 4 0 1 1 8 0 a8 8 0 1 1 -16 0 a12 12 0 1 1 24 0 a16 16 0 1 1 -32 0" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/>
+     <path d="M48 46 L56 54 M53 51 l5 -5 a3 3 0 0 1 4 4 l-5 5" stroke="#ffd36a" stroke-width="4" fill="none" stroke-linecap="round"/>`,
   ),
   // Alpha 1.5: RIPOSTE — an arrow turning back on itself
   riposte: S(

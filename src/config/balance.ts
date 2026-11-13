@@ -59,6 +59,12 @@ export const COVER_TUNING = {
   tombstone: { hp: 800, radius: 0.26, half: 0.34, height: 1.32 },
   column: { hp: 1200, radius: 0.44, half: 0, height: 1.95 },
   pumpkin: { hp: 450, radius: 0.5, half: 0, height: 1.16 },
+  // Alpha 1.9.7 — HOLIDAY BROADCAST: every piece is round (or a capsule) exactly like its body here
+  // (heights: above the line of fire, 1.05 m, and never over 2.0 m — the battle camera's view rule of 1.7.5)
+  gift: { hp: 600, radius: 0.46, half: 0, height: 1.12 },
+  snowgen: { hp: 900, radius: 0.4, half: 0, height: 1.5 },
+  clocktower: { hp: 1300, radius: 0.44, half: 0, height: 1.95 },
+  console: { hp: 850, radius: 0.27, half: 0.42, height: 1.2 },
   /** A knockback into cover faster than this (m/s) slams it. */
   slamSpeed: 5.5,
   /** What the slam does to the cover (the fighter only stops: no extra damage, no stun). */
@@ -362,6 +368,13 @@ export const CARD_TUNING = {
     /** Damage the swarm deals to a STAGE BARRIER it splashes against. */
     barrierDamage: 260,
   },
+  /**
+   * Alpha 1.9.7 — CRAX's TWELFTH STRIKE. The key turns and a clock starts: each of his REGULAR shots that lands (a shield,
+   * a DASH, a FALSE START or a HOLO DECOY stops the count) moves the hand `marksPerHit` of 12. At twelve the NEXT regular
+   * shot that lands strikes the hour: +`damage` and a short push. No homing, no sure hit, no stun: a shield (PERFECT BLOCK)
+   * or a DASH answers it. The clock stops `window` s after the key turned and `ready` s after it reached twelve.
+   */
+  twelfth_strike: { window: 9, marksPerHit: 2, ready: 4.5, damage: 320, knockback: 2.4 },
 };
 
 export const COMBO_TUNING = {
@@ -422,6 +435,11 @@ export const PASSIVE_TUNING = {
   crossfire: { lateral: 0.55, mult: 1.15 },
   /** Alpha 1.5 — Rina: after any successful evade her next volley hits harder (once per cooldown). */
   riposte: { mult: 1.5, cooldown: 3 },
+  /**
+   * Alpha 1.9.7 — MAINSPRING (CRAX): once a fight, the first time his health drops under `threshold`, the spring rewinds —
+   * +`energy` card energy and `duration` s of a faster trigger (×`fireRate`).
+   */
+  mainspring: { threshold: 0.5, energy: 1, duration: 3, fireRate: 1.2 },
 };
 
 export const BROADCAST = {

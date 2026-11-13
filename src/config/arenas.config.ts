@@ -8,7 +8,7 @@
 import { ARENA } from './balance';
 import type { ThemeId } from './themes.config';
 
-export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted' | 'graveyard';
+export type ArenaId = 'original' | 'casino' | 'backlot' | 'haunted' | 'graveyard' | 'holiday';
 /** What the player picked: a stage or a random available one. */
 export type ArenaPref = ArenaId | 'random';
 
@@ -25,7 +25,11 @@ export type PropKind =
   | 'pumpkin'
   | 'gravestone'
   | 'lantern'
-  | 'fogGate';
+  | 'fogGate'
+  // Alpha 1.9.7 — HOLIDAY BROADCAST
+  | 'giftStack'
+  | 'snowLamp'
+  | 'clockSign';
 
 export interface ArenaPropDef {
   kind: PropKind;
@@ -43,8 +47,16 @@ export interface ArenaPropDef {
   cooldown?: number;
 }
 
-/** Alpha 1.7.5: destructible cover on the fighting floor (GRAVEYARD BROADCAST only). */
-export type CoverKind = 'tombstone' | 'column' | 'pumpkin';
+/** Alpha 1.7.5: destructible cover on the fighting floor (GRAVEYARD BROADCAST; 1.9.7: HOLIDAY BROADCAST). */
+export type CoverKind =
+  | 'tombstone'
+  | 'column'
+  | 'pumpkin'
+  // Alpha 1.9.7 — HOLIDAY BROADCAST: a studio gift box, a snow cannon, a clockwork column and a low set console
+  | 'gift'
+  | 'snowgen'
+  | 'clocktower'
+  | 'console';
 
 export interface ArenaCoverDef {
   kind: CoverKind;
@@ -275,9 +287,58 @@ export const ARENAS: Record<ArenaId, ArenaDef> = {
     nativeSeason: 'halloween',
     colors: { a: '#3affd0', b: '#ff8a1f', ink: '#06100f' },
   },
+
+  // Alpha 1.9.7 — WINTER SHOWDOWN: the New Year set, open only while the winter theme of the event is on (like the
+  // HAUNTED set at Halloween). Destructible cover by the GRAVEYARD system (src/combat/Covers.ts), its own pieces:
+  // gift boxes by the centre lane, snow cannons on the flanks, clockwork columns and low set consoles near the corners.
+  holiday: {
+    id: 'holiday',
+    name: 'NEW YEAR STUDIO SET',
+    show: 'HOLIDAY BROADCAST',
+    description: 'Праздничный эфир WINTER SHOWDOWN: студия перед полуночью — ёлки, гирлянды, часы и подарки прямо на арене. Укрытия можно разбить.',
+    availability: { kind: 'seasonal', themeId: 'winter', event: 'Winter Showdown' },
+    caption: 'NEXT BROADCAST — NEW YEAR STUDIO SET',
+    props: [
+      { kind: 'clockSign', x: 0, z: -N - 0.3, hp: 1, respawn: 0, radius: 1.6, reactive: true, cooldown: 2.2 },
+      { kind: 'giftStack', x: -2.5, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'giftStack', x: 2.5, z: -N - 0.15, hp: 1, respawn: 0 },
+      { kind: 'snowLamp', x: -CX - 0.15, z: -CZ - 0.15, hp: 1, respawn: 0, radius: 1.05 },
+      { kind: 'snowLamp', x: CX + 0.15, z: -CZ - 0.15, hp: 1, respawn: 0, radius: 1.05 },
+      { kind: 'snowLamp', x: -W - 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'snowLamp', x: W + 0.15, z: -2.2, hp: 1, respawn: 0 },
+      { kind: 'giftStack', x: -W - 0.15, z: 1.9, hp: 1, respawn: 0 },
+      { kind: 'giftStack', x: W + 0.15, z: 1.9, hp: 1, respawn: 0 },
+    ],
+    // point-symmetric (each piece has its twin at (−x, −z)); the centre lane stays open (|x| < 1.24 m); every passage
+    // between two pieces leaves ≥ 0.4 m beside a fighter, and the snow cannons and columns stand against the side walls
+    // (that side closed, as the cemetery's pumpkins — never a squeeze a fighter could get stuck in)
+    covers: [
+      { kind: 'gift', x: 1.7, z: 0.35 },
+      { kind: 'gift', x: -1.7, z: -0.35 },
+      { kind: 'clocktower', x: -3.3, z: -2.55 },
+      { kind: 'clocktower', x: 3.3, z: 2.55 },
+      { kind: 'console', x: 2.05, z: -3.55, yaw: 0.22 },
+      { kind: 'console', x: -2.05, z: 3.55, yaw: 0.22 },
+      { kind: 'snowgen', x: -3.55, z: 1.15 },
+      { kind: 'snowgen', x: 3.55, z: -1.15 },
+    ],
+    lighting: {
+      hemiSky: 0xb8d4ff,
+      hemiGround: 0x120a2a,
+      key: 0xf0f4ff,
+      fillA: 0x6ad8ff,
+      fillB: 0xffc35a,
+      rim: 0xff5a7a,
+      fog: 0x070a1c,
+      intensity: { hemi: 1.15, key: 2.15, fill: 0.95, rim: 1.55 },
+    },
+    themeTint: 0.25,
+    nativeSeason: 'winter',
+    colors: { a: '#7fe3ff', b: '#ffcc4d', ink: '#0a0e24' },
+  },
 };
 
-export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted', 'graveyard'];
+export const ARENA_ORDER: ArenaId[] = ['original', 'casino', 'backlot', 'haunted', 'graveyard', 'holiday'];
 
 export function isArenaId(v: unknown): v is ArenaId {
   return typeof v === 'string' && v in ARENAS;

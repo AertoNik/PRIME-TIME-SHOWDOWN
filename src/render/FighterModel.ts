@@ -321,6 +321,48 @@ function sculptedHead(R: number): BufferGeometry {
   return g;
 }
 
+/**
+ * Alpha 1.9.7 (CRAX) — a carved head: the cheekbones a touch fuller and a soft hollow under them, made in the head's own
+ * shape (no added pieces on the cheeks). Displaced along the sphere's radius; the normals are computed again and WELDED
+ * across the UV seam (the duplicated seam vertices share one normal), so the gentle relief shows in the shading.
+ */
+function carvedHead(R: number): BufferGeometry {
+  const g = sph(R, 34, 26);
+  const pos = g.getAttribute('position');
+  const v = new Vector3();
+  const bump = (u: number, w: number, cu: number, cw: number, su: number, sw: number) => Math.exp(-(((u - cu) / su) ** 2) - (((w - cw) / sw) ** 2));
+  for (let i = 0; i < pos.count; i++) {
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    const x = v.x / R;
+    const y = v.y / R;
+    const z = v.z / R;
+    if (z <= 0.15) continue;
+    const front = Math.min(1, (z - 0.15) / 0.35);
+    const ax = Math.abs(x);
+    // cheekbones: a little fuller just under the eyes, toward the sides; the hollow below them, never at the mouth
+    const k = 0.016 * bump(ax, y, 0.6, -0.04, 0.17, 0.12) - 0.024 * bump(ax, y, 0.52, -0.33, 0.15, 0.13);
+    v.multiplyScalar(1 + k * front);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  const nrm = g.getAttribute('normal');
+  const keyOf = (i: number) => `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
+  const sum = new Map<string, Vector3>();
+  for (let i = 0; i < pos.count; i++) {
+    const kk = keyOf(i);
+    const n = sum.get(kk) ?? new Vector3();
+    n.x += nrm.getX(i);
+    n.y += nrm.getY(i);
+    n.z += nrm.getZ(i);
+    sum.set(kk, n);
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const n = sum.get(keyOf(i))!.clone().normalize();
+    nrm.setXYZ(i, n.x, n.y, n.z);
+  }
+  return g;
+}
+
 /** Alpha 1.7: turn an open shell inside out (reversed winding, normals flipped) — the lining of a collar. */
 function insideOut(g: BufferGeometry): BufferGeometry {
   const idx = g.index;
@@ -389,7 +431,10 @@ export type BoneName =
   | 'weaponR'
   | 'weaponL'
   /** Alpha 1.7: coat tails on their own light bone (they flare with speed). */
-  | 'tail';
+  | 'tail'
+  /** Alpha 1.9.7 (CRAX): the wind-up key on his back and the crank of the CLOCKWORK RIFLE — each turns on its own. */
+  | 'key'
+  | 'crank';
 
 interface BoneGeo {
   toon: BufferGeometry | null;
@@ -448,6 +493,8 @@ class Bones {
       'weaponR',
       'weaponL',
       'tail',
+      'key',
+      'crank',
     ];
     const out = {} as Record<BoneName, BoneGeo>;
     for (const n of names) {
@@ -858,6 +905,40 @@ export function getRigGeometry(lookId: string): RigGeometry {
         TG.add(rbox(0.04, 0.04, 0.016, 0.006), 0xfff2a8, { p: [0, h * 0.13, zf(h * 0.13) + 0.03], r: [0, 0, Math.PI / 4] }, GLOW * 0.9);
         break;
       }
+      case 'tunic': {
+        // Alpha 1.9.7 (CRAX): a bordeaux parade tunic — a navy plastron edged in gold with two rows of gold buttons,
+        // ivory cross belts with a brass buckle, a gold-braided high collar, a gold hem, and a brass gear on the chest
+        // (TWELFTH STRIKE's clock face appears there)
+        const zf = (y: number) => torsoR(d, y) * d.depth;
+        T.add(torsoShell(d, 0, h, 0, 0, Math.PI * 2, true), top.main);
+        T.add(rbox(0.2, h * 0.7, 0.03, 0.02), top.inner, { p: [0, h * 0.56, zf(h * 0.56) - 0.004] });
+        for (const ss of [1, -1]) T.add(rbox(0.014, h * 0.7, 0.03, 0.006), top.accent, { p: [ss * 0.1, h * 0.56, zf(h * 0.56) + 0.004] });
+        for (let i = 0; i < 4; i++) {
+          const yy = h * (0.32 + i * 0.15);
+          for (const ss of [1, -1]) T.add(sph(0.019, 10, 8), top.accent, { p: [ss * 0.06, yy, zf(yy) + 0.02], s: [1, 1, 0.6] });
+        }
+        for (const ss of [1, -1]) {
+          T.add(rbox(0.05, h * 0.92, 0.02, 0.008), top.trim, { p: [ss * 0.02, h * 0.5, zf(h * 0.5) + 0.026], r: [0, 0, ss * 0.5] });
+          T.add(rbox(0.05, h * 0.8, 0.02, 0.008), top.trim, { p: [ss * 0.04, h * 0.5, -zf(h * 0.5) - 0.012], r: [0, 0, -ss * 0.5] });
+        }
+        T.add(rbox(0.07, 0.07, 0.03, 0.012), top.accent, { p: [0, h * 0.5, zf(h * 0.5) + 0.042] });
+        T.add(torsoRing(d, 0.035, 0.012, 0.04), top.accent);
+        T.add(torsoRing(d, h * 0.16, 0.02, 0.026), top.trim);
+        const collar = new CylinderGeometry(0.17, 0.19, 0.11, 22, 1, true);
+        T.add(collar, top.main, { p: [0, h * 0.99, 0.005], s: [1, 1, 0.9] });
+        const braid = tor(0.172, 0.014, Math.PI * 2, 24);
+        braid.rotateX(Math.PI / 2);
+        T.add(braid, top.accent, { p: [0, h * 1.04, 0.005], s: [1, 1, 0.9] });
+        // the chest gear (glows faintly; TWELFTH STRIKE lights the dial over it)
+        const gy = h * 0.74;
+        T.add(cyl(0.05, 0.05, 0.016, 12), look.weaponDark, { p: [0.12, gy, zf(gy) + 0.012], r: [Math.PI / 2, 0, 0] });
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          T.add(rbox(0.018, 0.018, 0.016, 0.004), look.weaponDark, { p: [0.12 + Math.cos(a) * 0.055, gy + Math.sin(a) * 0.055, zf(gy) + 0.012], r: [0, 0, a] });
+        }
+        TG.add(sph(0.016, 8, 6), look.glow, { p: [0.12, gy, zf(gy) + 0.024], s: [1, 1, 0.4] }, GLOW * 0.8);
+        break;
+      }
       case 'pilot': {
         // Alpha 1.9.5 (VEGA — STAR PILOT): a navy flight suit — an orange harness crossing the chest, a
         // chest control unit with lit buttons, a padded white collar ring and a glowing mission patch
@@ -940,6 +1021,13 @@ export function getRigGeometry(lookId: string): RigGeometry {
     }
     if (top.style === 'pilot') {
       for (const ss of [1, -1]) T.add(rbox(0.13, 0.05, 0.16, 0.02), top.inner, { p: [ss * d.shoulderX, d.shoulderY + 0.06, 0], r: [0, 0, -ss * 0.25] });
+    }
+    // Alpha 1.9.7 (CRAX): gold epaulettes with a short fringe
+    if (top.style === 'tunic') {
+      for (const ss of [1, -1]) {
+        T.add(rbox(0.15, 0.04, 0.17, 0.018), top.accent, { p: [ss * d.shoulderX, d.shoulderY + 0.07, 0], r: [0, 0, -ss * 0.22] });
+        for (let k = 0; k < 5; k++) T.add(rbox(0.014, 0.05, 0.014, 0.004), top.accent, { p: [ss * (d.shoulderX + 0.07), d.shoulderY + 0.03, -0.06 + k * 0.03], r: [0, 0, -ss * 0.22] });
+      }
     }
     // shoulder pads for tech / puffer
     if (top.style === 'tech') {
@@ -1078,6 +1166,11 @@ export function getRigGeometry(lookId: string): RigGeometry {
       // Alpha 1.9.5: a lilac puff at the shoulder and a pink line down the pearl sleeve
       U.add(sph(ar * 1.55, 12, 10), top.trim, { p: [0, -0.05, 0], s: [1, 0.8, 1] });
       B.g(side === 'L' ? 'upperArmL' : 'upperArmR').add(rbox(0.012, d.upperArm * 0.6, 0.014, 0.004), top.accent, { p: [s * ar * 1.2, -d.upperArm * 0.55, 0] }, GLOW * 0.8);
+    } else if (top.style === 'tunic') {
+      // Alpha 1.9.7 (CRAX): a gold braid round the upper sleeve
+      const ring = tor(ar * 1.24, 0.014);
+      ring.rotateX(Math.PI / 2);
+      U.add(ring, top.accent, { p: [0, -d.upperArm * 0.82, 0] });
     } else if (top.style === 'pilot') {
       // Alpha 1.9.5: an orange flight stripe on the navy sleeve and a white pocket patch
       U.add(rbox(0.03, d.upperArm * 0.76, 0.05, 0.012), top.accent, { p: [s * ar * 1.14, -d.upperArm * 0.5, 0] });
@@ -1201,13 +1294,14 @@ export function getRigGeometry(lookId: string): RigGeometry {
   if (!look.robot) {
     const H = B.t('head');
     const HG = B.g('head');
-    H.add(look.face?.sharp ? sculptedHead(R) : sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
+    H.add(look.face?.sharp ? sculptedHead(R) : look.face?.wooden ? carvedHead(R) : sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
     if (look.body === 'heavy') {
       // square jaw
       H.add(sph(R * 0.82, 20, 14), skin, { p: [0, cy - R * 0.3, -0.02], s: [1.14, 0.72, 0.9] });
     }
     const face = look.face;
-    if (face && face.jaw > 0) {
+    // (1.9.7: CRAX's square jaw replaces the rounded jaw and chin pieces)
+    if (face && face.jaw > 0 && !face.squareJaw) {
       // Alpha 1.5.5: a slightly squarer jaw behind the face plane (it shapes the silhouette, no crease
       // across the cheeks) and a small rounded chin at the bottom of the longer face
       H.add(sph(R * 0.78, 22, 14), skin, { p: [0, cy - R * 0.36, -0.07], s: [0.93, 0.56, 0.8] });
@@ -1239,6 +1333,23 @@ export function getRigGeometry(lookId: string): RigGeometry {
       for (const s of [1, -1]) {
         const x = s * 0.22;
         H.add(sph(0.06, 10, 8), 0xff9fb8, { p: [x, cy - 0.11, faceZ(x, -0.11) - 0.012], s: [1.2, 0.6, 0.3], r: [0, s * 0.45, 0] });
+      }
+    }
+    // Alpha 1.9.7 (CRAX): the nutcracker's square jaw — one rounded block that sits inside the head at the front and only
+    // squares its lower corners off (no knobs on the cheeks), with the thin seams of the hinge at the mouth corners; and a
+    // carved, lacquered face: the cheekbones in the head's own shape (carvedHead), faint grain on the forehead only
+    // (1.9.7 final polish: the hinge seams at the mouth corners and the forehead grain are gone — they read as marks and
+    // wrinkles at game size; the square jaw and the carved cheekbones keep the nutcracker's character)
+    if (face?.squareJaw) {
+      H.add(rbox(R * 1.18, R * 0.5, R * 1.0, R * 0.22), skin, { p: [0, cy - R * 0.56, -R * 0.02] });
+    }
+    if (look.accessories.includes('moustache')) {
+      // a neat, symmetric guardsman's moustache right under the nose: two full lobes meeting in the middle, their ends
+      // turned up in small curls (1.9.7 final polish: higher and calmer, clear of the smile under it)
+      const mc = look.hair.color2;
+      for (const s of [1, -1]) {
+        H.add(sph(0.062, 14, 10), mc, { p: [s * 0.056, cy - 0.137, faceZ(s * 0.056, -0.137) + 0.008], s: [1.38, 0.46, 0.5], r: [0, s * 0.32, s * 0.1] });
+        H.add(sph(0.028, 10, 8), mc, { p: [s * 0.124, cy - 0.124, faceZ(s * 0.124, -0.124) + 0.003], s: [1.15, 0.62, 0.6], r: [0, s * 0.55, -s * 0.85] });
       }
     }
     if (look.accessories.includes('stubble')) {
@@ -1359,6 +1470,37 @@ export function getRigGeometry(lookId: string): RigGeometry {
         // tapered nape
         H.add(sph(0.22, 14, 10), hc, { p: [0, cy - R * 0.1, -R * 0.78], s: [1.45, 0.95, 0.72] });
         for (const s of [1, -1]) H.add(rbox(0.05, 0.13, 0.07, 0.02), hc, { p: [s * R * 0.93, cy - 0.01, 0.08] });
+        break;
+      }
+      case 'shako': {
+        // Alpha 1.9.7 (CRAX): a tall navy parade shako — a gold top band and a gold cord, a brass gear badge with a lit
+        // core, a short black peak, a gold chin strap, a red-and-white plume, and dark sideburns under it
+        H.add(new SphereGeometry(R * 1.03, 24, 12, 0, Math.PI * 2, 0, 1.15), h2, { p: [0, cy + 0.0, -0.02] });
+        // (1.9.7 final polish: the crown 15% lower — the tall one made him top-heavy next to the other fighters)
+        const crown = cyl(R * 0.98, R * 0.9, R * 0.9, 26);
+        H.add(crown, hc, { p: [0, cy + R * 0.905, -0.02], r: [-0.08, 0, 0] });
+        const top = cyl(R * 1.0, R * 1.0, R * 0.12, 26);
+        H.add(top, look.top.accent, { p: [0, cy + R * 1.35, -0.05], r: [-0.08, 0, 0] });
+        const band = tor(R * 0.93, 0.016, Math.PI * 2, 28);
+        band.rotateX(Math.PI / 2);
+        H.add(band, look.top.accent, { p: [0, cy + R * 0.56, -0.01], r: [-0.08, 0, 0] });
+        // peak
+        H.add(rbox(R * 1.3, 0.03, R * 0.55, 0.012), 0x0b0d14, { p: [0, cy + R * 0.48, R * 0.8], r: [0.22, 0, 0] });
+        // badge: a brass gear with an amber core
+        H.add(cyl(0.085, 0.085, 0.02, 12), look.weaponDark, { p: [0, cy + R * 0.95, R * 0.92], r: [Math.PI / 2 - 0.08, 0, 0] });
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          H.add(rbox(0.028, 0.028, 0.02, 0.006), look.weaponDark, { p: [Math.cos(a) * 0.093, cy + R * 0.95 + Math.sin(a) * 0.093, R * 0.92], r: [0, 0, a] });
+        }
+        HG.add(sph(0.03, 10, 8), look.glow, { p: [0, cy + R * 0.95, R * 0.94], s: [1, 1, 0.5] }, GLOW);
+        // plume
+        H.add(cap(0.05, 0.16, 10), 0xc4122f, { p: [0, cy + R * 1.63, 0.02], r: [-0.18, 0, 0] });
+        H.add(cap(0.035, 0.1, 10), 0xf6f1e6, { p: [0, cy + R * 1.83, 0.0], r: [-0.25, 0, 0] });
+        // chin strap and sideburns
+        for (const s of [1, -1]) {
+          H.add(rbox(0.016, R * 0.9, 0.016, 0.005), look.top.accent, { p: [s * R * 0.9, cy - R * 0.08, R * 0.22], r: [0.25, 0, -s * 0.06] });
+          H.add(rbox(0.06, 0.16, 0.08, 0.02), h2, { p: [s * R * 0.9, cy + 0.03, 0.1] });
+        }
         break;
       }
       case 'swept': {
@@ -1587,6 +1729,15 @@ export function getRigGeometry(lookId: string): RigGeometry {
       const x = s * (eyeX + 0.01);
       const by = eyeY + 0.13 + (s > 0 ? 0.012 : 0);
       brows.add(rbox(0.14, 0.022, 0.035, 0.009), browC, { p: [x, cy + by, faceZ(x, by) + 0.002], r: [0, Math.asin(x / R) * 0.85, s * 0.27] });
+      continue;
+    }
+    if (look.face?.guardBrows) {
+      // 1.9.7 (CRAX): one gently arched stroke each, symmetric — the inner end a touch lower (calm attention), in the
+      // moustache's colour
+      const x = s * (eyeX + 0.005);
+      const by = eyeY + 0.138;
+      const yaw = Math.asin(x / R) * 0.85;
+      brows.add(rbox(0.142, 0.036, 0.04, 0.016), look.hair.color2, { p: [x, cy + by, faceZ(x, by) + 0.003], r: [0, yaw, s * 0.1] });
       continue;
     }
     if (look.face?.archedBrows) {
@@ -1874,6 +2025,57 @@ export function getRigGeometry(lookId: string): RigGeometry {
     W.add(rbox(0.06, 0.13, 0.07, 0.02), wd, { p: [0, -0.04, 0.42] });
     for (const s of [1, -1]) WG.add(rbox(0.012, 0.02, 0.4, 0.006), gl, { p: [s * 0.058, 0.1, 0.18] }, GLOW);
     muzzleR = [0, 0.09, 1.08];
+  } else if (look.weaponModel === 'clockwork') {
+    // Alpha 1.9.7 — CRAX's CLOCKWORK RIFLE (the carbine class: the same grip, support hand and muzzle point): a dark-red
+    // lacquered body with brass fittings, an open brass gear train on the left side, a winding crank on the right (its
+    // own bone: it turns between bursts), a glowing amber core in a brass cage and a bell-mouthed brass muzzle
+    const W = B.t('weaponR');
+    const WG = B.g('weaponR');
+    W.add(rbox(0.12, 0.15, 0.52, 0.045), wc, { p: [0, 0.08, 0.12] });
+    W.add(rbox(0.09, 0.14, 0.27, 0.04), wc, { p: [0, 0.05, -0.23], r: [0.12, 0, 0] });
+    W.add(rbox(0.1, 0.03, 0.3, 0.01), wd, { p: [0, 0.165, 0.12] });
+    W.add(rbox(0.095, 0.028, 0.06, 0.01), wd, { p: [0, 0.05, -0.36], r: [0.12, 0, 0] });
+    const bar = cyl(0.03, 0.034, 0.36, 12);
+    bar.rotateX(Math.PI / 2);
+    W.add(bar, wd, { p: [0, 0.09, 0.52] });
+    for (const z of [0.42, 0.58]) {
+      const ring = tor(0.04, 0.009, Math.PI * 2, 14);
+      W.add(ring, wd, { p: [0, 0.09, z] });
+    }
+    const bell = cyl(0.05, 0.034, 0.08, 14);
+    bell.rotateX(Math.PI / 2);
+    W.add(bell, wd, { p: [0, 0.09, 0.7] });
+    WG.add(tor(0.045, 0.01, Math.PI * 2, 16), gl, { p: [0, 0.09, 0.745] }, GLOW);
+    // amber core in a brass cage on top of the receiver
+    WG.add(sph(0.042, 12, 10), gl, { p: [0, 0.2, 0.06], s: [1, 0.8, 1.4] }, GLOW);
+    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) W.add(rbox(0.008, 0.075, 0.008, 0.003), wd, { p: [Math.cos(a) * 0.045, 0.2, 0.06 + Math.sin(a) * 0.06] });
+    // the gear train on the left side
+    for (const [z, r] of [
+      [0.02, 0.05],
+      [0.13, 0.036],
+      [0.22, 0.028],
+    ] as [number, number][]) {
+      W.add(cyl(r, r, 0.012, 10), wd, { p: [-0.066, 0.08, z], r: [0, 0, Math.PI / 2] });
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        W.add(rbox(0.012, 0.016, 0.016, 0.003), wd, { p: [-0.066, 0.08 + Math.cos(a) * (r + 0.006), z + Math.sin(a) * (r + 0.006)], r: [a, 0, 0] });
+      }
+    }
+    // grip, trigger guard and the fore grip of the support hand
+    W.add(rbox(0.075, 0.19, 0.09, 0.025), wd, { p: [0, -0.07, 0.2], r: [0.28, 0, 0] });
+    W.add(rbox(0.07, 0.15, 0.08, 0.025), wc, { p: [0, -0.04, -0.02], r: [-0.3, 0, 0] });
+    W.add(rbox(0.05, 0.12, 0.06, 0.02), wd, { p: [0, -0.03, 0.38] });
+    for (const ss of [1, -1]) WG.add(rbox(0.01, 0.018, 0.26, 0.006), gl, { p: [ss * 0.062, 0.12, 0.12] }, GLOW * 0.7);
+    // the crank (its own bone, at the right side of the receiver): an arm and a knob
+    const C = B.t('crank');
+    C.add(cyl(0.016, 0.016, 0.03, 10), wd, { p: [0.015, 0, 0], r: [0, 0, Math.PI / 2] });
+    C.add(rbox(0.014, 0.075, 0.018, 0.005), wd, { p: [0.032, -0.03, 0] });
+    C.add(sph(0.018, 10, 8), look.top.accent, { p: [0.04, -0.065, 0] });
+    muzzleR = [0, 0.09, 0.76];
+    const FG = B.g('foreArmR');
+    const cuffRing = tor(d.armR * 1.25, 0.02, Math.PI * 2, 22);
+    cuffRing.rotateX(Math.PI / 2);
+    FG.add(cuffRing, gl, { p: [0, -d.foreArm * 0.8, 0] }, GLOW * 0.6);
   } else {
     // compact tech carbine held in the right hand, supported by the left (weapon space: barrel +Z)
     const W = B.t('weaponR');
@@ -1898,6 +2100,38 @@ export function getRigGeometry(lookId: string): RigGeometry {
     const cuffRing = tor(d.armR * 1.25, 0.022, Math.PI * 2, 22);
     cuffRing.rotateX(Math.PI / 2);
     FG.add(cuffRing, gl, { p: [0, -d.foreArm * 0.8, 0] }, GLOW);
+  }
+
+  // Alpha 1.9.7 (CRAX): the brass wind-up key on his back (its own bone — it turns slowly, and fast when he winds the
+  // clock) and two brass gears beside it on the tunic
+  if (look.accessories.includes('windkey')) {
+    const K = B.t('key');
+    const KG = B.g('key');
+    const shaft = cyl(0.022, 0.022, 0.12, 10);
+    shaft.rotateX(Math.PI / 2);
+    K.add(shaft, look.weaponDark, { p: [0, 0, -0.06] });
+    K.add(cyl(0.04, 0.04, 0.02, 12), look.weaponDark, { p: [0, 0, -0.01], r: [Math.PI / 2, 0, 0] });
+    for (const ss of [1, -1]) {
+      const bow = tor(0.06, 0.016, Math.PI * 2, 18);
+      K.add(bow, look.top.accent, { p: [ss * 0.07, 0, -0.13] });
+    }
+    K.add(rbox(0.05, 0.03, 0.03, 0.01), look.top.accent, { p: [0, 0, -0.13] });
+    KG.add(sph(0.014, 8, 6), look.glow, { p: [0, 0, -0.135] }, GLOW * 0.7);
+  }
+  if (look.accessories.includes('gears')) {
+    const T = B.t('torso');
+    const h = d.torsoH;
+    for (const [x, y, r] of [
+      [0.12, 0.42, 0.05],
+      [-0.1, 0.5, 0.036],
+    ] as [number, number, number][]) {
+      const z = -torsoR(d, h * y) * d.depth - 0.008;
+      T.add(cyl(r, r, 0.014, 10), look.weaponDark, { p: [x, h * y, z], r: [Math.PI / 2, 0, 0] });
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        T.add(rbox(0.014, 0.014, 0.014, 0.003), look.weaponDark, { p: [x + Math.cos(a) * (r + 0.006), h * y + Math.sin(a) * (r + 0.006), z], r: [0, 0, a] });
+      }
+    }
   }
 
   // Alpha 1.8.8 (NEON RUNNER): thin neon strips down the front of the shins
@@ -2026,6 +2260,9 @@ export interface FighterRig {
   weaponL: Group | null;
   /** Alpha 1.7: coat tails (Lucien) — null for everyone else. */
   tail: Group | null;
+  /** Alpha 1.9.7 (CRAX): the wind-up key on his back and the rifle's crank — null for everyone else. */
+  key: Group | null;
+  crank: Group | null;
   /** [primary(right), secondary(left)] */
   muzzles: Object3D[];
   /** Centre of the right hand (fist charge effects). */
@@ -2105,6 +2342,14 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   }
   const spine = boneGroup('spine', hips, [0, d.spineY, 0]);
   attach('torso', spine);
+  // Alpha 1.9.7 (CRAX): the key sits on the back between the shoulder blades
+  let key: Group | null = null;
+  if (G.bones.key.toon) {
+    // (1.9.7 polish: between the shoulder blades, a little lower — where the free hand reaches it from behind)
+    const ky = d.torsoH * 0.53;
+    key = boneGroup('key', spine, [0, ky, -torsoR(d, ky) * d.depth - 0.012]);
+    attach('key', key);
+  }
   const head = boneGroup('head', spine, [0, d.neckY, 0]);
   attach('head', head);
   // 1.9.1: a smaller head is the same head scaled about the neck (the face keeps its proportions)
@@ -2138,11 +2383,17 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
 
   const muzzles: Object3D[] = [];
   let weaponR: Group | null = null;
+  let crank: Group | null = null;
   let weaponL: Group | null = null;
   if (G.bones.weaponR.toon) {
     weaponR = boneGroup('weaponR', elbowR, G.weaponHand);
     weaponR.rotation.x = Math.PI / 2;
     attach('weaponR', weaponR);
+    // Alpha 1.9.7 (CRAX): the rifle's crank on the right side of the receiver
+    if (G.bones.crank.toon) {
+      crank = boneGroup('crank', weaponR, [0.066, 0.08, 0.04]);
+      attach('crank', crank);
+    }
     const mz = new Object3D();
     mz.position.set(...G.muzzleR!);
     weaponR.add(mz);
@@ -2186,6 +2437,8 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     weaponR,
     weaponL,
     tail,
+    key,
+    crank,
     muzzles,
     handR,
     handL,

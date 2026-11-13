@@ -343,7 +343,14 @@ export type MatchEvent =
   | { type: 'bite'; side: Side; what: 'rush' | 'hit' | 'blocked' | 'barrier'; x: number; z: number; dx: number; dz: number }
   /** `side` bleeds for `duration` s (a refresh re-sends it); bleedEnd: the bleed is over. */
   | { type: 'bleed'; side: Side; duration: number }
-  | { type: 'bleedEnd'; side: Side };
+  | { type: 'bleedEnd'; side: Side }
+  // ------------------------------------------------ Alpha 1.9.7 — WINTER SHOWDOWN
+  /**
+   * CRAX's TWELFTH STRIKE: 'wind' the key turns (the clock starts), 'tick' a landed shot moved the hand to `marks`
+   * (of 12), 'ready' the hand reached twelve, 'strike' the next landed shot struck twelve at (x, z), 'blocked' a shield
+   * took that strike, 'stop' the clock ran down before it struck.
+   */
+  | { type: 'clock'; side: Side; what: 'wind' | 'tick' | 'ready' | 'strike' | 'blocked' | 'stop'; marks: number; x: number; z: number };
 
 export type CardFailReason = 'energy' | 'stunned' | 'glitched' | 'busy' | 'cooldown' | 'phase' | 'risk' | 'recharge' | 'notake';
 

@@ -149,6 +149,40 @@ export function entrySwitch(active: 'career' | 'league'): string {
 function deckRow(deck: CardId[]): string {
   return `<div class="lg-deckrow" role="list">${deck.map((c) => `<span class="lg-dcard" role="listitem" aria-label="${esc(CARDS[c].name)} · ${CARDS[c].cost}">${cardHTML(c, 'lg-mcard', false)}</span>`).join('')}</div>`;
 }
+/** 1.9.7: the league deck while it is edited — the chosen cards, then empty places up to four. */
+function draftRow(deck: CardId[]): string {
+  const cards = deck.map((c) => `<span class="lg-dcard" role="listitem" aria-label="${esc(CARDS[c].name)} · ${CARDS[c].cost}">${cardHTML(c, 'lg-mcard', false)}</span>`);
+  for (let i = deck.length; i < 4; i++) cards.push(`<span class="lg-dcard lg-dslot" role="listitem" aria-label="${tr('Пустое место', 'Empty place')}"><i>${i + 1}</i></span>`);
+  return `<div class="lg-deckrow lg-draft" role="list">${cards.join('')}</div>`;
+}
+
+/**
+ * 1.9.7: the fighter chosen for PRIME LEAGUE, kept apart from the career's (which only gives the first default).
+ * On this device, per PRIME ID; PRIME SQUAD keeps its own three, PRIME RUSH runs with this fighter as before.
+ */
+const LEAGUE_PICK_KEY = 'primetime-showdown-league-pick-v1';
+function readLeaguePick(uid: string | null): FighterId | null {
+  if (!uid) return null;
+  try {
+    const all = JSON.parse(localStorage.getItem(LEAGUE_PICK_KEY) || '{}') as Record<string, unknown>;
+    const id = all?.[uid];
+    return typeof id === 'string' && id in FIGHTERS ? (id as FighterId) : null;
+  } catch {
+    return null;
+  }
+}
+function writeLeaguePick(uid: string | null, id: FighterId): void {
+  if (!uid) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(LEAGUE_PICK_KEY) || '{}') as Record<string, unknown>;
+    const next = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+    next[uid] = id;
+    localStorage.setItem(LEAGUE_PICK_KEY, JSON.stringify(next));
+  } catch {
+    /* storage blocked: the choice lasts for this visit */
+  }
+}
+
 /** 1.9.1: a card to pick for a deck — the same card art, chosen or free, its role beneath (ids, costs and rules unchanged). */
 function pickCard(c: CardId, on: boolean, act: string, extra = ''): string {
   return `<button class="lg-cardpick ${on ? 'on' : ''}" data-act="${act}" ${extra} data-c="${c}" aria-pressed="${on}" aria-label="${esc(CARDS[c].name)} · ${CARDS[c].cost} · ${esc(CARDS[c].role)}">${cardHTML(c, 'lg-pcard', false)}<small>${esc(CARDS[c].role)}</small></button>`;
@@ -242,7 +276,7 @@ export class LeagueScreen implements Screen {
 
   constructor(private readonly g: Game) {
     this.el = el('div', 'league');
-    this.pick = g.save.data.selected;
+    this.pick = readLeaguePick(g.account?.playing ?? null) ?? g.save.data.selected;
     this.el.addEventListener('click', (e) => this.onClick(e));
     g.league.onChange(() => {
       if (this.g.ui.current === 'league') this.render();
@@ -252,6 +286,9 @@ export class LeagueScreen implements Screen {
   onShow(params?: { tab?: Tab }): void {
     if (params?.tab) this.tab = params.tab;
     this.err = '';
+    // 1.9.7: the league's own fighter (another PRIME ID on this device has its own choice)
+    const kept = readLeaguePick(this.g.account?.playing ?? null);
+    if (kept) this.pick = kept;
     this.render();
     void this.load();
   }
@@ -292,6 +329,32 @@ export class LeagueScreen implements Screen {
   }
 
   // ---------------------------------------------------------------- render
+  /**
+   * 1.9.7: one card was taken or put back — the picked cards, the deck above, the counter and «Сохранить» change
+   * at once in place (no redraw of the screen, nothing jumps). Saving still waits for «Сохранить колоду»;
+   * «Отмена» brings the saved deck back.
+   */
+  private paintDeckDraft(): void {
+    const d = this.deckDraft;
+    const ed = this.el.querySelector<HTMLElement>('.lg-editor');
+    if (!d || !ed) {
+      this.render();
+      return;
+    }
+    ed.querySelectorAll<HTMLButtonElement>('.lg-cardpick[data-act="deck-card"]').forEach((btn) => {
+      const on = d.includes(btn.dataset.c as CardId);
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', String(on));
+    });
+    ed.classList.toggle('full', d.length >= 4);
+    const n = ed.querySelector('[data-deckn]');
+    if (n) n.textContent = String(d.length);
+    const save = ed.querySelector<HTMLButtonElement>('[data-act="deck-save"]');
+    if (save) save.disabled = d.length !== 4 || this.busy;
+    const row = this.el.querySelector<HTMLElement>('.lg-duel .lg-deckrow');
+    if (row) row.outerHTML = draftRow(d);
+  }
+
   private render(): void {
     const g = this.g;
     const acc = g.league.access();
@@ -415,9 +478,9 @@ export class LeagueScreen implements Screen {
     const picks = own.map((id) => `<button class="lg-fpick ${id === this.pick ? 'on' : ''}" data-act="pick" data-f="${id}" aria-pressed="${id === this.pick}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('') + lockedPicks(g);
     const own4 = deckOf(g, this.pick);
     const leagueDeck = !!me.decks?.[this.pick];
-    const deck = deckRow(own4);
+    const deck = this.deckDraft ? draftRow(this.deckDraft) : deckRow(own4);
     const deckEditor = this.deckDraft
-      ? `<div class="lg-editor"><div class="lg-k">${tr('КОЛОДА ДЛЯ ЛИГИ', 'LEAGUE DECK')} · ${this.deckDraft.length}/4</div><div class="lg-cardgrid">${allowedCards(g, this.pick)
+      ? `<div class="lg-editor ${this.deckDraft.length >= 4 ? 'full' : ''}"><div class="lg-k">${tr('КОЛОДА ДЛЯ ЛИГИ', 'LEAGUE DECK')} · <span data-deckn>${this.deckDraft.length}</span>/4</div><div class="lg-cardgrid">${allowedCards(g, this.pick)
           .map((c) => pickCard(c, this.deckDraft!.includes(c), 'deck-card'))
           .join('')}</div><small class="muted">${tr('Карьерная колода бойца не меняется — это отдельная колода только для PRIME LEAGUE, она хранится в PRIME ID.', 'The fighter\u2019s career deck stays as it is — this deck is for PRIME LEAGUE only and is kept in your PRIME ID.')}</small><div class="lg-editor-act"><button class="btn ghost" data-act="deck-cancel">${tr('Отмена', 'Cancel')}</button><button class="btn teal" data-act="deck-save" ${this.deckDraft.length === 4 && !this.busy ? '' : 'disabled'}>${tr('Сохранить колоду', 'Save the deck')}</button></div></div>`
       : '';
@@ -427,7 +490,7 @@ export class LeagueScreen implements Screen {
       <div class="lg-card lg-duel">
         <div class="lg-k">${tr('ВАШ БОЕЦ', 'YOUR FIGHTER')}</div>
         <div class="lg-fpicks">${picks}</div>
-        <div class="lg-deck"><span>${leagueDeck ? tr('Колода лиги', 'League deck') : tr('Колода из карьеры', 'Career deck')}:</span>${deck}${this.deckDraft ? '' : `<button class="lg-mini" data-act="deck-edit">${UI_ICONS.pencil} ${tr('Колода для лиги', 'League deck')}</button>`}</div>${deckEditor}
+        <div class="lg-deck"><span>${this.deckDraft ? tr('Новая колода', 'New deck') : leagueDeck ? tr('Колода лиги', 'League deck') : tr('Колода из карьеры', 'Career deck')}:</span>${deck}${this.deckDraft ? '' : `<button class="lg-mini" data-act="deck-edit">${UI_ICONS.pencil} ${tr('Колода для лиги', 'League deck')}</button>`}</div>${deckEditor}
         <small class="muted">${esc(f.name)} ${tr('сражается сам — вы командуете картами, как в карьере.', 'fights on its own — you command the cards, as in the career.')}</small>
         ${cta}
       </div>
@@ -780,6 +843,7 @@ export class LeagueScreen implements Screen {
         return;
       case 'pick':
         this.pick = b.dataset.f as FighterId;
+        writeLeaguePick(g.account?.playing ?? null, this.pick);
         this.deckDraft = null;
         g.audio.ui('click');
         this.render();
@@ -797,7 +861,12 @@ export class LeagueScreen implements Screen {
         if (!this.deckDraft) return;
         if (this.deckDraft.includes(c)) this.deckDraft = this.deckDraft.filter((x) => x !== c);
         else if (this.deckDraft.length < 4) this.deckDraft = [...this.deckDraft, c];
-        this.render();
+        else {
+          g.ui.toast(tr('В колоде уже 4 карты — снимите одну, чтобы взять другую.', 'The deck already has 4 cards — take one out to add another.'));
+          return;
+        }
+        g.audio.ui('click');
+        this.paintDeckDraft();
         return;
       }
       case 'deck-save':

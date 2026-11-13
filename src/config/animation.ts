@@ -138,6 +138,20 @@ export const GAITS: Record<IdleStyle, GaitProfile> = {
     contactSquash: 0.02,
     turnRate: 18,
   },
+  // Alpha 1.9.7 — CRAX: a parade march — measured, even strides, a crisp knee lift, a straight back, a snappy turn.
+  clockwork: {
+    strideLength: 2.2,
+    legSwing: 0.8,
+    kneeLift: 1.2,
+    bob: 0.034,
+    sway: 0.018,
+    lean: 0.1,
+    accelLean: 0.06,
+    turnBank: 0.04,
+    armBob: 0.045,
+    contactSquash: 0.024,
+    turnRate: 20,
+  },
   // Alpha 1.7 — Lucien: an elegant glide — long unhurried strides, almost no bob, the chest held high.
   duelist: {
     strideLength: 2.45,
@@ -290,6 +304,9 @@ export const VICTORY_SETS = {
   champion: ['champ_salute', 'champ_raise', 'champ_heart'],
   // Alpha 1.7 — Lucien: a theatrical bow, the cane planted before him / a cane twirl and a point at the camera / the high collar drawn across the face, then opened
   nightstar: ['night_bow', 'night_twirl', 'night_cape'],
+  // Alpha 1.9.7 — CRAX: a heel-click salute to the brim / the key wound twice, then both arms up in a shower of gold gears /
+  // «present arms» — the rifle raised upright before the chest, then a bow in three clockwork steps
+  clockwork: ['clock_salute', 'clock_wind', 'clock_present'],
 } as const satisfies Record<VictoryStyle, readonly string[]>;
 
 export type VictoryMove = (typeof VICTORY_SETS)[VictoryStyle][number];

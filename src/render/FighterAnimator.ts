@@ -139,6 +139,21 @@ const CUE_TIME: Record<AnimCue, number> = { combo: 0.42, trick: 0.6, counter: 0.
  */
 const CAST_TIME: Record<CastKind, number> = { throw: 0.5, shot: 0.34, device: 0.5, guard: 0.4, signal: 0.56 };
 /**
+ * Alpha 1.9.7 (CRAX): the key-turn of TWELFTH STRIKE (in a fight: the same 0.75 s as before), a slower one for the lobby
+ * and the victory (nothing waits for it there), and one turn of the rifle's crank.
+ */
+const CLOCK_WIND_TIME = 0.75;
+const CLOCK_WIND_SLOW = 1.15;
+/**
+ * The reach behind the back to the key between the shoulder blades, measured on CRAX's rig (the free hand within a few
+ * centimetres of the key's bow, the arm clear of the torso and 0.5 m from the head): the body turns a little, the arm
+ * swings back and in, the elbow almost straight. Two wrist turns, each stepping the key a third of a turn.
+ */
+const KEY_REACH = { shLX: 1.5, shLZ: -0.8, elL: -0.4, spineRY: 0.25 } as const;
+/** The arm's side swing while it passes the hip (out of the body's way) before it comes in behind the back. */
+const KEY_OUT = 0.32;
+const CRANK_TIME = 0.42;
+/**
  * Alpha 1.6.1 — when a thrown card leaves the free (left) hand, seconds after the gesture
  * starts: the view keeps the mine / generator in that hand until then and flies it from
  * there, landing exactly when the simulation lands it (no change to any card's timing).
@@ -308,6 +323,16 @@ export class FighterAnimator {
   private tailX = 0;
   private tailZ = 0;
   private tailKick = new Spring(90, 9);
+  // Alpha 1.9.7 (CRAX): the key-turn gesture, the crank between bursts, the key's and the crank's angles
+  private clockT = -1;
+  private crankWait = -1;
+  private crankT = -1;
+  private keyAngle = 0;
+  private crankAngle = 0;
+  private selfWindT = 6;
+  /** The key-turn's length now (fight / lobby) and the key's angle when the gesture began. */
+  private windDur = CLOCK_WIND_TIME;
+  private keyFrom = 0;
   /** The body steps forward into a strike (m, damped). */
   private lungeZ = 0;
   private lungeCur = 0;
@@ -339,7 +364,7 @@ export class FighterAnimator {
     this.weaponBaseL = rig.weaponL?.position.y ?? 0;
     this.weaponTiltR = rig.weaponR?.rotation.x ?? 0;
     this.weaponTiltL = rig.weaponL?.rotation.x ?? 0;
-    this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : idle === 'duelist' ? 1.45 : 1.7;
+    this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : idle === 'duelist' ? 1.45 : idle === 'clockwork' ? 1.3 : 1.7;
   }
 
   reset(yaw: number): void {
@@ -368,6 +393,8 @@ export class FighterAnimator {
     this.stopArmed = false;
     for (const s of [this.recoilR, this.recoilL, this.recoilBody, this.hitPitch, this.hitRoll, this.headSnap, this.headRoll, this.squash, this.shove, this.settle, this.settleSide, this.shotTwist, this.shotChest, this.shotDip, this.shotNod, this.climbR, this.climbL, this.push]) s.reset();
     this.stepT = this.pressT = this.evadeT = this.cueT = this.castT = -1;
+    this.clockT = this.crankWait = this.crankT = -1;
+    this.crankAngle = 0;
     this.strikeT = this.savorT = -1;
     this.wasLeap = false;
     this.caneCur = this.caneTgt = 0;
@@ -456,6 +483,22 @@ export class FighterAnimator {
     if (w === 'ricochet' && !heavy && this.shotN % 4 === 0 && this.twirlT < 0) this.twirlT = 0; // showman spins the pistol every few shots
     else if (w === 'boom_cannon') this.pumpT = 0; // pump the shotgun
     else if (w === 'stinger' && !heavy) this.tapT = 0; // the second barrel of the double tap
+    // Alpha 1.9.7 (CRAX): the crank turns once the burst is over (each shot of the burst pushes it back)
+    if (this.rig.crank) {
+      this.crankWait = 0.16;
+      this.crankT = -1;
+    }
+  }
+
+  /**
+   * Alpha 1.9.7 — CRAX turns the wind-up key on his back (TWELFTH STRIKE, and now and then in the lobby): the support
+   * hand reaches over the shoulder and turns it, the head turns to it in small clockwork steps. Visual only.
+   */
+  clockWind(slow = false): void {
+    if (this.koT >= 0 || this.victoryT >= 0 || !this.rig.key) return;
+    this.clockT = 0;
+    this.windDur = slow ? CLOCK_WIND_SLOW : CLOCK_WIND_TIME;
+    this.keyFrom = this.keyAngle;
   }
 
   hit(dx: number, dz: number, heavy: boolean): void {
@@ -1121,6 +1164,27 @@ export class FighterAnimator {
           P.headRZ += 0.03 * idleW;
           break;
         }
+        case 'clockwork': {
+          // Alpha 1.9.7 — CRAX: a guard at attention (heels close, chest out, chin up); the head and the shoulders move in
+          // small clockwork STEPS, never smoothly, and in the lobby he checks the key on his back now and then
+          const step = (v: number, n: number) => Math.round(v * n) / n;
+          P.headRY += step(Math.sin(t * 0.85), 3) * 0.17 * idleW;
+          P.headRX -= (0.05 + step(Math.sin(t * 0.6 + 2), 2) * 0.03) * idleW;
+          const sh = step(Math.sin(t * 1.7 + 1), 2) * 0.035;
+          P.shLZ += sh * idleW;
+          P.shRZ -= sh * idleW;
+          P.spineRX -= 0.06 * idleW;
+          P.legLZ += 0.025 * idleW;
+          P.legRZ -= 0.025 * idleW;
+          if (!inp.combat && idleW > 0.9) {
+            this.selfWindT -= dt;
+            if (this.selfWindT <= 0) {
+              this.selfWindT = 8 + Math.random() * 6;
+              this.clockWind(true);
+            }
+          }
+          break;
+        }
         case 'champion': {
           // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
           const br = Math.sin(t * 1.05);
@@ -1660,6 +1724,8 @@ export class FighterAnimator {
       if (p >= 1 || terminal || inp.stunned) this.castT = -1;
       else this.castPose(P, p, t);
     }
+    // Alpha 1.9.7 (CRAX): the key-turn and the crank (layers over the pose; the aim and the fight timing never wait)
+    if (this.rig.key || this.rig.crank) this.clockworkLayers(P, inp, dt, terminal);
 
     // ------------------------------------------------------------ dash
     let rollSpin = 0;
@@ -2046,6 +2112,18 @@ export class FighterAnimator {
       this.tailZ = damp(this.tailZ, this.koT >= 0 ? 0 : -lx * 0.3 * A, 6, dt);
       rig.tail.rotation.set(clamp(this.tailX + tk * 0.06, -0.2, 1.35), 0, this.tailZ);
     }
+    // Alpha 1.9.7 (CRAX): the key turns slowly all the time (fast while he winds it); the crank turns between bursts
+    if (rig.key) {
+      if (this.clockT >= 0) {
+        // the key turns WITH the hand: a third of a turn on each wrist turn, still while the hand reaches and returns
+        const tp = clamp01((this.clockT / this.windDur - 0.28) / 0.54);
+        const steps = Math.min(2, tp * 2);
+        const k = Math.floor(steps) + ease.inOutCubic(steps - Math.floor(steps));
+        this.keyAngle = this.keyFrom + (k * TAU) / 3;
+      } else if (this.koT < 0) this.keyAngle = (this.keyAngle + dt * 0.6) % TAU;
+      rig.key.rotation.set(0, 0, this.keyAngle);
+    }
+    if (rig.crank) rig.crank.rotation.set(this.crankAngle, 0, 0);
     if (rig.weaponL) {
       rig.weaponL.position.y = this.weaponBaseL + clamp(rL * 0.012, -0.05, 0.2) * slide * 10 + cL * 0.12;
       rig.weaponL.rotation.set(this.weaponTiltL, -this.wSpin, 0);
@@ -2178,6 +2256,54 @@ export class FighterAnimator {
   }
 
   /** Blend one pose key toward `v` by the current mix weight `this.w` (no per-frame closures). */
+  /** Alpha 1.9.7 (CRAX): the key-turn gesture and the crank, mixed over the pose built so far. */
+  private clockworkLayers(P: Pose, inp: AnimInput, dt: number, terminal: boolean): void {
+    if (this.clockT >= 0) {
+      this.clockT += dt;
+      const p = this.clockT / this.windDur;
+      if (p >= 1 || terminal || inp.stunned || inp.knockback) this.clockT = -1;
+      else {
+        // 0–28 %: the body turns and the free hand swings down past the hip and behind the back to the key;
+        // 28–82 %: two short wrist turns (the key steps round with each); 82–100 %: back to the rifle
+        // (in two steps, so the arm never cuts through the body: back with the arm a little out to the side, THEN in
+        // behind the back; on the way back out first, then forward)
+        const w = ease.inOutCubic(smoothstep(0, 0.2, p)) * (1 - ease.inOutCubic(smoothstep(0.88, 1, p)));
+        const wIn = ease.inOutCubic(smoothstep(0.14, 0.28, p)) * (1 - ease.inOutCubic(smoothstep(0.82, 0.92, p)));
+        const tp = clamp01((p - 0.28) / 0.54);
+        const twist = p > 0.28 && p < 0.82 ? Math.sin(tp * TAU * 2) : 0;
+        P.spineRY += (KEY_REACH.spineRY - P.spineRY) * w;
+        P.shLX += (KEY_REACH.shLX - P.shLX) * w;
+        P.shLZ += (lerp(KEY_OUT, KEY_REACH.shLZ + twist * 0.05, wIn) - P.shLZ) * w;
+        P.elL += (KEY_REACH.elL - twist * 0.08 * wIn - P.elL) * w;
+        // the head turns to the key in two small clockwork steps, the shoulders follow the body
+        P.headRY += (Math.round(w * 2) / 2) * 0.22;
+        P.headRX += 0.04 * w;
+        P.shRZ -= 0.04 * w;
+      }
+    }
+    if (this.crankWait >= 0) {
+      this.crankWait -= dt;
+      if (this.crankWait < 0) this.crankT = 0;
+    }
+    if (this.crankT >= 0) {
+      this.crankT += dt;
+      const p = this.crankT / CRANK_TIME;
+      if (p >= 1 || terminal) {
+        this.crankT = -1;
+        this.crankAngle = 0;
+      } else {
+        // the support hand drops to the crank and gives it one turn, the shoulders tick with it
+        const w = Math.sin(Math.PI * p);
+        this.crankAngle = ease.inOutCubic(p) * TAU;
+        if (this.clockT < 0) {
+          P.elL += -0.22 * w;
+          P.shLZ += Math.sin(p * TAU) * 0.06 * w;
+          P.headRX += 0.04 * w;
+        }
+      }
+    }
+  }
+
   private to(key: PoseKey, v: number): void {
     const P = this.tgt;
     P[key] += (v - P[key]) * this.w;
@@ -2759,6 +2885,73 @@ export class FighterAnimator {
         this.flourish(vt, 0.98, false);
         break;
       }
+      // ---- Alpha 1.9.7 — CRAX
+      case 'clock_salute': {
+        // a heel click, the free hand snaps to the brim of the shako, the head turns to the camera in two ticks; held, then down
+        const up = smoothstep(0.15, 0.32, vt) * (1 - smoothstep(1.35, 1.6, vt));
+        const tick = Math.min(2, Math.floor(clamp01((vt - 0.35) / 0.5) * 3)) / 2;
+        this.to('shLX', -1.9 * up);
+        this.to('shLZ', 0.55 * up);
+        this.to('elL', -2.35 * up);
+        this.to('headRY', -0.22 * tick);
+        this.to('headRX', -0.1);
+        this.to('spineRX', -0.1);
+        this.to('shRX', -0.2);
+        this.to('elR', -0.35);
+        this.to('legLZ', 0.0);
+        this.to('legRZ', 0.0);
+        if (vt > 0.12 && vt < 0.2) P.bodyY += 0.03 * k;
+        this.flourish(vt, 0.2, true);
+        break;
+      }
+      case 'clock_wind': {
+        // he reaches back and winds the key twice (the key spins), then throws both arms up — the gold gears burst
+        const wind = smoothstep(0.05, 0.3, vt) * (1 - smoothstep(0.92, 1.05, vt));
+        const turn = vt > 0.45 && vt < 0.9 ? Math.sin(((vt - 0.45) / 0.45) * TAU * 2) : 0;
+        const cheer = smoothstep(1.0, 1.2, vt);
+        // (1.9.7 polish: the same reach behind the back as the fight's key-turn — never a hand on the head; the arm comes
+        // in behind the back only once it is back, and goes out again before it comes forward)
+        const wIn = smoothstep(0.3, 0.45, vt) * (1 - smoothstep(0.86, 0.94, vt));
+        this.to('shLX', lerp(KEY_REACH.shLX * wind, -2.75, cheer));
+        this.to('shLZ', lerp(lerp(KEY_OUT * wind, KEY_REACH.shLZ + turn * 0.05, wIn), 0.35, cheer));
+        this.to('elL', lerp((KEY_REACH.elL - turn * 0.08) * wind, -0.35, cheer));
+        this.to('shRX', lerp(-0.2, -2.6, cheer));
+        this.to('shRZ', lerp(0, -0.3, cheer));
+        this.to('elR', lerp(-0.35, -0.4, cheer));
+        this.to('spineRY', KEY_REACH.spineRY * wind);
+        this.to('headRY', (Math.round(wind * 2) / 2) * 0.22);
+        this.to('headRX', lerp(0, -0.2, cheer));
+        this.to('spineRX', lerp(0, -0.12, cheer));
+        // (the key itself turns with the hand: the slow key-turn runs under this routine's arm pose)
+        if (wind > 0.5 && this.clockT < 0) {
+          this.clockT = 0.14 * CLOCK_WIND_SLOW;
+          this.windDur = CLOCK_WIND_SLOW;
+          this.keyFrom = this.keyAngle;
+        }
+        const hop = cheer > 0 ? Math.max(0, Math.sin((vt - 1.0) * 6)) : 0;
+        P.bodyY += hop * 0.16 * k;
+        this.flourish(vt, 1.05, false);
+        break;
+      }
+      case 'clock_present': {
+        // «present arms»: the rifle raised upright before the chest, then a bow in three clockwork steps
+        const raise = smoothstep(0.1, 0.35, vt);
+        const bowStep = Math.min(3, Math.floor(clamp01((vt - 0.55) / 0.6) * 4)) / 3;
+        const back = smoothstep(1.35, 1.6, vt);
+        this.to('shRX', -1.15 * raise);
+        this.to('shRZ', 0.38 * raise);
+        this.to('elR', -1.75 * raise);
+        this.to('shLX', -1.0 * raise);
+        this.to('shLZ', -0.45 * raise);
+        this.to('elL', -1.4 * raise);
+        this.wFlip = -0.95 * raise;
+        this.to('spineRX', 0.42 * bowStep * (1 - back));
+        this.to('headRX', 0.2 * bowStep * (1 - back) - 0.08 * back);
+        this.to('kneeL', 0.08);
+        this.to('kneeR', 0.08);
+        this.flourish(vt, 0.6, false);
+        break;
+      }
       case 'night_cape': {
         // the high collar drawn across the lower face with a raised forearm, then flung open — chest out, chin up, the cane to the shoulder
         const open = smoothstep(0.55, 0.85, vt);
@@ -2849,6 +3042,13 @@ export class FighterAnimator {
         this.to('elL', -2.45);
         this.to('headRZ', 0.08);
         this.to('headRX', -0.08);
+        break;
+      case 'clockwork':
+        // CRAX: a short salute with the free hand, the head in two ticks
+        this.to('shLX', -1.7);
+        this.to('shLZ', 0.5);
+        this.to('elL', -2.2);
+        this.to('headRY', -Math.round(f * 2) / 2 * 0.18);
         break;
       case 'nightstar':
         // Lucien: the cane twirled twice at his side, a glance over the collar

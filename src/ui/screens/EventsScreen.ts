@@ -29,12 +29,19 @@ export function formatSpan(ms: number): string {
 /** Icon of the event's currency (or of its theme for theme-only previews). */
 export function currencyIcon(e: EventDef | null): string {
   const kind = e?.currency?.icon ?? (e?.themeId === 'winter' ? 'snowflake' : 'pumpkin');
-  return kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
+  return kind === 'cane' ? ICONS.cane : kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
 }
 
 // 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
 const RARITY = RARITY_LABEL;
 const CARDS_NAME = (id: keyof typeof CARDS) => CARDS[id].name;
+
+/** The season star's line on its exchange card and reveal (Alpha 1.9.7: one per star). */
+const STAR_DESC: Partial<Record<FighterId, string>> = {
+  lucien: 'дальний бой тростью-бластером, уколы вблизи и укус BAT BITE',
+  crax: 'заводная винтовка CLOCKWORK RIFLE, ровные очереди на средней дистанции и ДВЕНАДЦАТЫЙ УДАР',
+};
+const STAR_BADGE: Partial<Record<FighterId, string>> = { lucien: ICONS.moon, crax: ICONS.gear };
 
 /**
  * Seasonal events: banner, countdown, currency, quests and the reward exchange — the
@@ -62,11 +69,21 @@ export class EventsScreen implements Screen {
     // keep the countdown fresh while the screen is open
     if (this.ticker !== null) clearInterval(this.ticker);
     this.ticker = window.setInterval(() => this.tick(), 15000);
+    // Alpha 1.9.7: a secure event's wallet is read from PRIME ID (and the screen follows its answers)
+    this.offSeason?.();
+    this.offSeason = this.g.season.onChange(() => {
+      if (!this.g.season.busy) this.render();
+    });
+    if (this.g.events.active?.secure) void this.g.season.flush().then(() => this.g.season.refresh(true));
   }
+
+  private offSeason: (() => void) | null = null;
 
   onHide(): void {
     if (this.ticker !== null) clearInterval(this.ticker);
     this.ticker = null;
+    this.offSeason?.();
+    this.offSeason = null;
   }
 
   private tick(): void {
@@ -94,6 +111,9 @@ export class EventsScreen implements Screen {
       g.audio.ui('swipe');
       this.tab = t.dataset.tab as 'quests' | 'rewards';
       this.render();
+    } else if (em.active?.secure && (act === 'claim' || act === 'grand' || act === 'buy' || act === 'buystar')) {
+      // Alpha 1.9.7 (R-22): WINTER SHOWDOWN's wallet is the server's — every action goes through PRIME ID
+      void this.secureAct(act, t);
     } else if (act === 'claim') {
       const paid = em.claimQuest(t.dataset.q!);
       if (paid !== null) {
@@ -166,6 +186,60 @@ export class EventsScreen implements Screen {
     }
   }
 
+  /** Alpha 1.9.7: a quest, the grand prize or an exchange item of a secure event — asked of the server, then shown. */
+  private async secureAct(act: string, t: HTMLElement): Promise<void> {
+    const g = this.g;
+    if (t.hasAttribute('disabled')) return;
+    t.setAttribute('disabled', '');
+    t.classList.add('busy');
+    const kind = act === 'claim' ? 'quest' : act === 'grand' ? 'grand' : 'exchange';
+    const arg = act === 'claim' ? t.dataset.q! : act === 'buy' ? t.dataset.id! : act === 'buystar' ? t.dataset.f! : '';
+    const r = await g.season.act(kind, arg);
+    if (!r.ok) {
+      g.audio.ui('deny');
+      g.ui.toast(r.reason ?? 'PRIME ID не принял запрос');
+      this.render();
+      return;
+    }
+    if (kind === 'quest') {
+      g.audio.ui('coin');
+      g.ui.toast(`+${r.reward ?? 0} ${g.events.active?.currency?.name ?? ''}`, true);
+      this.render();
+      this.bumpWallet();
+    } else if (r.kind === 'fighter' && r.item) {
+      const id = r.item as FighterId;
+      const fresh = g.career.refreshGoals();
+      g.save.save();
+      g.applyCosmetics();
+      const f = FIGHTERS[id];
+      g.showcase.show(g.fighterLook(f.id), f.theme.accent);
+      g.showcase.cheer();
+      this.render();
+      this.bumpWallet();
+      this.celebrateStar(id);
+      if (fresh.length) setTimeout(() => g.ui.toast('Цель карьеры выполнена — заберите награду!', true), 1200);
+    } else if (r.item) {
+      g.applyCosmetics();
+      this.render();
+      this.bumpWallet();
+      this.celebrate(r.item as CosmeticId);
+    }
+  }
+
+  /** Alpha 1.9.7: the status of a secure event's wallet on this page (guest, offline, unverified…). */
+  private secureNote(e: EventDef): string {
+    if (!e.secure) return '';
+    const gate = this.g.season.gate();
+    const name = esc(e.currency?.name.toLowerCase() ?? 'награды');
+    if (gate === 'off' || gate === 'guest')
+      return `<div class="ev-hint ev-secure guest">${ICONS.lock} Войдите в PRIME ID, чтобы получать ${name}, выполнять задания и открыть награды сезона. Баланс хранится на сервере PRIME ID — так его нельзя подделать или потерять.</div>`;
+    if (gate === 'unverified') return `<div class="ev-hint ev-secure">Подтвердите почту PRIME ID, чтобы получать ${name}.</div>`;
+    if (gate === 'terms') return '<div class="ev-hint ev-secure">Примите обновлённые документы PRIME ID, чтобы продолжить сезон.</div>';
+    if (gate === 'wait') return '<div class="ev-hint ev-secure">PRIME ID загружает ваш сезон…</div>';
+    if (this.g.season.error === 'offline') return `<div class="ev-hint ev-secure">Нет связи с PRIME ID: бои сохранятся и будут зачислены позже, обмен и задания — когда связь вернётся.</div>`;
+    return `<div class="ev-hint ev-secure ok">${UI_ICONS.check.replace('<svg', '<svg width="12" height="12"')} Баланс и задания подтверждает сервер PRIME ID</div>`;
+  }
+
   private bumpWallet(): void {
     const w = this.el.querySelector('.ev-wallet');
     w?.classList.remove('bump');
@@ -210,7 +284,7 @@ export class EventsScreen implements Screen {
          <div class="label rp-kind">Новый боец · сезонная звезда</div>
          <div class="h1 rp-name">${esc(f.name)}</div>
          <div class="rp-sub">${esc(f.nickname)}</div>
-         <p class="rp-desc">${esc(f.tagline)} Трость-бластер, уколы вблизи и фирменная карта ${esc(CARDS_NAME(f.signature))}.</p>
+         <p class="rp-desc">${esc(f.tagline)} ${esc(STAR_DESC[id] ?? f.style)}: фирменная карта ${esc(CARDS_NAME(f.signature))}.</p>
          <div class="rp-where">${UI_ICONS.check.replace('<svg', '<svg width="14" height="14"')} Уже выбран для следующего эфира</div>
          <div class="rp-col muted">${esc(f.name)} остаётся в вашем составе навсегда — и после окончания ${esc(f.seasonal?.title ?? 'события')}.</div>
          <div class="modal-actions"><button class="btn teal wide" data-a="play"><span class="shine"></span>В бой!</button><button class="btn ghost wide" data-act="star" data-f="${id}">Мои бойцы</button></div>
@@ -254,12 +328,12 @@ export class EventsScreen implements Screen {
         ? `<div class="es-own">${owned ? 'В вашем составе навсегда · фирменная карта ' + esc(CARDS_NAME(f.signature)) : ''}</div>`
         : `<div class="es-prog"><div class="progress gold"><i style="transform:scaleX(${Math.min(1, tokens / cost)})"></i></div><span>${Math.min(tokens, cost)}/${cost}<span class="eq-coin">${icon}</span></span></div>`;
     return `<div class="ev-star ${compact ? 'compact' : ''} ${owned ? 'owned' : ''} ${can && !owned ? 'ready' : ''}">
-        <button class="es-art" data-act="star" data-f="${id}" aria-label="${esc(f.name)}">${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark, 'es-portrait')}<span class="es-moon">${ICONS.moon}</span></button>
+        <button class="es-art" data-act="star" data-f="${id}" aria-label="${esc(f.name)}">${portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark, 'es-portrait')}<span class="es-moon">${STAR_BADGE[id] ?? ICONS.star}</span></button>
         <div class="es-main">
           <div class="es-kind">${compact ? 'Главная звезда сезона' : 'Эксклюзивный сезонный боец'}</div>
           <div class="es-name">${esc(f.name)}</div>
           <div class="es-title">${esc(f.nickname)}</div>
-          ${compact ? '' : `<div class="es-desc">${esc(f.style)} · дальний бой тростью-бластером, уколы вблизи и укус BAT BITE. Открывается один раз и остаётся у вас навсегда.</div>`}
+          ${compact ? '' : `<div class="es-desc">${esc(f.style)} · ${esc(STAR_DESC[id] ?? CARDS_NAME(f.signature))}. Открывается один раз и остаётся у вас навсегда.</div>`}
           ${prog}
         </div>
         <div class="es-side">${side}</div>
@@ -353,6 +427,7 @@ export class EventsScreen implements Screen {
           <div class="progress gold"><i style="transform:scaleX(${quests.length ? done / quests.length : 0})"></i></div>
         </div>
       </div>
+      ${this.secureNote(e)}
       <div class="seg-control ev-tabs" style="grid-template-columns:1fr 1fr">
         <button class="${this.tab === 'quests' ? 'on' : ''}" data-act="tab" data-tab="quests">Задания${pending ? `<span class="ev-dot">${pending}</span>` : ''}</button>
         <button class="${this.tab === 'rewards' ? 'on' : ''}" data-act="tab" data-tab="rewards">Награды</button>
@@ -407,10 +482,15 @@ export class EventsScreen implements Screen {
       })
       .join('');
     const earn = e.earnings!;
+    // (1.9.7: the currency's own name; WINTER SHOWDOWN also pays PRIME LEAGUE fights and the season's set)
+    const cur = e.currency!;
+    const many = esc(cur.short[2]);
+    const lg = earn.league;
     const how = `<div class="ev-how">
-        <div class="label">Жетоны за бои во время события</div>
-        <div class="ev-how-row"><span>Победа <b>+${earn.win}</b></span>${earn.rating.map(([min, v]) => `<span>Рейтинг ${min}+ <b>+${v}</b></span>`).join('')}<span>Комбо <b>+${earn.perCombo}</b> (до ${earn.comboCap})</span></div>
-        <div class="muted" style="font-size:11px">Не больше ${earn.dailyCap} жетонов за бои в день. Сдача боя не приносит жетонов.</div>
+        <div class="label">${esc(cur.name)} за бои во время события</div>
+        <div class="ev-how-row"><span>Победа <b>+${earn.win}</b></span>${earn.rating.map(([min, v]) => `<span>Рейтинг ${min}+ <b>+${v}</b></span>`).join('')}<span>Комбо <b>+${earn.perCombo}</b> (до ${earn.comboCap})</span>${earn.arenaWin ? `<span>${esc(earn.arenaWin.label)} <b>+${earn.arenaWin.tokens}</b></span>` : ''}</div>
+        ${lg ? `<div class="ev-how-row"><span>PRIME LEAGUE: победа <b>+${lg.win}</b></span><span>ничья <b>+${lg.draw}</b></span><span>поражение <b>+${lg.loss}</b></span></div>` : ''}
+        <div class="muted" style="font-size:11px">Не больше ${earn.dailyCap} ${many} за бои карьеры в день${lg ? ` и ${lg.dailyCap} за бои PRIME LEAGUE` : ''} (по московскому времени). Сдача боя не приносит ${many}.</div>
       </div>`;
     // Alpha 1.7: the season's star, a short teaser (the full card is on the rewards tab)
     const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost, true)).join('');
@@ -451,12 +531,12 @@ export class EventsScreen implements Screen {
     const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost)).join('') + (e.skins ?? []).map((x) => this.skinCard(e, x.skin, x.cost)).join('');
     // 1.9.5: a PRIME ID player without a connection to PRIME CLOUD — an exchange made now is kept on this device, and the
     // cloud takes it only within 72 hours after the event ends (by the server's clock): said plainly, before buying
-    const offline = !!this.g.account?.api?.sessionRecord && !serverTimeKnown();
+    const offline = !e.secure && !!this.g.account?.api?.sessionRecord && !serverTimeKnown();
     const endDay = e.end ? new Date(Date.parse(e.end)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) : '';
     const warn = offline
       ? `<div class="ev-hint ev-offline">Нет связи с PRIME CLOUD. Обмен без подключения сохранится на этом устройстве; в облако он попадёт, только если вы подключитесь не позднее чем через 72 часа после окончания события${endDay ? ` (${esc(endDay)})` : ''}. Позже облако такой обмен не примет.</div>`
       : '';
-    return `${stars}${warn}<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на награды сезона. Боец и предметы остаются у вас после окончания события; предметы надеваются и снимаются в «Моей коллекции».</div>
+    return `${stars}${warn}${this.secureNote(e)}<div class="ev-hint muted">Обменивайте ${esc(e.currency!.name)} на награды сезона. Боец и предметы остаются у вас после окончания события; предметы надеваются и снимаются в «Моей коллекции».</div>
       <div class="ev-rewards">${items.join('')}</div>
       <button class="btn ghost wide ev-col" data-act="collection">${UI_ICONS.archive.replace('<svg', '<svg width="16" height="16"')} Моя коллекция</button>`;
   }

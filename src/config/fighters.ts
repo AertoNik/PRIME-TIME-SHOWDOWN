@@ -323,10 +323,58 @@ export const FIGHTERS: Record<FighterId, FighterDef> = {
     idleStyle: 'duelist',
     theme: { main: '#a3122c', accent: '#ff4d6d', dark: '#16070d' },
   },
+  // Alpha 1.9.7 — WINTER SHOWDOWN: the guest star of the New Year special. A wind-up guard of the studio's toy parade —
+  // CLOCKWORK RIFLE (the tested three-shot burst of the carbine class: no slow, a little less homing than NIKA's).
+  // Tuned with 8 × 60 headless fights (docs/WINTER_EVENT_2026_IMPLEMENTATION_REPORT.md): mid-pack, never the best.
+  // No contract: opened in the WINTER SHOWDOWN exchange for CANDY CANES and kept forever (`seasonal`).
+  crax: {
+    id: 'crax',
+    name: 'КРЭКС',
+    nickname: 'THE MIDNIGHT GUARD',
+    fullName: 'Крэкс «The Midnight Guard»',
+    style: 'Заводная винтовка',
+    tagline: 'Ровно в полночь я не промахиваюсь.',
+    bio: 'Приглашённая звезда новогоднего спецвыпуска PRIME TIME. Заводной страж игрушечного парада ожил за час до полуночи и сразу вышел в эфир: мундир с золотыми пуговицами, латунные шестерёнки и винтовка, которую он заводит, как часы. Чем точнее он стреляет, тем ближе бой курантов.',
+    strengths: ['Ровные очереди на средней дистанции', 'Двенадцатый удар', 'Пружина на половине здоровья'],
+    weaknesses: ['Удар полуночи нужно заработать попаданиями', 'Нет замедления', 'Средняя скорость'],
+    stats: {
+      maxHp: 14800,
+      moveSpeed: 4.25,
+      armor: 0,
+      attack: {
+        weapon: 'tech_carbine',
+        interval: 1.0,
+        damage: 48,
+        projectiles: 1,
+        spread: 0,
+        inaccuracy: 0.03,
+        speed: 20,
+        range: 9.2,
+        radius: 0.2,
+        homing: 0.55,
+        falloff: 1,
+        burst: { count: 3, gap: 0.1 },
+      },
+      preferredRange: 5.6,
+      evasion: 0.6,
+    },
+    bars: { health: 3, damage: 3, speed: 3, range: 4, control: 3 },
+    passive: 'mainspring',
+    signature: 'twelfth_strike',
+    look: 'crax',
+    defaultDeck: ['dash', 'shield', 'overdrive', 'twelfth_strike'],
+    startFans: 2400,
+    contract: null,
+    seasonal: { eventId: 'winter-2026', title: 'Winter Showdown 2026–2027' },
+    dashStyle: 'lunge',
+    victoryStyle: 'clockwork',
+    idleStyle: 'clockwork',
+    theme: { main: '#8e1b2e', accent: '#e0b84c', dark: '#0d1430' },
+  },
 };
 
-/** Alpha 1.7: LUCIEN joins the end of the roster (a seasonal star: shown once owned or while his event runs). */
-export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien'];
+/** Alpha 1.7: LUCIEN joins the end of the roster (1.9.7: then CRAX) (a seasonal star: shown once owned or while his event runs). */
+export const FIGHTER_ORDER: FighterId[] = ['ray', 'bruno', 'nika', 'vega', 'kai', 'rina', 'lucien', 'crax'];
 
 export const RIVALS: Record<RivalId, RivalDef> = {
   dex: {

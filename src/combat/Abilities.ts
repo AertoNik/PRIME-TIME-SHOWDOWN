@@ -378,6 +378,15 @@ export class Abilities {
       case 'freeze_frame':
         m.objects.spawnFreeze(f);
         break;
+      case 'twelfth_strike': {
+        // Alpha 1.9.7 — CRAX turns the key: the clock runs, his landed shots move the hand (CombatSystem.clockShot)
+        f.clock = CARD_TUNING.twelfth_strike.window;
+        f.clockMarks = 0;
+        f.clockReady = false;
+        f.clockMult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        m.emit({ type: 'clock', side: f.side, what: 'wind', marks: 0, x: f.x, z: f.z });
+        break;
+      }
     }
   }
 

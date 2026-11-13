@@ -142,6 +142,7 @@ export const CARD_KIND: Partial<Record<CardId, CardKind>> = {
   charged_shot: 'attack',
   bank_shot: 'attack',
   bat_bite: 'attack',
+  twelfth_strike: 'attack',
   spotlight_tag: 'attack',
   split_shot: 'attack',
   rebound_disc: 'attack',

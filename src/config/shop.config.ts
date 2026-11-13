@@ -35,7 +35,15 @@ export type ShopSku =
   // Alpha 1.9.5 — seasonal items of Halloween Premiere sold after the season (the same item ids as the exchange)
   | 'season_halloween_cards'
   | 'season_spooky_broadcast'
-  | 'season_pumpkin_victory';
+  | 'season_pumpkin_victory'
+  // Alpha 1.9.7 — WINTER SHOWDOWN items sold after the season (from 04.01.2027 00:00 MSK). Prices APPROVED by the owner on
+  // 12.11.2026; sold only once an offer revision that lists them (revision 6, a draft until the owner approves its text) is
+  // in force — the server checks the season's end and the offer itself.
+  | 'season_clockwork_gold'
+  | 'season_candy_comet'
+  | 'season_frostlight_live'
+  | 'season_midnight_confetti'
+  | 'fighter_crax';
 
 export type ShopCategory = 'skins' | 'effects' | 'fighters';
 
@@ -381,6 +389,86 @@ export const SHOP_ITEMS: ShopItemDef[] = [
   },
 ];
 
+// Alpha 1.9.7 — WINTER SHOWDOWN 2026–2027 after the season (src/config/seasonal.ts: the same item ids as the exchange of
+// CANDY CANES). WINTER CHAMPION (the grand prize for the quests) is never sold — it has no entry here.
+SHOP_ITEMS.push(
+  {
+    sku: 'season_clockwork_gold',
+    category: 'effects',
+    name: 'CLOCKWORK GOLD',
+    kind: 'Сезонное оформление карт',
+    desc: 'Карты в золотой часовой оправе: латунные шестерёнки по углам, гравировка циферблата и тёплый блик — из обмена WINTER SHOWDOWN.',
+    highlights: [
+      'Золотая часовая оправа и латунные шестерёнки по углам карт',
+      'Во время WINTER SHOWDOWN — только за КАРАМЕЛЬНЫЕ ТРОСТИ, после него — в PRIME SHOP',
+      'Полученное за трости остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'rare',
+    cosmetic: 'card_clockwork_gold',
+    preview: 'cards',
+  },
+  {
+    sku: 'season_candy_comet',
+    category: 'effects',
+    name: 'CANDY COMET',
+    kind: 'Сезонный эффект рывка',
+    desc: 'DASH оставляет красно-белый карамельный след и мерцающие искры, как хвост праздничной кометы — из обмена WINTER SHOWDOWN.',
+    highlights: [
+      'Красно-белый карамельный след рывка с мерцающими искрами',
+      'Во время WINTER SHOWDOWN — только за КАРАМЕЛЬНЫЕ ТРОСТИ, после него — в PRIME SHOP',
+      'Полученный за трости остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'rare',
+    cosmetic: 'dash_candy_comet',
+    preview: 'dash',
+  },
+  {
+    sku: 'season_frostlight_live',
+    category: 'effects',
+    name: 'FROSTLIGHT LIVE',
+    kind: 'Сезонная рамка трансляции',
+    desc: 'Праздничная рамка эфира: морозный неон, золотые огоньки гирлянды и плашка LIVE со снежинкой — из обмена WINTER SHOWDOWN.',
+    highlights: [
+      'Морозный неон и золотые огоньки гирлянды по рамке эфира',
+      'Плашка LIVE со снежинкой',
+      'Полученная за трости остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'epic',
+    cosmetic: 'frame_frostlight_live',
+    preview: 'frame',
+  },
+  {
+    sku: 'season_midnight_confetti',
+    category: 'effects',
+    name: 'MIDNIGHT CONFETTI',
+    kind: 'Сезонный эффект победы',
+    desc: 'Победа под бой курантов: золотые искры, снежинки и праздничное конфетти над победителем — из обмена WINTER SHOWDOWN.',
+    highlights: [
+      'Золотые искры, снежинки и конфетти над победителем',
+      'Во время WINTER SHOWDOWN — только за КАРАМЕЛЬНЫЕ ТРОСТИ, после него — в PRIME SHOP',
+      'Полученный за трости остаётся в коллекции навсегда — повторно не продаётся',
+    ],
+    rarity: 'epic',
+    cosmetic: 'victory_midnight_confetti',
+    preview: 'confetti',
+  },
+  {
+    sku: 'fighter_crax',
+    category: 'fighters',
+    name: 'CRAX: THE MIDNIGHT GUARD',
+    kind: 'Сезонный боец',
+    desc: 'КРЭКС «Полуночный страж» — звезда WINTER SHOWDOWN с винтовкой CLOCKWORK RIFLE и фирменной картой ДВЕНАДЦАТЫЙ УДАР.',
+    highlights: [
+      'Сезонная звезда WINTER SHOWDOWN: CLOCKWORK RIFLE и карта ДВЕНАДЦАТЫЙ УДАР',
+      'Во время события открывается только за КАРАМЕЛЬНЫЕ ТРОСТИ',
+      'Открытый КРЭКС остаётся в составе навсегда',
+    ],
+    rarity: 'legendary',
+    fighter: 'crax',
+    preview: 'fighter',
+  },
+);
+
 /** The item that sells a PRIME SHOP cosmetic / a skin (entitlements are kept by sku). */
 export const SKU_OF_COSMETIC: Partial<Record<CosmeticId, ShopSku>> = Object.fromEntries(
   SHOP_ITEMS.filter((i) => i.cosmetic).map((i) => [i.cosmetic!, i.sku]),
@@ -430,6 +518,13 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   season_halloween_cards: 'approved',
   season_spooky_broadcast: 'approved',
   season_pumpkin_victory: 'approved',
+  // 1.9.7 — WINTER SHOWDOWN after the season: APPROVED by the owner on 12.11.2026 (CRAX 249, CLOCKWORK GOLD 49, CANDY COMET 59,
+  // FROSTLIGHT LIVE 69, MIDNIGHT CONFETTI 69). Not one is in Appendix 1 of revisions 1–5: sold only under revision 6 (draft)
+  season_clockwork_gold: 'approved',
+  season_candy_comet: 'approved',
+  season_frostlight_live: 'approved',
+  season_midnight_confetti: 'approved',
+  fighter_crax: 'approved',
 };
 
 /** When the owner approved the approved prices (shown nowhere in the game; for the documents and checks). */
@@ -449,6 +544,12 @@ export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
   season_halloween_cards: '2026-11-06',
   season_spooky_broadcast: '2026-11-06',
   season_pumpkin_victory: '2026-11-06',
+  // 1.9.7: WINTER SHOWDOWN's five, approved on 12.11.2026
+  season_clockwork_gold: '2026-11-12',
+  season_candy_comet: '2026-11-12',
+  season_frostlight_live: '2026-11-12',
+  season_midnight_confetti: '2026-11-12',
+  fighter_crax: '2026-11-12',
 };
 
 /**
@@ -456,7 +557,7 @@ export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
  * BROADCAST 49, PHANTOM DASH 49, GOLDEN CONFETTI 49, VHS CARD FRAME 49. LUCIEN 249 — approved 05.11.2026 (1.9.4).
  * Whole roubles; no VAT (the seller pays НПД).
  */
-export const SHOP_PRICES_RUB: Record<ShopSku, number> = {
+export const SHOP_PRICES_RUB: Record<ShopSku, number | null> = {
   skin_ray_neon_runner: 99,
   skin_bruno_casino_boss: 149,
   fx_prime_broadcast: 49,
@@ -476,11 +577,35 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number> = {
   season_halloween_cards: 49,
   season_spooky_broadcast: 49,
   season_pumpkin_victory: 59,
+  // 1.9.7 — WINTER SHOWDOWN after the season, approved 12.11.2026 (SHOP_PRICE_STATUS)
+  season_clockwork_gold: 49,
+  season_candy_comet: 59,
+  season_frostlight_live: 69,
+  season_midnight_confetti: 69,
+  fighter_crax: 249,
 };
 
-/** The price the shop may show and the server may charge: the approved one — null while only proposed. */
+/**
+ * Alpha 1.9.7 — PROMOTIONS (the owner's decision of 13.11.2026: discounts without a new offer revision while the general
+ * terms stay — offer № 6, п. 4.1). A promotion lowers what the server CHARGES for an item with an approved price, from
+ * `from` to `to` (ISO UTC, the SERVER's clock); the list price stays what it is. The order fixes the charged amount when
+ * it is made. Approved by the owner like a price; checked when the rules are built (scripts/backend.ts): a known item with
+ * an approved price, a whole number of kopecks, lower than the price, a real window. None yet.
+ */
+export interface ShopPromo {
+  sku: ShopSku;
+  priceRub: number;
+  from: string;
+  to: string;
+  /** When the owner approved it (for the records). */
+  approvedOn: string;
+}
+export const SHOP_PROMOS: ShopPromo[] = [];
+
+/** The price the shop may show and the server may charge: the approved one — null while only proposed or not set. */
 export function approvedPriceRub(sku: ShopSku): number | null {
-  return SHOP_PRICE_STATUS[sku] === 'approved' ? SHOP_PRICES_RUB[sku] : null;
+  const p = SHOP_PRICES_RUB[sku];
+  return SHOP_PRICE_STATUS[sku] === 'approved' && typeof p === 'number' ? p : null;
 }
 
 /**
@@ -519,6 +644,11 @@ export const SHOP_TEST_PRICES_RUB: Record<ShopSku, number> = {
   season_halloween_cards: 10,
   season_spooky_broadcast: 10,
   season_pumpkin_victory: 10,
+  season_clockwork_gold: 10,
+  season_candy_comet: 10,
+  season_frostlight_live: 10,
+  season_midnight_confetti: 10,
+  fighter_crax: 10,
 };
 
 /** The paid way to open a fighter (LUCIEN after his season) — the sku its purchase record carries. */

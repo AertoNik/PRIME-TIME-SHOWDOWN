@@ -1594,7 +1594,13 @@ export class GraveyardStage extends Stage {
   override applyTheme(th: ArenaTheme, isDefault: boolean): void {
     colorCones(this.cones, isDefault || th.decor === 'pumpkins' ? [VIOLET, TEAL, ORANGE, VIOLET] : th.spots);
     this.premiere.map?.dispose();
-    this.premiere.map = th.decor === 'championHalloween' || th.decor === 'champion' ? drawNeon('LEGENDARY · HALLOWEEN', '#ffc23a', 1024, 256, 78) : drawNeon('HALLOWEEN PREMIERE', '#ff8a1f', 1024, 256, 84);
+    // 1.9.7: in the winter the sign over the crypt greets a frozen night instead of Halloween
+    this.premiere.map =
+      th.decor === 'championHalloween' || th.decor === 'champion'
+        ? drawNeon('LEGENDARY · HALLOWEEN', '#ffc23a', 1024, 256, 78)
+        : th.decor === 'frost'
+          ? drawNeon('FROSTBITE NIGHT', '#9fe8ff', 1024, 256, 84)
+          : drawNeon('HALLOWEEN PREMIERE', '#ff8a1f', 1024, 256, 84);
     this.premiere.needsUpdate = true;
   }
 

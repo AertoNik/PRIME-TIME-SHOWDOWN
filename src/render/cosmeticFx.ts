@@ -6,8 +6,8 @@ import type { VFX } from './VFX';
 // match and the PRIME SHOP fitting room (Alpha 1.8.8) plays the same effects as a preview. Pure
 // visuals on the shared VFX pools — nothing here touches the simulation.
 
-export type DashFx = 'phantom' | 'prime' | 'glitch' | 'comet' | 'arc';
-export type VictoryFx = 'pumpkin' | 'gold' | 'spotlights' | 'fireworks' | 'sunrise';
+export type DashFx = 'phantom' | 'prime' | 'glitch' | 'comet' | 'arc' | 'candy';
+export type VictoryFx = 'pumpkin' | 'gold' | 'spotlights' | 'fireworks' | 'sunrise' | 'midnight';
 
 /** PURPLE PHANTOM (Halloween Premiere). */
 export const PHANTOM = new Color(0xa855ff);
@@ -25,10 +25,15 @@ export const COMET_EMBER = new Color(0xffc861);
 /** ARC SURGE (PRIME LEAGUE exchange, 1.9.6): a silver-blue charge with electric arcs along the path. */
 export const ARC_TRAIL = new Color(0x7cc0ff);
 export const ARC_SPARK = new Color(0xe6f2ff);
+/** CANDY COMET (WINTER SHOWDOWN, 1.9.7): a red-and-white candy trail with glittering sparks. */
+export const CANDY_RED = new Color(0xff2a44);
+export const CANDY_WHITE = new Color(0xfff6f0);
+/** MIDNIGHT CONFETTI (WINTER SHOWDOWN, 1.9.7): gold sparks, snowflakes and festive confetti. */
+const MIDNIGHT_CONFETTI = [0xffcc4d, 0xfff2b0, 0xff3a5a, 0x7fe3ff, 0xffffff, 0xd9a21a];
 
 /** Which effect a dash / victory cosmetic plays (ThemeManager and the PRIME SHOP preview). */
-export const DASH_FX: Partial<Record<string, DashFx>> = { dash_phantom: 'phantom', dash_prime_phantom: 'prime', dash_glitch: 'glitch', dash_comet: 'comet', dash_league_arc: 'arc' };
-export const VICTORY_FX: Partial<Record<string, VictoryFx>> = { victory_pumpkin: 'pumpkin', victory_golden_confetti: 'gold', victory_studio_spotlights: 'spotlights', victory_neon_fireworks: 'fireworks', victory_daily_sunrise: 'sunrise' };
+export const DASH_FX: Partial<Record<string, DashFx>> = { dash_phantom: 'phantom', dash_prime_phantom: 'prime', dash_glitch: 'glitch', dash_comet: 'comet', dash_league_arc: 'arc', dash_candy_comet: 'candy' };
+export const VICTORY_FX: Partial<Record<string, VictoryFx>> = { victory_pumpkin: 'pumpkin', victory_golden_confetti: 'gold', victory_studio_spotlights: 'spotlights', victory_neon_fireworks: 'fireworks', victory_daily_sunrise: 'sunrise', victory_midnight_confetti: 'midnight' };
 
 export const GOLDEN_CONFETTI = [0xffd23a, 0xffe58a, 0xf2b02a, 0xfff3c4, 0xd9921a, 0xffffff];
 const PUMPKIN_CONFETTI = [0xff8a1f, 0xb45cff, 0xa8ff60, 0xffd27a];
@@ -40,12 +45,12 @@ const NEON_SHELLS = [0xff4fd8, 0x3dfcff, 0xa86bff];
 
 /** The trail colour of a dash cosmetic (null: the fighter's own accent). */
 export function dashColor(fx: DashFx | null): Color | null {
-  return fx === 'phantom' ? PHANTOM : fx === 'prime' ? PRIME_DASH : fx === 'glitch' ? GLITCH_A : fx === 'comet' ? COMET_TAIL : fx === 'arc' ? ARC_TRAIL : null;
+  return fx === 'phantom' ? PHANTOM : fx === 'prime' ? PRIME_DASH : fx === 'glitch' ? GLITCH_A : fx === 'comet' ? COMET_TAIL : fx === 'arc' ? ARC_TRAIL : fx === 'candy' ? CANDY_RED : null;
 }
 
 /** Every third spark of the dash in the cosmetic's second colour. */
 export function dashSpark(fx: DashFx): Color {
-  return fx === 'phantom' ? PHANTOM_SPARK : fx === 'glitch' ? GLITCH_B : fx === 'comet' ? COMET_EMBER : fx === 'arc' ? ARC_SPARK : PRIME_DASH_GLOW;
+  return fx === 'phantom' ? PHANTOM_SPARK : fx === 'glitch' ? GLITCH_B : fx === 'comet' ? COMET_EMBER : fx === 'arc' ? ARC_SPARK : fx === 'candy' ? CANDY_WHITE : PRIME_DASH_GLOW;
 }
 
 /**
@@ -72,6 +77,7 @@ function dashExtras(vfx: VFX, fx: DashFx, fromX: number, fromZ: number, toX: num
   if (fx === 'glitch') return glitchDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'comet') return cometDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'arc') return arcDash(vfx, fromX, fromZ, toX, toZ);
+  if (fx === 'candy') return candyDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'phantom') {
     // PURPLE PHANTOM: fading ghost silhouettes along the dash path
     for (let i = 1; i <= 3; i++) {
@@ -122,6 +128,22 @@ function glitchDash(vfx: VFX, fromX: number, fromZ: number, toX: number, toZ: nu
  * COMET TRAIL: a hot head flashing where the dash ends, a tail that narrows back along the path, and
  * warm embers that drift down (gravity) — the one dash effect that lingers, kept low and small.
  */
+/**
+ * CANDY COMET (1.9.7): the path is striped like a candy cane — red and white glows taking turns along it, a white
+ * flash where the dash ends and a few glittering sparks drifting down. Short and low (looks only).
+ */
+function candyDash(vfx: VFX, fromX: number, fromZ: number, toX: number, toZ: number): void {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  for (let i = 1; i <= 6; i++) {
+    const t = i / 7;
+    vfx.glow(fromX + dx * t, 0.85 + Math.sin(t * Math.PI) * 0.35, fromZ + dz * t, i % 2 ? CANDY_RED : CANDY_WHITE, 0.9, 0.45, 0.24 + i * 0.04, 1.8);
+  }
+  vfx.flash(toX, 1.0, toZ, CANDY_WHITE, 0.9, 1.4, 0.14, 1.8);
+  vfx.burst(toX, 1.0, toZ, CANDY_RED, 8, 2.6, 0.1, 0.45, 2.2, 3, 1);
+  vfx.burst(fromX + dx * 0.5, 1.1, fromZ + dz * 0.5, _c.set(0xffe9a0), 6, 1.8, 0.07, 0.6, 2.4, 2, 1);
+}
+
 /**
  * ARC SURGE (1.9.6): two jagged electric arcs follow the path (bolts with jitter), small silver sparks jump off it and a
  * cold flash marks the exit point — the dash itself is the same (looks only).
@@ -268,6 +290,20 @@ export function victoryCelebration(vfx: VFX, fx: VictoryFx | null, x: number, z:
   if (fx === 'spotlights') return spotlights(vfx, x, z, alive);
   if (fx === 'sunrise') return sunrise(vfx, x, z, alive);
   if (fx === 'fireworks') return fireworks(vfx, x, z, alive);
+  if (fx === 'midnight') {
+    // MIDNIGHT CONFETTI: the hour strikes — a gold flash, rays and a ring, gold-and-frost confetti, a second wave
+    vfx.flash(x, 2.0, z, _c.set(0xfff2b0), 1.3, 3.6, 0.4, 1.8);
+    vfx.rays(x, 1.6, z, _c.set(0xffcc4d), 1, 5.6, 0.9, 2.2);
+    vfx.ring(x, z, _c.set(0x7fe3ff), 1, 6.2, 0.9, 2.6);
+    vfx.confetti(x, 3.2, z, 140, MIDNIGHT_CONFETTI);
+    vfx.burst(x, 2.4, z, _c.set(0xffcc4d), 30, 5, 0.12, 0.9, 2.4, 2, 2);
+    setTimeout(() => {
+      if (!alive()) return;
+      vfx.confetti(x, 3.6, z, 70, MIDNIGHT_CONFETTI);
+      vfx.burst(x, 2.8, z, _c.set(0xe8f6ff), 24, 3.5, 0.1, 1.2, 2.2, -0.5, 2);
+    }, 650);
+    return;
+  }
   if (fx === 'gold') {
     // GOLDEN CONFETTI: a gold burst with a ring and rays of light, a smaller second wave
     vfx.confetti(x, 3, z, 130, GOLDEN_CONFETTI);

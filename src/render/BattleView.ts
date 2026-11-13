@@ -29,6 +29,7 @@ import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache, RigCopy } from './ModelCache';
 import { LOOKS } from '../config/looks';
 import { NightFX } from './NightFX';
+import { ClockFX } from './ClockFX';
 import type { Renderer } from './Renderer';
 import { glowTexture, shadowTexture, streakTexture, teamRingTexture } from './textures';
 import type { FighterFX, VFX } from './VFX';
@@ -131,6 +132,8 @@ export class BattleView {
   private cards: CardVisuals;
   /** Alpha 1.7: LUCIEN's bats, cane slashes and the vampire mark. */
   private night: NightFX;
+  /** Alpha 1.9.7: CRAX's TWELFTH STRIKE dial and his victory gears. */
+  private clock: ClockFX;
   /** Alpha 1.7: the variant of each side's cane strike in progress (for its slash arc). */
   private strikeVar: [number, number] = [0, 0];
 
@@ -144,6 +147,7 @@ export class BattleView {
     r.scene.add(this.root);
     this.cards = new CardVisuals(this.root);
     this.night = new NightFX(this.root);
+    this.clock = new ClockFX(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
     const streakGeo = new PlaneGeometry(1, 1);
     streakGeo.translate(0, -0.5, 0); // head at origin, tail along -Y
@@ -259,6 +263,8 @@ export class BattleView {
         },
         onFlourish: (heavy) => {
           const p = slot.pos;
+          // Alpha 1.9.7: CRAX's victory flourish showers gold gears
+          if (slot.model.rig.key) this.clock.victory(p);
           if (heavy) {
             this.vfx.landImpact(p.x, p.z, 1, _c.set(0xff7a1a));
             this.cam.addTrauma(0.2);
@@ -320,6 +326,7 @@ export class BattleView {
     this.cutOwner = -1;
     this.cards.reset();
     this.night.reset();
+    this.clock.reset();
     this.slots = [];
     this.match = null;
   }
@@ -402,6 +409,8 @@ export class BattleView {
     // Alpha 1.7: LUCIEN's swarm follows him; the marks follow the bleeding
     const luc = m.fighters.find((f) => f.stats.attack.weapon === 'cane') ?? null;
     this.night.update(dt, luc, (side) => this.slots[side].pos);
+    // Alpha 1.9.7: CRAX's clock dial follows him
+    this.clock.update(dt, (side) => this.slots[side].pos);
     // Alpha 1.6.1 SECOND TAKE: the replay ghosts appear, raise the weapon, fire and fade
     for (const [id, e] of this.echoes) {
       e.age += dt;
@@ -1171,6 +1180,37 @@ export class BattleView {
       case 'bleed':
         this.night.setMark(e.side, true);
         break;
+      // Alpha 1.9.7 — CRAX's TWELFTH STRIKE: the key, the dial, the ticks and the struck hour
+      case 'clock': {
+        const s = this.slots[e.side];
+        const gold = _c.set(0xffcc4d);
+        if (e.what === 'wind') {
+          s.model.anim.clockWind();
+          this.clock.wind(e.side);
+          this.vfx.ring(s.pos.x, s.pos.z, gold, 0.4, 2.6, 0.45, 2.2);
+          this.vfx.burst(s.pos.x, 1.3, s.pos.z, gold, 14, 3, 0.1, 0.45, 2.2, 0, 1);
+        } else if (e.what === 'tick' || e.what === 'ready') {
+          const ready = e.what === 'ready';
+          this.clock.setMarks(e.side, e.marks, ready);
+          this.vfx.burst(s.pos.x, 1.4, s.pos.z, gold, ready ? 16 : 5, ready ? 4 : 2, 0.08, 0.35, 2, 0, 1);
+          if (ready) this.vfx.ring(s.pos.x, s.pos.z, gold, 0.5, 3.2, 0.5, 2.6);
+        } else if (e.what === 'strike' || e.what === 'blocked') {
+          const hit = e.what === 'strike';
+          this.clock.strike(e.x, e.z, !hit);
+          this.clock.stop(e.side);
+          if (hit) {
+            this.vfx.flash(e.x, 1.4, e.z, gold, 1.2, 3.6, 0.25, 3);
+            this.vfx.rays(e.x, 1.4, e.z, gold, 1, 4.2, 0.5, 2.6);
+            this.vfx.burst(e.x, 1.4, e.z, _c.set(0xfff2b0), 26, 6, 0.14, 0.55, 2.6, -1, 1);
+            this.vfx.ring(e.x, e.z, _c.set(0xffcc4d), 0.6, 4.2, 0.45, 2.8);
+            this.cam.addTrauma(0.35);
+            this.cam.kick(0.5);
+          }
+        } else {
+          this.clock.stop(e.side);
+        }
+        break;
+      }
       case 'bleedEnd':
         this.night.setMark(e.side, false);
         break;

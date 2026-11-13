@@ -129,6 +129,11 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
     const reserve = h.hand.includes('dash') ? 2 : 0;
     if (h.energy >= CARDS.bat_bite.cost + reserve && m.playCard(0, bi) === null) return;
   }
+  // Alpha 1.9.7: CRAX's TWELFTH STRIKE — wind the clock while his bursts can land (not into a shield)
+  const ti = h.hand.indexOf('twelfth_strike');
+  if (ti >= 0 && gap < 7.5 && me.clock <= 0 && foe.shield <= 0 && foe.invuln <= 0) {
+    if (h.energy >= CARDS.twelfth_strike.cost && m.playCard(0, ti) === null) return;
+  }
   // don't sit on full energy
   if (h.energy >= 9.5) {
     const order = [0, 1, 2].sort((x, y) => CARDS[h.hand[y]].cost - CARDS[h.hand[x]].cost);
@@ -246,6 +251,8 @@ export function runMatch(fighter: FighterId, rival: RivalId, difficulty: Difficu
         cardDamage.set(key, (cardDamage.get(key) ?? 0) + e.damage);
       }
       if (e.type === 'card' && e.side === 1) events.set('rivalCard:' + e.card, (events.get('rivalCard:' + e.card) ?? 0) + 1);
+      // Alpha 1.9.7: CRAX's clock (wind / tick / ready / strike / blocked / stop) and the struck hours' damage
+      if (e.type === 'clock') events.set((e.side === 0 ? 'clock:' : 'rivalClock:') + e.what, (events.get((e.side === 0 ? 'clock:' : 'rivalClock:') + e.what) ?? 0) + 1);
       if (e.type === 'cutShot') events.set('cutShot:' + e.outcome, (events.get('cutShot:' + e.outcome) ?? 0) + 1);
       if (e.type === 'cutEnd') events.set(e.completed ? 'cut:completed' : 'cut:cancelled', (events.get(e.completed ? 'cut:completed' : 'cut:cancelled') ?? 0) + 1);
       if (e.type === 'hit' && e.side === 0) {

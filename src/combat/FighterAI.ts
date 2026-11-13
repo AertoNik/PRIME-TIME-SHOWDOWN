@@ -34,7 +34,7 @@ export interface AIProfile {
 const isControl = (card: CardId) => card === 'shock' || card === 'system_overload';
 
 /** Alpha 1.7.5: card attacks that cover on the line of fire would swallow (GRAVEYARD). */
-const STOPPED_BY_COVER = new Set<CardId>(['power_shot', 'split_shot', 'rebound_disc', 'cable_snare', 'knockout', 'bat_bite', 'adrenaline']);
+const STOPPED_BY_COVER = new Set<CardId>(['power_shot', 'split_shot', 'rebound_disc', 'cable_snare', 'knockout', 'bat_bite', 'adrenaline', 'twelfth_strike']);
 
 const contactTmp = { x: 0, z: 0 };
 
@@ -662,7 +662,8 @@ export class FighterAI {
 
   /** Under fire right now: the opponent's burst is on, a charge is coming, or shots are on the way. */
   private underFire(f: FighterSim, foe: FighterSim): boolean {
-    if (foe.overdrive > 0 || foe.adrenaline > 0 || foe.action.kind === 'windup') return true;
+    // (Alpha 1.9.7: CRAX's clock at twelve — the next landed shot strikes the hour)
+    if (foe.overdrive > 0 || foe.adrenaline > 0 || foe.action.kind === 'windup' || foe.clockReady) return true;
     for (const p of this.m.projectiles) {
       if (!p.alive || p.owner === f.side) continue;
       const rx = f.x - p.x;
@@ -1041,7 +1042,7 @@ export class FighterAI {
     // is slowed, or is committed to a charge of its own.
     const opening = b.pressure > 0 && (m.time - foe.lastDash < 1.2 || foe.slow > 0 || foe.action.kind === 'windup');
     const foeBlocking = foe.shield > 0 || foe.invuln > 0;
-    const threatened = foe.overdrive > 0 || foe.adrenaline > 0;
+    const threatened = foe.overdrive > 0 || foe.adrenaline > 0 || foe.clockReady;
     let s = 0;
     switch (card) {
       case 'dash':
@@ -1157,6 +1158,14 @@ export class FighterAI {
         if (combo) s += 4;
         if (foeDisabled) s += 2;
         if (foe.shield > 0) s -= 4;
+        break;
+      case 'twelfth_strike':
+        // Alpha 1.9.7 (CRAX): wind the clock while his bursts can land for the next few seconds
+        s = dist < f.stats.attack.range * 0.95 ? 4.5 : 0.5;
+        if (combo) s += 3.5;
+        if (foeDisabled) s += 1.5;
+        if (foe.shield > 0 || foe.invuln > 0) s -= 4;
+        if (f.clock > 0) s = -10;
         break;
       case 'system_overload':
         s = 4;

@@ -10,7 +10,7 @@ import type { Difficulty, FighterId } from './types';
 // ---------------------------------------------------------------- settings
 // mode 'auto'   — the event is chosen by the calendar below (normal published game).
 // mode 'manual' — always use `forcedEventId`, ignoring dates (testing / previews).
-//   forcedEventId: 'none' (standard look), 'halloween-2026', 'winter-preview'.
+//   forcedEventId: 'none' (standard look), 'halloween-2026', 'winter-2026', 'winter-preview'.
 // In `npm run dev` you can also add ?event=halloween-2026 (or ?event=none) and
 // ?now=2026-10-25 to the address. Those URL switches are ignored in the published build.
 // A manual preview outside the event's dates is theme-only (no quests or currency)
@@ -44,7 +44,15 @@ export type QuestMetric =
   /** Matches finished with a show rating of at least `min`. */
   | { kind: 'ratingAtLeast'; min: number }
   /** Wins on `min` difficulty or harder. */
-  | { kind: 'winsOnDifficulty'; min: Difficulty };
+  | { kind: 'winsOnDifficulty'; min: Difficulty }
+  // Alpha 1.9.7 — WINTER SHOWDOWN (counted by the SERVER for a `secure` event; see EventDef.secure)
+  /** Real wins (KO or on time) on this set. */
+  | { kind: 'arenaWins'; arena: ArenaId }
+  /** PRIME LEAGUE fights won / settled — the server's own results. */
+  | { kind: 'leagueWins' }
+  | { kind: 'leagueMatches' }
+  /** Seasonal currency earned in fights (career and league; quest rewards do not count). */
+  | { kind: 'earned' };
 
 export interface QuestDef {
   id: string;
@@ -54,7 +62,7 @@ export interface QuestDef {
   target: number;
   /** Seasonal currency paid when the player claims the finished quest. */
   reward: number;
-  icon: 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv';
+  icon: 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv' | 'gift' | 'cane' | 'snow' | 'bell';
 }
 
 export interface CurrencyDef {
@@ -62,7 +70,7 @@ export interface CurrencyDef {
   name: string;
   /** Russian plural forms for 1 / 2 / 5: ['жетон', 'жетона', 'жетонов']. */
   short: [string, string, string];
-  icon: 'pumpkin' | 'snowflake';
+  icon: 'pumpkin' | 'snowflake' | 'cane';
 }
 
 /** Pick the Russian plural form: 1 жетон, 2 жетона, 5 жетонов. */
@@ -89,6 +97,11 @@ export interface MatchEarnings {
    * GRAVEYARD BROADCAST). It counts toward `dailyCap` like the rest of the match tokens.
    */
   arenaWin?: { arena: ArenaId; tokens: number; label: string };
+  /**
+   * Alpha 1.9.7: currency for PRIME LEAGUE fights — paid by the SERVER when it settles the fight (a `secure` event
+   * only), within its own daily cap (Moscow day of the server's clock).
+   */
+  league?: { win: number; draw: number; loss: number; dailyCap: number };
 }
 
 export interface ShopItem {
@@ -137,6 +150,13 @@ export interface EventDef {
   skins?: SeasonSkin[];
   /** Season grand prize, unlocked by finishing `questsNeeded` quests. */
   grandPrize?: { cosmetic: CosmeticId; questsNeeded: number };
+  /**
+   * Alpha 1.9.7 (R-22): the SERVER keeps this event's currency — a PRIME ID wallet (season_wallets / season_ledger):
+   * it pays fights (career reports within limits, league results it settled itself), counts the quests, pays them,
+   * and sells the exchange atomically by its own clock. The save only mirrors it; a guest sees the event but earns
+   * nothing (local currency could not be carried into an account). Halloween 2026 keeps the old local rules.
+   */
+  secure?: boolean;
 }
 
 // --------------------------------------------------------------- calendar
@@ -172,6 +192,53 @@ export const EVENTS: EventDef[] = [
     // other rewards stay within reach too (the calculation is in the Alpha 1.7 report).
     fighters: [{ fighter: 'lucien', cost: 500 }],
     grandPrize: { cosmetic: 'title_halloween_champion', questsNeeded: 6 },
+  },
+  {
+    // Alpha 1.9.7 — WINTER SHOWDOWN 2026–2027. 03.12.2026 00:00 → 03.01.2027 inclusive, Moscow time (UTC+3, no DST):
+    // start 2026-12-02T21:00Z, end (exclusive) 2027-01-03T21:00Z = 04.01.2027 00:00 МСК. A 7-day teaser before.
+    // CANDY CANES live on the SERVER (`secure`); the economy is in docs/WINTER_EVENT_2026_IMPLEMENTATION_REPORT.md
+    // (`npm run winter:economy`): CRAX 900 = the nine quests (470) and ~2 weeks of a regular player's matches.
+    id: 'winter-2026',
+    title: 'WINTER SHOWDOWN',
+    subtitle: 'Новогодний спецвыпуск PRIME TIME 2026–2027',
+    themeId: 'winter',
+    start: '2026-12-02T21:00:00Z',
+    end: '2027-01-03T21:00:00Z',
+    announceDays: 7,
+    tagline: 'Студия перед полуночью: КРЭКС, ДВЕНАДЦАТЫЙ УДАР и праздничный эфир HOLIDAY BROADCAST.',
+    secure: true,
+    currency: { id: 'candy_canes', name: 'КАРАМЕЛЬНЫЕ ТРОСТИ', short: ['трость', 'трости', 'тростей'], icon: 'cane' },
+    earnings: {
+      win: 4,
+      rating: [
+        [60, 2],
+        [85, 2],
+      ],
+      perCombo: 1,
+      comboCap: 3,
+      dailyCap: 45,
+      arenaWin: { arena: 'holiday', tokens: 2, label: 'Победа в HOLIDAY BROADCAST' },
+      league: { win: 6, draw: 3, loss: 2, dailyCap: 30 },
+    },
+    quests: [
+      { id: 'first_snow', title: 'FIRST SNOW ON AIR', desc: 'Проведите 5 матчей до конца', metric: { kind: 'matches' }, target: 5, reward: 30, icon: 'snow' },
+      { id: 'holiday_hat_trick', title: 'HOLIDAY WINS', desc: 'Победите в 15 матчах', metric: { kind: 'wins' }, target: 15, reward: 40, icon: 'gift' },
+      { id: 'garland_combo', title: 'GARLAND COMBO', desc: 'Проведите 60 комбо', metric: { kind: 'combos' }, target: 60, reward: 50, icon: 'combo' },
+      { id: 'frost_guard', title: 'FROST GUARD', desc: 'Сделайте 40 идеальных уклонений или блоков', metric: { kind: 'perfects' }, target: 40, reward: 50, icon: 'snow' },
+      { id: 'midnight_rating', title: 'MIDNIGHT RATING', desc: 'Закончите 10 матчей с рейтингом шоу 80+', metric: { kind: 'ratingAtLeast', min: 80 }, target: 10, reward: 55, icon: 'star' },
+      { id: 'holiday_broadcast', title: 'HOLIDAY BROADCAST', desc: 'Победите 12 раз на арене HOLIDAY BROADCAST', metric: { kind: 'arenaWins', arena: 'holiday' }, target: 12, reward: 60, icon: 'tv' },
+      { id: 'champions_eve', title: "CHAMPION'S EVE", desc: 'Победите 20 раз на сложности «Профи» или выше', metric: { kind: 'winsOnDifficulty', min: 'pro' }, target: 20, reward: 65, icon: 'crown' },
+      { id: 'league_snowfall', title: 'LEAGUE SNOWFALL', desc: 'Победите в 25 боях PRIME LEAGUE', metric: { kind: 'leagueWins' }, target: 25, reward: 70, icon: 'bell' },
+      { id: 'cane_collector', title: 'CANDY CANE COLLECTOR', desc: 'Заработайте в боях 1000 карамельных тростей', metric: { kind: 'earned' }, target: 1000, reward: 90, icon: 'cane' },
+    ],
+    shop: [
+      { cosmetic: 'card_clockwork_gold', cost: 180 },
+      { cosmetic: 'dash_candy_comet', cost: 220 },
+      { cosmetic: 'frame_frostlight_live', cost: 300 },
+      { cosmetic: 'victory_midnight_confetti', cost: 380 },
+    ],
+    fighters: [{ fighter: 'crax', cost: 900 }],
+    grandPrize: { cosmetic: 'title_winter_champion', questsNeeded: 7 },
   },
   {
     // Visual preview of the future winter season: theme only, no quests or currency yet.

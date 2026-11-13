@@ -5,7 +5,7 @@
     <!-- 1.8.2: Content Security Policy — scripts only from the game itself (no inline or injected
          scripts), data:/blob: only for images, fonts and audio the game makes itself, network: the
          game's own files plus an https accounts API (the local test API / Vite on 127.0.0.1 in dev). -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action https://auth.robokassa.ru" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://mc.yandex.ru https://yastatic.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru https://mc.yandex.az https://mc.yandex.by https://mc.yandex.co.il https://mc.yandex.com https://mc.yandex.com.am https://mc.yandex.com.ge https://mc.yandex.com.tr https://mc.yandex.ee https://mc.yandex.fr https://mc.yandex.kg https://mc.yandex.kz https://mc.yandex.lt https://mc.yandex.lv https://mc.yandex.md https://mc.yandex.tj https://mc.yandex.tm https://mc.yandex.uz; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self' https: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action https://auth.robokassa.ru" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#070816" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -77,5 +77,8 @@
       </div>
     </noscript>
     <script type="module" src="/src/main.ts"></script>
+    <!-- 1.9.7: Yandex Metrika 114123351 — only after the visitor's «Разрешить» (Р-28, privacy v6). Its hosts are in
+         script-src and img-src above; the switch (ENABLED) and the CSP go together (docs/METRIKA.md). -->
+    <script src="./metrika.js" defer></script>
   </body>
 </html>

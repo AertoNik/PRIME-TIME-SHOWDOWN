@@ -1,6 +1,6 @@
 // Shared type vocabulary for config, simulation, rendering and UI.
 
-export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina' | 'lucien';
+export type FighterId = 'ray' | 'bruno' | 'nika' | 'vega' | 'kai' | 'rina' | 'lucien' | 'crax';
 export type RivalId = 'dex' | 'tank' | 'zoe' | 'crash' | 'vale' | 'bot';
 export type CardId =
   | 'dash'
@@ -37,7 +37,9 @@ export type CardId =
   | 'second_take'
   | 'freeze_frame'
   /** Alpha 1.7: Lucien's bat-swarm lunge and bite (initial damage + a short bleed). */
-  | 'bat_bite';
+  | 'bat_bite'
+  // Alpha 1.9.7 — WINTER SHOWDOWN: CRAX's signature
+  | 'twelfth_strike';
 export type ComboId =
   | 'counter_strike'
   | 'electro_blast'
@@ -72,11 +74,11 @@ export type CastKind = 'throw' | 'shot' | 'device' | 'guard' | 'signal';
 export type WeaponType = 'twin_blasters' | 'boom_cannon' | 'tech_carbine' | 'pulse_rifle' | 'breaker' | 'ricochet' | 'stinger' | 'cane';
 export type Behavior = 'aggressive' | 'cautious' | 'tactical' | 'reckless';
 export type Difficulty = 'rookie' | 'pro' | 'champion';
-export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte' | 'duelist';
+export type PassiveId = 'momentum' | 'iron_skin' | 'overclock' | 'deadeye' | 'crossfire' | 'riposte' | 'duelist' | 'mainspring';
 export type DashStyle = 'roll' | 'lunge' | 'blink' | 'spin' | 'slide' | 'swirl';
 /** Victory set key (render only): picks which family of victory animations a fighter performs. */
-export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion' | 'nightstar';
-export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician' | 'duelist';
+export type VictoryStyle = 'hype' | 'flex' | 'peace' | 'precise' | 'showman' | 'graceful' | 'brawler' | 'champion' | 'nightstar' | 'clockwork';
+export type IdleStyle = 'bouncy' | 'heavy' | 'sway' | 'poise' | 'showman' | 'feint' | 'brawler' | 'champion' | 'tactician' | 'duelist' | 'clockwork';
 /** 0 = player corner (blue), 1 = rival corner (red). */
 export type Side = 0 | 1;
 

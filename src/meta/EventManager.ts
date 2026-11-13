@@ -11,6 +11,8 @@ import { Collection } from './Collection';
 import { inRoster } from './roster';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
 import { serverNow } from './serverClock';
+import { careerLines, mskDay, ultraCount, type SeasonFight } from '../season/seasonMath';
+import type { SeasonWallet } from '../net/PrimeApi';
 
 /**
  * Source of "now". 1.9.5: the PRIME NETWORK server's clock once the game has heard from the server (serverClock.ts),
@@ -33,9 +35,17 @@ export interface MatchEventOutcome {
   capped: boolean;
   /** Quests that became finished with this match (reward waits in Events). */
   completed: QuestDef[];
+  /**
+   * Alpha 1.9.7 — a `secure` event (WINTER SHOWDOWN): nothing was paid here. `tokens` / `lines` are what the SERVER
+   * will most likely pay (SeasonRuntime reports the fight); `guest`: nobody is signed in — no currency at all.
+   */
+  secure?: { guest: boolean; fight: SeasonFight; seconds: number };
 }
 
 export type BuyResult = { ok: true } | { ok: false; reason: string };
+
+/** Alpha 1.9.7: a secure event's exchange is the server's (SeasonRuntime) — never a local purchase. */
+export const SECURE_ONLY = 'Обмен WINTER SHOWDOWN проходит через PRIME ID';
 
 export type SeasonPhase = 'before' | 'running' | 'after';
 
@@ -64,6 +74,9 @@ export function questIncrement(m: QuestMetric, r: MatchResultData, difficulty: D
       return r.rating >= m.min ? 1 : 0;
     case 'winsOnDifficulty':
       return win && DIFFICULTY_ORDER.indexOf(difficulty) >= DIFFICULTY_ORDER.indexOf(m.min) ? 1 : 0;
+    // Alpha 1.9.7: the metrics of a secure event are the SERVER's (lib/season.js) — never counted locally
+    default:
+      return 0;
   }
 }
 
@@ -198,6 +211,7 @@ export class EventManager {
   applyMatch(eventId: string | null, r: MatchResultData, difficulty: Difficulty, arena?: ArenaId): MatchEventOutcome | null {
     const e = eventId ? this.find(eventId) : null;
     if (!e || !e.currency || !e.earnings || e.quests.length === 0) return null;
+    if (e.secure) return this.secureMatch(e, r, difficulty, arena);
     const p = this.progress(e.id);
     const completed: QuestDef[] = [];
     for (const q of e.quests) {
@@ -243,6 +257,74 @@ export class EventManager {
     return { eventId: e.id, tokens, lines, capped, completed };
   }
 
+  // ------------------------------------------------ Alpha 1.9.7 — secure events (R-22)
+  /**
+   * A PRIME ID with a server that keeps this event's wallet is playing (SeasonRuntime sets it). Without one a secure
+   * event pays nothing — a guest's local currency could never be carried into an account.
+   */
+  secureOnline = false;
+
+  /** A finished fight of a secure event: nothing is paid or counted here — the outcome only tells what the server will see. */
+  private secureMatch(e: EventDef, r: MatchResultData, difficulty: Difficulty, arena?: ArenaId): MatchEventOutcome {
+    const fight: SeasonFight = {
+      source: 'career',
+      outcome: r.outcome,
+      method: r.method,
+      rating: r.rating,
+      combos: r.combos,
+      ultra: ultraCount(r.comboList),
+      perfects: r.perfects,
+      difficulty,
+      arena: arena ?? 'original',
+    };
+    const secure = { guest: !this.secureOnline, fight, seconds: Math.round(r.duration) };
+    if (secure.guest) return { eventId: e.id, tokens: 0, lines: [], capped: false, completed: [], secure };
+    const lines = careerLines(e.earnings!, fight);
+    const sum = lines.reduce((a, l) => a + l.value, 0);
+    const p = this.store.data.events[e.id];
+    const today = p && p.day === mskDay(this.now()) ? p.dayTokens : 0;
+    const tokens = Math.max(0, Math.min(sum, e.earnings!.dailyCap - today));
+    return { eventId: e.id, tokens, lines, capped: tokens < sum, completed: [], secure };
+  }
+
+  /**
+   * The server's wallet of a secure event into this save (the save only mirrors it — balance, quests, purchases), and
+   * every item the server says the account holds into the roster / MY COLLECTION (once; `wear`: put a fresh one on).
+   * Returns the quests that became finished since the previous mirror.
+   */
+  applyWallet(w: SeasonWallet, wear = false): QuestDef[] {
+    const e = this.find(w.event);
+    if (!e?.secure) return [];
+    const p = this.progress(e.id);
+    const before = new Set(e.quests.filter((q) => (p.quests[q.id]?.p ?? 0) >= q.target).map((q) => q.id));
+    p.tokens = w.balance;
+    p.earned = w.earned;
+    p.spent = w.spent;
+    p.day = w.day;
+    p.dayTokens = w.dayCareer;
+    for (const q of e.quests) {
+      const st = w.quests[q.id];
+      p.quests[q.id] = { p: Math.min(q.target, st?.p ?? 0), claimed: !!st?.claimed };
+    }
+    p.grandClaimed = w.grandClaimed;
+    const s = this.store.data;
+    for (const id of w.owned.cosmetics as CosmeticId[]) {
+      if (e.shop.some((x) => x.cosmetic === id) && !p.bought.includes(id)) p.bought.push(id);
+      if (!this.owns(id)) this.collection.grant(id, e.id, undefined, wear);
+    }
+    for (const id of w.owned.fighters as FighterId[]) {
+      if (!FIGHTERS[id]?.seasonal) continue;
+      if (!p.fighters.some((f) => f.id === id)) p.fighters.push({ id, at: this.now() });
+      if (s.fighters[id] && !s.fighters[id].unlocked) {
+        s.fighters[id].unlocked = true;
+        if (wear) s.selected = id;
+      }
+    }
+    this.version++;
+    this.store.save();
+    return e.quests.filter((q) => !before.has(q.id) && (p.quests[q.id]?.p ?? 0) >= q.target);
+  }
+
   /**
    * Alpha 1.7.5: the season's bonus for a win on this set while the event really pays
    * (null otherwise) — shown in the arena picker.
@@ -257,7 +339,7 @@ export class EventManager {
   /** Pay out a finished quest once. Returns the tokens paid or null. */
   claimQuest(questId: string): number | null {
     const e = this.active;
-    if (!this.playable || !e) return null;
+    if (!this.playable || !e || e.secure) return null;
     const q = e.quests.find((x) => x.id === questId);
     const p = this.progress(e.id);
     const st = p.quests[questId];
@@ -273,13 +355,15 @@ export class EventManager {
   canClaimGrand(): boolean {
     const e = this.active;
     if (!this.playable || !e?.grandPrize) return false;
+    // (1.9.7: a secure event's grand prize is the server's — SeasonRuntime claims it)
+    if (e.secure && !this.secureOnline) return false;
     const p = this.store.data.events[e.id];
     return !p?.grandClaimed && this.questsDone(e) >= e.grandPrize.questsNeeded;
   }
 
   claimGrand(): CosmeticId | null {
     const e = this.active;
-    if (!e?.grandPrize || !this.canClaimGrand()) return null;
+    if (!e?.grandPrize || e.secure || !this.canClaimGrand()) return null;
     this.progress(e.id).grandClaimed = true;
     this.grant(e.grandPrize.cosmetic, e.id);
     this.version++;
@@ -294,6 +378,7 @@ export class EventManager {
   buy(id: CosmeticId): BuyResult {
     const e = this.active;
     if (!this.playable || !e) return { ok: false, reason: 'Обмен доступен только во время события' };
+    if (e.secure) return { ok: false, reason: SECURE_ONLY };
     const item = e.shop.find((s) => s.cosmetic === id);
     if (!item) return { ok: false, reason: 'Этого предмета нет в обмене' };
     if (this.owns(id)) return { ok: false, reason: 'Уже в коллекции' };
@@ -366,6 +451,7 @@ export class EventManager {
   buySkin(id: SkinId): BuyResult {
     const e = this.active;
     if (!this.playable || !e) return { ok: false, reason: 'Обмен доступен только во время события' };
+    if (e.secure) return { ok: false, reason: SECURE_ONLY };
     const item = e.skins?.find((s) => s.skin === id);
     if (!item) return { ok: false, reason: 'Этого облика нет в обмене' };
     if (this.earnedSkin(id) || ownsPaid(SKU_OF_SKIN[id])) return { ok: false, reason: 'Облик уже в вашей коллекции' };
@@ -403,6 +489,7 @@ export class EventManager {
   buyFighter(id: FighterId): BuyResult {
     const e = this.active;
     if (!this.playable || !e) return { ok: false, reason: 'Открыть бойца можно только во время события' };
+    if (e.secure) return { ok: false, reason: SECURE_ONLY };
     const item = e.fighters?.find((x) => x.fighter === id);
     if (!item) return { ok: false, reason: 'Этого бойца нет в обмене' };
     const s = this.store.data;

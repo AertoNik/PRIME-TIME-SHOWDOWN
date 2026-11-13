@@ -30,6 +30,9 @@ export function rigPrint(lookId: string): string {
   const h = crypto.createHash('sha256');
   for (const bone of Object.keys(G.bones).sort()) {
     const b = G.bones[bone as keyof typeof G.bones];
+    // (1.9.7: the optional bones of CRAX — the key and the crank — are empty for everyone else; an empty one is left out,
+    // so every look without them keeps exactly its earlier print)
+    if ((bone === 'key' || bone === 'crank') && !b.toon && !b.glow) continue;
     h.update(bone);
     geoPrint(h, b.toon);
     geoPrint(h, b.glow);

@@ -228,6 +228,12 @@ export class CombatSystem {
     if (f.overdrive > 0) f.overdrive = Math.max(0, f.overdrive - dt);
     if (f.slow > 0) f.slow = Math.max(0, f.slow - dt);
     if (f.momentum > 0) f.momentum = Math.max(0, f.momentum - dt);
+    // Alpha 1.9.7 (CRAX): the MAINSPRING's faster trigger, and the TWELFTH STRIKE clock running down
+    if (f.mainspring > 0) f.mainspring = Math.max(0, f.mainspring - dt);
+    if (f.clock > 0) {
+      f.clock -= dt;
+      if (f.clock <= 0) this.stopClock(f);
+    }
     if (f.momentumCd > 0) f.momentumCd -= dt;
     if (f.ironSkin > 0) f.ironSkin = Math.max(0, f.ironSkin - dt);
     if (f.ironSkinCd > 0) f.ironSkinCd -= dt;
@@ -1446,14 +1452,18 @@ export class CombatSystem {
               m.emit({ type: 'shieldBreak', side: foe.side, x: foe.x, z: foe.z });
               stun = CARD_TUNING.shock.shieldStun;
             }
+            // Alpha 1.9.7 TWELFTH STRIKE: CRAX's regular shot that lands while his clock reads twelve strikes the hour
+            const clocked = src.clock > 0 && HIT_KIND[p.kind] === 'auto' && !p.echo;
+            const strike = clocked && src.clockReady;
+            if (strike) dmg += CARD_TUNING.twelfth_strike.damage * src.outgoingDamageMult() * src.clockMult;
             const outcome = this.applyHit(foe, src, {
               damage: dmg,
               kind: HIT_KIND[p.kind],
-              heavy: p.heavy,
-              crit: p.crit || trick,
+              heavy: p.heavy || strike,
+              crit: p.crit || trick || strike,
               electric: p.electric,
               combo: p.combo,
-              knockback: p.knockback,
+              knockback: strike ? Math.max(p.knockback, CARD_TUNING.twelfth_strike.knockback) : p.knockback,
               stun,
               slowAmount: p.slowAmount,
               slowDuration: p.slowDuration,
@@ -1464,6 +1474,7 @@ export class CombatSystem {
               pierce: p.pierce,
               boost: p.boost,
             });
+            if (clocked) this.clockShot(src, foe, outcome, strike);
             if (outcome === 'dodged') {
               // FALSE START read it: the shot flies on past her
               p.passThrough = true;
@@ -1676,6 +1687,36 @@ export class CombatSystem {
     this.m.emit({ type: 'stun', side: target.side, duration });
   }
 
+  // ------------------------------------------------- Alpha 1.9.7 — TWELFTH STRIKE
+  /** A regular shot of a fighter whose clock runs met the target: a landed one moves the hand, at twelve it strikes. */
+  private clockShot(f: FighterSim, foe: FighterSim, outcome: 'hit' | 'blocked' | 'dodged' | 'ignored', strike: boolean): void {
+    if (strike) {
+      // the hour strikes once: a PERFECT BLOCK takes it, a DASH or a FALSE START lets the next shot try again
+      if (outcome !== 'hit' && outcome !== 'blocked') return;
+      this.m.emit({ type: 'clock', side: f.side, what: outcome === 'hit' ? 'strike' : 'blocked', marks: 12, x: foe.x, z: foe.z });
+      f.clock = 0;
+      f.clockMarks = 0;
+      f.clockReady = false;
+      return;
+    }
+    if (outcome !== 'hit' || f.clockReady) return;
+    const t = CARD_TUNING.twelfth_strike;
+    f.clockMarks = Math.min(12, f.clockMarks + t.marksPerHit);
+    if (f.clockMarks >= 12) {
+      f.clockReady = true;
+      f.clock = t.ready;
+      this.m.emit({ type: 'clock', side: f.side, what: 'ready', marks: 12, x: f.x, z: f.z });
+    } else this.m.emit({ type: 'clock', side: f.side, what: 'tick', marks: f.clockMarks, x: f.x, z: f.z });
+  }
+
+  /** The clock ran down (or the fight ended) before it struck. */
+  stopClock(f: FighterSim): void {
+    f.clock = 0;
+    f.clockMarks = 0;
+    f.clockReady = false;
+    this.m.emit({ type: 'clock', side: f.side, what: 'stop', marks: 0, x: f.x, z: f.z });
+  }
+
   applyHit(target: FighterSim, source: FighterSim, h: HitInfo): 'hit' | 'blocked' | 'dodged' | 'ignored' {
     const m = this.m;
     if (target.ko || m.phase !== 'fight') return 'ignored';
@@ -1774,6 +1815,13 @@ export class CombatSystem {
     }
     if (h.stun > 0) this.applyStun(target, h.stun, source.side);
 
+    // Alpha 1.9.7 MAINSPRING (CRAX): once a fight, under half health the spring rewinds
+    if (target.def.passive === 'mainspring' && !target.mainspringUsed && target.hp < target.maxHp * PASSIVE_TUNING.mainspring.threshold) {
+      target.mainspringUsed = true;
+      target.mainspring = PASSIVE_TUNING.mainspring.duration;
+      m.hands[target.side].gain(PASSIVE_TUNING.mainspring.energy);
+      m.emit({ type: 'passive', side: target.side, passive: 'mainspring' });
+    }
     if (target.def.passive === 'iron_skin' && final >= PASSIVE_TUNING.iron_skin.threshold && target.ironSkinCd <= 0) {
       target.ironSkin = PASSIVE_TUNING.iron_skin.duration;
       target.ironSkinCd = PASSIVE_TUNING.iron_skin.cooldown;

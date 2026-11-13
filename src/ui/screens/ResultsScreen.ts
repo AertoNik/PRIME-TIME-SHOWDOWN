@@ -153,9 +153,18 @@ export class ResultsScreen implements Screen {
             ? `<button class="label evr-link evr-star-ready" data-act="events">${name} можно открыть в «Событиях» ›</button>`
             : `<div class="evr-star"><span>До ${name}</span><div class="progress gold"><i style="transform:scaleX(${have / star.cost})"></i></div><span>${have}/${star.cost}</span></div>`;
       }
+      // Alpha 1.9.7 (R-22): a secure event pays through PRIME ID — the gain is the server's answer (seasonConfirmed)
+      const sec = eo.secure;
+      const unit = ev.currency ? ev.currency.short[2] : 'жетонов';
+      const status = sec
+        ? sec.guest
+          ? `<div class="evr-sec evr-guest" data-season-status>Войдите в PRIME ID, чтобы получать ${esc(ev.currency?.name.toLowerCase() ?? 'награды')} за бои и задания</div>`
+          : '<div class="evr-sec" data-season-status>PRIME ID зачисляет…</div>'
+        : '';
       eventBlock = `<div class="section panel ev-result" style="animation:lineIn .35s ease ${T0 + 0.15}s both">
-          <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+${eo.tokens}<span class="evr-coin">${icon}</span></span></div>
-          <div class="muted evr-lines">${parts || 'Победы, высокий рейтинг и комбо приносят жетоны'}${eo.capped ? ' · дневной лимит жетонов за бои достигнут' : ''}</div>
+          <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+<span data-season-paid>${eo.tokens}</span><span class="evr-coin">${icon}</span></span></div>
+          <div class="muted evr-lines">${parts || `Победы, высокий рейтинг и комбо приносят ${ev.secure && ev.currency ? esc(ev.currency.name.toLowerCase()) : 'жетоны'}`}${eo.capped ? ` · дневной лимит ${unit} за бои достигнут` : ''}</div>
+          ${status}
           ${quests}
           ${starLine}
           ${quests ? '<button class="label evr-link" data-act="events">Забрать награды в «Событиях» ›</button>' : ''}
@@ -326,4 +335,28 @@ export class ResultsScreen implements Screen {
     this.skip?.();
     this.skip = null;
   }
+
+  /**
+   * Alpha 1.9.7 (R-22): the server's answer for this fight's CANDY CANES (null: not sent now — the fight waits in the
+   * queue and is paid once PRIME ID is reachable).
+   */
+  seasonConfirmed(r: { paid: number; capped: boolean; completed: { title: string; reward: number }[] } | null): void {
+    const st = this.el.querySelector('[data-season-status]');
+    const paid = this.el.querySelector('[data-season-paid]');
+    if (!st) return;
+    if (!r) {
+      st.textContent = 'Бой сохранён: трости зачислятся, когда PRIME ID будет на связи';
+      return;
+    }
+    if (paid) paid.textContent = String(r.paid);
+    st.classList.add('ok');
+    st.textContent = r.capped ? `Зачислено PRIME ID: +${r.paid} · дневной лимит за бои достигнут` : `Зачислено PRIME ID: +${r.paid}`;
+    for (const q of r.completed) {
+      const d = document.createElement('div');
+      d.className = 'evr-quest';
+      d.innerHTML = `${ICONS.check}<span>Задание выполнено: <b>${esc(q.title)}</b> · +${q.reward}</span>`;
+      st.after(d);
+    }
+  }
+
 }

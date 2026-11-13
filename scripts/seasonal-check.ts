@@ -72,8 +72,9 @@ const NEW_YEAR: EventDef = {
   title: 'NEW YEAR GALA',
   subtitle: 'test',
   themeId: 'winter',
-  start: '2026-12-20T00:00:00Z',
-  end: '2027-01-10T00:00:00Z',
+  // (1.9.7: after WINTER SHOWDOWN — one running event at a time, and this test season must be the one)
+  start: '2027-02-10T00:00:00Z',
+  end: '2027-03-01T00:00:00Z',
   announceDays: 7,
   tagline: 'test',
   currency: { id: 'snow', name: 'SNOW TOKENS', short: ['жетон', 'жетона', 'жетонов'], icon: 'pumpkin' },
@@ -89,11 +90,13 @@ function ruleChecks(): void {
   section('Единое сезонное правило: персонажи, эффекты, облики');
   setEntitlements([]);
   const seasonal = seasonalSkus();
-  check('the seasonal items of the real calendar: LUCIEN and the three Halloween effects sold after the season (the same ids as the exchange)', seasonal.sort().join() === ['fighter_lucien', 'season_halloween_cards', 'season_pumpkin_victory', 'season_spooky_broadcast'].sort().join(), seasonal.join());
+  check('the seasonal items of the real calendar: LUCIEN and the three Halloween effects sold after the season, 1.9.7: CRAX and the four WINTER SHOWDOWN items (the same ids as the exchange)', seasonal.sort().join() === ['fighter_lucien', 'season_halloween_cards', 'season_pumpkin_victory', 'season_spooky_broadcast', 'fighter_crax', 'season_clockwork_gold', 'season_candy_comet', 'season_frostlight_live', 'season_midnight_confetti'].sort().join(), seasonal.join());
   check('one item, one id: each seasonal shop entry IS its exchange\'s item (fighter / cosmetic id), no shop-only copy', seasonal.every((s) => { const it = shopItem(s); const ss = seasonOf(it)!; return it.fighter && !it.skin ? ss.event.fighters!.some((f) => f.fighter === it.fighter) : ss.event.shop.some((x) => x.cosmetic === it.cosmetic); }));
   check('PURPLE PHANTOM stays a seasonal reward only (PRIME SHOP already sells its own PHANTOM DASH) — an exchange item without a shop entry is never sold', !SHOP_ITEMS.some((i) => i.cosmetic === 'dash_phantom') && SHOP_ITEMS.some((i) => i.cosmetic === 'dash_prime_phantom'));
   check('the generic rule reaches skins: a skin in a future exchange is seasonal (data only — no code per event)', seasonOf(shopItem('skin_nika_stage_idol'), REG)?.event.id === 'newyear-test' && seasonOf(shopItem('skin_nika_stage_idol'))?.event === undefined);
-  check('server rules: shop_rules.seasons covers every seasonal item (fighter and cosmetics) with its event\'s dates', seasonal.every((s) => SR.seasons[s]?.event === 'halloween-2026' && SR.seasons[s].end === '2026-11-04T00:00:00Z') && Object.keys(SR.seasons).length === seasonal.length);
+  // 1.9.7: WINTER SHOWDOWN ends 04.01.2027 00:00 MSK (2027-01-03T21:00:00Z) — from then its items wait for the owner's price
+  const HALLOWEEN_ITEMS = ['fighter_lucien', 'season_halloween_cards', 'season_pumpkin_victory', 'season_spooky_broadcast'];
+  check('server rules: shop_rules.seasons covers every seasonal item (fighter and cosmetics) with its event\'s dates (Halloween → 04.11.2026, WINTER SHOWDOWN → 04.01.2027 00:00 MSK)', seasonal.every((s) => (HALLOWEEN_ITEMS.includes(s) ? SR.seasons[s]?.event === 'halloween-2026' && SR.seasons[s].end === '2026-11-04T00:00:00Z' : SR.seasons[s]?.event === 'winter-2026' && SR.seasons[s].start === '2026-12-02T21:00:00Z' && SR.seasons[s].end === '2027-01-03T21:00:00Z')) && Object.keys(SR.seasons).length === seasonal.length);
   check('server rules: a seasonal cosmetic is in BOTH lists — owned via the save (tokens), worn from shop.equip (purchase)', ['card_pumpkin', 'frame_spooky', 'victory_pumpkin'].every((c) => R.cosmetics[c] === COSMETICS[c as CosmeticId].slot && R.shopCosmetics[c] === COSMETICS[c as CosmeticId].slot) && !('dash_phantom' in R.shopCosmetics));
   check('server rules: save_rules.events lists the exchanges with their end (the cloud\'s season guard)', R.events['halloween-2026'].end === '2026-11-04T00:00:00Z' && R.events['halloween-2026'].cosmetics.join() === 'card_pumpkin,dash_phantom,frame_spooky,victory_pumpkin' && R.events['halloween-2026'].fighters.join() === 'lucien' && R.events['halloween-2026'].skins.length === 0);
 
@@ -141,16 +144,16 @@ function ruleChecks(): void {
   // ---- a future season with a SKIN in its exchange
   section('Будущий сезон (данные): облик в обмене жетонов');
   const nika = shopItem('skin_nika_stage_idol');
-  const ny = world('2026-12-25T12:00:00Z', REG);
+  const ny = world('2027-02-15T12:00:00Z', REG);
   check('during the New Year test event: the skin is «СЕЗОННЫЙ» for 300 SNOW TOKENS (listed although its price is only proposed)', ny.shop.listed(nika) && ny.shop.state(nika).status === 'seasonal' && ny.shop.state(nika).price === '300 SNOW TOKENS');
   check('…not enough tokens → refused with the shortfall, nothing written', !ny.events.buySkin('nika_stage_idol').ok && ny.store.saves === 0);
   ny.events.progress('newyear-test').tokens = 320;
   check('…opened for 300 tokens: the record in save.events[…].skins, the tokens spent, saved at once', ny.events.buySkin('nika_stage_idol').ok && ny.events.tokens(ny.events.active) === 20 && ny.store.data.events['newyear-test'].skins?.[0]?.id === 'nika_stage_idol' && ny.store.saves === 1);
   check('…owned: the wardrobe offers it (source «season»), it is worn everywhere, the shop says «Получено в NEW YEAR GALA»', ny.shop.ownsSkin('nika_stage_idol') && ny.shop.skinSource('nika_stage_idol') === 'season' && ny.shop.setSkin('nika', 'nika_stage_idol') && ny.shop.lookFor('nika') === 'nika_stage_idol' && ny.shop.state(nika).price === 'Получено в NEW YEAR GALA');
   check('…a second exchange purchase is refused; a purchase for roubles is refused («owned»)', !ny.events.buySkin('nika_stage_idol').ok && ny.shop.requestPurchase('skin_nika_stage_idol', true).code === 'owned');
-  const reload = world('2027-02-01T12:00:00Z', REG, sanitize(JSON.parse(JSON.stringify(ny.store.data))));
+  const reload = world('2027-03-05T12:00:00Z', REG, sanitize(JSON.parse(JSON.stringify(ny.store.data))));
   check('…kept after the event and through a reload (sanitize keeps the record; the worn choice too)', reload.shop.ownsSkin('nika_stage_idol') && reload.shop.lookFor('nika') === 'nika_stage_idol');
-  const nyAfter = world('2027-02-01T12:00:00Z', REG);
+  const nyAfter = world('2027-03-05T12:00:00Z', REG);
   check('after the event, not obtained: «ОЖИДАЕТ ПРОДАЖИ» (price proposed); a bought one (the right) owns the same skin', nyAfter.shop.state(nika).status === 'after_season' && (() => { setEntitlements(['skin_nika_stage_idol']); const ok = nyAfter.shop.ownsSkin('nika_stage_idol') && nyAfter.shop.skinSource('nika_stage_idol') === 'purchase'; setEntitlements([]); return ok; })());
   check('a save WITHOUT a skin record keeps exactly its earlier text (the field is written only when used)', JSON.stringify(sanitize(JSON.parse(JSON.stringify(defaultSave())))).indexOf('"skins":[') < 0 && !('skins' in sanitize(JSON.parse(JSON.stringify(during.store.data))).events['halloween-2026']));
   // the server's save rules for skin records (the real rules have no skin exchange; a copy with the test one)
@@ -192,7 +195,7 @@ function guardChecks(): void {
   // 1.9.5 final: the honest offline model — the server check stays as it is; a PRIME ID player without a connection is told
   // BEFORE exchanging that an offline exchange reaches the cloud only within 72 hours after the event's end
   const evs = read('src/ui/screens/EventsScreen.ts');
-  check('the exchange warns a PRIME ID player without a connection to PRIME CLOUD (no server time this session): kept on this device, taken by the cloud only within 72 hours after the end — with the end date', /const offline = !!this\.g\.account\?\.api\?\.sessionRecord && !serverTimeKnown\(\);/.test(evs) && /не позднее чем через 72 часа после окончания события/.test(evs) && /ev-offline/.test(read('src/styles/main.css')));
+  check('the exchange warns a PRIME ID player without a connection to PRIME CLOUD (no server time this session): kept on this device, taken by the cloud only within 72 hours after the end — with the end date', /const offline = (?:!e\.secure && )?!!this\.g\.account\?\.api\?\.sessionRecord && !serverTimeKnown\(\);/.test(evs) && /не позднее чем через 72 часа после окончания события/.test(evs) && /ev-offline/.test(read('src/styles/main.css')));
   check('the server check is NOT weakened: the grace stays 72 h, no client date is read as proof (records\' «at» never consulted)', V.SEASON_GRACE_MS === 72 * 3600 * 1000 && !/\.at\b/.test(read('backend/pb_hooks/lib/validate.js').split('function seasonClosed')[1].split('module.exports')[0]));
   check('the game names the reason in PRIME CLOUD (not a generic «server error»)', /v\.detail === 'season_closed'/.test(read('src/ui/accountUI.ts')) && /detail: s \? s\.detail : ''/.test(read('src/game/AccountRuntime.ts')));
 }
@@ -249,6 +252,13 @@ async function serverChecks(): Promise<void> {
   // running for one item (seasonal_only), and a skin in a test exchange (the save rules accept its record)
   fs.rmSync(hooksDir, { recursive: true, force: true });
   fs.cpSync(HOOKS, hooksDir, { recursive: true });
+  // 1.9.7: the shop's CALENDAR is pinned (PRIME_SERVER_ROLE=dev + PRIME_SEASON_CLOCK_FILE — lib/payments.js shopNow): these
+  // expectations describe 07.11.2026 12:00 UTC, revision 4 in force (revision 5 took effect on 08.11.2026 06:00 UTC); before,
+  // the server's real clock made them fail as soon as that day passed
+  const CLOCK_AT = Date.parse('2026-11-07T12:00:00Z');
+  const clockFile = path.join(path.dirname(dataDir), 'seasonal-shop-clock.txt');
+  fs.writeFileSync(clockFile, String(CLOCK_AT));
+  const SHOP_CLOCK_ENV = { PRIME_SERVER_ROLE: 'dev', PRIME_SEASON_CLOCK_FILE: clockFile };
   const sr = JSON.parse(JSON.stringify(R));
   sr.events['halloween-2026'].end = '2026-01-01T00:00:00Z';
   sr.events['newyear-test'] = { end: '2099-01-01T00:00:00Z', cosmetics: [], fighters: [], skins: ['nika_stage_idol'] };
@@ -259,7 +269,7 @@ async function serverChecks(): Promise<void> {
   fs.writeFileSync(path.join(hooksDir, 'lib', 'shop_rules.js'), `module.exports = ${JSON.stringify(shr, null, 2)};\n`);
   const SU = { email: 'seasonal-admin@seasonal.test', pw: crypto.randomBytes(18).toString('base64url') };
   upsertSuperuser(dataDir, SU.email, SU.pw, PORTS);
-  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open' }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
+  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open', ...SHOP_CLOCK_ENV }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 300) pbLog.splice(0, pbLog.length - 300);
@@ -337,7 +347,7 @@ async function serverChecks(): Promise<void> {
     const shr5 = JSON.parse(JSON.stringify(shr));
     shr5.offers = [...shr5.offers.filter((o: any) => o.revision < 5), R5];
     fs.writeFileSync(path.join(hooksDir, 'lib', 'shop_rules.js'), `module.exports = ${JSON.stringify(shr5, null, 2)};\n`);
-    pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open' }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
+    pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open', ...SHOP_CLOCK_ENV }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
     pb.stdout.on('data', keep);
     pb.stderr.on('data', keep);
     if (!(await waitHealthy(API + '/api/health')) || !(await ownServerStarted(pb, pbLog))) throw new Error('PocketBase did not restart');
@@ -345,14 +355,14 @@ async function serverChecks(): Promise<void> {
     const g5 = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'fx_glitch_dash' });
     // 1.9.5: an exact moment, as the server reads it — a revision in force since a minute ago (ISO with time) is the one
     // offered; one that starts in an hour is not yet
-    const now5 = Date.now();
+    const now5 = CLOCK_AT; // the server's (pinned) calendar
     const shrT = JSON.parse(JSON.stringify(shr5));
     shrT.offers = [...shrT.offers.filter((o: any) => o.revision < 5), { ...R5, effectiveFrom: new Date(now5 - 60000).toISOString() }, { ...R5, revision: 6, sha256: 'c'.repeat(64), effectiveFrom: new Date(now5 + 3600000).toISOString() }];
     check('under a revision that lists them (test № 5 in force): charged at the approved price (GLITCH DASH 59 ₽), the checkout goes on to the consent with that revision', cfg5.shop.charge.fx_glitch_dash === 5900 && g5.status === 409 && g5.j.code === 'offer_consent_required' && g5.j.quote?.priceKop === 5900 && g5.j.offer?.revision === 5, JSON.stringify(g5.j).slice(0, 300));
     await stopChild(pb);
     pb = null;
     fs.writeFileSync(path.join(hooksDir, 'lib', 'shop_rules.js'), `module.exports = ${JSON.stringify(shrT, null, 2)};\n`);
-    pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open' }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
+    pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], env: { PRIME_REGISTRATION: 'disabled', PRIME_GAME_URL: 'http://localhost:5173/', PRIME_SESSIONS: 'off', PRIME_SHOP_SALES: 'open', ...SHOP_CLOCK_ENV }, args: [`--hooksDir=${hooksDir}`, '--hooksWatch=false'] });
     pb.stdout.on('data', keep);
     pb.stderr.on('data', keep);
     if (!(await waitHealthy(API + '/api/health')) || !(await ownServerStarted(pb, pbLog))) throw new Error('PocketBase did not restart');

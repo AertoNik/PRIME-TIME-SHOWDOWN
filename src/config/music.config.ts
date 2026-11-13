@@ -10,8 +10,19 @@
 // 250 Hz high-pass (a phone speaker) into `phone`; the player levels every track by the average
 // of the two, so a hotter master — or a bass-heavy one on a phone — does not come out louder.
 import type { ArenaId } from './arenas.config';
+import type { ThemeId } from './themes.config';
 
-export type MusicId = 'prime_menu' | 'prime_menu_halloween' | 'prime_arena' | 'casino_arena' | 'movie_backlot' | 'haunted_arena' | 'victor_boss';
+export type MusicId =
+  | 'prime_menu'
+  | 'prime_menu_halloween'
+  | 'prime_arena'
+  | 'casino_arena'
+  | 'movie_backlot'
+  | 'haunted_arena'
+  | 'victor_boss'
+  // Alpha 1.9.7 — WINTER SHOWDOWN (the owner's two songs)
+  | 'prime_menu_winter'
+  | 'winter_arena';
 
 export interface MusicTrackDef {
   /** Path under public/ (relative, so it works from any sub-path of GitHub Pages). */
@@ -35,6 +46,19 @@ export const MUSIC_TRACKS: Record<MusicId, MusicTrackDef> = {
   movie_backlot: { file: 'audio/music/movie_backlot.mp3', lufs: -12.27, phone: -15.02, role: 'battle' },
   haunted_arena: { file: 'audio/music/haunted_arena.mp3', lufs: -12.42, phone: -15.07, role: 'battle' },
   victor_boss: { file: 'audio/music/victor_boss.mp3', lufs: -12.25, phone: -14.27, role: 'battle' },
+  // Alpha 1.9.7: measured with a BS.1770-4 meter (afconvert decode → K-weighting, gated; the same meter gives the
+  // values above for prime_menu_halloween and haunted_arena to 0.01 LU) — docs/WINTER_EVENT_2026_IMPLEMENTATION_REPORT.md
+  prime_menu_winter: { file: 'audio/music/prime_menu_winter.mp3', lufs: -11.27, phone: -12.86, role: 'menu' },
+  winter_arena: { file: 'audio/music/winter_arena.mp3', lufs: -11.22, phone: -12.68, role: 'battle' },
+};
+
+/**
+ * Alpha 1.9.7: the menu music of a seasonal theme (only while that theme's event really runs — Game.menuMusic);
+ * a theme without an entry keeps `prime_menu`.
+ */
+export const MENU_MUSIC: Partial<Record<ThemeId, MusicId>> = {
+  halloween: 'prime_menu_halloween',
+  winter: 'prime_menu_winter',
 };
 
 /** The playback gain of a track: its role level, levelled to `MUSIC_MIX.reference`. */
@@ -51,12 +75,14 @@ export const ARENA_MUSIC: Record<ArenaId, MusicId> = {
   haunted: 'haunted_arena',
   // Alpha 1.7.5: the second Halloween set shares the Halloween fight track (no new music)
   graveyard: 'haunted_arena',
+  // Alpha 1.9.7: the New Year set has its own song (the other sets keep theirs during the winter event)
+  holiday: 'winter_arena',
 };
 
 const dB = (v: number) => Math.pow(10, v / 20);
 
 export const MUSIC_MIX = {
-  /** Every track is levelled to this loudness first (average of `lufs` and `phone`; the quietest of the seven). */
+  /** Every track is levelled to this loudness first (average of `lufs` and `phone`; the quietest track — haunted_arena). */
   reference: -13.75,
   /**
    * Then this gain per role, before the music bus (0.32) and the master (0.9). Set by

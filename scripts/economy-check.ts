@@ -12,6 +12,7 @@ import { COSMETICS, COSMETIC_ORDER, isServerEarned, type CosmeticId } from '../s
 import { DAILY } from '../src/config/daily.config';
 import { LEAGUE } from '../src/config/league.config';
 import { SHOP_ITEMS } from '../src/config/shop.config';
+import { seasonOf } from '../src/config/seasonal';
 import { SIM_VERSION } from '../src/league/simVersion';
 import { ARCHETYPES, CAREER_195, DAILY_SERVER, careerSink, LEAGUE_195, type CareerVariant, honestPerHour, lossFarmPerHour, runCareer, runDaily, runLeague } from './lib/economyModel';
 import { sampleFights } from './lib/economySamples';
@@ -28,7 +29,8 @@ const A = (id: string) => ARCHETYPES.find((a) => a.id === id)!;
 
 // ------------------------------------------------------------------ the fight and the career
 console.log('\n— Бой и карьера (1.9.6: прогрессивные цены, доллары по сложности)');
-check('the fight is untouched: SIM_VERSION 76236bbb2e281ec4', SIM_VERSION === '76236bbb2e281ec4');
+// (1.9.6: the economy left the fight untouched, SIM_VERSION 76236bbb2e281ec4; 1.9.7 WINTER SHOWDOWN changes the fight on purpose)
+check(`the game and the server carry one SIM_VERSION (${SIM_VERSION}; 1.9.7 changed it for CRAX and HOLIDAY BROADCAST)`, (SIM_VERSION as string) !== '76236bbb2e281ec4' && /^[0-9a-f]{16}$/.test(SIM_VERSION));
 const fightCosts = (Object.keys(FIGHTERS) as FighterId[]).reduce((t, f) => t + (FIGHTERS[f].contract?.cost ?? 0), 0);
 const fightPrices = (Object.keys(CARDS) as CardId[]).reduce((t, c) => t + (CARDS[c].shop?.price ?? 0), 0);
 check('the BASE prices in the fight files are as they were (6 000 $ contracts, 6 850 $ cards) — the career prices them by tier on top', fightCosts === 6000 && fightPrices === 6850);
@@ -127,7 +129,9 @@ console.log('\n— Валюты не смешиваются');
 {
   const earned = COSMETIC_ORDER.filter((id) => isServerEarned(id as CosmeticId));
   const shopIds = new Set(SHOP_ITEMS.map((s) => s.cosmetic).filter(Boolean));
-  check('earned items (daily + league) are six, none of them a PRIME SHOP item, none paid', earned.length === 6 && earned.every((id) => !shopIds.has(id) && !COSMETICS[id].paid));
+  // (1.9.7, the owner's task: after the event WINTER SHOWDOWN's four items go to PRIME SHOP like Halloween's — the same ids, sold only
+  // after the season and once priced; the daily and league exclusives and the WINTER CHAMPION title are never sold)
+  check('earned items (daily + league) are six, (1.9.7) plus the five of WINTER SHOWDOWN confirmed by the season ledger — the daily / league exclusives and the title never a PRIME SHOP item, the four winter items only as seasonal ones after the event; none paid', earned.filter((id) => !COSMETICS[id].serverSeason).length === 6 && earned.filter((id) => COSMETICS[id].serverSeason).length === 5 && earned.every((id) => !COSMETICS[id].paid && (COSMETICS[id].serverSeason && id !== 'title_winter_champion' ? !!seasonOf(SHOP_ITEMS.find((i) => i.cosmetic === id)!) : !shopIds.has(id))));
   check('dollars, PRIME TOKENS, seasonal tokens and roubles stay apart: the daily table pays dollars and items only, the exchange takes tokens only', DAILY.milestones.every((m) => typeof m.money === 'number') && LEAGUE.exchange.every((x) => Number.isInteger(x.tokens) && x.tokens > 0));
 }
 

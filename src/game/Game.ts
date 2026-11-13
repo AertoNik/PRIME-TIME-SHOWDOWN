@@ -4,7 +4,7 @@ import { MATCH } from '../config/balance';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import { challengeById, SURVIVAL } from '../config/modes.config';
-import { ARENA_MUSIC, type MusicId } from '../config/music.config';
+import { ARENA_MUSIC, MENU_MUSIC, type MusicId } from '../config/music.config';
 import { bossById } from '../config/boss.config';
 import { bossPhaseFlash, bossPhaseSpots, championThemeFor } from '../config/themes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
@@ -18,6 +18,7 @@ import { arenaAvailable, resolveArena, validArenaPref } from '../meta/ArenaSelec
 import { CareerSystem } from '../meta/CareerSystem';
 import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
+import { SeasonRuntime } from './SeasonRuntime';
 import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
 import { devShopGrant, Shop } from '../meta/Shop';
@@ -139,6 +140,8 @@ export class Game {
   readonly daily: DailyRuntime;
   /** Alpha 1.9.0 PRIME LEAGUE (the fight's taps, checkpoints, the server's result). */
   readonly league: LeagueRuntime;
+  /** Alpha 1.9.7 — WINTER SHOWDOWN (R-22): the server's CANDY CANES wallet for this page. */
+  readonly season: SeasonRuntime;
   /** Alpha 1.9.0 PRIME PRODUCER AVATARS: this page's producer look (the server's). */
   readonly producer: ProducerRuntime;
   readonly career: CareerSystem;
@@ -171,6 +174,8 @@ export class Game {
   private matchEventId: string | null = null;
   private seasonCheckT = 0;
   private resultsShown = false;
+  /** Alpha 1.9.7: the results screen (the server's CANDY CANES answer arrives after it is shown). */
+  private results!: ResultsScreen;
   private acc = 0;
   /** PRIME LEAGUE: the fight's fingerprint taken at the very step it ended (see frame()). */
   private leagueOverHash: number | null = null;
@@ -223,6 +228,7 @@ export class Game {
     this.account?.onChange(() => void this.producer.load());
     this.daily = new DailyRuntime(this);
     this.league = new LeagueRuntime(this);
+    this.season = new SeasonRuntime(this);
     this.producer = new ProducerRuntime(this);
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
@@ -317,7 +323,8 @@ export class Game {
     this.ui.register('profile', new ProfileScreen(this));
     this.ui.register('shop', new ShopScreen(this));
     this.ui.register('battle', this.hud);
-    this.ui.register('results', new ResultsScreen(this));
+    this.results = new ResultsScreen(this);
+    this.ui.register('results', this.results);
     this.ui.register('survival', new SurvivalScreen(this));
     this.ui.register('league', new LeagueScreen(this));
     this.ui.register('leagueResult', new LeagueResultScreen(this));
@@ -530,6 +537,8 @@ export class Game {
   refreshSeason(): boolean {
     if (!this.events.refresh()) return false;
     this.themes?.apply(this.events.themeId);
+    // Alpha 1.9.7: a secure event began / ended — who may earn its currency on this page
+    this.season?.sync();
     if (this.arena) this.syncArenaPref();
     // the event started or ended while the menus are open: the menu music follows it
     if (this.started && this.screen !== 'title' && this.screen !== 'battle' && this.screen !== 'results') this.audio.playTrack(this.menuMusic());
@@ -588,7 +597,9 @@ export class Game {
    * really active (EventManager's calendar), never because of a screen's decoration.
    */
   private menuMusic(): MusicId {
-    return this.events.active?.themeId === 'halloween' ? 'prime_menu_halloween' : 'prime_menu';
+    // Alpha 1.9.7: by the event's theme (MENU_MUSIC) — Halloween as before, WINTER SHOWDOWN its own song
+    const theme = this.events.active?.themeId;
+    return (theme && MENU_MUSIC[theme]) || 'prime_menu';
   }
 
   private stageFor(mode: ModeSession, seed: number): ArenaId {
@@ -603,7 +614,8 @@ export class Game {
     const id = resolveArena(this.save.data.arena, season, () => rng.next());
     // Alpha 1.7.5: the champion is not fought among tombstones — BOSS FIGHT keeps its tuned open floor
     // (the cemetery's Halloween neighbour hosts it instead)
-    if (mode.kind === 'boss' && arenaById(id).covers?.length) return 'haunted';
+    // (Alpha 1.9.7: HOLIDAY BROADCAST's cover too — its fight goes to the Original Prime Arena)
+    if (mode.kind === 'boss' && arenaById(id).covers?.length) return id === 'holiday' ? 'original' : 'haunted';
     return id;
   }
 
@@ -1082,6 +1094,11 @@ export class Game {
     this.matchEventId = null;
     this.enterResultsView(m.result.outcome);
     this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
+    // Alpha 1.9.7 (R-22): a secure event's fight goes to the server, which pays it; the results show its answer
+    if (eventOutcome?.secure && !eventOutcome.secure.guest)
+      void this.season.report(eventOutcome).then((r) => {
+        if (this.screen === 'results') this.results.seasonConfirmed(r);
+      });
   }
 
   /** Shared after-fight presentation: camera on the winner, results music, win/loss sting. */
@@ -1153,11 +1170,18 @@ export class Game {
       const s = this.save.data.settings;
       const qBtn = (q: QualitySetting, label: string) => `<button class="${s.quality === q ? 'on' : ''}" data-q="${q}">${label}</button>`;
       const camBtn = (c: CameraMotion, label: string) => `<button class="${s.camera === c ? 'on' : ''}" data-cam="${c}">${label}</button>`;
+      // 1.9.7: visit analytics (Yandex Metrika) — only while public/metrika.js is switched on; the visitor's choice
+      const pa = analytics();
+      const ym = pa ? pa.choice() === 'granted' : false;
+      const ymRow = pa
+        ? `<div class="toggle-row"><span>Аналитика посещений<small class="muted" style="display:block;font-size:11px">Яндекс Метрика · <a href="${pa.page()}" target="_blank" rel="noopener" style="color:var(--teal)">подробнее</a></small></span><button class="switch ${ym ? 'on' : ''}" data-t="ym" role="switch" aria-checked="${ym}" aria-label="Аналитика посещений"></button></div>`
+        : '';
       this.ui.modal(
         `<div class="h1">Настройки</div>
          <div class="toggle-row"><span>Звук</span><button class="switch ${s.sound ? 'on' : ''}" data-t="sound"></button></div>
          <div class="toggle-row"><span>Музыка</span><button class="switch ${s.music ? 'on' : ''}" data-t="music"></button></div>
          <div class="toggle-row"><span>Полоски здоровья над бойцами</span><button class="switch ${s.headHp ? 'on' : ''}" data-t="headHp" role="switch" aria-checked="${s.headHp}" aria-label="Полоски здоровья над бойцами"></button></div>
+         ${ymRow}
          <div style="padding:12px 0 4px" class="label">Качество графики</div>
          <div class="seg-control" style="grid-template-columns:repeat(4,1fr)">${qBtn('auto', 'Авто')}${qBtn('high', 'Высок.')}${qBtn('medium', 'Средн.')}${qBtn('low', 'Низк.')}</div>
          <div style="padding:12px 0 4px" class="label">Движение камеры</div>
@@ -1177,6 +1201,15 @@ export class Game {
             if (tg) {
               if (tg.dataset.t === 'sound') this.toggleSound();
               else if (tg.dataset.t === 'headHp') this.toggleHeadHp();
+              else if (tg.dataset.t === 'ym') {
+                const a = analytics();
+                if (!a) return;
+                this.audio.ui('click');
+                if (a.choice() === 'granted') {
+                  a.decline();
+                  if (a.running()) this.ui.toast('Аналитика выключена. Cookie Метрики удалены; полностью — после перезагрузки страницы.');
+                } else a.allow();
+              }
               else this.toggleMusic();
               render();
               return;
@@ -1522,6 +1555,12 @@ export class Game {
         else if (e.what === 'hit') a.bite();
         else if (e.what === 'barrier') a.cardFx('barrierHit');
         break;
+      // Alpha 1.9.7 — CRAX: the clock's ticks, the struck hour, a clock that ran down (the key-turn is card())
+      case 'clock':
+        if (e.what === 'tick' || e.what === 'ready') a.clockTick(e.what === 'ready');
+        else if (e.what === 'strike' || e.what === 'blocked') a.clockChime(e.what === 'blocked');
+        else if (e.what === 'stop') a.clockStop();
+        break;
       case 'bossPhase': {
         const ph = this.match?.boss?.def.phases[e.phase - 1];
         a.bossPhase(e.phase);
@@ -1536,4 +1575,18 @@ export class Game {
         break;
     }
   }
+}
+
+/** 1.9.7: public/metrika.js (outside the bundle) — the visit analytics, present only while the owner switched it on. */
+interface PrimeAnalyticsApi {
+  enabled: boolean;
+  choice(): 'granted' | 'denied' | null;
+  allow(): boolean;
+  decline(): boolean;
+  running(): boolean;
+  page(): string;
+}
+function analytics(): PrimeAnalyticsApi | null {
+  const a = (window as unknown as { PrimeAnalytics?: PrimeAnalyticsApi }).PrimeAnalytics;
+  return a && a.enabled === true ? a : null;
 }

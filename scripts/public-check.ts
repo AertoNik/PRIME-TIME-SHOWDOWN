@@ -221,15 +221,21 @@ async function main(): Promise<void> {
   // the date each release text carries: version 2 — 20.10.2026; terms/privacy 3 (PRIME SHOP) — the day offer revision 1
   // took effect; terms/privacy 4 and consent 3 (the seller's name in its passport spelling) — the day of revision 2
   // (`legal:release --approved --date=…`, the same day in offer.config.ts)
-  const offerDay = (r: number) => SHOP_OFFERS.find((o) => o.revision === r)?.effectiveFrom ?? 'none';
+  // (an exact moment — «2026-11-20T09:00:00Z» — is its Moscow day, the day the pages are dated with)
+  const offerDay = (r: number) => {
+    const e = SHOP_OFFERS.find((o) => o.revision === r)?.effectiveFrom;
+    if (!e) return 'none';
+    return e.length <= 10 ? e : new Date(Date.parse(e) + 3 * 3600000).toISOString().slice(0, 10);
+  };
   const RELEASE_DAY: Record<string, Record<number, string>> = {
     terms: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2), 5: offerDay(3), 6: offerDay(4) },
     // terms 5, privacy 5 and parents 3 (Alpha 1.8.9.5: PRIME ID from 14, buyers 14–17 under offer revision 3): the day
     // revision 3 takes effect
-    privacy: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2), 5: offerDay(3) },
+    // 1.9.7: privacy 6 and parents 5 (Yandex Metrika, Р-28) — the day revision 6 takes effect (the release)
+    privacy: { 2: '2026-10-20', 3: offerDay(1), 4: offerDay(2), 5: offerDay(3), 6: offerDay(6) },
     consent: { 2: '2026-10-20', 3: offerDay(2) },
     // 1.9.4: terms 6 and parents 4 (offer revision 4: characters, 14–17 within 500 / 2 000 ₽) — the day revision 4 takes effect
-    parents: { 2: '2026-10-20', 3: offerDay(3), 4: offerDay(4) },
+    parents: { 2: '2026-10-20', 3: offerDay(3), 4: offerDay(4), 5: offerDay(6) },
   };
   const RU_M = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   const EN_M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

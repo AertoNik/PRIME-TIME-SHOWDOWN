@@ -7,6 +7,7 @@ import { BacklotStage } from './stages/BacklotStage';
 import { CasinoStage } from './stages/CasinoStage';
 import { GraveyardStage } from './stages/GraveyardStage';
 import { HauntedStage } from './stages/HauntedStage';
+import { HolidayStage } from './stages/HolidayStage';
 import { OriginalStage } from './stages/OriginalStage';
 import type { Stage, StageShared } from './stages/StageKit';
 import { canvasTexture, makeCanvas } from './textures';
@@ -78,6 +79,7 @@ const STAGE_TYPES: Record<ArenaId, new (sh: StageShared) => Stage> = {
   backlot: BacklotStage,
   haunted: HauntedStage,
   graveyard: GraveyardStage,
+  holiday: HolidayStage,
 };
 
 const _a = new Color();
@@ -209,8 +211,10 @@ export class Arena {
       this.decor = null;
       if (th.decor !== 'none' || th.ambient !== 'none') {
         const def = arenaById(this.stageId);
-        const native = !!def.nativeSeason && (th.decor === 'pumpkins' || th.decor === 'championHalloween') && def.nativeSeason === 'halloween';
-        this.decor = new SeasonalDecor(th.decor, th.ambient, th.ambientColors, lowQuality, this.stage.layout, native);
+        // the set already dresses itself for this season: HAUNTED / GRAVEYARD at Halloween, 1.9.7 HOLIDAY BROADCAST in
+        // the winter (its own garlands, trees and snow — the decor adds the lobby pieces and the snowfall only)
+        const native = !!def.nativeSeason && ((def.nativeSeason === 'halloween' && (th.decor === 'pumpkins' || th.decor === 'championHalloween')) || (def.nativeSeason === 'winter' && th.decor === 'frost'));
+        this.decor = new SeasonalDecor(th.decor, th.ambient, th.ambientColors, lowQuality, this.stage.layout, native, { stage: this.stageId, props: def.props.map((p) => ({ x: p.x, z: p.z })) });
         this.decor.setMenuVisible(this.screenInfo.mode === 'menu');
         this.group.add(this.decor.group);
       }

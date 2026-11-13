@@ -107,3 +107,19 @@ a {
   color: var(--muted);
   font-weight: 600;
 }
+/* 1.9.7: the allow / withdraw buttons of the analytics consent page (legal/<lang>/analytics.html, once approved) */
+.doc-btn {
+  min-height: 38px;
+  margin: 0 8px 8px 0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(34, 240, 224, 0.6);
+  background: transparent;
+  color: var(--text);
+  font: 700 14px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+}
+.doc-btn:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}

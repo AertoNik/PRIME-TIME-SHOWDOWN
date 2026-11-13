@@ -71,13 +71,29 @@ export function installViewport(): void {
     window.setTimeout(applyHeight, 350);
   });
   // A page that never scrolls: undo any scroll the browser does on its own
-  // (e.g. after the on-screen keyboard closes).
+  // (e.g. after the on-screen keyboard closes). 1.9.7: not while a text field has the focus — iOS scrolls the
+  // page to keep the field above the keyboard, and pulling it back at once hid the field being typed in; the
+  // page returns to the top when the field loses the focus.
   window.addEventListener('scroll', () => {
+    if (isTextField(document.activeElement)) return;
     if (window.scrollY !== 0 || window.scrollX !== 0) window.scrollTo(0, 0);
+  });
+  document.addEventListener('focusout', () => {
+    window.setTimeout(() => {
+      if (!isTextField(document.activeElement) && (window.scrollY !== 0 || window.scrollX !== 0)) window.scrollTo(0, 0);
+    }, 0);
   });
   const stop = (e: Event) => e.preventDefault();
   document.addEventListener('gesturestart', stop);
   document.addEventListener('gesturechange', stop);
+}
+
+/** An element the on-screen keyboard types into. */
+function isTextField(e: Element | null): boolean {
+  if (!e) return false;
+  if (e instanceof HTMLTextAreaElement) return true;
+  if (e instanceof HTMLInputElement) return !/^(button|checkbox|radio|range|submit|reset|file|color|image|hidden)$/.test(e.type);
+  return (e as HTMLElement).isContentEditable === true;
 }
 
 export function isBlockedLandscape(): boolean {
