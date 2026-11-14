@@ -462,7 +462,7 @@ export class ShopScreen implements Screen {
         ${this.bundlePrices(v)}
         <div class="sb-note ${st.ownedParts?.length ? 'warn' : ''}">${esc(st.note)}</div>
         <div class="sb-rules muted">Комплект — одна покупка и одна оплата: все предметы выдаются вместе и только после подтверждения оплаты сервером. Он продаётся только целиком и не продаётся, если что-то из него уже у вас. Отказаться от покупки можно только от всего комплекта; если у одного из предметов есть недостаток, права покупателя сохраняются (оферта, п. 9.3).</div>
-        <div class="sb-actions"><button class="btn big wide ${canBuy ? '' : 'ghost'}" data-act="buy" ${canBuy || st.status === 'soon' ? '' : 'disabled'}><span class="shine"></span>${st.owned ? 'Уже в коллекции' : canBuy ? `Купить комплект · ${esc(st.price)}` : 'Подробнее о покупке'}</button></div>
+        <div class="sb-actions"><button class="btn big wide sb-buy ${canBuy ? '' : 'ghost'}" data-act="buy" ${canBuy || st.status === 'soon' ? '' : 'disabled'}><span class="shine"></span>${st.owned ? '<span class="sb-buy-t">Уже в коллекции</span>' : canBuy ? `<span class="sb-buy-t">Купить комплект</span><span class="sb-buy-p">${esc(st.price)}</span>` : '<span class="sb-buy-t">Подробнее о покупке</span>'}</button></div>
       </div>`,
       keep,
     );

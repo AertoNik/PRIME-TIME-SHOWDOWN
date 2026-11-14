@@ -20,7 +20,7 @@ import { DEMO_OFFER, DEMO_OFFER_TEXT, SHOP_OFFERS, TEST_OFFER, TEST_OFFER_TEXT, 
 // 1.9.5: the offer revision in force for this check's moment (the real registry)
 const OFFERS_IN_FORCE = () => currentOffer();
 import { sha256 } from '../src/net/sha256';
-import { SHOP_ITEMS, SHOP_SALES_OPEN, approvedPriceRub, formatKop, rubToKop, type ShopSku } from '../src/config/shop.config';
+import { BUNDLE_ITEMS, SHOP_ITEMS, SHOP_SALES_OPEN, approvedPriceRub, formatKop, rubToKop, type ShopSku } from '../src/config/shop.config';
 import {
   CHECKOUT_PENDING_KEY,
   CHECKOUT_PENDING_TTL_MS,
@@ -30,6 +30,7 @@ import {
   consentOf,
   loadPending,
   maskEmail,
+  offerTerms,
   resumeDecision,
   savePending,
   type CheckoutAccount,
@@ -42,7 +43,7 @@ import { PrimeApi, PrimeApiError } from '../src/net/PrimeApi';
 import { issueOfError, orderBanner, orderFoot, orderStatus, type OrderIssue, type OrderView } from '../src/ui/checkoutOrder';
 import { EventManager } from '../src/meta/EventManager';
 import { defaultSave, sanitize, type SaveData, type SaveSystem } from '../src/meta/SaveSystem';
-import { Shop } from '../src/meta/Shop';
+import { Shop, type ShopItemState } from '../src/meta/Shop';
 import { shopRulesSource } from './backend';
 import { HOOKS, MIGRATIONS, PB_BIN, ROOT, binariesReady, ensurePortsFree, ownServerStarted, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { cp, crypto, fs, os, path, proc } from './lib/node';
@@ -125,6 +126,25 @@ function modelChecks(): void {
   check('missing price blocks even with sales open and an offer', buildCheckout(open({ priceRub: null })).block === 'price_pending');
   check('sales closed block', buildCheckout(open({ salesOpen: false })).block === 'sales_closed');
   check('no published offer blocks the real purchase', buildCheckout(open({ offer: null })).block === 'offer_missing' && !buildCheckout(open({ offer: null, paymentsReady: true, consentTicked: true })).canPay);
+  // Beta 2.0 hotfix: the revision AS THE SERVER SENDS IT (lib/checkout.js offerOut — revision, title, url, effectiveFrom,
+  // sha256; no flags). A signed-in player's window takes that copy (checkoutUI input: the server's revision wins), so the
+  // bundles' gate must read the terms of the revision it names — before the hotfix every bundle was «Цена уточняется»
+  // for a signed-in player under offer № 7 in force
+  {
+    const wire = (o: OfferRevision): OfferRevision => ({ revision: o.revision, title: o.title, url: o.url, effectiveFrom: o.effectiveFrom, sha256: o.sha256 });
+    const bdef = BUNDLE_ITEMS[0];
+    const r7 = SHOP_OFFERS.find((o) => o.bundles === true);
+    const r6 = SHOP_OFFERS.find((o) => o.revision === 6);
+    const bstate = { ...w.shop.state(bdef), status: 'on_sale', owned: false, ownedParts: [] } as ShopItemState;
+    const bundle = (offer: OfferRevision | null, o: Partial<CheckoutInput> = {}) => buildCheckout({ ...open({ sku: bdef.sku, state: bstate, priceRub: approvedPriceRub(bdef.sku), offer }), ...o });
+    check('hotfix: the server\'s copy of offer № 7 (no flags) sells a bundle to a signed-in player — it reaches the payment step, not «Цена уточняется»', !!r7 && approvedPriceRub(bdef.sku) !== null && bundle(wire(r7)).block === 'payments_unavailable' && bundle(wire(r7), { paymentsReady: true, consentTicked: true }).canPay, r7 ? String(bundle(wire(r7)).block) : 'no r7');
+    check('hotfix: the same copy reaches the payment with the registry\'s own revision too (guest path unchanged: asked for PRIME ID)', !!r7 && bundle(r7).block === 'payments_unavailable' && bundle(r7, { account: ACC('guest') }).block === 'guest' && bundle(wire(r7), { account: ACC('guest') }).block === 'guest');
+    check('hotfix: revision 6 (no bundles), as the server sends it or from the registry, still never sells a bundle', !!r6 && bundle(wire(r6)).block === 'price_pending' && bundle(r6).block === 'price_pending' && !bundle(wire(r6), { paymentsReady: true, consentTicked: true }).canPay);
+    check('hotfix: a revision the game does not know (another number, or offer № 7\'s number with another text) never sells a bundle', !!r7 && bundle({ ...wire(r7), revision: 8 }).block === 'price_pending' && bundle({ ...wire(r7), sha256: 'b'.repeat(64) }).block === 'price_pending' && bundle(OFFER1).block === 'price_pending');
+    check('hotfix: the terms come from the registry only for the exact revision AND text', !!r7 && offerTerms(wire(r7))?.bundles === true && offerTerms({ ...wire(r7), sha256: 'c'.repeat(64) })?.bundles === undefined && offerTerms(null) === null && offerTerms(wire(r6!))?.bundles !== true);
+    check('hotfix: a single item under the server\'s copy of № 7 — unchanged (reaches the payment step)', !!r7 && buildCheckout(open({ offer: wire(r7) })).block === 'payments_unavailable');
+    check('hotfix: a bundle with one of its items already owned is still refused (bundle_owned), whatever the revision', !!r7 && bundle(wire(r7), { state: { ...bstate, ownedParts: [bdef.bundle![0]] } as ShopItemState }).block === 'bundle_owned');
+  }
   const acc: [CheckoutAccount['state'], string][] = [
     ['guest', 'guest'],
     ['expired', 'session_expired'],

@@ -1,4 +1,4 @@
-import { offerSells, type OfferRevision } from '../config/offer.config';
+import { DEMO_OFFER, SHOP_OFFERS, TEST_OFFER, offerSells, type OfferRevision } from '../config/offer.config';
 import { SALE_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { ShopItemState } from './Shop';
 
@@ -128,6 +128,21 @@ const ACCOUNT_BLOCK: Record<CheckoutAccountState, CheckoutBlock | null> = {
   ready: null,
 };
 
+/**
+ * Beta 2.0 hotfix — the TERMS of the revision the server names. The server sends a revision as { revision, title, url,
+ * effectiveFrom, sha256 } only (backend lib/checkout.js offerOut), never its flags (`bundles`, `items`, `fighters`…), so
+ * reading `bundles` off it was always false: a signed-in player saw every bundle blocked as «Цена уточняется» although
+ * offer № 7 was in force (14.11.2026). The flags come from the game's own registry for EXACTLY that revision and text —
+ * the same number and the same SHA-256 (the published revisions, the staging test terms, the demonstration terms). A
+ * revision the game does not know (a newer server) keeps no flags: nothing it does not name is offered here.
+ */
+export function offerTerms(offer: OfferRevision | null): OfferRevision | null {
+  if (!offer) return null;
+  const known = [...SHOP_OFFERS, TEST_OFFER, DEMO_OFFER].find((o) => o.revision === offer.revision && o.sha256 === offer.sha256);
+  if (!known) return offer;
+  return { ...offer, bundles: known.bundles, items: known.items, fighters: known.fighters, minors: known.minors, minorLimits: known.minorLimits };
+}
+
 export function consentOf(offer: OfferRevision | null, acceptedRevision: number): ConsentState {
   if (!offer) return 'none';
   if (acceptedRevision === offer.revision) return 'accepted';
@@ -138,6 +153,8 @@ export function consentOf(offer: OfferRevision | null, acceptedRevision: number)
 export function buildCheckout(i: CheckoutInput): CheckoutView {
   const item = SALE_ITEMS.find((x) => x.sku === i.sku) ?? null;
   const consent = consentOf(i.offer, i.acceptedRevision);
+  // whether the revision sells bundles — its flag from the registry (the server's copy carries none: offerTerms)
+  const terms = offerTerms(i.offer);
   let block: CheckoutBlock | null = null;
   const st = i.state;
   // what holds for everybody first (the item itself), then the account, then the payment
@@ -147,8 +164,9 @@ export function buildCheckout(i: CheckoutInput): CheckoutView {
   else if (st.ownedParts?.length) block = 'bundle_owned';
   else if (i.priceRub === null) block = 'price_pending';
   // Beta 2.0: a bundle only under terms that sell bundles (the server refuses it too — bundles_closed)
-  else if (item.bundle && i.offer && i.offer.bundles !== true) block = 'price_pending';
+  else if (item.bundle && terms && terms.bundles !== true) block = 'price_pending';
   // 1.9.5: an approved price, but the offer revision shown does not name the item in its Appendix 1 (the server refuses it too)
+  // (as before the hotfix: on the revision as the server sent it — this patch changes only the bundles' gate)
   else if (i.offer && !offerSells(i.offer, i.sku)) block = 'price_pending';
   else if (!i.salesOpen) block = 'sales_closed';
   else if (!i.offer) block = 'offer_missing';

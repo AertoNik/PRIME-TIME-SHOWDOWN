@@ -19218,3 +19218,27 @@ button.lg-arena:active {
     margin-top: 24px;
   }
 }
+
+/* Beta 2.0 hotfix — the bundle's buy button fits every iPhone: «КУПИТЬ КОМПЛЕКТ» on its own line in a size that follows
+   the screen's width, the price under it (the big orange button kept; `.btn` never wraps, so the one-line label of 2.0
+   ran past the button's edges at 24 px) */
+.sb-actions .btn.big.sb-buy {
+  flex-direction: column;
+  gap: 3px;
+  min-height: 64px;
+  padding: 12px 16px;
+  font-size: clamp(17px, 5.4vw, 22px); /* (Safari before iOS 16: no container units) */
+  font-size: clamp(17px, 5.4cqw, 23px);
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+  text-align: center;
+  white-space: normal;
+}
+.sb-buy-t {
+  max-width: 100%;
+}
+.sb-buy-p {
+  font-size: 0.66em;
+  letter-spacing: 0.05em;
+  opacity: 0.95;
+}
