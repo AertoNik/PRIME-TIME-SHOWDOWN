@@ -2767,7 +2767,8 @@ input {
 }
 .deck-slots .slot {
   position: relative;
-  aspect-ratio: 0.74;
+  /* 1.9.9: the picture cards' frame (cardArt.ts CARD_FRAME) */
+  aspect-ratio: 0.7;
   border-radius: 14px;
   border: 2px dashed rgba(var(--line-rgb), 0.28);
   display: flex;
@@ -17371,4 +17372,316 @@ button.lg-arena:active {
   .menu-shops .se-more {
     display: none;
   }
+}
+
+/* ================================================================ 1.9.9 CARD EVOLUTION — picture cards (cardHTML .pc)
+   The owner's pictures are the cards: frame, art, name and the energy gem are drawn on them (src/ui/cardArt.ts). The box
+   of a .card.pc is the picture's FRAME (0.70, its corners 14.5 % of the width); the picture overflows it by CARD_PAD for
+   the gem. The drawn card's own background, inset rings and pattern (.card, .card.exclusive, .card.focus, the card styles,
+   .hand-card.combo-ready, .lg-cardpick.on) stay off — !important also beats the comboGlow keyframes — and come back as
+   layers that follow the frame: .pc-sh behind the picture (glows and rings OUTSIDE the frame), .art over it (the bought
+   style's foil / scanlines / engraving, clipped to the frame with a hole for the gem), the style's ornaments on top. */
+.card.pc {
+  --pc-r: 14.5% / 10.15%;
+  --pc-glow: 0 0 0 transparent;
+  --pc-gold: 0 0 0 transparent;
+  --pc-ring: 0 0 0 transparent;
+  /* the gem drawn on the picture: a hole in the layers over the picture, so they never dim or cover the energy cost */
+  --pc-gem-hole: radial-gradient(ellipse 18.5% 13% at 15.5% 5.5%, transparent 92%, #000 100%);
+  aspect-ratio: 0.7;
+  border-radius: var(--pc-r);
+  background: none !important;
+  box-shadow: none !important;
+}
+.card.pc .pc-sh {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 4px 7px rgba(0, 0, 0, 0.5),
+    var(--pc-ring),
+    var(--pc-gold),
+    var(--pc-glow),
+    0 0 14px var(--card-glow);
+  pointer-events: none;
+}
+.card.pc .face {
+  position: absolute;
+  left: -5.5%;
+  top: -8.5%;
+  width: 106.3%;
+  height: 109.3%;
+  max-width: none;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.card.pc .art {
+  z-index: 1;
+  pointer-events: none;
+  -webkit-mask: var(--pc-gem-hole);
+  mask: var(--pc-gem-hole);
+}
+.card.pc .art::before {
+  content: none;
+}
+.card.pc .vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* a signature card keeps its gold: the picture's gold frame and a warm glow around it (with any bought style) */
+.card.pc.exclusive {
+  --pc-gold: 0 0 14px rgba(255, 210, 58, 0.5);
+}
+.card.pc.focus {
+  --pc-ring: 0 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.45);
+}
+.lg-cardpick.on .card.pc {
+  --pc-ring: 0 0 0 2px rgb(var(--lg-v)), 0 0 18px rgba(var(--lg-v), 0.65);
+}
+/* the deck builder: «in the deck» — the old corner check sat on the drawn name, here it sits on the art */
+.collection .card.pc.in-deck::after {
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  top: 42%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* battle hand: the same height as before (the box is 0.70 wide now), the energy curtain spares the gem */
+.hand-slot > .card.pc {
+  width: min(100%, calc(var(--app-h) * 0.18 * 0.7));
+}
+.next-slot .card.pc {
+  max-width: calc(var(--app-h) * 0.12 * 0.7);
+}
+.hand-card.pc .drain {
+  -webkit-mask: var(--pc-gem-hole);
+  mask: var(--pc-gem-hole);
+}
+.hand-card.pc:active:not(.disabled) .face {
+  filter: brightness(1.18);
+}
+/* combo-ready: a gold ring outside the drawn frame and a pulse (the KOMBO ribbon is the battle's, shown by the game logic) */
+.hand-card.pc.combo-ready {
+  animation: pcComboLift 0.6s ease-in-out infinite alternate;
+}
+.hand-card.pc.combo-ready .pc-sh {
+  animation: pcComboGlow 0.6s ease-in-out infinite alternate;
+}
+@keyframes pcComboLift {
+  to {
+    transform: translateY(-4px);
+  }
+}
+@keyframes pcComboGlow {
+  from {
+    box-shadow: 0 4px 7px rgba(0, 0, 0, 0.5), 0 0 0 2.5px #ffe27a, 0 0 20px rgba(255, 210, 58, 0.8);
+  }
+  to {
+    box-shadow: 0 4px 7px rgba(0, 0, 0, 0.5), 0 0 0 3px #fff6c0, 0 0 32px rgba(255, 210, 58, 1);
+  }
+}
+:root[data-motion='off'] .hand-card.pc.combo-ready,
+:root[data-motion='off'] .hand-card.pc.combo-ready .pc-sh {
+  animation: none;
+}
+:root[data-motion='off'] .hand-card.pc.combo-ready .pc-sh {
+  box-shadow: 0 4px 7px rgba(0, 0, 0, 0.5), 0 0 0 3px #ffe27a, 0 0 26px rgba(255, 210, 58, 0.9);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hand-card.pc.combo-ready,
+  .hand-card.pc.combo-ready .pc-sh {
+    animation: none;
+  }
+  .hand-card.pc.combo-ready .pc-sh {
+    box-shadow: 0 4px 7px rgba(0, 0, 0, 0.5), 0 0 0 3px #ffe27a, 0 0 26px rgba(255, 210, 58, 0.9);
+  }
+}
+
+/* ---- the bought CARD STYLES on picture cards (PRIME SHOP, events, league): each keeps its own character — a glow in
+   its colours around the frame, a light layer over the art and its ornament — while the picture stays readable */
+/* HALLOWEEN (pumpkin): violet-orange glow, the cobweb in the top corner, a warm candle light from below */
+:root[data-card-style='pumpkin'] .card.pc,
+.pumpkin-set .card.pc {
+  --pc-glow: 0 0 12px rgba(180, 92, 255, 0.6), 0 0 3px rgba(255, 138, 31, 0.75);
+}
+:root[data-card-style='pumpkin'] .card.pc .art::before,
+.pumpkin-set .card.pc .art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='white' stroke-opacity='.7' stroke-width='1'%3E%3Cpath d='M60 0 L20 0 M60 0 L33 22 M60 0 L45 38 M60 0 L60 40'/%3E%3Cpath d='M48 0 Q50 7 51 9 Q55 11 60 12 M36 0 Q40 12 43 17 Q50 22 60 24 M26 0 Q30 16 35 26 Q46 33 60 36'/%3E%3C/g%3E%3C/svg%3E") top right / 46% no-repeat,
+    radial-gradient(circle at 50% 112%, rgba(255, 138, 31, 0.2), transparent 48%),
+    radial-gradient(circle at 50% 50%, transparent 58%, rgba(70, 20, 110, 0.32) 100%);
+}
+/* VHS: neon edge glow, faint scanlines and a tracking line over the art, the cassette tab on top */
+:root[data-card-style='vhs'] .card.pc,
+.vhs-set .card.pc {
+  --pc-glow: 0 0 10px rgba(72, 244, 255, 0.5), 0 0 3px rgba(255, 79, 216, 0.75);
+}
+:root[data-card-style='vhs'] .card.pc .art::before,
+.vhs-set .card.pc .art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 0 58%, rgba(72, 244, 255, 0.2) 58% 59.5%, transparent 59.5% 64%, rgba(255, 79, 216, 0.18) 64% 65%, transparent 65%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1) 0 1px, transparent 1px 3px);
+  mix-blend-mode: hard-light;
+}
+/* HOLO FOIL: an iridescent band drifting over the picture (light only — mix-blend screen), the four-point glint */
+:root[data-card-style='holo'] .card.pc,
+.holo-set .card.pc {
+  --pc-glow: 0 0 10px rgba(130, 220, 255, 0.5), 0 0 3px rgba(255, 255, 255, 0.7);
+}
+:root[data-card-style='holo'] .card.pc .art::before,
+.holo-set .card.pc .art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 18%, rgba(255, 120, 220, 0.3) 33%, rgba(120, 240, 255, 0.32) 46%, rgba(255, 240, 140, 0.27) 59%, transparent 74%) 0 0 / 240% 100%;
+  mix-blend-mode: screen;
+  animation: pcHoloDrift 5.5s ease-in-out infinite alternate;
+}
+@keyframes pcHoloDrift {
+  to {
+    background-position: 100% 0;
+  }
+}
+:root[data-motion='off'][data-card-style='holo'] .card.pc .art::before,
+:root[data-motion='off'] .holo-set .card.pc .art::before {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-card-style='holo'] .card.pc .art::before,
+  .holo-set .card.pc .art::before {
+    animation: none;
+  }
+}
+/* RANKED: a cool steel glow, a silver-blue rank stripe across the top of the art; the rank chevron moves to the right
+   corner (the left one holds the energy gem) */
+:root[data-card-style='ranked'] .card.pc {
+  --pc-glow: 0 0 10px rgba(111, 182, 255, 0.45), 0 0 2px rgba(201, 214, 232, 0.9);
+}
+:root[data-card-style='ranked'] .card.pc .art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 30%, #6fb6ff 30%, #e8f0fa 65%, #6fb6ff) 0 7% / 100% 2px no-repeat,
+    radial-gradient(circle at 50% 50%, transparent 60%, rgba(20, 40, 72, 0.3) 100%);
+}
+:root[data-card-style='ranked'] .card.pc::before {
+  left: auto;
+  right: 8%;
+}
+/* CLOCKWORK GOLD: a brass glow, a faint dial engraving over the art, the turning gear in the corner */
+:root[data-card-style='clockwork'] .card.pc,
+.clockwork-set .card.pc {
+  --pc-glow: 0 0 10px rgba(255, 204, 77, 0.5), 0 0 2px rgba(224, 184, 76, 0.95);
+}
+:root[data-card-style='clockwork'] .card.pc .art::before,
+.clockwork-set .card.pc .art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-conic-gradient(from 0deg at 50% 42%, rgba(255, 220, 140, 0.13) 0 2deg, transparent 2deg 30deg),
+    radial-gradient(circle at 50% 42%, transparent 0 36%, rgba(224, 184, 76, 0.32) 37% 38.5%, transparent 39.5%);
+  mix-blend-mode: screen;
+}
+/* card grids (CARDS, the deck editor's shop): the price / level / «БАЗОВАЯ» tag hangs under the drawn name plate, never
+   over a two-line name (SPOTLIGHT TAG, REBOUND DISC…) */
+.collection.shop .card.pc ~ .shop-tag {
+  bottom: -14px;
+}
+.collection.shop {
+  row-gap: 24px;
+}
+.cards-group .collection.shop {
+  padding-bottom: 20px;
+}
+
+/* ---- 1.9.9 arena previews (src/ui/arenaArt.ts): the owner's 3D pictures (1.815, rounded corners) in every preview box;
+   one ratio and one corner for all boxes, so the pictures and the two drawn sets (HAUNTED, RANDOM) line up. The box
+   clips to a corner a hair rounder than the roundest picture: every corner then looks the same. */
+.ap-thumb,
+.ac-thumb,
+.lg-arena-art,
+.lg-pa-art {
+  aspect-ratio: 1.815;
+  border-radius: 13.5% / 24.5%;
+}
+.ap-thumb > .arena-img,
+.ac-thumb > .arena-img,
+.lg-arena-art > .arena-img,
+.lg-pa-art > .arena-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+/* the status tag stays inside the rounded corner */
+.lg-arena-tag {
+  left: 9%;
+  bottom: 9%;
+}
+
+/* 1.9.9 COMBO FRESHNESS: a combo repeated again and again — its ribbon goes pale and says what is left («· 70%») */
+.hand-card.combo-ready.stale .combo-ribbon {
+  color: #2a2a3a;
+  background: linear-gradient(180deg, #e9ecf5, #a9b0c6);
+  box-shadow: 0 2px 0 #4a5068;
+}
+
+/* 1.9.9: what each combo is for (prep screen) and the freshness rule under the list (prep, CARDS) */
+.cmb-role {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-display);
+  font-size: 7.5px;
+  letter-spacing: 0.08em;
+  color: #c9d2ff;
+}
+.cmb-role.r-attack {
+  color: #ffb27a;
+}
+.cmb-role.r-defense {
+  color: #8fd8ff;
+}
+.cmb-role.r-position {
+  color: #b8a6ff;
+}
+.cmb-role.r-tempo {
+  color: #8dffc8;
+}
+.cmb-role.r-counter {
+  color: #ff9fb4;
+}
+.combo-fresh {
+  margin: 8px 4px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.shop-note.combo-fresh {
+  margin-top: 6px;
+}
+
+/* 1.9.9: a seasonal item before its event — how it will be had, in one short line on the card (no price, no sale) */
+.si-season-note {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #bcd8ff;
 }

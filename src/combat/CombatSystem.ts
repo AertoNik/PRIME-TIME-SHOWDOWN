@@ -2,6 +2,7 @@ import { ARENA, BROADCAST, CARD_TUNING, COMBO_TUNING, MATCH, PASSIVE_TUNING } fr
 import { TAKE_CARDS } from '../config/cards';
 import type { CardId, ComboId, MeleeStats, Side, WeaponType } from '../config/types';
 import { clamp, clampRoundedRect, dampAngle, segSegDist, segmentCircleHit, wrapAngle, type ClampResult } from '../core/math';
+import { boost, toward } from './ComboSystem';
 import type { FighterSim } from './FighterSim';
 import type { Match } from './Match';
 import type { Decoy, HitInfo, HitKind, Projectile, ProjectileKind, StageObject } from './types';
@@ -535,11 +536,12 @@ export class CombatSystem {
         if (!a.locked) {
           if (a.card === 'bank_shot') {
             // BANK SHOT aims at the bounce point (re-solved as both fighters move)
-            this.bankAim(f, bankTmp, a.combo === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
+            this.bankAim(f, bankTmp, a.combo === 'spotlight' ? toward(0.85, COMBO_TUNING.spotlightLead, a.power) : 0.85);
             a.dirX = bankTmp.dirX;
             a.dirZ = bankTmp.dirZ;
           } else {
             // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
+            f.comboPower = a.combo ? a.power : 1;
             this.windupAim(f, a.card, a.combo, aimTmp);
             const dx = aimTmp.x - f.x;
             const dz = aimTmp.z - f.z;
@@ -1096,31 +1098,36 @@ export class CombatSystem {
   windupAim(f: FighterSim, card: string, combo: ComboId | null, out: { x: number; z: number }): { x: number; z: number } {
     // Alpha 1.7 — BAT BITE: a lunge, led by how long it takes to get there (it bends on the way, too)
     if (card === 'bat_bite') return this.leadAim(f, CARD_TUNING.bat_bite.rushSpeed, 0.7, out);
-    // Alpha 1.9.8 — CLOSE-UP: the shot after MAGNET PULL leads the pulled target
-    if (combo === 'close_up') {
-      const speed = card === 'main_event' ? CARD_TUNING.main_event.speed : CARD_TUNING.power_shot.speed;
-      return this.leadAim(f, speed, COMBO_TUNING.closeUpLead, out);
-    }
-    if (combo === 'spotlight') {
-      const speed = card === 'charged_shot' ? CARD_TUNING.charged_shot.speed : CARD_TUNING.power_shot.speed;
-      return this.leadAim(f, speed, COMBO_TUNING.spotlightLead, out);
+    // Alpha 1.9.8 — CLOSE-UP: the shot after MAGNET PULL leads the pulled target (1.9.9: CHARGED SHOT too)
+    if (combo === 'close_up' || combo === 'spotlight') {
+      const speed =
+        card === 'main_event' ? CARD_TUNING.main_event.speed : card === 'charged_shot' ? CARD_TUNING.charged_shot.speed : CARD_TUNING.power_shot.speed;
+      this.leadAim(f, speed, combo === 'close_up' ? COMBO_TUNING.closeUpLead : COMBO_TUNING.spotlightLead, out);
+      // Alpha 1.9.9 — COMBO FRESHNESS: a stale combo's aim eases back towards the card's own aim (never worse than it)
+      const p = f.comboPower;
+      out.x = toward(f.cardAimX, out.x, p);
+      out.z = toward(f.cardAimZ, out.z, p);
+      return out;
     }
     out.x = f.cardAimX;
     out.z = f.cardAimZ;
     return out;
   }
 
-  /** SPLIT SHOT: one wide volley of three bolts instead of the next regular one (the weapon's own burst is skipped). */
-  fireSplit(f: FighterSim, tight: boolean): void {
+  /**
+   * SPLIT SHOT: one wide volley of three bolts instead of the next regular one (the weapon's own burst is skipped).
+   * `tight`: the freshness of a combo that narrows the fan (TIGHT SPREAD, 1.9.9 POINT BLANK), 0 = none.
+   */
+  fireSplit(f: FighterSim, tight: number): void {
     const t = CARD_TUNING.split_shot;
     const yaw = dm.atan2(f.cardAimX - f.x, f.cardAimZ - f.z);
     f.facing = yaw;
     const origin = this.muzzleWorld(f, 0, yaw);
-    const fan = tight ? COMBO_TUNING.tightFan : t.fan;
+    const fan = tight > 0 ? toward(t.fan, COMBO_TUNING.tightFan, tight) : t.fan;
     const dmg = t.damage * f.outgoingDamageMult();
     for (let i = 0; i < t.bolts; i++) {
       const y = yaw - fan / 2 + (fan * i) / (t.bolts - 1);
-      this.spawn(f.side, 'split', f.stats.attack.weapon, origin.x, origin.z, y, t.speed, dmg, t.radius, t.range, { falloff: t.falloff, crit: tight });
+      this.spawn(f.side, 'split', f.stats.attack.weapon, origin.x, origin.z, y, t.speed, dmg, t.radius, t.range, { falloff: t.falloff, crit: tight > 0 });
     }
     f.burstLeft = 0;
     f.fireTimer = Math.max(f.fireTimer, f.stats.attack.interval / f.fireRateMult());
@@ -1138,11 +1145,17 @@ export class CombatSystem {
   /** REBOUND DISC: straight out to its turn point, then home to the thrower (BOOMERANG: turns right past the held target). */
   fireDisc(f: FighterSim, combo: ComboId | null): void {
     const t = CARD_TUNING.rebound_disc;
+    const p = f.comboPower;
     const at = combo === 'spotlight' ? this.leadAim(f, t.speed, COMBO_TUNING.spotlightLead, aimTmp) : { x: f.cardAimX, z: f.cardAimZ };
+    // (1.9.9: a stale SPOTLIGHT's lead eases back towards the card's own aim)
+    if (combo === 'spotlight') {
+      at.x = toward(f.cardAimX, at.x, p);
+      at.z = toward(f.cardAimZ, at.z, p);
+    }
     const yaw = dm.atan2(at.x - f.x, at.z - f.z);
     f.facing = yaw;
     let reach: number = t.reach;
-    if (combo === 'boomerang') reach = clamp(dm.hypot(f.seenX - f.x, f.seenZ - f.z) + COMBO_TUNING.boomerangPast, t.minReach, t.reach);
+    if (combo === 'boomerang') reach = toward(t.reach, clamp(dm.hypot(f.seenX - f.x, f.seenZ - f.z) + COMBO_TUNING.boomerangPast, t.minReach, t.reach), p);
     const origin = this.muzzleWorld(f, 0, yaw);
     this.spawn(f.side, 'disc', f.stats.attack.weapon, origin.x, origin.z, yaw, t.speed, t.damage * f.outgoingDamageMult(), t.radius, reach, { crit: combo !== null });
     f.fireTimer = Math.max(f.fireTimer, 0.3);
@@ -1260,7 +1273,8 @@ export class CombatSystem {
     const m = this.m;
     const t = CARD_TUNING.magnet_pull;
     const star = combo === 'star_pull';
-    const range = t.range + (star ? COMBO_TUNING.starPullRange : 0);
+    const p = f.comboPower;
+    const range = t.range + (star ? COMBO_TUNING.starPullRange * p : 0);
     const dx = f.x - foe.x;
     const dz = f.z - foe.z;
     const d = dm.hypot(dx, dz) || 1;
@@ -1275,7 +1289,7 @@ export class CombatSystem {
       }
       return;
     }
-    let force = t.force * (star ? COMBO_TUNING.starPullForce : 1);
+    let force = t.force * (star ? boost(COMBO_TUNING.starPullForce, p) : 1);
     if (foe.shield > 0) force *= t.shieldMult;
     // the slide covers about force / decay metres: never past `stopAt`
     const room = d - t.stopAt;
@@ -1300,7 +1314,7 @@ export class CombatSystem {
       if (b) {
         ox = b.x;
         oz = b.z;
-        force *= COMBO_TUNING.wallPushForce;
+        force *= boost(COMBO_TUNING.wallPushForce, f.comboPower);
       }
     }
     const dx = foe.x - ox;
@@ -1328,12 +1342,13 @@ export class CombatSystem {
         if (ml > 0.05) {
           const want = dm.atan2(mx / ml, mz / ml);
           const cur = dm.atan2(ux, uz);
-          const turn = clamp(wrapAngle(want - cur), -COMBO_TUNING.mineDriveAngle, COMBO_TUNING.mineDriveAngle);
+          const bend = COMBO_TUNING.mineDriveAngle * f.comboPower;
+          const turn = clamp(wrapAngle(want - cur), -bend, bend);
           ux = dm.sin(cur + turn);
           uz = dm.cos(cur + turn);
         }
       }
-      force *= COMBO_TUNING.mineDriveForce;
+      force *= boost(COMBO_TUNING.mineDriveForce, f.comboPower);
     }
     this.shove(foe, ux, uz, force);
     // the wave throws the aim off: the next regular shot comes a little later (cards are not touched)
@@ -1858,6 +1873,8 @@ export class CombatSystem {
         cutPush = st.pushMult;
         target.safeCut = 0;
         target.safeCutHeavy = false;
+        // Alpha 1.9.9: the cut took the blow — the answer may follow as COUNTER CUT
+        target.cutSaved = true;
         m.emit({ type: 'safeCut', side: target.side, what: 'cut', x: target.x, z: target.z });
       } else dmg *= 1 - st.lightCut;
     }

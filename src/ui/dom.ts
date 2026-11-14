@@ -1,5 +1,6 @@
 import { CARDS } from '../config/cards';
 import type { CardId } from '../config/types';
+import { cardArtUrl } from './cardArt';
 import { CARD_ICONS } from './icons';
 
 export function esc(s: string): string {
@@ -19,8 +20,19 @@ export function $(root: ParentNode, sel: string): HTMLElement {
   return e as HTMLElement;
 }
 
-export function cardHTML(id: CardId, extra = '', withTag = true): string {
+/**
+ * A card. Alpha 1.9.9: a card with the owner's picture (cardArt.ts) is that picture — its frame, name and energy gem are
+ * drawn on it, so none of them is repeated here; the layers around it carry the bought card style and the states (see
+ * cardArt.ts). `big`: the battle hand's larger file. A card without a picture (the boss card) is drawn as before.
+ */
+export function cardHTML(id: CardId, extra = '', withTag = true, big = false): string {
   const c = CARDS[id];
+  const face = cardArtUrl(id, big ? 'md' : 'sm');
+  if (face) {
+    return `<div class="card pc ${c.exclusive ? 'exclusive' : ''} ${extra}" data-card="${id}" style="--c1:${c.color};--c2:${c.color2}">
+    <i class="pc-sh" aria-hidden="true"></i><img class="face" src="${face}" alt="" draggable="false" decoding="async"${big ? '' : ' loading="lazy"'}/><div class="art"></div><span class="vh">${esc(c.name)} · ${c.cost} ⚡</span>
+  </div>`;
+  }
   return `<div class="card ${c.exclusive ? 'exclusive' : ''} ${c.name.length > 8 ? 'long' : ''} ${extra}" data-card="${id}" style="--c1:${c.color};--c2:${c.color2}">
     <div class="art"><div class="ic">${CARD_ICONS[id]}</div>${withTag ? `<div class="tag">${esc(c.role)}</div>` : ''}<div class="nm">${esc(c.name)}</div></div>
     <div class="gem">${c.cost}</div>

@@ -1,4 +1,4 @@
-import { BROADCAST } from '../config/balance';
+import { BROADCAST, COMBO_FRESH } from '../config/balance';
 import { COMBOS } from '../config/cards';
 import type { CardId, ComboId } from '../config/types';
 import { clamp } from '../core/math';
@@ -87,7 +87,8 @@ export class BroadcastSystem {
       case 'combo': {
         const def = COMBOS.find((c) => c.id === e.combo)!;
         if (e.side === 0) {
-          let amt = def.rating;
+          // Alpha 1.9.9 — COMBO FRESHNESS: a stale combo is worth less to the audience too
+          let amt = def.rating * e.power;
           // Alpha 1.6: the cheap tactical combos lose half their show value when repeated within
           // `comboRepeat` s (no rating farming with a two-card loop); the classic five are untouched
           if (!CLASSIC_COMBOS.has(def.id)) {
@@ -98,11 +99,15 @@ export class BroadcastSystem {
           const comeback = this.host.playerHpFrac() < 0.35;
           if (comeback) amt += BROADCAST.comeback;
           this.add(amt, def.name);
+          // …and the same combo again and again (COMBO_FRESH.dullAt repeats in a row) makes it sigh a little
+          if (e.repeat >= COMBO_FRESH.dullAt) this.add(COMBO_FRESH.dullRating, 'ОДНООБРАЗНО');
           const ultra = def.id === 'superstar' || def.id === 'electro_blast';
-          this.host.emit({ type: 'reaction', text: def.name, tier: 3, sub: comeback ? 'COMEBACK!' : ultra ? 'ULTRA COMBO!' : 'AMAZING COMBO!' });
+          // (1.9.9: a repeated combo says so — and how much of its bonus is left)
+          const sub = e.power < 1 ? `ПОВТОР · БОНУС ${Math.round(e.power * 100)}%` : comeback ? 'COMEBACK!' : ultra ? 'ULTRA COMBO!' : 'AMAZING COMBO!';
+          this.host.emit({ type: 'reaction', text: def.name, tier: e.power < 1 ? 2 : 3, sub });
           this.reactionCd = 1.4;
-          if (def.rating > this.bestComboValue) {
-            this.bestComboValue = def.rating;
+          if (def.rating * e.power > this.bestComboValue) {
+            this.bestComboValue = def.rating * e.power;
             this.bestCombo = def.id;
           }
         } else {

@@ -1,4 +1,5 @@
 import { ARENA, CARD_TUNING, COMBO_TUNING, COVER_TUNING } from '../config/balance';
+import { toward } from './ComboSystem';
 import { TAKE_CARDS } from '../config/cards';
 import type { ComboId, Side } from '../config/types';
 import { clampRoundedRect, pointSegDist, segSegDist, type ClampResult } from '../core/math';
@@ -59,7 +60,8 @@ export class StageObjects {
   }
 
   private base(kind: StageKind, f: FighterSim, x: number, z: number): Omit<StageObject, 'id'> {
-    return { kind, owner: f.side, x, z, fromX: f.x, fromZ: f.z, dirX: 0, dirZ: 1, radius: 1, t: 0, total: 1, stage: 'on', hp: 0, maxHp: 0, combo: null, variant: 0 };
+    // (Alpha 1.9.9: the freshness of the combo the piece was thrown with — read again when it arms / locks later)
+    return { kind, owner: f.side, x, z, fromX: f.x, fromZ: f.z, dirX: 0, dirZ: 1, radius: 1, t: 0, total: 1, stage: 'on', hp: 0, maxHp: 0, combo: null, power: f.comboPower, variant: 0 };
   }
 
   // ------------------------------------------------------------------ spawns
@@ -80,7 +82,7 @@ export class StageObjects {
     const own = this.list.filter((o) => o.kind === 'mine' && o.owner === f.side && o.stage !== 'gone');
     if (own.length >= t.max) this.end(own[0]);
     const trap = combo === 'gravity_trap';
-    const gap = trap ? COMBO_TUNING.trapGap : t.minGap;
+    const gap = trap ? toward(t.minGap, COMBO_TUNING.trapGap, f.comboPower) : t.minGap;
     const sx = f.seenX;
     const sz = f.seenZ;
     let x = sx + f.seenVX * t.lead;
@@ -189,7 +191,7 @@ export class StageObjects {
     const set = combo === 'set_piece';
     const lead = set ? 0 : t.lead;
     const p = this.onFloor(f.seenX + f.seenVX * lead, f.seenZ + f.seenVZ * lead, 0.3);
-    const o = this.add({ ...this.base('prop', f, p.x, p.z), radius: set ? COMBO_TUNING.setPieceRadius : t.radius, stage: 'warn', total: t.delay, combo });
+    const o = this.add({ ...this.base('prop', f, p.x, p.z), radius: set ? toward(t.radius, COMBO_TUNING.setPieceRadius, f.comboPower) : t.radius, stage: 'warn', total: t.delay, combo });
     o.variant = o.id % 3;
   }
 
@@ -399,7 +401,7 @@ export class StageObjects {
         const instant = o.combo === 'rewind_trap';
         o.stage = instant ? 'armed' : 'arming';
         o.t = 0;
-        o.total = instant ? t.life : o.combo === 'gravity_trap' ? COMBO_TUNING.trapArm : t.arm;
+        o.total = instant ? t.life : o.combo === 'gravity_trap' ? toward(t.arm, COMBO_TUNING.trapArm, o.power) : t.arm;
         m.emit({ type: 'object', id: o.id, kind: 'mine', owner: o.owner, what: instant ? 'arm' : 'land', x: o.x, z: o.z });
       }
       return;
@@ -518,7 +520,7 @@ export class StageObjects {
       if (o.t >= o.total) {
         // freeze the aim point, leading the target (CAMERA LOCK: fully)
         const speed = TAKE_CARDS[o.variant] === 'rebound_disc' ? CARD_TUNING.rebound_disc.speed : TAKE_CARDS[o.variant] === 'split_shot' ? CARD_TUNING.split_shot.speed : CARD_TUNING.power_shot.speed;
-        const k = o.combo === 'camera_lock' ? COMBO_TUNING.cameraLockLead : t.lead;
+        const k = o.combo === 'camera_lock' ? toward(t.lead, COMBO_TUNING.cameraLockLead, o.power) : t.lead;
         const time = (t.lock + vl / speed) * k;
         const p = this.onFloor(f.seenX + f.seenVX * time, f.seenZ + f.seenVZ * time, 0);
         o.fromX = p.x;

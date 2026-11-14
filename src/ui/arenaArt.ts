@@ -133,13 +133,43 @@ const RANDOM = S(`
   <rect x="56" y="21" width="48" height="48" rx="10" fill="#fff" transform="rotate(-8 80 45)"/>
   <g fill="#1a1d4a" transform="rotate(-8 80 45)"><circle cx="68" cy="33" r="4"/><circle cx="92" cy="33" r="4"/><circle cx="80" cy="45" r="4"/><circle cx="68" cy="57" r="4"/><circle cx="92" cy="57" r="4"/></g>`);
 
+/** The page's base (Vite `base: './'`); scripts run without Vite and get the same relative path. */
+const BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? './';
+
+/**
+ * Alpha 1.9.9 — CARD EVOLUTION: the owner's 3D previews of six sets (PRIME_TIME_1_9_9_ARENA_PREVIEWS) replace the flat
+ * drawings above (kept as the fallback). The game's copies (scripts/art/prepare_art.py → public/arenas/sm/<id>.webp,
+ * 480 × 264, ratio 1.815, transparent rounded corners) are only pictures: a set's name, availability and rules stay in
+ * arenas.config.ts — HOLIDAY BROADCAST stays locked outside WINTER SHOWDOWN whatever its preview shows. HAUNTED PRIME
+ * SET and RANDOM have no picture and keep their drawings in the same box (main.css «1.9.9 arena previews»).
+ */
+export const ARENA_PREVIEWS: Readonly<Partial<Record<ArenaPref, string>>> = {
+  original: 'original',
+  casino: 'casino',
+  backlot: 'backlot',
+  graveyard: 'graveyard',
+  holiday: 'holiday',
+  newsroom: 'newsroom',
+};
+
+/** The preview file of a set, or null (drawn). Every preview box is ≤ 120 CSS px wide, so one 480 px file is enough. */
+export function arenaPreviewUrl(id: ArenaPref): string | null {
+  const f = ARENA_PREVIEWS[id];
+  return f ? `${BASE}arenas/sm/${f}.webp` : null;
+}
+
+const picture = (id: ArenaPref, drawn: string): string => {
+  const url = arenaPreviewUrl(id);
+  return url ? `<img class="arena-img" src="${url}" alt="" draggable="false" decoding="async" loading="lazy"/>` : drawn;
+};
+
 export const ARENA_ART: Record<ArenaPref, string> = {
-  original: ORIGINAL,
-  casino: CASINO,
-  backlot: BACKLOT,
-  haunted: HAUNTED,
-  graveyard: GRAVEYARD,
-  holiday: HOLIDAY,
-  newsroom: NEWSROOM,
-  random: RANDOM,
+  original: picture('original', ORIGINAL),
+  casino: picture('casino', CASINO),
+  backlot: picture('backlot', BACKLOT),
+  haunted: picture('haunted', HAUNTED),
+  graveyard: picture('graveyard', GRAVEYARD),
+  holiday: picture('holiday', HOLIDAY),
+  newsroom: picture('newsroom', NEWSROOM),
+  random: picture('random', RANDOM),
 };

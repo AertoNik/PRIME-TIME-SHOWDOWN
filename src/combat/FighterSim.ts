@@ -11,6 +11,8 @@ export interface WindupAction {
   dirX: number;
   dirZ: number;
   combo: ComboId | null;
+  /** Alpha 1.9.9: the combo's freshness when the card was played (its bonus share, COMBO_FRESH). */
+  power: number;
   telegraph: boolean;
   /** Match time when the aim froze (telegraphed windups). */
   lockedAt?: number;
@@ -32,6 +34,8 @@ export interface RushAction {
   dirZ: number;
   speed: number;
   combo: ComboId | null;
+  /** Alpha 1.9.9: the combo's freshness (COMBO_FRESH). */
+  power: number;
   dodged: boolean;
   /** Alpha 1.5: the target read this charge with FALSE START — it cannot land any more. */
   feinted?: boolean;
@@ -95,6 +99,8 @@ export interface BiteAction {
   dirZ: number;
   speed: number;
   combo: ComboId | null;
+  /** Alpha 1.9.9: the combo's freshness (COMBO_FRESH). */
+  power: number;
   /** The target's DASH i-frames let the lunge pass (it rushes on and misses). */
   dodged: boolean;
   /** FALSE START read the lunge: it cannot land any more. */
@@ -298,6 +304,17 @@ export class FighterSim {
   /** SAFE CUT: seconds left; whether the dangerous-hit cut is still waiting. */
   safeCut = 0;
   safeCutHeavy = false;
+
+  // ------------------------------------------------ Alpha 1.9.9 — CARD EVOLUTION
+  /** The last SAFE CUT has taken a dangerous hit (COUNTER CUT may follow); cleared by the next SAFE CUT. */
+  cutSaved = false;
+  /** The last SHOCK went into the opponent's wind-up or charge (an interrupt — ELECTRO BLAST after it is an answer). */
+  readShock = false;
+  /**
+   * COMBO FRESHNESS: the bonus share of the combo this fighter is resolving right now (set by Abilities when a card
+   * runs, restored from a delayed action when it releases) — the combo tunings read it, never the cards' own numbers.
+   */
+  comboPower = 1;
 
   readonly m: FighterMatchStats = {
     damageDealt: 0,

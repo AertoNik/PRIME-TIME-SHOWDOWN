@@ -470,6 +470,39 @@ export const COMBO_TUNING = {
   starPullForce: 1.25,
   /** Alpha 1.9.8 — CLEAN EXIT (SAFE CUT → DASH): a longer dash out of trouble. */
   cleanExitDist: 1.3,
+  /** Alpha 1.9.9 — POINT BLANK (MAGNET PULL → SPLIT SHOT): the fan narrows on the pulled target (radians). */
+  pointBlankFan: 0.26,
+  /** Alpha 1.9.9 — FADE OUT (SMOKE → SAFE CUT): in your own smoke the cut lasts this many times longer. */
+  fadeOutTime: 1.5,
+  /** Alpha 1.9.9 — ENCORE (SHOWTIME → DASH): energy back for the dash on cue (the cue itself waits for the shot). */
+  encoreEnergy: 1,
+  /** Alpha 1.9.9 — COUNTER CUT (SAFE CUT took a dangerous hit → a heavy card attack): the answer hits harder. */
+  counterCutMult: 1.2,
+};
+
+/**
+ * Alpha 1.9.9 — COMBO FRESHNESS (the owner's anti-spam rule). The same combo landed again and again loses its BONUS step
+ * by step — never the cards' own damage, energy or effects:
+ *   * `power[n]` — the share of the combo's bonus when it has already landed `n` times in a row: the 1st and the 2nd at
+ *     full strength, then 80 % → 60 % → 40 % (the floor: the combo still triggers, a stale one just adds less).
+ *     Chosen with `npm run combos` and the deliberate bot's fights: 70 / 45 / 25 cost a combo-spamming Champion about
+ *     7 points of wins on average (Lucien 50 → 33 %), 80 / 60 / 40 about 4 — the spam loses its edge, a good combo
+ *     played at the right moment stays good;
+ *   * it heals — one step per `healTime` s without that combo, one step for every OTHER combo that lands (`varietyHeal`)
+ *     and one step per `playsPerStep` other cards played in between: a loop of the same pair played back to back goes
+ *     stale, the same pair between other moves, another combo or a pause recovers (the owner's «смена тактики и
+ *     нормальное разнообразие действий»);
+ *   * the show: a combo's rating ×power, and from `dullAt` repeats on the audience sighs (`dullRating`, «ОДНООБРАЗНО»).
+ * The same rule for the player, every AI, the boss and PRIME LEAGUE (the server replays it: part of SIM_VERSION).
+ */
+export const COMBO_FRESH = {
+  power: [1, 1, 0.8, 0.6, 0.4] as readonly number[],
+  healTime: 30,
+  varietyHeal: 1,
+  /** …and every this many other cards played (no part of that combo, no combo themselves) heal one step too */
+  playsPerStep: 2,
+  dullAt: 3,
+  dullRating: -1.5,
 };
 
 export const PASSIVE_TUNING = {

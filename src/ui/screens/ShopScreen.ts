@@ -398,6 +398,7 @@ export class ShopScreen implements Screen {
           <div class="si-name">${nameHTML(it.name)}</div>
           <div class="si-desc">${esc(it.desc)}</div>
           <div class="si-foot"><span class="si-chip">${esc(st.chip)}</span><span class="si-price">${esc(st.price)}</span></div>
+          ${st.status === 'upcoming' && st.note.startsWith('Во время ') ? `<div class="si-season-note">${esc(st.note)}</div>` : ''}
           <div class="si-actions">
             <button class="btn si-try" data-act="try" data-sku="${it.sku}">${TOOL_ICONS.rotate}${tryLabel}</button>
             <button class="btn ghost si-more" data-act="open" data-sku="${it.sku}" aria-label="${esc(it.name)}: подробнее">Подробнее</button>

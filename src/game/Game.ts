@@ -15,7 +15,8 @@ import { Match, type MatchMods } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { Rng } from '../core/math';
 import { arenaAvailable, resolveArena, validArenaPref } from '../meta/ArenaSelection';
-import { CareerSystem } from '../meta/CareerSystem';
+import { CareerSystem, forfeitPart } from '../meta/CareerSystem';
+import { REWARDS } from '../config/career';
 import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { SeasonRuntime } from './SeasonRuntime';
@@ -997,16 +998,24 @@ export class Game {
             } else if (a === 'forfeit') {
               close();
               const kind = this.matchMeta?.mode.kind;
+              // Alpha 1.9.9: the career pays a forfeit by the seconds really fought (REWARDS.forfeit) — say it before
+              const part = forfeitPart(this.match?.time ?? 0);
+              const pay =
+                part <= 0
+                  ? ` Бой идёт меньше ${REWARDS.forfeit.freeS} с — сдача сейчас без гонорара.`
+                  : part < 1
+                    ? ` Гонорар — ${Math.round(REWARDS.forfeit.share * part * 100)}% от поражения (полные ${Math.round(REWARDS.forfeit.share * 100)}% — с ${REWARDS.forfeit.fullS}-й секунды боя).`
+                    : '';
               const text =
                 kind === 'league'
                   ? 'Бой будет засчитан как поражение. Сервер запишет сдачу в журнал эфира.'
                   : kind === 'survival'
                   ? 'Марафон закончится. Награда — только за уже пройденные волны.'
                   : kind === 'challenge'
-                    ? 'Испытание не будет пройдено, а гонорар — урезан.'
+                    ? 'Испытание не будет пройдено, а гонорар — урезан.' + pay
                     : kind === 'boss'
-                      ? 'Чемпион сохранит титул: бой засчитан как поражение, гонорар урезан.'
-                      : 'Бой будет засчитан как поражение, а гонорар — урезан.';
+                      ? 'Чемпион сохранит титул: бой засчитан как поражение, гонорар урезан.' + pay
+                      : 'Бой будет засчитан как поражение, а гонорар — урезан.' + pay;
               this.confirm('Сдаться?', text, 'Сдаться', () => {
                 this.paused = false;
                 if (this.matchMeta?.mode.kind === 'league' && this.match) this.league.forfeitTap(this.match.steps);

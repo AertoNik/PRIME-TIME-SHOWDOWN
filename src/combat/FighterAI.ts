@@ -1,4 +1,4 @@
-import { ARENA, CARD_TUNING, MATCH } from '../config/balance';
+import { ARENA, CARD_TUNING, COMBO_FRESH, MATCH } from '../config/balance';
 import { CARDS, COMBOS } from '../config/cards';
 import { CARD_KIND, adaptWeights, type TacticDef } from '../config/league.config';
 import type { BehaviorDef, CardId, RivalControl, Side } from '../config/types';
@@ -922,6 +922,10 @@ export class FighterAI {
     if (!this.plan && m.rng.chance(prof.comboPlanning * (b.comboHunter ? 1.15 : 0.8))) {
       const regen = MATCH.energyPerSecond * hand.regenMult * MATCH.comboWindow * 0.75;
       for (const c of COMBOS) {
+        // Alpha 1.9.9 — COMBO FRESHNESS: the AI plays by the same rule and reads the ribbon like a player — a combo that
+        // would land below full strength is not worth planning; it reaches for another one (variety) and comes back once
+        // the combo is fresh again
+        if (m.combos.power(this.side, c.id, m.time) < 1) continue;
         const first = c.first.find((x) => this.has(x) >= 0);
         // pressure fighters finish with the charge (KNOCKOUT) whenever they can
         const seconds = b.pressure > 0 ? [...c.second.filter((x) => x === 'knockout'), ...c.second.filter((x) => x !== 'knockout')] : c.second;
@@ -1026,6 +1030,15 @@ export class FighterAI {
         return f.hpFrac < 0.75;
       case 'superstar':
         return dist < f.stats.attack.range * 1.1 && foe.shield <= 0;
+      // Alpha 1.9.9
+      case 'point_blank':
+        return dist < 6;
+      case 'fade_out':
+        return f.hpFrac < 0.8 || threatened;
+      case 'encore':
+        return threatened;
+      case 'counter_cut':
+        return false; // it follows a cut that took a blow — on its own, never planned
       default:
         return true;
     }
@@ -1035,7 +1048,9 @@ export class FighterAI {
     const m = this.m;
     const b = this.profile.behavior;
     const hand = m.hands[this.side];
-    const combo = m.combos.wouldCombo(this.side, card, m.time) !== null;
+    // (1.9.9: a stale combo — COMBO_FRESH.dullAt repeats in a row — no longer tempts the AI)
+    const formed = m.combos.wouldCombo(this.side, card, m.time);
+    const combo = formed !== null && m.combos.repeats(this.side, formed.id, m.time) < COMBO_FRESH.dullAt;
     const hasHeavy =
       this.has('power_shot') >= 0 || this.has('knockout') >= 0 || this.has('charged_shot') >= 0 || this.has('directors_cut') >= 0 || this.has('bank_shot') >= 0 || this.has('main_event') >= 0;
     const foeDisabled = foe.stun > 0 || foe.glitch > 0 || foe.action.kind === 'recover';

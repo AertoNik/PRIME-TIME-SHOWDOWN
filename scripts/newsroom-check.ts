@@ -65,7 +65,8 @@ const depth = (m: Match): number => {
   for (let i = 0; i < 100; i++) seen.add(resolveArena('random', 'default', () => i / 100));
   check('RANDOM can land on the newsroom', seen.has('newsroom'));
   check('saves: the choice round-trips by id (no new save fields, schema 12)', sanitize(JSON.parse(JSON.stringify({ ...defaultSave(), arena: 'newsroom' }))).arena === 'newsroom' && defaultSave().version === 12);
-  check('picker: a thumbnail of its own (not a copy of another set), its own colours', ARENA_ART.newsroom?.startsWith('<svg') && ARENA_ORDER.every((id) => id === 'newsroom' || ARENA_ART[id] !== ARENA_ART.newsroom) && ARENA_ORDER.every((id) => id === 'newsroom' || ARENAS[id].colors.a !== NR.colors.a));
+  // (1.9.9: the thumbnail is the owner's 3D preview — its own file public/arenas/sm/newsroom.webp, see npm run cardart)
+  check('picker: a thumbnail of its own (not a copy of another set), its own colours', ARENA_ART.newsroom?.startsWith('<img class="arena-img"') && ARENA_ART.newsroom.includes('arenas/sm/newsroom.webp') && ARENA_ORDER.every((id) => id === 'newsroom' || ARENA_ART[id] !== ARENA_ART.newsroom) && ARENA_ORDER.every((id) => id === 'newsroom' || ARENAS[id].colors.a !== NR.colors.a));
   check('palette: blue, cyan and violet light; red only as an accent of the set (not a light)', NR.lighting.fillA === 0x22d8ff && NR.lighting.fillB === 0x6a4dff && NR.lighting.rim === 0x5ab8ff);
   check('set pieces on the barrier: ON AIR (reactive), studio cameras (reactive), monitors and tally lamps — none on the floor, none respawning', new Set(NR.props.map((p) => p.kind)).size === 4 && NR.props.every((p) => (Math.abs(p.x) > ARENA.halfX || Math.abs(p.z) > ARENA.halfZ) && p.respawn === 0 && (!p.reactive || (p.cooldown ?? 0) > 0)));
   // PRIME LEAGUE: a permanent set of the league, catalogued without windows (open every day)

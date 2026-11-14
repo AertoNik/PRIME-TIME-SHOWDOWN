@@ -1,5 +1,6 @@
 import { ARENA, CARD_TUNING, COMBO_TUNING, type CutTuning } from '../config/balance';
 import type { CardId, ComboDef } from '../config/types';
+import { boost, toward } from './ComboSystem';
 import { clamp, clampRoundedRect, wrapAngle, type ClampResult } from '../core/math';
 import { lineReach, type BankSolution } from './CombatSystem';
 import type { BiteAction, CutAction, FighterSim, RushAction, WindupAction } from './FighterSim';
@@ -11,6 +12,9 @@ const bank: BankSolution = { dirX: 0, dirZ: 1, bx: 0, bz: 0, bounce: false, len1
 const aim = { x: 0, z: 0 };
 
 /** Alpha 1.6: the new cards announce their activation (gesture + sound in the view). */
+/** Alpha 1.9.9: the card attacks with a wind-up — the ones SHOWTIME's cue speeds up (and the only ones that use it). */
+const WINDUP_CARDS = new Set<CardId>(['power_shot', 'charged_shot', 'bank_shot', 'knockout', 'bat_bite', 'main_event']);
+
 const CAST_CARDS = new Set<CardId>([
   'spotlight_tag',
   'split_shot',
@@ -40,13 +44,17 @@ export class Abilities {
     this.m = m;
   }
 
-  execute(f: FighterSim, card: CardId, combo: ComboDef | null): void {
+  execute(f: FighterSim, card: CardId, combo: ComboDef | null, power = 1): void {
     const m = this.m;
     const foe = m.foe(f.side);
     const comboId = combo?.id ?? null;
+    // Alpha 1.9.9 — COMBO FRESHNESS: the share of its bonus this combo lands with (read by every combo tuning below)
+    const p = combo ? power : 1;
+    f.comboPower = p;
     if (CAST_CARDS.has(card)) m.emit({ type: 'cast', side: f.side, card });
-    // Alpha 1.9.8 SHOWTIME: the next card after it comes out on cue (its wind-up shorter) — once
-    const onCue = card !== 'showtime' && f.cue > 0;
+    // Alpha 1.9.8 SHOWTIME: the next card after it comes out on cue (its wind-up shorter) — once. Alpha 1.9.9: only a card
+    // with a wind-up uses the cue (a SHIELD, a DASH… in between no longer wastes it)
+    const onCue = WINDUP_CARDS.has(card) && f.cue > 0;
     if (onCue) {
       f.cue = 0;
       m.emit({ type: 'showtime', side: f.side, what: 'cue', x: f.x, z: f.z });
@@ -58,7 +66,7 @@ export class Abilities {
         let dist: number = t.distance;
         const fromX = f.x;
         const fromZ = f.z;
-        if (comboId === 'phantom_step') m.spawnDecoy(f, COMBO_TUNING.phantomDecoyTime);
+        if (comboId === 'phantom_step') m.spawnDecoy(f, COMBO_TUNING.phantomDecoyTime * p);
         // Alpha 1.6 BACKSTAGE: the dash ends behind the fighter's own barrier
         const screen = comboId === 'backstage' ? m.objects.own(f.side, 'barrier') : null;
         if (screen) {
@@ -74,14 +82,16 @@ export class Abilities {
           }
         }
         // Alpha 1.6 TIME SLIP: a longer dash out of the slow-motion zone
-        if (comboId === 'time_slip') dist *= COMBO_TUNING.timeSlipDist;
+        if (comboId === 'time_slip') dist *= boost(COMBO_TUNING.timeSlipDist, p);
         // Alpha 1.9.8 CLEAN EXIT: SAFE CUT, then a longer dash out
-        if (comboId === 'clean_exit') dist *= COMBO_TUNING.cleanExitDist;
+        if (comboId === 'clean_exit') dist *= boost(COMBO_TUNING.cleanExitDist, p);
         // Alpha 1.6 CATCH & RELEASE: the caught shot is fired back when the dash lands
         if (comboId === 'catch_release' && f.caught > 0) {
-          f.releaseDmg = Math.min(f.caughtDmg * COMBO_TUNING.releaseShare, COMBO_TUNING.releaseCap);
+          f.releaseDmg = Math.min(f.caughtDmg * COMBO_TUNING.releaseShare, COMBO_TUNING.releaseCap) * p;
           f.caught = 0;
         }
+        // Alpha 1.9.9 ENCORE (SHOWTIME → DASH): energy back, and the cue waits for the shot (a DASH never uses it)
+        if (comboId === 'encore') m.hands[f.side].gain(COMBO_TUNING.encoreEnergy * p);
         f.action = { kind: 'dash', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: dist / t.duration, style: f.def.dashStyle };
         f.invuln = Math.max(f.invuln, t.invuln);
         f.lastDash = m.time;
@@ -104,7 +114,7 @@ export class Abilities {
           }
         }
         // (the slow-motion ring travels with the fighter on its own; TIME SLIP stretches it)
-        if (comboId === 'time_slip') m.objects.extendFreeze(f.side, COMBO_TUNING.timeSlipExtend);
+        if (comboId === 'time_slip') m.objects.extendFreeze(f.side, COMBO_TUNING.timeSlipExtend * p);
         m.emit({ type: 'dash', side: f.side, fromX, fromZ, toX: tmp.x, toZ: tmp.z, style: f.def.dashStyle });
         break;
       }
@@ -136,7 +146,7 @@ export class Abilities {
         let dz = aim.z - f.z;
         if (card === 'bank_shot') {
           // the line points at the bounce point on the barrier, not at the target
-          m.combat.bankAim(f, bank, comboId === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
+          m.combat.bankAim(f, bank, comboId === 'spotlight' ? toward(0.85, COMBO_TUNING.spotlightLead, p) : 0.85);
           dx = bank.dirX;
           dz = bank.dirZ;
         }
@@ -151,6 +161,7 @@ export class Abilities {
           dirX: dx / d,
           dirZ: dz / d,
           combo: comboId,
+          power: p,
           telegraph,
         };
         m.emit({ type: 'telegraph', side: f.side, card, duration: total, lockAt: telegraph ? t.lockAt : 1, player: !telegraph });
@@ -171,7 +182,7 @@ export class Abilities {
       case 'false_start': {
         // a short feint step sideways (no invulnerability) and the read window
         const t = CARD_TUNING.false_start;
-        const mult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        const mult = comboId === 'superstar' ? boost(COMBO_TUNING.superstarMult, p) : 1;
         const dir = this.chooseDashDir(f, foe);
         f.action = { kind: 'feint', t: 0, total: t.duration, dirX: dir.x, dirZ: dir.z, speed: t.distance / t.duration };
         f.feint = t.window * (mult > 1 ? 1.2 : 1);
@@ -183,7 +194,7 @@ export class Abilities {
         const t = CARD_TUNING.shield;
         f.shield = t.duration;
         // Alpha 1.6 INSURANCE (HIGH STAKES → SHIELD): a sturdier dome
-        f.shieldHp = t.absorb + (comboId === 'insurance' ? COMBO_TUNING.insuranceAbsorb : 0);
+        f.shieldHp = t.absorb + (comboId === 'insurance' ? COMBO_TUNING.insuranceAbsorb * p : 0);
         f.shieldAbsorbed = 0;
         m.emit({ type: 'shieldUp', side: f.side });
         break;
@@ -195,6 +206,9 @@ export class Abilities {
       case 'shock': {
         const t = CARD_TUNING.shock;
         const target = foe;
+        // Alpha 1.9.9: a SHOCK into the opponent's wind-up or charge is an interrupt — an answer (Match.comboRead)
+        const fa = target.action.kind;
+        f.readShock = fa === 'windup' || fa === 'rush' || fa === 'cut' || fa === 'bite';
         // Alpha 1.5.5: a rival with a control profile (Zoe) charges a visible bolt instead of an instant hit
         const ctl = f.side === 1 ? m.rival.mods?.control : undefined;
         if (ctl && ctl.shockCharge > 0) {
@@ -244,7 +258,7 @@ export class Abilities {
         const t = CARD_TUNING.overdrive;
         const iron = comboId === 'iron_rush';
         // Alpha 1.6 ALL IN (HIGH STAKES → OVERDRIVE): a little longer
-        f.overdrive = t.duration * (iron ? COMBO_TUNING.ironRushDurationMult : 1) + (comboId === 'all_in' ? COMBO_TUNING.allInTime : 0);
+        f.overdrive = t.duration * (iron ? boost(COMBO_TUNING.ironRushDurationMult, p) : 1) + (comboId === 'all_in' ? COMBO_TUNING.allInTime * p : 0);
         m.emit({ type: 'buff', side: f.side, buff: 'overdrive', duration: f.overdrive });
         if (iron) {
           f.shield = 0;
@@ -256,13 +270,13 @@ export class Abilities {
           m.emit({ type: 'shieldBurst', side: f.side, x: f.x, z: f.z, hit });
           if (hit) {
             m.combat.applyHit(foe, f, {
-              damage: COMBO_TUNING.ironRushDamage * f.outgoingDamageMult(),
+              damage: COMBO_TUNING.ironRushDamage * p * f.outgoingDamageMult(),
               kind: 'burst',
               heavy: true,
               crit: true,
               electric: false,
               combo: comboId,
-              knockback: COMBO_TUNING.ironRushKnockback,
+              knockback: COMBO_TUNING.ironRushKnockback * p,
               stun: 0,
               slowAmount: 0,
               slowDuration: 0,
@@ -277,7 +291,7 @@ export class Abilities {
       }
       case 'adrenaline': {
         const t = CARD_TUNING.adrenaline;
-        const mult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        const mult = comboId === 'superstar' ? boost(COMBO_TUNING.superstarMult, p) : 1;
         f.adrenalineMult = mult;
         f.adrenalineShots = Math.round(t.shots * mult);
         f.adrenaline = t.duration * mult + 0.3;
@@ -295,7 +309,7 @@ export class Abilities {
           m.combat.onEvade(target);
           break;
         }
-        const mult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        const mult = comboId === 'superstar' ? boost(COMBO_TUNING.superstarMult, p) : 1;
         if (target.shield > 0) {
           target.shield = 0;
           target.shieldHp = 0;
@@ -347,7 +361,8 @@ export class Abilities {
         break;
       }
       case 'split_shot':
-        m.combat.fireSplit(f, comboId === 'tight_spread');
+        // (Alpha 1.9.9: POINT BLANK narrows the fan too — on the target MAGNET PULL just brought close)
+        m.combat.fireSplit(f, comboId === 'tight_spread' || comboId === 'point_blank' ? p : 0);
         break;
       case 'rebound_disc':
         m.combat.fireDisc(f, comboId);
@@ -406,8 +421,11 @@ export class Abilities {
         m.combat.magnetPull(f, foe, comboId);
         break;
       case 'safe_cut':
-        f.safeCut = CARD_TUNING.safe_cut.duration;
+        // Alpha 1.9.9 FADE OUT (SMOKE → SAFE CUT): in the fighter's own smoke the cut lasts longer
+        f.safeCut = CARD_TUNING.safe_cut.duration * (comboId === 'fade_out' ? boost(COMBO_TUNING.fadeOutTime, p) : 1);
         f.safeCutHeavy = true;
+        // a new cut has not taken anything yet (COUNTER CUT waits for this one)
+        f.cutSaved = false;
         m.emit({ type: 'safeCut', side: f.side, what: 'up', x: f.x, z: f.z });
         break;
       case 'twelfth_strike': {
@@ -415,7 +433,7 @@ export class Abilities {
         f.clock = CARD_TUNING.twelfth_strike.window;
         f.clockMarks = 0;
         f.clockReady = false;
-        f.clockMult = comboId === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        f.clockMult = comboId === 'superstar' ? boost(COMBO_TUNING.superstarMult, p) : 1;
         m.emit({ type: 'clock', side: f.side, what: 'wind', marks: 0, x: f.x, z: f.z });
         break;
       }
@@ -458,7 +476,7 @@ export class Abilities {
     this.backtrackPoint(f, aim);
     const tx = aim.x;
     const tz = aim.z;
-    if (combo === 'double_take') m.spawnDecoy(f, COMBO_TUNING.doubleTakeTime);
+    if (combo === 'double_take') m.spawnDecoy(f, COMBO_TUNING.doubleTakeTime * f.comboPower);
     if (combo === 'rewind_trap') m.objects.armMines(f.side);
     if (combo === 'replay') m.objects.erase(f.side);
     const dx = tx - f.x;
@@ -472,7 +490,7 @@ export class Abilities {
   private highStakes(f: FighterSim, combo: string | null): void {
     const m = this.m;
     const t = CARD_TUNING.high_stakes;
-    const cost = Math.round(f.maxHp * t.hpCost * (combo === 'safe_bet' ? COMBO_TUNING.safeBetCost : 1));
+    const cost = Math.round(f.maxHp * t.hpCost * (combo === 'safe_bet' ? toward(1, COMBO_TUNING.safeBetCost, f.comboPower) : 1));
     f.hp = Math.max(1, f.hp - cost);
     if (combo === 'safe_bet') f.caught = 0;
     m.hands[f.side].gain(t.energy);
@@ -485,6 +503,9 @@ export class Abilities {
   release(f: FighterSim, a: WindupAction): void {
     const m = this.m;
     f.action = { kind: 'none' };
+    // Alpha 1.9.9: the freshness the combo had when the card was played (another card may have run in between)
+    const p = a.combo ? a.power : 1;
+    f.comboPower = p;
     m.emit({ type: 'release', side: f.side, card: a.card });
     let dirX = a.dirX;
     let dirZ = a.dirZ;
@@ -504,11 +525,16 @@ export class Abilities {
     // Alpha 1.9.8: SHOWTIME → the shot (STANDING OVATION) / MAGNET PULL → the shot (CLOSE-UP)
     else if (a.combo === 'standing_ovation') mult = COMBO_TUNING.ovationMult;
     else if (a.combo === 'close_up') mult = COMBO_TUNING.closeUpMult;
+    // Alpha 1.9.9: SAFE CUT took the blow → the answer (COUNTER CUT)
+    else if (a.combo === 'counter_cut') mult = COMBO_TUNING.counterCutMult;
+    // Alpha 1.9.9 — COMBO FRESHNESS: a stale combo's multiplier eases towards ×1 (the card's own damage stays)
+    mult = boost(mult, p);
+    const zap = a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun * p : 0;
 
     if (a.card === 'bank_shot') {
       // re-solve the bank path from where Kai stands now (the AI's telegraph keeps its locked line)
       if (!a.locked) {
-        m.combat.bankAim(f, bank, a.combo === 'spotlight' ? COMBO_TUNING.spotlightLead : 0.85);
+        m.combat.bankAim(f, bank, a.combo === 'spotlight' ? toward(0.85, COMBO_TUNING.spotlightLead, p) : 0.85);
         dirX = bank.dirX;
         dirZ = bank.dirZ;
       } else {
@@ -519,7 +545,7 @@ export class Abilities {
       m.combat.fireBank(f, dirX, dirZ, CARD_TUNING.bank_shot.damage * mult * f.outgoingDamageMult(), {
         crit: a.combo !== null,
         electric: a.combo === 'electro_blast',
-        stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+        stun: zap,
         combo: a.combo,
         boost: mult,
       });
@@ -536,7 +562,7 @@ export class Abilities {
         {
           crit: a.combo !== null,
           electric: a.combo === 'electro_blast',
-          stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+          stun: zap,
           combo: a.combo,
           boost: mult,
           blind: a.combo === 'blindside',
@@ -549,7 +575,7 @@ export class Abilities {
       m.combat.fireMain(f, dirX, dirZ, CARD_TUNING.main_event.damage * mult * f.outgoingDamageMult(), {
         crit: a.combo !== null,
         electric: a.combo === 'electro_blast',
-        stun: a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0,
+        stun: zap,
         combo: a.combo,
         boost: mult,
       });
@@ -557,7 +583,7 @@ export class Abilities {
     } else if (a.card === 'bat_bite') {
       // Alpha 1.7 — the swarm lunge (see updateBite)
       const t = CARD_TUNING.bat_bite;
-      f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX, dirZ, speed: t.rushSpeed, combo: a.combo, dodged: false, feinted: false };
+      f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX, dirZ, speed: t.rushSpeed, combo: a.combo, power: p, dodged: false, feinted: false };
       f.facing = dm.atan2(dirX, dirZ);
       m.emit({ type: 'bite', side: f.side, what: 'rush', x: f.x, z: f.z, dx: dirX, dz: dirZ });
     } else {
@@ -570,6 +596,7 @@ export class Abilities {
         dirZ,
         speed: t.rushSpeed,
         combo: a.combo,
+        power: p,
         dodged: false,
       };
       f.action = rush;
@@ -787,6 +814,8 @@ export class Abilities {
         if (a.combo === 'counter_strike') mult = COMBO_TUNING.counterStrikeMult;
         else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
         else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
+        else if (a.combo === 'counter_cut') mult = COMBO_TUNING.counterCutMult;
+        mult = boost(mult, a.power);
         const at = m.covers.contact(cover, f.x, f.z, aim);
         m.covers.damage(cover, t.damage * mult * f.outgoingDamageMult(), at.x, at.z, a.dirX, a.dirZ, true, f.side);
         f.action = { kind: 'recover', t: 0, total: t.missRecover };
@@ -809,6 +838,8 @@ export class Abilities {
         if (a.combo === 'counter_strike') mult = COMBO_TUNING.counterStrikeMult;
         else if (a.combo === 'electro_blast') mult = COMBO_TUNING.electroBlastMult;
         else if (a.combo === 'superstar') mult = COMBO_TUNING.superstarMult;
+        else if (a.combo === 'counter_cut') mult = COMBO_TUNING.counterCutMult;
+        mult = boost(mult, a.power);
         const dx = foe.x - f.x;
         const dz = foe.z - f.z;
         const d = dm.hypot(dx, dz) || 1;
@@ -825,8 +856,8 @@ export class Abilities {
           crit: a.combo !== null,
           electric: a.combo === 'electro_blast',
           combo: a.combo,
-          knockback: t.knockback * (a.combo === 'superstar' ? 1.25 : 1),
-          stun: t.stun + (a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun : 0),
+          knockback: t.knockback * (a.combo === 'superstar' ? boost(1.25, a.power) : 1),
+          stun: t.stun + (a.combo === 'electro_blast' ? COMBO_TUNING.electroBlastStun * a.power : 0),
           slowAmount: 0,
           slowDuration: 0,
           dx: kx,
@@ -925,7 +956,8 @@ export class Abilities {
         m.combat.onEvade(foe);
       } else {
         // SUPERSTAR MOVE (OVERDRIVE → BAT BITE) boosts the bite itself; the bleed stays as it is
-        const mult = a.combo === 'superstar' ? COMBO_TUNING.superstarMult : 1;
+        // (1.9.9: a stale SUPERSTAR MOVE's boost eases towards ×1)
+        const mult = a.combo === 'superstar' ? boost(COMBO_TUNING.superstarMult, a.power) : 1;
         const dx = foe.x - f.x;
         const dz = foe.z - f.z;
         const d = dm.hypot(dx, dz) || 1;
@@ -955,7 +987,7 @@ export class Abilities {
             m.combat.applyBleed(foe, f);
             m.emit({ type: 'bite', side: f.side, what: 'hit', x: foe.x, z: foe.z, dx: dx / d, dz: dz / d });
             // he springs back out of reach with a flourish (the view plays the bite in the first beat)
-            f.action = { kind: 'bite', stage: 'leap', t: 0, total: t.leap, dirX: -dx / d, dirZ: -dz / d, speed: t.leapDistance / t.leap, combo: a.combo, dodged: false, feinted: false };
+            f.action = { kind: 'bite', stage: 'leap', t: 0, total: t.leap, dirX: -dx / d, dirZ: -dz / d, speed: t.leapDistance / t.leap, combo: a.combo, power: a.power, dodged: false, feinted: false };
             return;
           } else {
             // a raised SHIELD stopped the bite (and so the bleed): he recoils off the dome

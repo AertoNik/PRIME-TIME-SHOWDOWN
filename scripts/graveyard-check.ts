@@ -87,7 +87,8 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
 {
   check('picker: CURSED CEMETERY SET is the fifth set, after HAUNTED PRIME SET', ARENA_ORDER.indexOf('graveyard') === 4 && ARENA_ORDER.indexOf('haunted') === 3);
   check('picker: its own name, show title, Russian description and caption', GY.name === 'CURSED CEMETERY SET' && GY.show === 'GRAVEYARD BROADCAST' && /кладбищ/.test(GY.description) && GY.caption.includes('CURSED CEMETERY SET'));
-  check('picker: a thumbnail of its own (not a copy of another set)', !!ARENA_ART.graveyard && ARENA_ART.graveyard.startsWith('<svg') && ARENA_ORDER.every((id) => id === 'graveyard' || ARENA_ART[id] !== ARENA_ART.graveyard));
+  // (1.9.9: the thumbnail is the owner's 3D preview — its own file public/arenas/sm/graveyard.webp, see npm run cardart)
+  check('picker: a thumbnail of its own (not a copy of another set)', !!ARENA_ART.graveyard && ARENA_ART.graveyard.startsWith('<img class="arena-img"') && ARENA_ART.graveyard.includes('arenas/sm/graveyard.webp') && ARENA_ORDER.every((id) => id === 'graveyard' || ARENA_ART[id] !== ARENA_ART.graveyard));
   check('picker: its own colours and the Halloween dressing (no second set of seasonal pumpkins)', GY.colors.a !== ARENAS.haunted.colors.a && GY.nativeSeason === 'halloween');
   check('music: the existing Halloween fight track (haunted_arena), no new music', ARENA_MUSIC.graveyard === 'haunted_arena');
   const prep = readFileSync('src/ui/screens/PrepScreen.ts', 'utf8');
@@ -362,7 +363,7 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
     place(m, 1, 0, -2.2);
     const f = m.fighters[0];
     const t = CARD_TUNING.bat_bite;
-    f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX: 0, dirZ: -1, speed: t.rushSpeed, combo: null, dodged: false, feinted: false };
+    f.action = { kind: 'bite', stage: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX: 0, dirZ: -1, speed: t.rushSpeed, combo: null, power: 1, dodged: false, feinted: false };
     const foeHp = m.fighters[1].hp;
     let worstB = -9;
     let splash = false;
@@ -381,7 +382,7 @@ const coverEvents = (ev: MatchEvent[]) => ev.filter((e): e is Extract<MatchEvent
     place(m, 1, c.x, c.z - 2.5);
     const f = m.fighters[0];
     const t = CARD_TUNING.knockout;
-    f.action = { kind: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX: 0, dirZ: -1, speed: t.rushSpeed, combo: null, dodged: false };
+    f.action = { kind: 'rush', t: 0, total: t.rushDistance / t.rushSpeed, dirX: 0, dirZ: -1, speed: t.rushSpeed, combo: null, power: 1, dodged: false };
     const foeHp = m.fighters[1].hp;
     let worstK = -9;
     for (let i = 0; i < 40; i++) {
@@ -627,7 +628,7 @@ function autoFight(fighter: FighterId, rival: RivalId, seed: number, mode: 'smar
     place(m, 1, tomb.x - 0.4, tomb.z - 3.6);
     m.ais[1].hold = true;
     const foe = m.fighters[1];
-    foe.action = { kind: 'windup', card: 'power_shot', t: 0, total: 1.4, lockAt: 0.6, locked: false, dirX: 0, dirZ: 1, combo: null, telegraph: true };
+    foe.action = { kind: 'windup', card: 'power_shot', t: 0, total: 1.4, lockAt: 0.6, locked: false, dirX: 0, dirZ: 1, combo: null, power: 1, telegraph: true };
     const ai = m.ais[0] as unknown as { hideT: number };
     let hid = false;
     for (let i = 0; i < 60 * 1.3; i++) {

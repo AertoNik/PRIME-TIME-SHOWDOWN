@@ -2,7 +2,7 @@
 // family, every fighter's signature — what each does, its energy, the combos, whether the producer has it, how a closed
 // one opens, and the purchase for career dollars (CareerSystem: once, forever, for every fighter). The deck itself is
 // built before the fight (PrepScreen) — this section only browses and buys; nothing about decks or saves changed.
-import { CARDS } from '../../config/cards';
+import { CARDS, COMBO_FRESH_NOTE } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import type { CardId } from '../../config/types';
 import type { Game } from '../../game/Game';
@@ -147,6 +147,7 @@ export class CardsScreen implements Screen {
             <div class="${st.buyable ? 'hot' : ''}"><b>${st.buyable}</b><span>можно купить</span></div>
           </div>
           <p class="shop-note">Новые карты открываются уровнем продюсера или этапом карьеры и покупаются один раз за гонорары — навсегда и для всех бойцов. Колоду из 4 карт вы собираете перед эфиром.</p>
+          <p class="shop-note combo-fresh">${esc(COMBO_FRESH_NOTE)}</p>
           <div class="seg-control cards-filter">${FILTERS.map((f) => `<button class="${this.filter === f.id ? 'on' : ''}" data-act="filter" data-f="${f.id}">${f.label}</button>`).join('')}</div>
         </div>
         ${sections || `<div class="section panel"><p class="shop-note">${esc(empty)}</p></div>`}

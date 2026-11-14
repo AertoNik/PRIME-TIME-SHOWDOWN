@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
+  CircleGeometry,
   CylinderGeometry,
   Group,
   InstancedMesh,
@@ -84,6 +85,19 @@ const _s = new Vector3();
 const _v = new Vector3();
 /** The north studio wall (z of the LED video wall). */
 const ZF = -15.4;
+
+/**
+ * Alpha 1.9.9 — where the studio kit stands (NewsroomStage.buildStudioKit): all of it outside the barrier (|x| > 5.75 on
+ * the sides, z < −7.75 behind the far barrier) and low or behind the fight, so the battle camera sees over it.
+ */
+export const NEWSROOM_KIT = {
+  guide: { x: [6.55, 6.95], z: -2.5, len: 20 },
+  pars: { x: [-4.8, -3.2, -1.6, 1.6, 3.2, 4.8], z: -8.75 },
+  arch: { r: 6.0, z: -12.9 },
+  jib: { x: 8.6, z: -3.0, post: 1.5, arm: 1.6, lift: 0.3 },
+  softboxes: { x: 7.55, z: [2.6, -6.6], h: 1.9 },
+  cart: { x: 7.35, z: 0.2 },
+} as const;
 
 // ------------------------------------------------------------------ textures
 function drawFloor(): { map: CanvasTexture; emissive: CanvasTexture } {
@@ -1074,6 +1088,9 @@ export class NewsroomStage extends Stage {
   private signTex!: CanvasTexture;
   private liveBug!: MeshBasicMaterial;
   private deskGlow!: MeshBasicMaterial;
+  /** 1.9.9: the floor PAR cans' lenses (cyan / violet), breathing with the show. */
+  private parGlow: MeshBasicMaterial | null = null;
+  private parGlowV: MeshBasicMaterial | null = null;
   private decorTally!: MeshBasicMaterial;
   private pools: { mesh: Mesh; mat: MeshBasicMaterial; col: number; base: number; ph: number }[] = [];
   private statics: Mesh[] = [];
@@ -1088,6 +1105,7 @@ export class NewsroomStage extends Stage {
     this.buildVideoWall();
     this.buildDesk();
     this.buildSides();
+    this.buildStudioKit();
     this.buildProps();
     this.buildLights();
     this.buildCovers();
@@ -1324,6 +1342,98 @@ export class NewsroomStage extends Stage {
         p.translateZ(0.11);
       }
       this.stat(new BoxGeometry(0.06, 0.05, 15), foot, sx * 11.9, GROUND_Y + 0.03, -2.0);
+    }
+  }
+
+  /**
+   * Alpha 1.9.9 — the studio around the fight: the set had its video wall and anchor desk far back, and little near the
+   * arena. Now (NEWSROOM_KIT): neon guide lines on the studio floor along both sides, a row of floor PAR cans and a
+   * stage monitor behind the far barrier, a chrome light arch framing the desk and the video wall, and on both sides
+   * the broadcast kit — a camera jib reaching towards the arena, softbox lights on stands and monitor carts with the
+   * live feed. Everything stands outside the barrier and never over the fight (`npm run arenapolish`); static, merged
+   * by material (the tally lights blink with the desk cameras', the PAR lenses breathe with the show).
+   */
+  private buildStudioKit(): void {
+    const K = NEWSROOM_KIT;
+    const metal = this.keepM(new MeshStandardMaterial({ color: 0x141a3a, roughness: 0.35, metalness: 0.72 }));
+    const chrome = this.keepM(new MeshStandardMaterial({ color: 0x9aa6c8, roughness: 0.24, metalness: 0.86 }));
+    const cyan = this.keepM(new MeshBasicMaterial({ color: new Color(CYAN).multiplyScalar(1.6), toneMapped: false }));
+    const violet = this.keepM(new MeshBasicMaterial({ color: new Color(VIOLET).multiplyScalar(1.6), toneMapped: false }));
+    const soft = this.keepM(new MeshBasicMaterial({ color: new Color(0xeaf4ff).multiplyScalar(1.35), toneMapped: false }));
+    this.parGlow = this.keepM(new MeshBasicMaterial({ color: new Color(CYAN).multiplyScalar(1.8), toneMapped: false }));
+    const parGlowV = this.parGlowV = this.keepM(new MeshBasicMaterial({ color: new Color(VIOLET).multiplyScalar(1.8), toneMapped: false }));
+    const feed = this.keepM(new MeshBasicMaterial({ map: feedTexture(0), toneMapped: false }));
+    // neon guide lines on the studio floor, outside the barrier on both sides, and across behind the far barrier
+    for (const sx of [-1, 1]) {
+      this.stat(new BoxGeometry(0.05, 0.015, K.guide.len), cyan, sx * K.guide.x[0], GROUND_Y + 0.012, K.guide.z);
+      this.stat(new BoxGeometry(0.05, 0.015, K.guide.len), violet, sx * K.guide.x[1], GROUND_Y + 0.012, K.guide.z);
+    }
+    this.stat(new BoxGeometry(K.guide.x[0] * 2, 0.015, 0.05), cyan, 0, GROUND_Y + 0.012, K.pars.z - 0.55);
+    // floor PAR cans behind the far barrier, tilted up towards the wall; a stage monitor in the middle
+    K.pars.x.forEach((x, i) => {
+      this.stat(new CylinderGeometry(0.15, 0.13, 0.26, 14).rotateX(0.55), metal, x, GROUND_Y + 0.17, K.pars.z);
+      this.stat(new BoxGeometry(0.34, 0.06, 0.2), metal, x, GROUND_Y + 0.03, K.pars.z);
+      // (static: merged into one mesh per colour with the rest; the shared material still breathes)
+      this.stat(new CircleGeometry(0.115, 18), i % 2 ? parGlowV : this.parGlow!, x, GROUND_Y + 0.25, K.pars.z - 0.08, 0, -Math.PI / 2 + 0.55 + Math.PI);
+    });
+    this.stat(new BoxGeometry(0.9, 0.34, 0.46), metal, 0, GROUND_Y + 0.17, K.pars.z - 0.25, 0, -0.35);
+    const mon = this.stat(new PlaneGeometry(0.76, 0.24), feed, 0, GROUND_Y + 0.27, K.pars.z - 0.02, Math.PI, 0.35);
+    void mon;
+    // the light arch framing the desk and the video wall (a chrome truss with a violet line; behind the fight)
+    const A = K.arch;
+    this.stat(new TorusGeometry(A.r, 0.09, 10, 64, Math.PI), chrome, 0, GROUND_Y, A.z);
+    this.stat(new TorusGeometry(A.r - 0.16, 0.035, 6, 64, Math.PI), violet, 0, GROUND_Y, A.z);
+    for (let k = 1; k < 18; k++) {
+      const a = (k / 18) * Math.PI;
+      this.stat(new BoxGeometry(0.06, 0.24, 0.16).rotateZ(a - Math.PI / 2), chrome, Math.cos(a) * (A.r - 0.08), GROUND_Y + Math.sin(a) * (A.r - 0.08), A.z);
+    }
+    // the broadcast kit on both sides of the arena (all facing the fight)
+    for (const sx of [-1, 1]) {
+      const face = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+      // a camera jib: tripod, post, an arm reaching over the side towards the arena, the camera and its tally
+      const J = K.jib;
+      const jx = sx * J.x;
+      for (let k = 0; k < 3; k++) {
+        const a = (k / 3) * Math.PI * 2;
+        this.stat(new CylinderGeometry(0.025, 0.025, 0.95, 6).rotateZ(0.45), metal, jx + Math.cos(a) * 0.22, GROUND_Y + 0.42, J.z + Math.sin(a) * 0.22, a);
+      }
+      this.stat(new CylinderGeometry(0.07, 0.08, J.post, 10), metal, jx, GROUND_Y + J.post / 2, J.z);
+      const ex = Math.cos(J.lift) * J.arm;
+      const ey = Math.sin(J.lift) * J.arm;
+      const arm = this.stat(new BoxGeometry(J.arm + 0.7, 0.08, 0.08).translate((J.arm - 0.7) / 2, 0, 0), chrome, jx, GROUND_Y + J.post, J.z);
+      arm.rotation.set(0, sx > 0 ? Math.PI : 0, J.lift);
+      this.stat(new BoxGeometry(0.3, 0.26, 0.26), metal, jx + sx * 0.62 * Math.cos(J.lift), GROUND_Y + J.post - 0.62 * Math.sin(J.lift), J.z);
+      const hx = jx - sx * ex;
+      const hy = GROUND_Y + J.post + ey;
+      this.stat(new BoxGeometry(0.42, 0.26, 0.3), metal, hx, hy - 0.2, J.z, face);
+      this.stat(new CylinderGeometry(0.09, 0.11, 0.26, 12).rotateX(Math.PI / 2).translate(0, 0, 0.26), chrome, hx, hy - 0.2, J.z, face);
+      this.stat(new BoxGeometry(0.09, 0.05, 0.04), this.decorTally, hx, hy - 0.04, J.z);
+      // softbox lights on stands
+      for (const z of K.softboxes.z) {
+        const bx = sx * K.softboxes.x;
+        for (let k = 0; k < 3; k++) {
+          const a = (k / 3) * Math.PI * 2 + 0.4;
+          this.stat(new CylinderGeometry(0.018, 0.018, 0.7, 6).rotateZ(0.5), metal, bx + Math.cos(a) * 0.16, GROUND_Y + 0.3, z + Math.sin(a) * 0.16, a);
+        }
+        this.stat(new CylinderGeometry(0.022, 0.022, K.softboxes.h, 6), chrome, bx, GROUND_Y + K.softboxes.h / 2, z);
+        const yaw = Math.atan2(-bx, -z * 0.35);
+        this.stat(new BoxGeometry(0.64, 0.5, 0.3), metal, bx, GROUND_Y + K.softboxes.h + 0.18, z, yaw, -0.25);
+        const sb = this.stat(new PlaneGeometry(0.58, 0.44), soft, bx, GROUND_Y + K.softboxes.h + 0.18, z, yaw, -0.25);
+        sb.translateZ(0.152);
+      }
+      // a monitor cart with the live feed on two screens
+      const C = K.cart;
+      const cx = sx * C.x;
+      this.stat(new BoxGeometry(0.5, 0.78, 0.7), metal, cx, GROUND_Y + 0.42, C.z);
+      for (const [dz, y] of [
+        [0, 1.02],
+        [0, 1.42],
+      ] as [number, number][]) {
+        this.stat(new BoxGeometry(0.66, 0.4, 0.06), metal, cx, GROUND_Y + y, C.z + dz, face);
+        const sc = this.stat(new PlaneGeometry(0.6, 0.34), feed, cx, GROUND_Y + y, C.z + dz, face);
+        sc.translateZ(0.032);
+      }
+      this.stat(new BoxGeometry(0.5, 0.03, 0.03), cyan, cx, GROUND_Y + 0.8, C.z, face).translateZ(0.36);
     }
   }
 
@@ -1697,6 +1807,12 @@ export class NewsroomStage extends Stage {
     // the desk's glow follows the show; the decor cameras' tally lights blink
     this.deskGlow.color.setHex(CYAN).multiplyScalar(1.4 + ex * 0.4 + boost * 0.5 + Math.sin(t * 1.3) * 0.12 * mo);
     this.decorTally.color.setHex(RED).multiplyScalar(Math.sin(t * 1.7) > -0.5 ? 2 : 0.4);
+    // 1.9.9: the floor PAR cans breathe with the show (steady with reduced motion)
+    if (this.parGlow && this.parGlowV) {
+      const k = 1.5 + ex * 0.4 + boost * 0.4;
+      this.parGlow.color.setHex(CYAN).multiplyScalar(k + Math.sin(t * 1.9) * 0.3 * mo);
+      this.parGlowV.color.setHex(VIOLET).multiplyScalar(k + Math.sin(t * 1.9 + 1.6) * 0.3 * mo);
+    }
     // the living LED wall: a few tiles change each frame (none on the low preset or with reduced motion)
     const tl = this.tiles;
     if (tl && !this.low && mo > 0.2) {

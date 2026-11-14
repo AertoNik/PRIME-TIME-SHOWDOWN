@@ -275,7 +275,7 @@ function pin(m: Match, d: number): () => void {
   const foe = m4.fighters[1];
   run(m4, 0.5, pin(m4, 1.9));
   m4.fighters[1].hp = m4.fighters[1].maxHp;
-  m4.objects.list.push({ id: 9999, kind: 'barrier', owner: 1, x: 0, z: 0, fromX: 0, fromZ: 0, dirX: 1, dirZ: 0, radius: 1.35, t: 0, total: 99, stage: 'on', hp: 99999, maxHp: 99999, combo: null, variant: 0 });
+  m4.objects.list.push({ id: 9999, kind: 'barrier', owner: 1, x: 0, z: 0, fromX: 0, fromZ: 0, dirX: 1, dirZ: 0, radius: 1.35, t: 0, total: 99, stage: 'on', hp: 99999, maxHp: 99999, combo: null, power: 1, variant: 0 });
   const hp0 = foe.hp;
   const ev4 = run(m4, 2, pin(m4, 1.9));
   check(`cane: never through a STAGE BARRIER (${ev4.filter((e) => e.type === 'slash' && e.outcome === 'blocked').length} strikes rang off it, no damage)`, foe.hp === hp0 && ev4.some((e) => e.type === 'slash' && e.outcome === 'blocked') && !ev4.some((e) => e.type === 'hit' && e.source === 0 && e.kind === 'cane'));
@@ -371,7 +371,7 @@ function bite(m: Match): MatchEvent[] {
   const m = lucienMatch('tank');
   const foe = m.fighters[1];
   run(m, 0.3, pin(m, 4));
-  m.objects.list.push({ id: 9998, kind: 'barrier', owner: 1, x: 0, z: 0, fromX: 0, fromZ: 0, dirX: 1, dirZ: 0, radius: 1.35, t: 0, total: 99, stage: 'on', hp: 99999, maxHp: 99999, combo: null, variant: 0 });
+  m.objects.list.push({ id: 9998, kind: 'barrier', owner: 1, x: 0, z: 0, fromX: 0, fromZ: 0, dirX: 1, dirZ: 0, radius: 1.35, t: 0, total: 99, stage: 'on', hp: 99999, maxHp: 99999, combo: null, power: 1, variant: 0 });
   let crossed = false;
   const ev = bite(m).concat(run(m, 1.5, () => {
     foe.x = foe.px = 0;
@@ -438,14 +438,19 @@ function bite(m: Match): MatchEvent[] {
 // --------------------------------------------- the other six are untouched
 {
   // fingerprints of fixed-seed fights recorded with Alpha 1.6.6 before Lucien existed — re-recorded in 1.9.0 when the
-  // fight switched to deterministic math (src/core/dmath.ts): 73 of 78 outcomes identical, wins 45 → 46 (same balance)
+  // fight switched to deterministic math (src/core/dmath.ts): 73 of 78 outcomes identical, wins 45 → 46 (same balance).
+  // Re-recorded in 1.9.9 for COMBO FRESHNESS (balance.ts COMBO_FRESH, the owner's anti-spam rule): 69 of 78 outcomes
+  // identical, wins 46 → 47. What moved: the deliberate bot repeating one combo 5–7 times on Champion loses part of its
+  // bonus (a close fight goes the other way), and every AI now reaches for another combo instead of a weakened one (a few
+  // fights go its way, a few the other). With the rule switched off (power 1, no staleness) the 1.9.0 records come back
+  // 78 of 78: nothing else in the fight changed.
   const BASE: Record<string, string> = {
-    ray: 'wk4186:17632:13968:88:7|wt4501:14482:6919:88:7|lt4501:12341:13796:81:6|wk3895:15046:8340:86:6|lk3395:13006:14909:70:1|wt4501:14123:8962:71:0|lk3876:12963:15075:29:0|lk3672:12846:15445:67:0|lt4501:15392:13242:90:2|wt4501:11978:7731:61:2|lt4501:9593:14849:60:2|wk4385:15040:12283:91:5|Bl6668:23108:14934',
-    bruno: 'lk4306:17523:16868:85:6|wt4501:14794:8048:88:5|lt4501:13665:15045:73:5|wk3516:15029:9603:91:5|lt4501:15864:16374:60:0|wt4501:14150:9733:76:0|wt4501:14928:15216:47:1|wk4253:15158:13097:84:0|lt4501:15409:15633:83:2|wt4501:15881:8142:91:4|wk4407:16196:14229:74:2|wk4213:14994:12021:91:1|Bw6310:24188:15557',
-    nika: 'wk3900:17871:13474:87:7|wt4501:17607:6567:88:7|wk3966:16370:12837:87:6|wk4091:15006:8336:88:6|lk3984:12520:13643:38:0|wt4501:13238:7579:69:1|wt4501:14846:12063:70:1|lk4203:12971:13636:56:1|lk3924:13256:13673:46:1|wt4501:15851:6415:79:4|lk4128:14784:13657:56:3|wt4501:14475:11482:79:3|Bw5564:23834:11064',
-    vega: 'wk4211:17625:12349:88:7|wt4501:15612:5792:89:9|wt4501:13984:10897:87:4|wk4157:15062:10375:92:7|lk3712:14818:13623:82:2|wt4501:13765:8314:47:0|lk3488:11425:13600:24:0|lk4052:13206:13601:79:2|lk3726:13160:13656:73:3|wt4501:15272:6288:85:6|lk3762:14097:13606:66:5|wt4501:14517:10782:82:2|Bl5816:19534:13760',
-    kai: 'wk4124:17602:12754:89:9|wt4501:16768:5119:90:13|lt4501:12162:11393:95:7|wk3852:15011:6946:91:8|lk3519:12221:14507:52:0|wt4501:14188:9865:84:2|lk3501:10760:14460:39:1|lk3729:11525:14401:66:0|lt4501:14105:11885:90:3|wt4501:12389:6456:86:8|lk3419:9513:14752:67:3|wk4394:15034:10709:95:4|Bw6674:23851:11326',
-    rina: 'wk3601:17853:10801:87:7|wt4501:16223:6443:88:9|lt4501:12180:13440:88:6|wk3758:15204:6052:91:6|lk3195:13111:13666:88:1|wt4501:15277:9194:84:5|lk3075:9375:13791:30:0|wk4179:15348:13558:95:1|lk3683:13778:13625:85:1|wt4501:10656:7529:11:0|lk3691:13592:13657:75:5|wt4501:14783:10861:96:1|Bw5936:23807:11703',
+    ray: 'wk4039:18037:13594:89:8|wt4501:14694:6494:86:7|lt4501:13236:14868:81:6|wk4081:15031:9162:87:6|lk3888:14642:14921:81:1|wt4501:14123:8962:71:0|lk3872:13787:14913:48:0|lk3672:12846:15445:67:0|lt4501:16035:14689:89:3|wt4501:11978:7731:61:2|lt4501:9593:14849:60:2|wk4346:14996:11609:91:4|Bw6508:23840:13723',
+    bruno: 'wk4343:17592:16603:89:6|wt4501:14794:8048:88:5|lt4501:13665:15045:73:5|wk3516:15029:9603:91:5|wt4501:16774:14492:78:0|wt4501:14150:9733:76:0|wt4501:15967:15401:50:0|wk4253:15158:13097:84:0|lt4501:15627:16733:82:1|wt4501:15881:8142:91:4|wk4462:16333:15414:72:2|wk4213:14994:12021:91:1|Bl6239:22401:16913',
+    nika: 'lk3758:15848:13624:82:6|wt4501:16772:6602:88:7|wk3963:16442:13150:87:6|wk4243:14994:9081:89:6|lk3852:12132:13615:44:0|wt4501:13238:7579:69:1|wt4501:14846:12063:70:1|lk4203:12971:13636:56:1|lk3924:13256:13673:46:1|wt4501:15627:6543:78:4|lk4122:14814:13644:54:3|wt4501:14475:11482:79:3|Bl5438:20985:13615',
+    vega: 'lk4135:17032:13660:86:7|wt4501:15612:5792:89:9|wt4501:14136:9313:89:4|wk4157:15062:10375:92:7|lk3683:14505:13663:82:2|wt4501:13765:8314:47:0|lk3365:11167:13626:22:0|lk4052:13206:13601:79:2|lk3919:14151:13647:75:3|wt4501:15272:6288:85:6|lk3814:13384:13634:68:5|wt4501:14517:10782:82:2|Bw6785:23829:11583',
+    kai: 'wk4093:17680:13054:89:8|wt4501:16768:5119:90:13|lt4501:12162:11393:95:7|wk3852:15011:6946:91:8|lk3519:12221:14507:52:0|wt4501:14188:9865:84:2|lk3163:9180:15181:32:1|lk3729:11525:14401:66:0|lt4501:15089:13218:90:2|wt4501:12389:6456:86:8|lk4318:12686:14419:85:5|wk4394:15034:10709:95:4|Bw6783:24064:13101',
+    rina: 'wk3507:17598:11512:87:6|wt4501:16012:6570:88:9|wt4501:13747:11144:90:5|wk3758:15204:6052:91:6|lk2867:11826:13643:87:1|wt4501:15277:9194:84:5|lk3856:13125:14477:57:0|wk4179:15348:13558:95:1|lk3780:14325:13607:85:1|wt4501:10656:7529:11:0|lk3605:9346:13618:28:1|wt4501:14783:10861:96:1|Bw6264:23821:12208',
   };
   const R: RivalId[] = ['dex', 'tank', 'zoe', 'crash'];
   const changed: string[] = [];
@@ -464,7 +469,7 @@ function bite(m: Match): MatchEvent[] {
     parts.push(`B${r.outcome[0]}${Math.round(r.duration * 60)}:${r.damageDealt}:${r.damageTaken}`);
     if (parts.join('|') !== BASE[f]) changed.push(f);
   }
-  check(`the other six fight exactly as recorded (1.6.6, re-recorded 1.9.0) (78 fixed-seed fights incl. the boss)${changed.length ? ' — changed: ' + changed.join(', ') : ''}`, changed.length === 0);
+  check(`the other six fight exactly as recorded (1.6.6, re-recorded 1.9.0 and 1.9.9) (78 fixed-seed fights incl. the boss)${changed.length ? ' — changed: ' + changed.join(', ') : ''}`, changed.length === 0);
 }
 
 // ----------------------------------------------------- balance in the band

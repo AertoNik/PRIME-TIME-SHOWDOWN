@@ -75,6 +75,8 @@ export interface MatchMods {
 interface Deferred {
   card: CardId;
   combo: ComboDef | null;
+  /** Alpha 1.9.9: the combo's freshness when it was played (COMBO_FRESH). */
+  power: number;
   t: number;
 }
 
@@ -347,7 +349,7 @@ export class Match implements BroadcastHost {
       }
       if (f.action.kind === 'none' && f.stun <= 0 && f.knockback <= 0) {
         this.deferred[side] = null;
-        this.abilities.execute(f, d.card, d.combo);
+        this.abilities.execute(f, d.card, d.combo, d.power);
       }
     }
   }
@@ -409,7 +411,8 @@ export class Match implements BroadcastHost {
       // Alpha 1.6: rare, and never into the danger zone
       const t = CARD_TUNING.high_stakes;
       if (f.stakesCd > 0 || f.stakesUses >= t.uses) return no('recharge');
-      const cost = f.maxHp * t.hpCost * (combo?.id === 'safe_bet' ? COMBO_TUNING.safeBetCost : 1);
+      // (1.9.9: a stale SAFE BET saves less — its discount eases towards the full price with the combo's freshness)
+      const cost = f.maxHp * t.hpCost * (combo?.id === 'safe_bet' ? 1 - (1 - COMBO_TUNING.safeBetCost) * this.combos.power(side, 'safe_bet', this.time) : 1);
       if (f.hp - cost < f.maxHp * t.minHp) return no('risk');
     }
     // Alpha 1.6.1 SECOND TAKE: only with a recent card attack to replay
@@ -464,9 +467,30 @@ export class Match implements BroadcastHost {
       case 'replay':
       case 'time_slip':
         return !!this.objects.own(side, 'freeze');
+      // Alpha 1.9.9: FADE OUT needs the fighter in its own smoke; COUNTER CUT needs the cut to have taken a dangerous hit
+      case 'fade_out':
+        return this.inOwnSmoke(f);
+      case 'counter_cut':
+        return f.cutSaved;
       default:
         return true;
     }
+  }
+
+  /**
+   * Alpha 1.9.9 — COMBO FRESHNESS: the combo answers the rival's attack (a read, not a loop) and so adds no repeat:
+   * COUNTER STRIKE after a DASH that dodged a real attack (the DASH saw a wind-up, a charge or a heavy shot coming —
+   * FighterSim.readDash), ELECTRO BLAST after a SHOCK that interrupted a wind-up or a charge, IRON RUSH after a SHIELD
+   * that took a hit, COUNTER CUT (the cut took a dangerous hit), CATCH & RELEASE (the frame caught a shot).
+   */
+  comboRead(side: Side, c: ComboDef, opener: CardId | null): boolean {
+    const f = this.fighters[side];
+    // (its opener is always the DASH just played, so the fighter's read flag is that DASH's)
+    if (c.id === 'counter_strike') return f.readDash;
+    if (c.id === 'iron_rush') return f.shieldAbsorbed > 0;
+    // (SYSTEM OVERLOAD opens ELECTRO BLAST too — a hack, never an interrupt)
+    if (c.id === 'electro_blast') return opener === 'shock' && f.readShock;
+    return c.id === 'counter_cut' || c.id === 'catch_release';
   }
 
   /** Alpha 1.6.1 SECOND TAKE: there is a card attack of the last few seconds to replay. */
@@ -507,21 +531,29 @@ export class Match implements BroadcastHost {
     const defer = rules.defer;
 
     hand.consume(index);
+    // (the card that opened the combo — read before this one takes its place)
+    const opener = this.combos.primed(side);
     this.combos.record(side, card, this.time, combo?.id ?? null);
+    // Alpha 1.9.9 — COMBO FRESHNESS: the share of its bonus this combo lands with (1 fresh … 0.25 stale)
+    const repeat = combo ? this.combos.repeats(side, combo.id, this.time) : 0;
+    const read = combo ? this.comboRead(side, combo, opener) : false;
+    const power = combo ? this.combos.landed(side, combo.id, this.time, read) : 1;
+    // (a card without a combo is variety of action: it helps the side's stale combos recover)
+    if (!combo) this.combos.plain(side, card, this.time);
     f.m.cardsUsed++;
     this.emit({ type: 'card', side, card, combo: combo?.id ?? null });
     if (combo) {
       f.m.combos++;
       if (side === 0) this.playerCombos.push(combo.id);
-      this.emit({ type: 'combo', side, combo: combo.id });
+      this.emit({ type: 'combo', side, combo: combo.id, power, repeat, read });
       if (f.def.passive === 'overclock') {
         hand.gain(PASSIVE_TUNING.overclock.energy);
         f.overclock = PASSIVE_TUNING.overclock.duration;
         this.emit({ type: 'passive', side, passive: 'overclock' });
       }
     }
-    if (defer) this.deferred[side] = { card, combo, t: 0 };
-    else this.abilities.execute(f, card, combo);
+    if (defer) this.deferred[side] = { card, combo, power, t: 0 };
+    else this.abilities.execute(f, card, combo, power);
     return null;
   }
 

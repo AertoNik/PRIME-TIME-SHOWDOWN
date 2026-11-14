@@ -825,6 +825,13 @@ function combo(first: CardId, second: CardId, setup?: (m: Match) => void, fighte
     ['magnet_pull', 'main_event', 'close_up', undefined, 'ace'],
     ['showtime', 'magnet_pull', 'star_pull'],
     ['safe_cut', 'dash', 'clean_exit'],
+    // Alpha 1.9.9 (in depth: npm run combofresh)
+    ['magnet_pull', 'split_shot', 'point_blank'],
+    ['smoke', 'safe_cut', 'fade_out'],
+    ['showtime', 'dash', 'encore'],
+    ['safe_cut', 'power_shot', 'counter_cut', (m) => (m.fighters[0].cutSaved = true)],
+    ['safe_cut', 'main_event', 'counter_cut', (m) => (m.fighters[0].cutSaved = true), 'ace'],
+    ['magnet_pull', 'charged_shot', 'close_up', undefined, 'vega'],
   ];
   const bad: string[] = [];
   for (const [a, b, id, setup, f] of cases) {

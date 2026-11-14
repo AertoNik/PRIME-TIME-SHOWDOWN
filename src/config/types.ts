@@ -77,7 +77,17 @@ export type ComboId =
   | 'standing_ovation'
   | 'close_up'
   | 'star_pull'
-  | 'clean_exit';
+  | 'clean_exit'
+  // Alpha 1.9.9 — CARD EVOLUTION: the 1.9.8 cards with the older ones (one per purpose)
+  | 'point_blank'
+  | 'fade_out'
+  | 'encore'
+  | 'counter_cut';
+/**
+ * Alpha 1.9.9: what a combo is for (shown with it on the prep screen and in CARDS) — damage (attack), staying alive
+ * (defense), where the fighters stand (position), energy and timing (tempo), answering the opponent (counter).
+ */
+export type ComboRole = 'attack' | 'defense' | 'position' | 'tempo' | 'counter';
 /** Alpha 1.6: card families on the prep screen (the four groups of the new cards plus the classics). */
 export type CardFamily = 'attack' | 'control' | 'defense' | 'show';
 /** Alpha 1.6: how the fighter's body sells a card (FighterAnimator.cast). */
@@ -288,6 +298,8 @@ export interface ComboDef {
   tag?: string;
   /** Alpha 1.6: a chain — the first card must itself have been played as this combo (HIGH STAKES → SHIELD → POWER SHOT). */
   after?: ComboId;
+  /** Alpha 1.9.9: what the combo is for (ComboRole). */
+  role: ComboRole;
 }
 
 export interface PassiveDef {

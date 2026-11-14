@@ -3,9 +3,10 @@
 // human-like delay, so results approximate real play rather than perfect play.
 import { Match, type MatchConfig, type MatchMods } from '../src/combat/Match';
 import type { ArenaId } from '../src/config/arenas.config';
+import { COMBO_FRESH } from '../src/config/balance';
 import { CARDS, COMBOS } from '../src/config/cards';
 import { FIGHTERS } from '../src/config/fighters';
-import type { CardId, Difficulty, FighterId, RivalId } from '../src/config/types';
+import type { CardId, ComboDef, Difficulty, FighterId, RivalId } from '../src/config/types';
 import type { MatchEvent } from '../src/combat/types';
 
 /** The five combos of 1.0–1.5 (the bot plays them exactly as before Alpha 1.6). */
@@ -107,8 +108,11 @@ export function comboBot(m: Match, st: BotState, dt: number, reaction = 0.38): v
       return;
     }
   }
-  // open a combo if both halves are affordable soon (chains like JACKPOT follow on their own)
-  for (const cb of COMBOS) {
+  // open a combo if both halves are affordable soon (chains like JACKPOT follow on their own). Alpha 1.9.9: a deliberate
+  // player reads the freshness on the ribbon («COUNTER STRIKE · 60%») like the AI does — a fresh combo first, a stale
+  // one (COMBO_FRESH.dullAt repeats in a row) only when nothing else can be opened
+  const stale = (id: ComboDef['id']) => m.combos.repeats(0, id, m.time) >= COMBO_FRESH.dullAt;
+  for (const cb of [...COMBOS.filter((x) => !stale(x.id)), ...COMBOS.filter((x) => stale(x.id))]) {
     if (cb.after) continue;
     // (the classic five are played exactly as before 1.6)
     const dashy = !CLASSIC.has(cb.id) && (cb.first.includes('dash') || cb.second.includes('dash')) && cb.id !== 'tight_spread';

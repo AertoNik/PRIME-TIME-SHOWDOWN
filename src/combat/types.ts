@@ -175,6 +175,8 @@ export interface StageObject {
   maxHp: number;
   /** Combo flags (echo: CROSS ANGLE / BLINDSIDE / CAMERA LOCK). */
   combo: ComboId | null;
+  /** Alpha 1.9.9: that combo's freshness when the piece was thrown (COMBO_FRESH; 1 without a combo). */
+  power: number;
   /** Visual variant (prop drop: which set piece; echo: which attack it replays, see TAKE_CARDS). */
   variant: number;
 }
@@ -238,7 +240,11 @@ export type MatchEvent =
   | { type: 'bossPhase'; phase: number }
   /** BOSS FIGHT: STAR POWER at the start of a phase. */
   | { type: 'bossMove'; move: 'star' }
-  | { type: 'combo'; side: Side; combo: ComboId }
+  /**
+   * Alpha 1.9.9 — COMBO FRESHNESS: `power` the share of its bonus the combo landed with (1 fresh … 0.4 stale), `repeat`
+   * how many times in a row it had already landed before (0 = fresh), `read` it answered the rival's attack (no repeat).
+   */
+  | { type: 'combo'; side: Side; combo: ComboId; power: number; repeat: number; read: boolean }
   | { type: 'dodge'; side: Side; x: number; z: number; perfect: boolean; heavy: boolean }
   | { type: 'miss'; side: Side; x: number; z: number }
   | { type: 'block'; side: Side; x: number; z: number; perfect: boolean; absorbed: number }

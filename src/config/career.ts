@@ -39,6 +39,8 @@ export const REWARDS: {
   repRatingDiv: number;
   /** 1.9.6: the money multiplier of each difficulty (absent: the difficulty's own rewardMult, as before 1.9.6). */
   difficultyMoney?: Partial<Record<Difficulty, number>>;
+  /** Alpha 1.9.9: what a forfeit pays, by the seconds really fought (see below). */
+  forfeit: { share: number; freeS: number; fullS: number };
 } = {
   purse: { win: 150, draw: 80, loss: 50 },
   koBonus: 40,
@@ -65,6 +67,15 @@ export const REWARDS: {
    * career stretch for every kind of player about alike, a beginner's a little less (docs/ALPHA_1_9_6_FINAL_STAGING_REPORT.md).
    */
   difficultyMoney: { rookie: 1, pro: 1.3, champion: 1.6 },
+  /**
+   * Alpha 1.9.9 — the quick-exit farm: a forfeit paid 30 % of a loss (and its reputation) at any second, so starting a
+   * fight and giving up at once, again and again, earned dollars and producer levels without playing. Now a forfeit pays
+   * by how much of the fight was really fought (Match time, the intro not counted): nothing in the first `freeS` s, then
+   * evenly more up to the old `share` of a loss's dollars (and the loss's reputation, −6 as before) at `fullS` s. A fight
+   * fought to the end — won, drawn or lost — pays exactly as before; an interrupted fight that was never finished (the
+   * page closed, the connection lost) is not applied at all, as before — no reward, no penalty.
+   */
+  forfeit: { share: 0.3, freeS: 15, fullS: 60 },
 };
 
 export type GoalId =

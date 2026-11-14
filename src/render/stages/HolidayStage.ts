@@ -8,12 +8,14 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Group,
   InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  OctahedronGeometry,
   PlaneGeometry,
   Quaternion,
   RepeatWrapping,
@@ -540,6 +542,17 @@ interface KindModel {
   chunks: Chunk[];
   /** The chunk that falls off at the battered look (−1: none). */
   lost: number;
+  /**
+   * Alpha 1.9.9: the festive dressing of each chunk (ribbons, candy stripes, gears, bells, tinsel, a tiny tree), in the
+   * piece's own coordinates and vertex colours; it rides on its chunk (cracks, flies and lands with it). `glow`: a bulb.
+   */
+  decor: Decor[];
+}
+
+interface Decor {
+  chunk: number;
+  geo: BufferGeometry;
+  glow?: boolean;
 }
 
 function giftModel(): KindModel {
@@ -558,7 +571,7 @@ function giftModel(): KindModel {
     new SphereGeometry(0.045, 10, 8).translate(0, h + 0.14, 0),
   ]);
   chunks.push(centred(lid));
-  return { remains: new CylinderGeometry(r, r + 0.02, 0.07, 24).translate(0, 0.035, 0), chunks, lost: 4 };
+  return { remains: new CylinderGeometry(r, r + 0.02, 0.07, 24).translate(0, 0.035, 0), chunks, lost: 4, decor: giftDecor(r) };
 }
 
 function snowgenModel(): KindModel {
@@ -575,7 +588,7 @@ function snowgenModel(): KindModel {
     new TorusGeometry(0.11, 0.03, 8, 14).rotateX(-0.9 + Math.PI / 2).translate(0, 1.44, 0.3),
   ]);
   chunks.push(centred(head));
-  return { remains: new BoxGeometry(0.78, 0.1, 0.78).translate(0, 0.05, 0), chunks, lost: 4 };
+  return { remains: new BoxGeometry(0.78, 0.1, 0.78).translate(0, 0.05, 0), chunks, lost: 4, decor: snowgenDecor(r) };
 }
 
 function clocktowerModel(): KindModel {
@@ -590,7 +603,7 @@ function clocktowerModel(): KindModel {
   // the clock head: 1.42–1.86 m, a low brass roof to 1.98 m (the camera's view rule: nothing over 2.0 m)
   const head = merge([new BoxGeometry(0.62, 0.44, 0.62).translate(0, 1.64, 0), new ConeGeometry(0.46, 0.12, 4).rotateY(Math.PI / 4).translate(0, 1.92, 0)]);
   chunks.push(centred(head));
-  return { remains: new CylinderGeometry(0.46, 0.5, 0.2, 18).translate(0, 0.1, 0), chunks, lost: 6 };
+  return { remains: new CylinderGeometry(0.46, 0.5, 0.2, 18).translate(0, 0.1, 0), chunks, lost: 6, decor: clocktowerDecor(r) };
 }
 
 function consoleModel(): KindModel {
@@ -603,7 +616,287 @@ function consoleModel(): KindModel {
   const chunks: Chunk[] = [];
   for (let i = 0; i < 3; i++) chunks.push(centred(stadiumPart(len, r, cuts[i], cuts[i + 1], 0.08, h)));
   chunks.push(centred(new BoxGeometry(0.62, 0.3, 0.05).translate(0, 0.78, r + 0.01)));
-  return { remains: stadiumPart(len, r, A, B, 0, 0.08), chunks, lost: 3 };
+  return { remains: stadiumPart(len, r, A, B, 0, 0.08), chunks, lost: 3, decor: consoleDecor(len, r, cuts) };
+}
+
+// ------------------------------------------------------- Alpha 1.9.9 — the festive dressing of the cover
+// Every piece keeps its collision body, hit points and break rules (src/combat/Covers.ts): only its look grows — a round
+// hat-box PRESENT with ribbons, a candy-striped SNOW CANNON with frost bulbs, a clockwork COLUMN with gear rings and
+// bells, a studio CONSOLE with tinsel and a tiny lit tree. All of it stays inside the body (checked by `npm run arenapolish`).
+const RIB = 0xffd36a;
+const CANE_RED = 0xd8203c;
+const PINE = 0x1f7a4c;
+const BULBS = [0xff4060, 0xffd36a, 0x8fe8ff, 0x8dff9e];
+
+/** A half ring (the +z half, or the −z one) of radius r at height y — it belongs to that half of a split drum. */
+function halfRing(r: number, tube: number, y: number, front: boolean): BufferGeometry {
+  const g = new TorusGeometry(r, tube, 6, 20, Math.PI).rotateX(Math.PI / 2);
+  if (!front) g.rotateY(Math.PI);
+  return g.translate(0, y, 0);
+}
+
+/** The chunk (of two halves per tier) a point at height y on side `front` belongs to. */
+function tierChunk(tiers: [number, number][], y: number, front: boolean): number {
+  let t = tiers.findIndex(([y0, h]) => y >= y0 && y < y0 + h);
+  if (t < 0) t = y < tiers[0][0] ? 0 : tiers.length - 1;
+  return t * 2 + (front ? 1 : 0);
+}
+
+/** PRESENT: four ribbon bands down the drum and a ribbon round the lid (the ribbon colour is set per gift). */
+function giftDecor(r: number): Decor[] {
+  const tiers: [number, number][] = [
+    [0.06, 0.39],
+    [0.45, 0.39],
+  ];
+  const out: Decor[] = [];
+  for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]) {
+    const x = Math.sin(a) * (r + 0.006);
+    const z = Math.cos(a) * (r + 0.006);
+    for (const [y0, h] of tiers) {
+      const g = tint(new BoxGeometry(0.1, h - 0.004, 0.014).rotateY(a).translate(x, y0 + h / 2, z), RIB);
+      out.push({ chunk: tierChunk(tiers, y0 + h / 2, z > 0), geo: g });
+    }
+  }
+  // the band round the lid and the bow's two long tails falling over the lid's edge
+  out.push({ chunk: 4, geo: tint(new CylinderGeometry(r + 0.036, r + 0.036, 0.05, 24, 1, true).translate(0, 0.9, 0), RIB) });
+  for (const sx of [-1, 1]) out.push({ chunk: 4, geo: tint(new BoxGeometry(0.07, 0.012, 0.3).rotateX(0.18).rotateY(sx * 0.5).translate(sx * 0.1, 0.965, 0.1), RIB) });
+  // a big satin bow in the ribbon's colour over the lid's small brass one: two loops and a knot, up to 1.13 m (body 1.12)
+  for (const sx of [-1, 1]) out.push({ chunk: 4, geo: tint(new TorusGeometry(0.105, 0.036, 8, 16).scale(1, 0.72, 0.55).rotateY(sx * 0.5).translate(sx * 0.11, 1.03, 0.02), RIB) });
+  out.push({ chunk: 4, geo: tint(new SphereGeometry(0.05, 10, 8).scale(1, 0.8, 1).translate(0, 1.0, 0.02), RIB) });
+  return out;
+}
+
+/** SNOW CANNON: candy-cane stripes round the drum and a ring of frost bulbs on the head. */
+function snowgenDecor(r: number): Decor[] {
+  const tiers: [number, number][] = [
+    [0.1, 0.45],
+    [0.55, 0.45],
+  ];
+  const out: Decor[] = [];
+  for (const y of [0.22, 0.42, 0.68, 0.88])
+    for (const f of [false, true]) out.push({ chunk: tierChunk(tiers, y, f), geo: tint(halfRing(r + 0.004, 0.026, y, f), CANE_RED) });
+  const bulbs: BufferGeometry[] = [];
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    bulbs.push(tint(new SphereGeometry(0.032, 8, 6).translate(Math.sin(a) * 0.31, 1.1, Math.cos(a) * 0.31), BULBS[k % BULBS.length], 2));
+  }
+  out.push({ chunk: 4, geo: merge(bulbs), glow: true });
+  return out;
+}
+
+/** CLOCKWORK COLUMN: brass gear rings with teeth between the tiers and four small bells under the clock head. */
+function clocktowerDecor(r: number): Decor[] {
+  const tiers: [number, number][] = [
+    [0.2, 0.42],
+    [0.62, 0.42],
+    [1.04, 0.38],
+  ];
+  const out: Decor[] = [];
+  for (const y of [0.6, 1.02, 1.4])
+    for (const f of [false, true]) {
+      const parts = [halfRing(r + 0.012, 0.024, y, f)];
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI + (f ? 0 : Math.PI) + Math.PI / 12;
+        parts.push(new BoxGeometry(0.05, 0.045, 0.05).rotateY(a).translate(Math.sin(a) * (r + 0.03), y, Math.cos(a) * (r + 0.03)));
+      }
+      out.push({ chunk: tierChunk(tiers, y - 0.01, f), geo: tint(merge(parts), 0xe0b84c) });
+    }
+  for (const [x, z] of [
+    [0.26, 0.26],
+    [-0.26, 0.26],
+    [0.26, -0.26],
+    [-0.26, -0.26],
+  ]) {
+    const bell = merge([new ConeGeometry(0.07, 0.11, 12, 1, true).translate(0, 0, 0), new SphereGeometry(0.022, 8, 6).translate(0, -0.06, 0)]);
+    out.push({ chunk: tierChunk(tiers, 1.36, z > 0), geo: tint(bell.translate(x, 1.35, z), 0xf2cf5a) });
+  }
+  return out;
+}
+
+/** STUDIO CONSOLE: a tinsel swag with bulbs along its top front and a tiny lit tree in the middle of its top. */
+function consoleDecor(len: number, r: number, cuts: number[]): Decor[] {
+  const out: Decor[] = [];
+  const pts: Vector3[] = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    const x = -len / 2 + t * len;
+    // on the front face just under the top edge (the body is r + 0.01; the tinsel sticks out ≤ 3.5 cm)
+    pts.push(new Vector3(x, 0.965 - Math.sin(t * Math.PI * 3) ** 2 * 0.06, r + 0.012));
+  }
+  const curve = new CatmullRomCurve3(pts);
+  for (let c = 0; c < 3; c++) {
+    const seg: Vector3[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const p = curve.getPointAt(i / 8);
+      if (p.x >= cuts[c] - 0.01 && p.x <= cuts[c + 1] + 0.01) seg.push(p);
+    }
+    if (seg.length < 2) continue;
+    out.push({ chunk: c, geo: tint(new TubeGeometry(new CatmullRomCurve3(seg), 8, 0.022, 6), 0xdfe9ff) });
+    out.push({ chunk: c, geo: merge(seg.filter((_, i) => i % 2 === 0).map((p, i) => tint(new SphereGeometry(0.026, 8, 6).translate(p.x, p.y - 0.03, p.z + 0.01), BULBS[(i + c) % BULBS.length], 2))), glow: true });
+  }
+  // the tiny tree: three cones of pine and a gold star, 1.0–1.19 m (the body is 1.2 m)
+  const tree = merge([0, 1, 2].map((k) => tint(new ConeGeometry(0.09 - k * 0.022, 0.08, 9).translate(0, 1.03 + k * 0.045, -0.04), PINE)));
+  out.push({ chunk: 1, geo: tree });
+  out.push({ chunk: 1, geo: tint(new SphereGeometry(0.02, 8, 6).translate(0, 1.165, -0.04), 0xffe08a, 2.2), glow: true });
+  return out;
+}
+
+// ------------------------------------------------------- Alpha 1.9.9 — the far side of the set (behind the rival)
+/** The riser along the far side: outside the barrier (its outer edge is at z −7.75), as wide as the arena. */
+export const FAR = { x: 5.3, z0: -8.35, z1: -10.6, h: 0.28 } as const;
+const FAR_TOP = GROUND_Y + FAR.h;
+
+export interface FarSide {
+  navy: BufferGeometry;
+  gold: BufferGeometry;
+  frost: BufferGeometry;
+  /** vertex colours: candy-cane posts, glass baubles, pine, presents */
+  painted: BufferGeometry;
+  /** the gear wheel inside the clockwork arch (turns slowly), centred on its axle at `gearAt` */
+  gear: BufferGeometry;
+  gearAt: Vector3;
+  clockAt: Vector3;
+  /** bulbs of the swags and the little trees (position + colour), stars (glow) */
+  bulbs: { at: Vector3; color: number }[];
+  stars: BufferGeometry;
+}
+
+/**
+ * The far side of HOLIDAY BROADCAST as geometry (`npm run arenapolish` checks it stays outside the barrier, behind the
+ * fight and low): a navy TV riser with a gold edge and a frost light line, candy-cane posts with evergreen swags and
+ * bulbs, two little lit trees, two giant glass baubles on brass stands, a brass clockwork arch with a turning gear
+ * wheel and a small clock, and piles of presents.
+ */
+export function holidayFarSideParts(): FarSide {
+  const zc = (FAR.z0 + FAR.z1) / 2;
+  const w = FAR.x * 2;
+  const navy = new BoxGeometry(w, FAR.h, FAR.z0 - FAR.z1).translate(0, GROUND_Y + FAR.h / 2, zc);
+  const gold: BufferGeometry[] = [new BoxGeometry(w + 0.04, 0.05, 0.07).translate(0, FAR_TOP + 0.02, FAR.z0)];
+  const frost = new BoxGeometry(w - 0.2, 0.04, 0.02).translate(0, GROUND_Y + FAR.h * 0.5, FAR.z0 + 0.005);
+  const painted: BufferGeometry[] = [];
+  const bulbs: { at: Vector3; color: number }[] = [];
+  const stars: BufferGeometry[] = [];
+  // candy-cane posts (red and white bands) with gold balls
+  const POSTS = [-5.0, -2.9, 2.9, 5.0];
+  const postZ = -10.25;
+  const postH = 2.0;
+  for (const x of POSTS) {
+    for (let k = 0; k < 8; k++) painted.push(tint(new CylinderGeometry(0.06, 0.06, postH / 8, 10).translate(x, FAR_TOP + (k + 0.5) * (postH / 8), postZ), k % 2 ? 0xf4f4f8 : CANE_RED));
+    gold.push(new SphereGeometry(0.1, 12, 10).translate(x, FAR_TOP + postH + 0.08, postZ));
+  }
+  // evergreen swags from post to post and to the arch, bulbs under them
+  const swag = (x0: number, y0: number, x1: number, y1: number) => {
+    const pts: Vector3[] = [];
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      pts.push(new Vector3(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * 0.42, postZ + 0.04));
+    }
+    const curve = new CatmullRomCurve3(pts);
+    painted.push(tint(new TubeGeometry(curve, 24, 0.055, 7), PINE));
+    const n = Math.round(curve.getLength() / 0.26);
+    for (let i = 1; i < n; i++) bulbs.push({ at: curve.getPointAt(i / n).add(new Vector3(0, -0.07, 0.05)), color: BULBS[(i + Math.round(x0)) % BULBS.length] });
+  };
+  const hi = FAR_TOP + postH;
+  const archTop = FAR_TOP + 0.15 + 1.25;
+  swag(-5.0, hi, -2.9, hi);
+  swag(-2.9, hi, -1.45, archTop - 0.45);
+  swag(1.45, archTop - 0.45, 2.9, hi);
+  swag(2.9, hi, 5.0, hi);
+  // two little lit trees
+  for (const sx of [-1, 1]) {
+    const x = sx * 4.0;
+    const z = -9.55;
+    const cones: [number, number][] = [
+      [0.56, 0],
+      [0.43, 0.42],
+      [0.29, 0.82],
+    ];
+    for (const [r, y] of cones) painted.push(tint(new ConeGeometry(r, 0.62, 10).translate(x, FAR_TOP + y + 0.31, z), PINE));
+    stars.push(tint(new OctahedronGeometry(0.11).translate(x, FAR_TOP + 1.5, z), 0xffe08a, 2.2));
+    for (let k = 0; k < 14; k++) {
+      const a = k * 2.2 + sx;
+      const y = 0.18 + (k / 14) * 1.05;
+      const rr = 0.52 * (1 - y / 1.35);
+      bulbs.push({ at: new Vector3(x + Math.cos(a) * rr, FAR_TOP + y, z + Math.sin(a) * rr), color: BULBS[k % BULBS.length] });
+    }
+  }
+  // giant glass baubles on brass stands
+  for (const sx of [-1, 1]) {
+    const x = sx * 2.1;
+    const z = -9.1;
+    gold.push(new CylinderGeometry(0.22, 0.25, 0.05, 18).translate(x, FAR_TOP + 0.025, z));
+    gold.push(new CylinderGeometry(0.035, 0.045, 0.9, 10).translate(x, FAR_TOP + 0.5, z));
+    gold.push(new TorusGeometry(0.16, 0.025, 8, 18).rotateX(Math.PI / 2).translate(x, FAR_TOP + 0.95, z));
+    const r = 0.34;
+    const cy = FAR_TOP + 0.97 + r;
+    painted.push(tint(new SphereGeometry(r, 22, 16).translate(x, cy, z), sx < 0 ? 0xd8203c : 0x2a62e8));
+    // a frosty band round the bauble, its cap and hook
+    painted.push(tint(new TorusGeometry(r * 0.995, 0.03, 6, 28).translate(x, cy, z), 0xf4f8ff));
+    gold.push(new CylinderGeometry(0.07, 0.08, 0.09, 12).translate(x, cy + r + 0.03, z));
+    gold.push(new TorusGeometry(0.045, 0.012, 6, 12).translate(x, cy + r + 0.11, z));
+  }
+  // the clockwork arch: a brass half ring with teeth, on two small pedestals, a gear and a clock inside
+  const ax = 0;
+  const az = -10.0;
+  const ay = FAR_TOP + 0.15;
+  gold.push(new TorusGeometry(1.25, 0.07, 10, 44, Math.PI).translate(ax, ay, az));
+  for (let k = 1; k < 14; k++) {
+    const a = (k / 14) * Math.PI;
+    gold.push(new BoxGeometry(0.1, 0.12, 0.1).rotateZ(a - Math.PI / 2).translate(ax + Math.cos(a) * 1.37, ay + Math.sin(a) * 1.37, az));
+  }
+  for (const sx of [-1, 1]) gold.push(new BoxGeometry(0.26, 0.15, 0.26).translate(ax + sx * 1.25, FAR_TOP + 0.075, az));
+  const gearAt = new Vector3(ax, ay + 0.72, az - 0.06);
+  const gearParts: BufferGeometry[] = [new CylinderGeometry(0.5, 0.5, 0.05, 32).rotateX(Math.PI / 2), new CylinderGeometry(0.12, 0.12, 0.09, 16).rotateX(Math.PI / 2)];
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * Math.PI * 2;
+    gearParts.push(new BoxGeometry(0.1, 0.12, 0.05).rotateZ(a).translate(Math.sin(a) * 0.55, Math.cos(a) * 0.55, 0));
+  }
+  const clockAt = new Vector3(ax, ay + 0.72, az + 0.05);
+  gold.push(new TorusGeometry(0.33, 0.03, 8, 28).translate(clockAt.x, clockAt.y, clockAt.z + 0.01));
+  // piles of presents in front of the arch's feet and by the outer posts
+  const piles: [number, number, number][] = [
+    [-1.0, -8.85, 0],
+    [1.0, -8.85, 1],
+    [-4.85, -8.95, 2],
+    [4.85, -8.95, 3],
+  ];
+  const papers = [0xc4122f, 0x1f4fd8, 0x157a4a, 0xe0b84c];
+  const ribbonsP = [RIB, 0xe9f1ff, CANE_RED, 0x1f4fd8];
+  for (const [x, z, k] of piles) {
+    const a = presentParts(0.46, 0.34, 0.42, papers[k % 4], ribbonsP[k % 4]).rotateY(0.3 + k).translate(x, FAR_TOP, z);
+    const b2 = presentParts(0.3, 0.26, 0.3, papers[(k + 1) % 4], ribbonsP[(k + 1) % 4]).rotateY(-0.5 + k).translate(x + 0.36, FAR_TOP, z + 0.1);
+    const c = presentParts(0.26, 0.2, 0.26, papers[(k + 2) % 4], ribbonsP[(k + 2) % 4]).rotateY(0.9 + k).translate(x - 0.06, FAR_TOP + 0.34, z - 0.02);
+    painted.push(a, b2, c);
+  }
+  return { navy, gold: merge(gold), frost, painted: merge(painted), gear: merge(gearParts), gearAt, clockAt, bulbs, stars: merge(stars) };
+}
+
+/** Alpha 1.9.9: the cover models (geometry only, for `npm run arenapolish`: every chunk and its dressing inside the body). */
+export function holidayCoverModels(): Record<'gift' | 'snowgen' | 'clocktower' | 'console', KindModel> {
+  return { gift: giftModel(), snowgen: snowgenModel(), clocktower: clocktowerModel(), console: consoleModel() };
+}
+
+/**
+ * Alpha 1.9.9 — a wrapped present (vertex colours): the box (paper), two ribbon bands across it and a bow of two loops
+ * and two tails on top. `w`×`h`×`d`, standing on y = 0, centred on x / z.
+ */
+export function presentParts(w: number, h: number, d: number, paper: number, ribbon: number, bow = true): BufferGeometry {
+  const rw = Math.min(w, d) * 0.16;
+  const loop = Math.min(w, d) * 0.2;
+  const box = [
+    tint(new BoxGeometry(w, h, d).translate(0, h / 2, 0), paper),
+    tint(new BoxGeometry(w + 0.01, h + 0.01, rw).translate(0, h / 2, 0), ribbon),
+    tint(new BoxGeometry(rw, h + 0.01, d + 0.01).translate(0, h / 2, 0), ribbon),
+  ];
+  if (!bow) return merge(box);
+  return merge([
+    ...box,
+    tint(new TorusGeometry(loop, loop * 0.32, 8, 14).scale(1, 0.8, 0.55).rotateY(Math.PI / 4).translate(-loop * 0.75, h + loop * 0.62, -loop * 0.2), ribbon, 1.1),
+    tint(new TorusGeometry(loop, loop * 0.32, 8, 14).scale(1, 0.8, 0.55).rotateY(-Math.PI / 4).translate(loop * 0.75, h + loop * 0.62, -loop * 0.2), ribbon, 1.1),
+    tint(new SphereGeometry(loop * 0.42, 10, 8).translate(0, h + loop * 0.3, 0), ribbon, 1.15),
+    tint(new BoxGeometry(rw * 0.8, 0.01, loop * 1.8).rotateX(0.35).rotateY(0.4).translate(loop * 0.35, h + 0.02, loop * 0.8), ribbon),
+    tint(new BoxGeometry(rw * 0.8, 0.01, loop * 1.8).rotateX(0.35).rotateY(-0.4).translate(-loop * 0.35, h + 0.02, loop * 0.8), ribbon),
+  ]);
 }
 
 // ------------------------------------------------------------------ views
@@ -626,16 +919,29 @@ interface CoverView {
   lost: number;
   phase: number;
   puffT: number;
+  /**
+   * 1.9.9 — the festive dressing in two forms: while the piece is whole, ONE merged mesh per material (`dressAll`, two
+   * draw calls a piece); once a chunk is thrown, the per-chunk dressing (`dressBits`, children of the chunks) takes over
+   * so ribbons and bulbs fly with their chunk.
+   */
+  dressAll: Mesh[];
+  dressBits: Mesh[];
+  dressed: boolean;
 }
 
 interface GiftP {
   top: Mesh;
   low: Mesh;
+  /** 1.9.9: scraps of wrapping paper and ribbon that fly when the stack is shot apart (hidden until then). */
+  scraps: Mesh[];
   x: number;
   y: number;
   z: number;
   broken: boolean;
 }
+
+/** 1.9.9: the barrier's gift stacks — the lower box (no bow: the upper one sits on it) and the upper one with a bow. */
+const STACK = { low: { w: 0.5, h: 0.36 }, top: { w: 0.34, h: 0.26 } } as const;
 
 interface LampP {
   globe: Mesh;
@@ -692,6 +998,12 @@ export class HolidayStage extends Stage {
   private covers: CoverView[] = [];
   private coverGroup = new Group();
   private gifts: GiftP[] = [];
+  private giftStackMat: MeshStandardMaterial | null = null;
+  /** 1.9.9: the far side's turning gear and its twinkling bulbs. */
+  private farGear: Mesh | null = null;
+  private farBulbs: InstancedMesh | null = null;
+  private farBulbBase: Color[] = [];
+  private giftScrapMat: MeshStandardMaterial | null = null;
   private lamps: LampP[] = [];
   private propMap: ({ k: 'gift'; i: number } | { k: 'lamp'; i: number } | { k: 'clock' })[] = [];
   private bulbs: InstancedMesh | null = null;
@@ -718,6 +1030,7 @@ export class HolidayStage extends Stage {
     this.buildOutside();
     this.buildStudio();
     this.buildStudioMagic();
+    this.buildFarSide();
     this.buildProps();
     this.buildLights();
     this.buildCovers();
@@ -1125,6 +1438,46 @@ export class HolidayStage extends Stage {
     for (const p of this.pools) p.mesh.visible = !low;
   }
 
+  /**
+   * Alpha 1.9.9 — the far side of the set: the strip behind the rival, at the top of the picture in a fight, was bare snow
+   * between the corner trees. A festive TV riser now runs along it (holidayFarSideParts): candy-cane posts with swags of
+   * pine and twinkling bulbs, two little lit trees, giant glass baubles on brass stands, a brass clockwork arch whose gear
+   * turns behind a small clock, and piles of presents. All of it stands beyond the barrier and behind the fighters as
+   * the battle camera sees them (nothing over the fight — `npm run arenapolish`), in a handful of draw calls.
+   */
+  private buildFarSide(): void {
+    const f = holidayFarSideParts();
+    this.extraGeos.push(f.navy, f.gold, f.frost, f.painted, f.gear, f.stars);
+    const navy = new Mesh(f.navy, this.keepM(new MeshStandardMaterial({ color: 0x1a1f4a, roughness: 0.6, metalness: 0.25 })));
+    navy.receiveShadow = true;
+    const gold = this.keepM(new MeshStandardMaterial({ color: 0xe0b84c, roughness: 0.32, metalness: 0.78, emissive: new Color(GOLD), emissiveIntensity: 0.08 }));
+    const brass = new Mesh(f.gold, gold);
+    brass.castShadow = true;
+    const frost = new Mesh(f.frost, this.keepM(new MeshBasicMaterial({ color: new Color(FROST).multiplyScalar(1.7), toneMapped: false })));
+    const painted = new Mesh(f.painted, this.keepM(new MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.18 })));
+    painted.castShadow = true;
+    const gear = new Mesh(f.gear, gold);
+    gear.position.copy(f.gearAt);
+    this.farGear = gear;
+    const face = new Mesh(new CircleGeometry(0.31, 32), this.keepM(new MeshStandardMaterial({ map: clockFace(0), emissive: new Color(1, 0.92, 0.75), emissiveMap: clockFace(0), emissiveIntensity: 0.55, roughness: 0.4 })));
+    this.extraGeos.push(face.geometry);
+    face.position.copy(f.clockAt);
+    const stars = new Mesh(f.stars, this.keepM(new MeshBasicMaterial({ vertexColors: true, toneMapped: false })));
+    this.group.add(navy, brass, frost, painted, gear, face, stars);
+    const geo = new SphereGeometry(0.045, 8, 6);
+    this.extraGeos.push(geo);
+    const bulbs = new InstancedMesh(geo, this.keepM(new MeshBasicMaterial({ toneMapped: false })), f.bulbs.length);
+    f.bulbs.forEach((b, i) => {
+      _m.compose(_p.copy(b.at), _q.identity(), _s.setScalar(1));
+      bulbs.setMatrixAt(i, _m);
+      const base = new Color(b.color).multiplyScalar(2.2);
+      this.farBulbBase.push(base);
+      bulbs.setColorAt(i, base);
+    });
+    this.group.add(bulbs);
+    this.farBulbs = bulbs;
+  }
+
   private buildProps(): void {
     DEF.props.forEach((p, idx) => {
       if (p.kind === 'giftStack') {
@@ -1139,15 +1492,37 @@ export class HolidayStage extends Stage {
     });
   }
 
+  /**
+   * 1.9.9: a stack of two real presents on the barrier — paper, satin ribbons across both boxes and a big bow on the upper
+   * one; shot apart (it is a barrier set piece with 1 hp) the upper present flies off and scraps of paper and ribbon
+   * scatter (light: four small cards, no new particles system).
+   */
   private buildGiftStack(x: number, z: number, n: number): GiftP {
     const y = landingY(x, z);
-    const low = new Mesh(new BoxGeometry(0.5, 0.38, 0.5), this.keepM(new MeshStandardMaterial({ color: n % 2 ? 0x1f4fd8 : 0xc4122f, roughness: 0.5 })));
-    low.position.set(x, y + 0.19, z);
-    const top = new Mesh(new BoxGeometry(0.34, 0.28, 0.34), this.keepM(new MeshStandardMaterial({ color: 0xe0b84c, roughness: 0.4, metalness: 0.3 })));
-    top.position.set(x, y + 0.52, z);
+    const mat = this.giftStackMat ?? (this.giftStackMat = this.keepM(new MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.18 })));
+    const paper = n % 2 ? 0x1f4fd8 : 0xc4122f;
+    const ribbon = n % 2 ? 0xe9f1ff : RIB;
+    const lowGeo = presentParts(STACK.low.w, STACK.low.h, STACK.low.w, paper, ribbon, false);
+    const topGeo = presentParts(STACK.top.w, STACK.top.h, STACK.top.w, n % 2 ? 0x157a4a : 0xe0b84c, n % 2 ? CANE_RED : 0x1f4fd8);
+    this.extraGeos.push(lowGeo, topGeo);
+    const low = new Mesh(lowGeo, mat);
+    low.position.set(x, y, z);
+    low.castShadow = true;
+    const top = new Mesh(topGeo, mat);
+    top.position.set(x, y + STACK.low.h, z);
     top.rotation.y = 0.5;
+    top.castShadow = true;
     this.group.add(low, top);
-    return { top, low, x, y, z, broken: false };
+    const scraps: Mesh[] = [];
+    for (let k = 0; k < 5; k++) {
+      const geo = tint(k < 3 ? new PlaneGeometry(0.16, 0.12) : new PlaneGeometry(0.05, 0.22), k < 3 ? paper : ribbon);
+      this.extraGeos.push(geo);
+      const m = new Mesh(geo, this.giftScrapMat ?? (this.giftScrapMat = this.keepM(new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: DoubleSide }))));
+      m.visible = false;
+      this.group.add(m);
+      scraps.push(m);
+    }
+    return { top, low, scraps, x, y, z, broken: false };
   }
 
   private buildLamp(x: number, z: number): LampP {
@@ -1181,8 +1556,8 @@ export class HolidayStage extends Stage {
 
   // ------------------------------------------------------------------ cover
   private buildCovers(): void {
-    const models = { gift: giftModel(), snowgen: snowgenModel(), clocktower: clocktowerModel(), console: consoleModel() } as const;
-    for (const md of Object.values(models)) this.extraGeos.push(md.remains, ...md.chunks.map((c) => c.geo));
+    const models = holidayCoverModels();
+    for (const md of Object.values(models)) this.extraGeos.push(md.remains, ...md.chunks.map((c) => c.geo), ...md.decor.map((d) => d.geo));
     const looks3 = (mk: (st: number) => Material) => [0, 1, 2].map((st) => this.keepM(mk(st)));
     const giftLooks = PAPERS.map(([paper, dots], i) => looks3((st) => new MeshStandardMaterial({ map: giftTexture(paper, dots, st, 30 + i * 7), roughness: 0.55, color: new Color(1, 1, 1).multiplyScalar(1 - st * 0.12) })));
     const lidLooks = looks3((st) => new MeshStandardMaterial({ color: new Color(0xe0b84c).multiplyScalar(1 - st * 0.15), roughness: 0.35, metalness: 0.45 }));
@@ -1192,6 +1567,11 @@ export class HolidayStage extends Stage {
     const consoleLooks = looks3((st) => new MeshStandardMaterial({ color: new Color(0x18204a).multiplyScalar(1 - st * 0.12), roughness: 0.45, metalness: 0.4, emissive: new Color(FROST), emissiveIntensity: st === 0 ? 0.1 : 0.04 }));
     const screenLooks = looks3((st) => new MeshBasicMaterial({ map: consoleScreen(st), toneMapped: false, color: new Color(1, 1, 1).multiplyScalar(st === 0 ? 1.6 : st === 1 ? 1.1 : 0.6) }));
     const plinth = this.keepM(new MeshStandardMaterial({ color: 0x2a2c48, roughness: 0.8 }));
+    // 1.9.9: the festive dressing (vertex colours) — satin ribbons and brass, and bulbs that glow
+    const dress = this.keepM(new MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.35 }));
+    const dressGlow = this.keepM(new MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+    // a ribbon to go with each paper: gold on red, silver on blue, red on green
+    const ribbons = [RIB, 0xe9f1ff, CANE_RED];
     let giftN = 0;
     COVERS.forEach((cv, i) => {
       const md = models[cv.kind as keyof typeof models];
@@ -1206,7 +1586,7 @@ export class HolidayStage extends Stage {
       remains.receiveShadow = true;
       group.add(remains);
       const looks: Material[][] = [];
-      const view: CoverView = { kind: cv.kind, x: cv.x, z: cv.z, yaw: cv.yaw ?? 0, group, body, chunks: [], home: [], halves: [], remains, looks, stage: 0, shake: 0, hitCd: 0, lost: md.lost, phase: i * 1.3, puffT: 1 + i * 0.4 };
+      const view: CoverView = { kind: cv.kind, x: cv.x, z: cv.z, yaw: cv.yaw ?? 0, group, body, chunks: [], home: [], halves: [], remains, looks, stage: 0, shake: 0, hitCd: 0, lost: md.lost, phase: i * 1.3, puffT: 1 + i * 0.4, dressAll: [], dressBits: [], dressed: true };
       md.chunks.forEach((ch, k) => {
         let lk: Material[];
         if (cv.kind === 'gift') lk = k === md.lost ? lidLooks : giftLooks[giftN % giftLooks.length];
@@ -1222,6 +1602,27 @@ export class HolidayStage extends Stage {
         view.halves.push(ch.half);
         looks.push(lk);
       });
+      const whole: BufferGeometry[][] = [[], []];
+      for (const d of md.decor) {
+        const ch = md.chunks[d.chunk];
+        const base = d.geo.clone();
+        if (cv.kind === 'gift' && !d.glow) tint(base, ribbons[giftN % ribbons.length]);
+        whole[d.glow ? 1 : 0].push(base);
+        const geo = base.clone().translate(-ch.at.x, -ch.at.y, -ch.at.z);
+        this.extraGeos.push(geo);
+        const bit = new Mesh(geo, d.glow ? dressGlow : dress);
+        bit.visible = false;
+        view.chunks[d.chunk].add(bit);
+        view.dressBits.push(bit);
+      }
+      whole.forEach((parts, k) => {
+        if (!parts.length) return;
+        const geo = merge(parts);
+        this.extraGeos.push(geo);
+        const m = new Mesh(geo, k ? dressGlow : dress);
+        body.add(m);
+        view.dressAll.push(m);
+      });
       if (cv.kind === 'gift') giftN++;
       this.coverGroup.add(group);
       this.covers.push(view);
@@ -1234,9 +1635,18 @@ export class HolidayStage extends Stage {
     v.stage = stage;
   }
 
+  /** 1.9.9: a chunk is about to fly — the dressing switches from the one merged mesh to the bits riding on the chunks. */
+  private undress(v: CoverView): void {
+    if (!v.dressed) return;
+    v.dressed = false;
+    for (const m of v.dressAll) m.visible = false;
+    for (const m of v.dressBits) m.visible = true;
+  }
+
   private throwChunk(v: CoverView, i: number, vx: number, vy: number, vz: number, spin: number, size: 'medium' | 'large', vary: number): void {
     const m = v.chunks[i];
     if (!m.visible || m.parent !== v.body) return;
+    this.undress(v);
     this.group.attach(m);
     const shape: DebrisShape = { half: v.halves[i], surface: (x, z) => surfaceY(x, z, WALL_TOP + 0.05) };
     this.pieces.launch(m, [vx, vy, vz], [spin, spin * 0.6, spin * 0.4], shape, size, vary);
@@ -1321,6 +1731,9 @@ export class HolidayStage extends Stage {
       v.shake = 0;
       v.hitCd = 0;
       this.setCoverLook(v, 0);
+      v.dressed = true;
+      for (const m of v.dressAll) m.visible = true;
+      for (const m of v.dressBits) m.visible = false;
     }
   }
 
@@ -1364,8 +1777,14 @@ export class HolidayStage extends Stage {
       const g = this.gifts[m.i];
       g.broken = true;
       g.low.scale.set(1, 0.5, 1);
-      g.low.position.y = g.y + 0.1;
       this.pieces.launch(g.top, [-x * 0.25, 3.4, -z * 0.18], [6, 5, 4], landingY(g.x * 0.92, g.z * 0.92) + 0.14, 'medium', 0.5);
+      // 1.9.9: scraps of the wrapping and the ribbon scatter (a deterministic spread per piece)
+      g.scraps.forEach((sc, k) => {
+        const a = k * 2.4 + g.x;
+        sc.position.set(g.x, g.y + STACK.low.h * 0.6, g.z);
+        sc.rotation.set(k, a, 0);
+        this.pieces.launch(sc, [Math.cos(a) * 1.6 - x * 0.12, 2.2 + (k % 3) * 0.6, Math.sin(a) * 1.6 - z * 0.1], [7 + k, 5, 9 - k], landingY(g.x, g.z) + 0.01, 'medium', 0.8);
+      });
       if (vfx) for (const c of [RED, GOLD, FROST]) vfx.burst(x, 0.9, z, _c.set(c), 8, 5, 0.08, 0.7, 2.2, 8, 1.5);
     } else if (m.k === 'lamp') {
       const L = this.lamps[m.i];
@@ -1383,10 +1802,11 @@ export class HolidayStage extends Stage {
     for (const g of this.gifts) {
       g.broken = false;
       g.low.scale.set(1, 1, 1);
-      g.low.position.set(g.x, g.y + 0.19, g.z);
-      g.top.position.set(g.x, g.y + 0.52, g.z);
+      g.low.position.set(g.x, g.y, g.z);
+      g.top.position.set(g.x, g.y + STACK.low.h, g.z);
       g.top.rotation.set(0, 0.5, 0);
       g.top.visible = true;
+      for (const sc of g.scraps) sc.visible = false;
     }
     for (const L of this.lamps) {
       L.broken = false;
@@ -1443,6 +1863,18 @@ export class HolidayStage extends Stage {
       L.flicker = Math.max(0, L.flicker - dt);
       const on = L.flicker > 0 && Math.sin(t * (mo > 0.5 ? 50 : 6)) > 0;
       L.glow.opacity = on ? 0.9 : 0.1;
+    }
+    // 1.9.9: the far side — the clockwork gear turns, its bulbs twinkle (still with reduced motion: no turning, no twinkle)
+    if (this.farGear) this.farGear.rotation.z -= dt * 0.35 * mo;
+    const fb = this.farBulbs;
+    if (fb && mo > 0.2) {
+      const n = fb.count;
+      for (let k = 0; k < 4; k++) {
+        const i = Math.floor((t * 29 + k * 53) % n);
+        const on = Math.sin(t * 4.6 + i * 1.3) > -0.3;
+        fb.setColorAt(i, _c.copy(this.farBulbBase[i]).multiplyScalar(on ? 1 + ex * 0.35 : 0.3));
+      }
+      if (fb.instanceColor) fb.instanceColor.needsUpdate = true;
     }
     this.updateCovers(dt, t);
     if (this.pieces.busy) this.pieces.update(this.debrisFrozen ? 0 : dt);

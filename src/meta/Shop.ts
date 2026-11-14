@@ -24,6 +24,25 @@ import { isTestPay, type PayEnv } from './Payments';
 import { serverNow } from './serverClock';
 import type { EventManager } from './EventManager';
 import type { SaveSystem } from './SaveSystem';
+import type { EventDef } from '../config/events.config';
+
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+/**
+ * Alpha 1.9.9 — what a seasonal item shown before its event will cost, in one short line for the phone card: «Во время
+ * WINTER SHOWDOWN — за карамельные трости. С 4 января 2027 — за рубли.» The roubles are named only when they are true —
+ * the item has an approved price and the offer in force when the event ends sells it (the server's own rule,
+ * lib/checkout.js: `seasonal_only` until then); otherwise the general note stays. Nothing here sells anything.
+ */
+export function upcomingNote(ev: EventDef, sku: ShopSku, general: string): string {
+  if (!ev.currency || !ev.end) return general;
+  const endT = Date.parse(ev.end);
+  const roubles = approvedPriceRub(sku) !== null && offerSells(currentOffer(endT), sku);
+  const msk = new Date(endT + 3 * 3600000);
+  const when = `${msk.getUTCDate()} ${MONTHS_GEN[msk.getUTCMonth()]} ${msk.getUTCFullYear()}`;
+  const tokens = `Во время ${ev.title} — за ${ev.currency.name.toLowerCase()}.`;
+  return roubles ? `${tokens} С ${when} — за рубли.` : `${tokens} Сейчас не продаётся.`;
+}
 
 // Alpha 1.8.8 — PRIME SHOP: what each item's card says (owned, worn, price, seasonal state) and the
 // wardrobe of skins. Three things are kept apart on purpose:
@@ -342,7 +361,7 @@ export class Shop {
       status: 'upcoming',
       chip: 'СЕЗОННЫЙ',
       price: `Откроется в ${ev.title}`,
-      note: 'Сезонный предмет: во время события получается за жетоны события, после него может появиться в PRIME SHOP.',
+      note: upcomingNote(ev, item.sku, 'Сезонный предмет: во время события получается за жетоны события, после него может появиться в PRIME SHOP.'),
       owned: false,
     };
   }
@@ -392,7 +411,7 @@ export class Shop {
       status: 'upcoming',
       chip: 'СЕЗОННЫЙ',
       price: season ? `Откроется в ${season.event.title}` : 'Сезонный боец',
-      note: 'Сезонный боец: открывается за жетоны события, когда оно идёт.',
+      note: season ? upcomingNote(season.event, item.sku, 'Сезонный боец: открывается за жетоны события, когда оно идёт.') : 'Сезонный боец: открывается за жетоны события, когда оно идёт.',
       owned: false,
     };
   }

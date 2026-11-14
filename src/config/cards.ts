@@ -1,5 +1,7 @@
-import { CARD_TUNING as T, COMBO_TUNING as CT, PASSIVE_TUNING as PT } from './balance';
-import type { CardDef, CardFamily, CardId, ComboDef, ComboId, PassiveDef, PassiveId } from './types';
+import { CARD_TUNING as T, COMBO_FRESH, COMBO_TUNING as CT, PASSIVE_TUNING as PT } from './balance';
+
+const CARD_TUNING_SAFE_CUT_DURATION = T.safe_cut.duration;
+import type { CardDef, CardFamily, CardId, ComboDef, ComboId, ComboRole, PassiveDef, PassiveId } from './types';
 
 const pct = (m: number) => `${Math.round((m - 1) * 100)}%`;
 /** Russian decimal comma for card texts (1.5 → «1,5»). */
@@ -415,7 +417,7 @@ export const CARDS: Record<CardId, CardDef> = {
     cost: 2,
     role: 'Шоу · темп',
     short: 'Выход по сигналу',
-    desc: `Боец даёт знак режиссёру — эфир ускоряется. ${T.showtime.duration} с: скорость +${pct(T.showtime.speed)}, темп стрельбы +${pct(T.showtime.fireRate)}. Следующая карта в течение ${T.showtime.window} с выходит «по сигналу»: её подготовка на ${Math.round((1 - T.showtime.windupMult) * 100)}% короче. Один раз; второй SHOWTIME только обновляет сигнал. Энергия и цены карт не меняются.`,
+    desc: `Боец даёт знак режиссёру — эфир ускоряется. ${T.showtime.duration} с: скорость +${pct(T.showtime.speed)}, темп стрельбы +${pct(T.showtime.fireRate)}. Следующая атака с подготовкой (POWER SHOT, MAIN EVENT, фирменный удар) в течение ${T.showtime.window} с выходит «по сигналу»: подготовка на ${Math.round((1 - T.showtime.windupMult) * 100)}% короче. Карты без подготовки сигнал не тратят. Один раз; второй SHOWTIME только обновляет сигнал. Энергия и цены карт не меняются.`,
     counter: 'Ускорение короткое. Подготовку «по сигналу» встречайте SHIELD или DASH чуть раньше обычного.',
     color: '#ffb23f',
     color2: '#7a1f6a',
@@ -495,6 +497,7 @@ export function isShopCard(id: CardId): boolean {
 export const COMBOS: ComboDef[] = [
   {
     id: 'counter_strike',
+    role: 'counter',
     name: 'COUNTER STRIKE',
     first: ['dash'],
     second: ['power_shot', 'knockout', 'charged_shot', 'bank_shot'],
@@ -504,6 +507,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'electro_blast',
+    role: 'attack',
     name: 'ELECTRO BLAST',
     first: ['shock', 'system_overload'],
     second: ['power_shot', 'knockout', 'charged_shot', 'bank_shot'],
@@ -513,6 +517,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'iron_rush',
+    role: 'attack',
     name: 'IRON RUSH',
     first: ['shield'],
     second: ['overdrive'],
@@ -522,6 +527,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'phantom_step',
+    role: 'defense',
     name: 'PHANTOM STEP',
     first: ['smoke'],
     second: ['dash'],
@@ -531,6 +537,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'superstar',
+    role: 'attack',
     name: 'SUPERSTAR MOVE',
     first: ['overdrive'],
     second: ['adrenaline', 'knockout', 'system_overload', 'charged_shot', 'bank_shot', 'false_start', 'bat_bite', 'twelfth_strike', 'main_event'],
@@ -545,6 +552,7 @@ export const COMBOS: ComboDef[] = [
   // not hinted (Match.comboReady).
   {
     id: 'spotlight',
+    role: 'attack',
     name: 'SPOTLIGHT FINISH',
     tag: 'ТОЧНЫЙ ВЫСТРЕЛ',
     first: ['spotlight_tag'],
@@ -555,6 +563,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'tight_spread',
+    role: 'attack',
     name: 'TIGHT SPREAD',
     tag: 'КУЧНЫЙ ВЕЕР',
     first: ['dash', 'gravity_net'],
@@ -565,6 +574,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'boomerang',
+    role: 'attack',
     name: 'BOOMERANG',
     tag: 'КОРОТКИЙ ВОЗВРАТ',
     first: ['gravity_net', 'cable_snare'],
@@ -575,6 +585,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'set_piece',
+    role: 'attack',
     name: 'SET PIECE',
     tag: 'ТОЧНО В КАДР',
     first: ['gravity_net', 'cable_snare'],
@@ -585,6 +596,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'gravity_trap',
+    role: 'position',
     name: 'GRAVITY TRAP',
     tag: 'ЛОВУШКА',
     first: ['gravity_net'],
@@ -595,6 +607,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'mine_drive',
+    role: 'position',
     name: 'MINE DRIVE',
     tag: 'НА МИНУ',
     first: ['pressure_mine'],
@@ -605,6 +618,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'wall_push',
+    role: 'position',
     name: 'STAGE PUSH',
     tag: 'ВОЛНА ОТ БАРЬЕРА',
     first: ['stage_barrier'],
@@ -615,6 +629,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'backstage',
+    role: 'position',
     name: 'BACKSTAGE',
     tag: 'ЗА КУЛИСЫ',
     first: ['stage_barrier'],
@@ -625,6 +640,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'cross_angle',
+    role: 'attack',
     name: 'CROSS ANGLE',
     tag: 'ДРУГОЙ РАКУРС',
     first: ['stage_barrier'],
@@ -635,6 +651,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'blindside',
+    role: 'counter',
     name: 'BLINDSIDE',
     tag: 'ИЗ-ЗА СПИНЫ',
     first: ['holo_decoy'],
@@ -645,6 +662,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'camera_lock',
+    role: 'attack',
     name: 'CAMERA LOCK',
     tag: 'В ОБЪЕКТИВЕ',
     first: ['cable_snare', 'gravity_net'],
@@ -655,6 +673,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'catch_release',
+    role: 'counter',
     name: 'CATCH & RELEASE',
     tag: 'ОТВЕТНЫЙ КАДР',
     first: ['frame_catch'],
@@ -665,6 +684,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'safe_bet',
+    role: 'tempo',
     name: 'SAFE BET',
     tag: 'СТРАХОВКА СТАВКИ',
     first: ['frame_catch'],
@@ -675,6 +695,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'all_in',
+    role: 'tempo',
     name: 'ALL IN',
     tag: 'ВА-БАНК',
     first: ['high_stakes'],
@@ -685,6 +706,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'insurance',
+    role: 'defense',
     name: 'INSURANCE',
     tag: 'ПОДСТРАХОВКА',
     first: ['high_stakes'],
@@ -695,6 +717,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'jackpot',
+    role: 'attack',
     name: 'JACKPOT',
     tag: 'ДЖЕКПОТ',
     first: ['shield'],
@@ -706,6 +729,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'rewind_trap',
+    role: 'position',
     name: 'REWIND TRAP',
     tag: 'НАЗАД НА МИНУ',
     first: ['pressure_mine'],
@@ -716,6 +740,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'double_take',
+    role: 'defense',
     name: 'DOUBLE TAKE',
     tag: 'ДУБЛЬ ДВА',
     first: ['dash'],
@@ -726,6 +751,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'replay',
+    role: 'defense',
     name: 'REPLAY',
     tag: 'ОТМОТКА',
     first: ['freeze_frame'],
@@ -736,6 +762,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'time_slip',
+    role: 'position',
     name: 'TIME SLIP',
     tag: 'ПРЫЖОК ВО ВРЕМЕНИ',
     first: ['freeze_frame'],
@@ -747,6 +774,7 @@ export const COMBOS: ComboDef[] = [
   // ---------------------------------------------- Alpha 1.9.8 — the new cards with each other, the old ones and MAIN EVENT
   {
     id: 'standing_ovation',
+    role: 'attack',
     name: 'STANDING OVATION',
     tag: 'ОВАЦИЯ',
     first: ['showtime'],
@@ -757,16 +785,18 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'close_up',
+    role: 'attack',
     name: 'CLOSE-UP',
     tag: 'КРУПНЫЙ ПЛАН',
     first: ['magnet_pull'],
-    second: ['main_event', 'power_shot'],
+    second: ['main_event', 'power_shot', 'charged_shot'],
     rating: 9,
-    desc: `MAGNET PULL → MAIN EVENT или POWER SHOT: притянутый соперник — крупным планом. Выстрел берёт упреждение и наносит +${pct(CT.closeUpMult)} урона.`,
+    desc: `MAGNET PULL → MAIN EVENT, POWER SHOT или CHARGED SHOT: притянутый соперник — крупным планом. Выстрел берёт упреждение и наносит +${pct(CT.closeUpMult)} урона.`,
     bonus: `упреждение, +${pct(CT.closeUpMult)}`,
   },
   {
     id: 'star_pull',
+    role: 'position',
     name: 'STAR PULL',
     tag: 'ЗВЁЗДНЫЙ МАГНИТ',
     first: ['showtime'],
@@ -777,6 +807,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     id: 'clean_exit',
+    role: 'position',
     name: 'CLEAN EXIT',
     tag: 'ЧИСТЫЙ УХОД',
     first: ['safe_cut'],
@@ -785,7 +816,68 @@ export const COMBOS: ComboDef[] = [
     desc: `SAFE CUT → DASH: склейка и уход из-под удара — рывок на ${pct(CT.cleanExitDist)} длиннее.`,
     bonus: 'рывок длиннее',
   },
+  // ---------------------------------------------- Alpha 1.9.9 — CARD EVOLUTION: SHOWTIME, MAGNET PULL and SAFE CUT with the
+  // older cards, one combo per purpose (attack / defense / tempo / counter); the position ones were there already
+  {
+    id: 'point_blank',
+    role: 'attack',
+    name: 'POINT BLANK',
+    tag: 'В УПОР',
+    first: ['magnet_pull'],
+    second: ['split_shot'],
+    rating: 9,
+    desc: 'MAGNET PULL → SPLIT SHOT: притянутый соперник рядом — веер сужается, и в цель могут попасть два-три снаряда. Шаг в сторону всё ещё спасает.',
+    bonus: 'узкий веер в упор',
+  },
+  {
+    id: 'fade_out',
+    role: 'defense',
+    name: 'FADE OUT',
+    tag: 'ЗАТЕМНЕНИЕ',
+    first: ['smoke'],
+    second: ['safe_cut'],
+    rating: 8,
+    desc: `SMOKE → SAFE CUT: склейка в своём дыму держится в ${ru(CT.fadeOutTime)} раза дольше (${ru(CARD_TUNING_SAFE_CUT_DURATION * CT.fadeOutTime)} с). Вне дыма — обычная склейка.`,
+    bonus: 'склейка дольше',
+  },
+  {
+    id: 'encore',
+    role: 'tempo',
+    name: 'ENCORE',
+    tag: 'НА БИС',
+    first: ['showtime'],
+    second: ['dash'],
+    rating: 8,
+    desc: `SHOWTIME → DASH: выход на бис — рывок возвращает +${CT.encoreEnergy} энергии, а сигнал SHOWTIME ждёт следующую атаку с подготовкой.`,
+    bonus: `+${CT.encoreEnergy} энергии`,
+  },
+  {
+    id: 'counter_cut',
+    role: 'counter',
+    name: 'COUNTER CUT',
+    tag: 'ОТВЕТНЫЙ МОНТАЖ',
+    first: ['safe_cut'],
+    second: ['power_shot', 'charged_shot', 'bank_shot', 'knockout', 'main_event'],
+    rating: 11,
+    desc: `SAFE CUT → POWER SHOT / KNOCKOUT / CHARGED SHOT / BANK SHOT / MAIN EVENT: склейка уже смягчила опасный удар — ответный выстрел или таран наносит +${pct(CT.counterCutMult)} урона. Без смягчённого удара комбо нет.`,
+    bonus: `+${pct(CT.counterCutMult)} урона`,
+  },
 ];
+
+/** Alpha 1.9.9 — the purposes of the combos, as the prep screen and CARDS name them. */
+export const COMBO_ROLE_LABEL: Record<ComboRole, string> = {
+  attack: 'АТАКА',
+  defense: 'ЗАЩИТА',
+  position: 'ПОЗИЦИЯ',
+  tempo: 'ТЕМП',
+  counter: 'КОНТРАТАКА',
+};
+
+/** Alpha 1.9.9 — the freshness rule in one line (prep screen, CARDS, the first-broadcast hints). */
+export const COMBO_FRESH_NOTE = `Свежесть комбо: одно и то же комбо третий раз подряд слабеет — его бонус ${COMBO_FRESH.power
+  .slice(2)
+  .map((p) => Math.round(p * 100) + '%')
+  .join(' → ')}. Другое комбо или пауза ~${COMBO_FRESH.healTime} с возвращают силу. Урон самих карт не меняется.`;
 
 export const COMBO_BY_ID = Object.fromEntries(COMBOS.map((c) => [c.id, c])) as Record<ComboId, ComboDef>;
 

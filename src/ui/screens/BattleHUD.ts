@@ -12,6 +12,7 @@ import { damp, formatNumber } from '../../core/math';
 import { TACTICS } from '../../config/league.config';
 import { lang } from '../../i18n/lang';
 import type { Game, ModeSession } from '../../game/Game';
+import { preloadCardArt } from '../cardArt';
 import { cardHTML, el, esc, portraitHTML, vibrate } from '../dom';
 import { ICONS } from '../eventArt';
 import { UI_ICONS } from '../icons';
@@ -317,6 +318,8 @@ export class BattleHUD implements Screen {
   setup(m: Match, mode: ModeSession = { kind: 'classic' }, dress: { stage?: boolean; halloween?: boolean } = {}): void {
     this.m = m;
     const g = this.g;
+    // 1.9.9: the deck's pictures (the hand's larger file) start loading now, before the first card is dealt
+    preloadCardArt(m.hands[0].deck, 'md');
     this.setHeadHp(g.save.data.settings.headHp);
     const pf = FIGHTERS[m.cfg.fighter];
     const rv = m.rival;
@@ -661,7 +664,7 @@ export class BattleHUD implements Screen {
         old?.remove();
         if (c) {
           const wrap = document.createElement('div');
-          wrap.innerHTML = cardHTML(c, 'hand-card enter', false);
+          wrap.innerHTML = cardHTML(c, 'hand-card enter', false, true);
           const cardEl = wrap.firstElementChild as HTMLElement;
           cardEl.insertAdjacentHTML(
             'beforeend',
@@ -805,9 +808,13 @@ export class BattleHUD implements Screen {
       const opener = m.phase === 'fight' && !primedNow && hand.hand.some((o, j) => j !== i && !!o && !!comboFor(c, o));
       cardEl.classList.toggle('opener', opener);
       if (opener) openers++;
+      // Alpha 1.9.9 — COMBO FRESHNESS: a repeated combo shows how much of its bonus is left («COUNTER STRIKE · 70%»)
+      const fresh = combo ? m.combos.power(0, combo.id, m.time) : 1;
+      cardEl.classList.toggle('stale', !!combo && fresh < 1);
       if (combo) {
         const rib = cardEl.querySelector('.combo-ribbon') as HTMLElement;
-        if (rib.textContent !== combo.name) rib.textContent = combo.name;
+        const label = fresh < 1 ? `${combo.name} · ${Math.round(fresh * 100)}%` : combo.name;
+        if (rib.textContent !== label) rib.textContent = label;
         comboPrimed = combo.name;
       }
       const stunned = (p.stun > 0 || p.knockback > 0) && c !== 'shield';

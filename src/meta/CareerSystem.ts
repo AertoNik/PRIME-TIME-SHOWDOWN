@@ -86,6 +86,15 @@ export function fameTier(fans: number): string {
   return label;
 }
 
+/**
+ * Alpha 1.9.9 — how much of a forfeit's pay is earned after `seconds` of real fight (REWARDS.forfeit): 0 in the first
+ * `freeS` s, then evenly up to 1 at `fullS` s. The pause dialog shows the same number before the producer gives up.
+ */
+export function forfeitPart(seconds: number): number {
+  const f = REWARDS.forfeit;
+  return Math.max(0, Math.min(1, (seconds - f.freeS) / (f.fullS - f.freeS)));
+}
+
 export function gradeFor(rating: number): string {
   if (rating >= 90) return 'S';
   if (rating >= 75) return 'A';
@@ -277,15 +286,21 @@ export class CareerSystem {
       lines.push({ label: opts.moneyLabel ?? 'Бонус режима', value: extra, kind: 'money', note: `×${mm}` });
       money += extra;
     }
+    // Alpha 1.9.9: a forfeit pays by the seconds really fought (REWARDS.forfeit) — the quick-exit farm is gone
+    const part = r.method === 'forfeit' ? forfeitPart(r.duration) : 1;
     if (r.method === 'forfeit') {
-      money = Math.round(money * 0.3);
-      lines.push({ label: 'Штраф за сдачу', value: 0, kind: 'money', note: '−70%' });
+      money = Math.round(money * REWARDS.forfeit.share * part);
+      lines.push(
+        part > 0
+          ? { label: 'Штраф за сдачу', value: 0, kind: 'money', note: `−${Math.round((1 - REWARDS.forfeit.share * part) * 100)}%` }
+          : { label: `Сдача в первые ${REWARDS.forfeit.freeS} с боя`, value: 0, kind: 'money', note: 'без гонорара' },
+      );
     }
     const fanBase = REWARDS.fans[key] * dm;
     const fanMult = REWARDS.fansRatingBase + (r.rating / 100) * REWARDS.fansRatingK;
     const gainedFans = r.method === 'forfeit' ? 0 : Math.round(fanBase * fanMult);
     lines.push({ label: 'Новые фанаты', value: gainedFans, kind: 'fans', note: `×${fanMult.toFixed(2)} от рейтинга` });
-    const rep = Math.max(0, Math.round(REWARDS.rep[key] * dm + r.rating / REWARDS.repRatingDiv) - (r.method === 'forfeit' ? 6 : 0));
+    const rep = Math.max(0, Math.round((REWARDS.rep[key] * dm + r.rating / REWARDS.repRatingDiv) * part) - (r.method === 'forfeit' ? 6 : 0));
     lines.push({ label: 'Репутация продюсера', value: rep, kind: 'rep' });
     return { money, fans: gainedFans, rep, lines };
   }

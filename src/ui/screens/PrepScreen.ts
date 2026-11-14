@@ -1,6 +1,6 @@
 import { REWARDS } from '../../config/career';
 import { ARENA_ORDER, arenaById, type ArenaPref } from '../../config/arenas.config';
-import { deckCombos } from '../../config/cards';
+import { COMBO_FRESH_NOTE, COMBO_ROLE_LABEL, deckCombos } from '../../config/cards';
 import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIVALS, RIVAL_ORDER, rivalFighterDef } from '../../config/fighters';
 import { SURVIVAL, challengeById } from '../../config/modes.config';
 import { bossById } from '../../config/boss.config';
@@ -12,6 +12,7 @@ import { inRoster } from '../../meta/roster';
 import { formatChallengeValue } from '../../meta/GameModes';
 import { ARENA_ART } from '../arenaArt';
 import { cardCatalog, cardDetailHTML, cardStanding, catalogStats } from '../cardCatalog';
+import { preloadCardArt } from '../cardArt';
 import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { MODE_ICONS } from '../modeArt';
@@ -402,6 +403,8 @@ export class PrepScreen implements Screen {
     const rival = RIVALS[s.nextRival];
     const rf = rivalFighterDef(rival);
     const available = g.career.availableCards(s.selected);
+    // 1.9.9: the deck's battle-hand pictures load while the player is still here
+    preloadCardArt(this.deck, 'md');
     const slots = [0, 1, 2, 3]
       .map((i) => {
         const c = this.deck[i];
@@ -468,9 +471,15 @@ export class PrepScreen implements Screen {
           <div class="label" style="margin:12px 4px 0">Комбо в этой колоде</div>
           <div class="combo-list">${
             combos.length
-              ? combos.map((c) => `<div class="combo-item"><b>${esc(c.name)}</b><span>${c.tag ? `<i>${esc(c.tag)}</i> ` : ''}${esc(c.desc)}</span></div>`).join('')
+              ? combos
+                  .map(
+                    (c) =>
+                      `<div class="combo-item"><b>${esc(c.name)}<small class="cmb-role r-${c.role}">${COMBO_ROLE_LABEL[c.role]}</small></b><span>${c.tag ? `<i>${esc(c.tag)}</i> ` : ''}${esc(c.desc)}</span></div>`,
+                  )
+                  .join('')
               : '<div class="combo-item"><span>Нет пар для комбо. Попробуйте DASH + POWER SHOT или SHOCK + POWER SHOT.</span></div>'
           }</div>
+          ${combos.length ? `<p class="combo-fresh">${esc(COMBO_FRESH_NOTE)}</p>` : ''}
         </div>
         ${this.cardsLink()}
       </div>
