@@ -17994,8 +17994,10 @@ button.lg-arena:active {
 .cl-nav {
   display: flex;
   gap: 6px;
-  margin: 12px -14px 10px;
-  padding: 2px 14px;
+  /* Beta 2.0 patch: exactly the scroller's 12 px side padding (−14 px made the page 4 px wider than the screen, and
+     iPhone then dragged the whole collection sideways); room below for the active tab's glow (same layout as before) */
+  margin: 10px -12px 0;
+  padding: 4px 12px 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -18032,8 +18034,8 @@ button.lg-arena:active {
 .cl-subnav {
   display: flex;
   gap: 6px;
-  margin: 0 -14px 10px;
-  padding: 2px 14px;
+  margin: 0 -12px 10px;
+  padding: 2px 12px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -18365,7 +18367,7 @@ button.lg-arena:active {
 }
 .cl-fx-row {
   display: grid;
-  grid-template-columns: 92px 1fr 1fr 14px;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr) 14px;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
@@ -19185,4 +19187,34 @@ button.lg-arena:active {
 }
 .ev-quest.claimed .eq-ico .goal-art {
   opacity: 0.7;
+}
+
+/* ===================================================================== Beta 2.0 patch (iPhone Safari)
+   MY COLLECTION: only the tab bar and the chip rows scroll sideways — never the page (a list that is `overflow-y: auto`
+   is also `overflow-x: auto`, so any pixel too wide let iPhone pan the whole collection and its cards sideways).
+   The menu: the LIVE tag over the logo sits below the top bar, so the currency pills never cover it. */
+.cl20 .col-scroll {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+.cl-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cl-sec {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+.cl-sec b,
+.cl-sec small,
+.cl-ach-body b,
+.cl-ach-body p,
+.cl-rw-head b {
+  overflow-wrap: anywhere;
+}
+.menu-head {
+  margin-top: 20px;
+}
+@media (max-height: 700px) {
+  .menu-head {
+    margin-top: 24px;
+  }
 }

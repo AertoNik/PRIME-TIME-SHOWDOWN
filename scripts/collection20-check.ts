@@ -106,6 +106,12 @@ function store(d: SaveData = defaultSave()) {
   check('strips and chip rows of the same section get their horizontal scroll back; the bar scrolls itself, never the page', /keepScrollX\(body\)/.test(code) && /'\.cl-subnav, \.cl-strip, \.cl-chips'/.test(code) && /nav\.scrollTo\(\{ left, behavior: 'smooth' \}\)/.test(code) && !/scrollIntoView/.test(code));
   check('the big view and a fighter\'s effects refresh in place and keep their own scroll (no closing and re-opening)', !/close\(\);\s*this\.(render|refreshInPlace)\(\);\s*this\.openItem/.test(code) && (code.match(/panel\.scrollTop = y;/g)?.length ?? 0) === 2);
   const css = fs.readFileSync('src/styles/main.css', 'utf8') as string;
+  // Beta 2.0 patch (owner's iPhone): the tab bar was 2 px wider than the screen on each side (−14 px against a 12 px
+  // padding), and a list that is overflow-y: auto is overflow-x: auto too — iPhone dragged the whole collection sideways
+  const rule = (sel: string) => new RegExp(`\\n${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+  check('patch: the tab bar and the chip row use exactly the scroller\'s 12 px padding (never wider than the screen); the active tab\'s glow has room', /margin: 10px -12px 0;/.test(rule('.cl-nav')) && /padding: 4px 12px 12px;/.test(rule('.cl-nav')) && /margin: 0 -12px 10px;/.test(rule('.cl-subnav')) && /padding: 2px 12px;/.test(rule('.cl-subnav')) && !/-14px/.test(rule('.cl-nav') + rule('.cl-subnav')) && /\.col-scroll \{\s*padding: 0 12px 16px;/.test(css));
+  check('patch: only the bars scroll sideways — the collection\'s own scroller never does (overflow-x hidden); grids cannot grow past the screen', /\.cl20 \.col-scroll \{\s*overflow-x: hidden;\s*overscroll-behavior-x: none;/.test(css) && /repeat\(4, minmax\(0, 1fr\)\)/.test(rule('.cl-stats').concat(css.slice(css.lastIndexOf('.cl-stats {')))) && /92px minmax\(0, 1fr\) minmax\(0, 1fr\) 14px/.test(css) && /\.cl-sec \{\s*grid-template-columns: 44px minmax\(0, 1fr\);/.test(css));
+  check('patch: the menu logo (and its LIVE tag) starts below the top bar — the currency pills never cover LIVE', /\.menu-head \{\s*margin-top: 20px;\s*\}\s*@media \(max-height: 700px\) \{\s*\.menu-head \{\s*margin-top: 24px;/.test(css));
   check('iPhone: the bars scroll by touch with momentum and without pulling the page (touch-action: manipulation on the chips)', /\.cl-nav,\s*\.cl-subnav,\s*\.cl-strip \{\s*-webkit-overflow-scrolling: touch;\s*overscroll-behavior-x: contain;/.test(css) && /touch-action: manipulation;/.test(css));
 }
 
