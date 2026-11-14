@@ -3,7 +3,7 @@
 //     difficulties, career cards); levels 11–20 continue the ladder (growing steps, unique titles, titles only);
 //   * a level is read from the reputation, so a veteran gets his level at once — no save field, no migration;
 //   * a level without a picture (11+) shows the drawn badge with its own number, never level 10's picture.
-import { CAREER_STAGES, CLASSIC_LEVELS, LEVEL_THRESHOLDS, LEVEL_TITLES } from '../src/config/career';
+import { CAREER_STAGES, CLASSIC_LEVELS, LEVEL_THRESHOLDS, LEVEL_THRESHOLDS_200, LEVEL_TITLES } from '../src/config/career';
 import { NEW_CARDS, CARDS } from '../src/config/cards';
 import { DIFFICULTIES, FIGHTERS } from '../src/config/fighters';
 import { levelFor } from '../src/meta/CareerSystem';
@@ -27,8 +27,10 @@ const unlocks = [
   NEW_CARDS.map((id) => `${id}:${CARDS[id].shop?.level}`).join(','),
 ].join(' | ');
 check('contracts, difficulties and career cards still open at levels 1–6', /:([7-9]|\d\d)\b/.test(unlocks) === false && unlocks.includes('bruno:2') && unlocks.includes('champion:4'));
-check('level from reputation: 2399 → 9, 2400 → 10 (next 3100), 23200 → 20 (top), any more stays 20', levelFor(2399).level === 9 && levelFor(2400).level === 10 && levelFor(2400).next === 3100 && levelFor(23200).level === 20 && levelFor(23200).next === null && levelFor(5e8).level === 20);
-check('the titles follow the levels', levelFor(3100).title === 'Продюсер года' && levelFor(23199).title === 'Бессмертный эфир');
+check('level from reputation: 2399 → 9, 2400 → 10 (next 3060), 18300 → 20 (top), any more stays 20', levelFor(2399).level === 9 && levelFor(2400).level === 10 && levelFor(2400).next === 3060 && levelFor(18300).level === 20 && levelFor(18300).next === null && levelFor(5e8).level === 20);
+check('the titles follow the levels', levelFor(3060).title === 'Продюсер года' && levelFor(18299).title === 'Бессмертный эфир');
+// Beta 2.1: levels 11–20 re-paced (npm run careerpace) — only ever LOWER than Beta 2.0's thresholds: nobody drops a level
+check('Beta 2.1 re-pace: every threshold at or below Beta 2.0\'s, levels 1–10 the same — no producer drops a level', LEVEL_THRESHOLDS.every((t, i) => t <= LEVEL_THRESHOLDS_200[i]) && LEVEL_THRESHOLDS.slice(0, 10).join() === LEVEL_THRESHOLDS_200.slice(0, 10).join() && [0, 2400, 3099, 9849, 15000, 23199, 30000].every((r) => levelFor(r).level >= LEVEL_THRESHOLDS_200.filter((t) => r >= t).length));
 const vet = defaultSave();
 vet.reputation = 10000;
 check('a veteran save (reputation 10 000) is level 16 at once — no new field, schema unchanged', summarize(vet, VERSION).level === 16 && levelFor(10000).level === 16);

@@ -11,6 +11,7 @@ import { LeagueRuntime } from '../src/game/LeagueRuntime';
 import { defaultSave, sanitize } from '../src/meta/SaveSystem';
 import { ARCHETYPES } from './lib/economyModel';
 import { fs, proc } from './lib/node';
+import { quotedTemplates } from './lib/quotedTemplates';
 import { SIM_VERSION } from '../src/league/simVersion';
 
 const checks: [string, boolean][] = [];
@@ -26,6 +27,13 @@ check('once per attacker and game day, within the daily cap; the lifetime sum in
 check('a server switch: PRIME_LEAGUE_DEFENSE_REP=off', /env\('PRIME_LEAGUE_DEFENSE_REP'\) !== 'off'/.test(lg));
 check('the fight is untouched: SIM_VERSION a141348f2a0dea20', SIM_VERSION === 'a141348f2a0dea20');
 check('the league rules carry it (npm run backend:rules)', /"defenseRep": \{\s*"win": 5,\s*"perDay": 25/.test(read('backend/pb_hooks/lib/league_rules.js')));
+// Beta 2.1 final: the defence note in PRIME LEAGUE printed «+${LEAGUE.defenseRep.win} ★ … до ${LEAGUE.defenseRep.perDay} ★»
+// literally (Beta 2.0: a template in plain quotes) — the player reads the numbers now, and no plain string in the game
+// holds a `${…}` any more
+const ls = read('src/ui/screens/LeagueScreen.ts');
+check('PRIME LEAGUE defence note shows the numbers: +5 ★ a win, up to 25 ★ a day (a template, not plain quotes)', /tr\(`От 1 до 5 разных бойцов[^`]*\+\$\{LEAGUE\.defenseRep\.win\} ★ за победу, до \$\{LEAGUE\.defenseRep\.perDay\} ★ в день/.test(ls));
+const stray = quotedTemplates('src');
+check(`no '…' or "…" string in the game holds a \${…} template (${stray.length}${stray.length ? ': ' + stray.join(' | ') : ''})`, stray.length === 0);
 
 // ------------------------------------------------------------------ the game adds it once
 function rt(credited: number, rep: number, writable = true) {

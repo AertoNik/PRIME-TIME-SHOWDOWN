@@ -11,7 +11,6 @@ import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { ICONS } from '../eventArt';
-import { GOAL_ART, goalArt } from '../rewardArt';
 import { serverTimeKnown } from '../../meta/serverClock';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -473,7 +472,7 @@ export class EventsScreen implements Screen {
         else side = `<span class="eq-reward">+${d.reward}<span class="eq-coin">${icon}</span></span>`;
         const prog = d.target > 1 ? `${q.progress}/${d.target}` : q.done ? 'Готово' : '0/1';
         return `<div class="ev-quest ${q.done ? 'done' : ''} ${q.claimed ? 'claimed' : ''}">
-            <div class="eq-ico${GOAL_ART[d.id] ? ' has-art' : ''}">${goalArt(d, 40)}</div>
+            <div class="eq-ico">${ICONS[d.icon]}</div>
             <div class="eq-main">
               <div class="eq-title">${esc(d.title)}</div>
               <div class="eq-desc">${esc(d.desc)}</div>

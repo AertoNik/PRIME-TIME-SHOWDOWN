@@ -21,7 +21,7 @@ import {
   ShaderMaterial,
   SphereGeometry,
   type Material,
-  type Object3D,
+  Object3D,
   type Texture,
   Vector3,
 } from 'three';
@@ -868,4 +868,94 @@ export abstract class Stage {
     this.group.removeFromParent();
     this.group.clear();
   }
+}
+
+/**
+ * Beta 2.1 — STATIC BATCHING of a studio set (src/render/Arena.ts calls it right after a set is built). The sets are
+ * dressed with many small meshes, each its own draw call (NEWSROOM ≈ 110 more than the original studio — and again in
+ * the shadow pass for the casters). Meshes that never move are merged per material (same material instance, the same
+ * shadow flags, render order and attributes) into one mesh each, baked in the set's space.
+ * Kept as they are (never merged): everything the set references in its own fields (moving lights, screens, props that
+ * break, signs it recolours — every object it can reach, and all their children), transparent meshes (their sorting
+ * depends on each object), invisible ones (they may be shown later), mirrored ones (a negative scale flips faces),
+ * instanced / skinned / morphing meshes and multi-material ones. The materials themselves are shared, not copied, so a
+ * theme that recolours a material still recolours the merged mesh. Returns the meshes before and after.
+ */
+export function batchStatic(stage: Stage): { before: number; after: number } {
+  const root = stage.group;
+  root.updateMatrixWorld(true);
+  // every Object3D the set can reach from its own fields (it may move, hide or swap them)
+  const dyn = new Set<Object3D>();
+  const seen = new Set<unknown>();
+  const shared = (stage as unknown as { sh: unknown }).sh;
+  const scan = (v: unknown, depth: number): void => {
+    if (!v || typeof v !== 'object' || seen.has(v) || depth > 5 || v === shared) return;
+    seen.add(v);
+    if ((v as Object3D).isObject3D) {
+      if (v !== root) dyn.add(v as Object3D);
+      return;
+    }
+    if ((v as Material).isMaterial || (v as BufferGeometry).isBufferGeometry || (v as Texture).isTexture) return;
+    if (ArrayBuffer.isView(v)) return;
+    if (Array.isArray(v)) {
+      for (const x of v) scan(x, depth + 1);
+      return;
+    }
+    if (v instanceof Map || v instanceof Set) {
+      for (const x of v.values()) scan(x, depth + 1);
+      return;
+    }
+    for (const k of Object.keys(v)) scan((v as Record<string, unknown>)[k], depth + 1);
+  };
+  scan(stage, 0);
+  const reachable = (o: Object3D): boolean => {
+    for (let p: Object3D | null = o; p && p !== root; p = p.parent) if (dyn.has(p) || !p.visible || p.userData.dynamic) return true;
+    return false;
+  };
+  const inv = new Matrix4().copy(root.matrixWorld).invert();
+  const m4 = new Matrix4();
+  const groups = new Map<string, Mesh[]>();
+  let before = 0;
+  root.traverse((o) => {
+    const m = o as Mesh & { isInstancedMesh?: boolean; isSkinnedMesh?: boolean };
+    if (!m.isMesh) return;
+    before++;
+    if (m.isInstancedMesh || m.isSkinnedMesh || Array.isArray(m.material) || m.morphTargetInfluences) return;
+    const mat = m.material as Material;
+    if (mat.transparent || reachable(m)) return;
+    if (m.onBeforeRender !== Object3D.prototype.onBeforeRender || m.onAfterRender !== Object3D.prototype.onAfterRender) return;
+    m4.multiplyMatrices(inv, m.matrixWorld);
+    if (m4.determinant() <= 0) return;
+    const geo = m.geometry;
+    if (geo.groups.length > 1 || Object.keys(geo.morphAttributes).length) return;
+    const key = `${mat.uuid}|${m.castShadow}|${m.receiveShadow}|${m.renderOrder}|${m.frustumCulled}|${geo.index ? 'i' : 'n'}|${Object.keys(geo.attributes).sort().join(',')}`;
+    const list = groups.get(key);
+    if (list) list.push(m);
+    else groups.set(key, [m]);
+  });
+  let merged = 0;
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const parts: BufferGeometry[] = [];
+    for (const m of list) {
+      const g = m.geometry.clone();
+      g.applyMatrix4(m4.multiplyMatrices(inv, m.matrixWorld));
+      parts.push(g);
+    }
+    const geo = mergeGeometries(parts, false);
+    for (const g of parts) g.dispose();
+    if (!geo) continue;
+    const first = list[0];
+    const mesh = new Mesh(geo, first.material);
+    mesh.name = 'static-batch';
+    mesh.castShadow = first.castShadow;
+    mesh.receiveShadow = first.receiveShadow;
+    mesh.renderOrder = first.renderOrder;
+    mesh.frustumCulled = first.frustumCulled;
+    mesh.userData.batched = list.length;
+    for (const m of list) m.removeFromParent();
+    root.add(mesh);
+    merged += list.length - 1;
+  }
+  return { before, after: before - merged };
 }

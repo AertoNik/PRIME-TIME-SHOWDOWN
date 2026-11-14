@@ -1,4 +1,4 @@
-import type { MeshBasicMaterial } from 'three';
+import { Matrix4, Vector3, type MeshBasicMaterial } from 'three';
 import { FIRE_STYLE, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type FireStyle, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
 import type { CardId, CastKind, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
 import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
@@ -104,6 +104,37 @@ function zeroPose(): Pose {
   return p;
 }
 
+/**
+ * Beta 2.1 — one leg's footstep state for planted locomotion (FighterAnimator.plantFeet): in stance the foot holds a
+ * point on the floor (x, z in the fighter's parent space); in swing it travels from where it lifted off (relative to the
+ * hip) to the next touchdown along a Hermite curve, so its speed is continuous at lift-off and at touchdown.
+ */
+interface FootState {
+  /** -1 not initialised; 0 stance; 1 swing. */
+  mode: -1 | 0 | 1;
+  /** The IK's last hip pitch, hip roll and knee (rad) — rate-limited, so an extreme turn never snaps the leg. */
+  aX: number;
+  aZ: number;
+  aK: number;
+  plantX: number;
+  plantZ: number;
+  /** Lift-off point relative to the hip (ground plane). */
+  relX: number;
+  relZ: number;
+  /** The hip's ground velocity at lift-off (the swing starts moving with it). */
+  vX: number;
+  vZ: number;
+}
+const footState = (): FootState => ({ mode: -1, aX: 0, aZ: 0, aK: 0, plantX: 0, plantZ: 0, relX: 0, relZ: 0, vX: 0, vZ: 0 });
+// scratch for the leg IK (no per-frame allocations)
+const IK_M = new Matrix4();
+const IK_INV = new Matrix4();
+const IK_V = new Vector3();
+const IK_H = new Vector3();
+// scratch for the level feet
+const FT_M = new Matrix4();
+const FT_F = new Vector3();
+
 /** Last victory routine per fighter look, so the same one never plays twice in a row. */
 const lastVictory = new Map<string, number>();
 
@@ -205,6 +236,11 @@ export class FighterAnimator {
   private accZ = 0;
   private cur = zeroPose();
   private tgt = zeroPose();
+  /** Beta 2.1: last frame's target (the pose filter interpolates toward this frame's within the frame). */
+  private prevTgt = zeroPose();
+  private prevValid = false;
+  /** Beta 2.1: the pose's joint speeds (the second-order pose filter). */
+  private curVel = zeroPose();
   /** Blend weight used by `to()` (victory / flair / stagger mixes). */
   private w = 1;
 
@@ -340,6 +376,24 @@ export class FighterAnimator {
   /** The body steps forward into a strike (m, damped). */
   private lungeZ = 0;
   private lungeCur = 0;
+  // Beta 2.1 — planted locomotion: how much the planted-foot legs replace the angle-driven ones (0 standing, 1 running),
+  // the two legs' footstep states, the smoothed travel direction in the parent's space
+  private ikW = 0;
+  private footL = footState();
+  private footR = footState();
+  private travelX = 0;
+  private travelZ = 1;
+  private cadence = 0;
+  /** Share of the cycle a foot is on the floor, and how far the body travels while it is (m). */
+  private beta = 0.5;
+  private reach = 0;
+  /** The hips' turn toward the travel direction, smoothed. */
+  private hipOffS = 0;
+  /** Beta 2.1: this fighter's phase seed for the organic idle (from its look, so a skin copy moves alike). */
+  private seed = 0;
+  /** The velocity the planted steps follow (smoothed). */
+  private stepVX = 0;
+  private stepVZ = 0;
   // per-frame outputs (reset at the top of update)
   private wSpin = 0;
   private wFlip = 0;
@@ -368,6 +422,10 @@ export class FighterAnimator {
     this.weaponBaseL = rig.weaponL?.position.y ?? 0;
     this.weaponTiltR = rig.weaponR?.rotation.x ?? 0;
     this.weaponTiltL = rig.weaponL?.rotation.x ?? 0;
+    // (from the fighter's own styles and weapon: a PRIME SHOP skin moves exactly like its fighter)
+    const sid = `${idle}|${victory}|${rig.look.weapon}`;
+    for (let i = 0; i < sid.length; i++) this.seed = (this.seed * 31 + sid.charCodeAt(i)) % 997;
+    this.seed = (this.seed / 997) * TAU;
     this.breathRate = idle === 'heavy' || idle === 'champion' ? 1.25 : idle === 'bouncy' || idle === 'brawler' ? 2.2 : idle === 'duelist' ? 1.45 : idle === 'clockwork' ? 1.3 : 1.7;
   }
 
@@ -408,6 +466,8 @@ export class FighterAnimator {
     this.stillArmed = true;
     this.svx = this.svz = 0;
     this.cur = zeroPose();
+    this.curVel = zeroPose();
+    this.prevValid = false;
     if (this.rig.look.weapon === 'cane') {
       // Lucien starts from his gentleman's carry: the cane hanging from the pommel never sweeps through the floor
       this.cur.shRX = -0.22;
@@ -864,12 +924,36 @@ export class FighterAnimator {
         resid = b - hipOff;
         legDir = -1;
       }
+      // Beta 2.1: the hips swing to a new travel direction over ~0.15 s instead of flipping (a switch between running
+      // forward and backpedalling used to turn them by up to 100° in one frame)
+      this.hipOffS = damp(this.hipOffS, hipOff, 12, dt);
+      hipOff = this.hipOffS;
       this.lastLX = lx;
       this.lastLZ = lz;
     }
     // Stride-matched cadence: one full cycle per strideLength of travel.
+    // Beta 2.1: a slower fighter takes shorter, quicker steps (the stride shrinks to 55 % at a walk) instead of the
+    // full running stride in slow motion, and a stepping fighter never drops below 1.4 steps/s (a stop finishes its
+    // step). The phase only moves forward — the planted feet never run backwards in time (backpedalling steps
+    // backwards in space, see plantFeet); the angle-driven legs still read `legDir`.
+    // (Beta 2.1, measured: these short cartoon legs are straight when standing — 0.62 m of leg under a 0.62 m hip — so a
+    // planted foot can travel only ~0.5 m under the body. A run therefore takes quicker, shorter steps (the cycle covers
+    // 45–75 % of the old stride), spends less of the cycle on the floor (a short flight at full speed), and the body
+    // drops just enough to let the legs reach — an athletic run instead of a skate.)
+    // (the planted steps read a SMOOTHED velocity: a stop from full speed in one frame — a knockback, a stun — still
+    // finishes the step in the air instead of snapping the swinging foot to a new path)
+    this.stepVX = damp(this.stepVX, inp.vx, 10, dt);
+    this.stepVZ = damp(this.stepVZ, inp.vz, 10, dt);
+    const stepSp = Math.hypot(this.stepVX, this.stepVZ);
+    const stepN = clamp01(stepSp / maxSp);
     const cadenceBoost = inp.overdrive ? 1.08 : 1;
-    this.phase += ((speed * cadenceBoost) / G.strideLength) * TAU * dt * legDir;
+    const strideEff = G.strideLength * (0.45 + 0.3 * stepN);
+    let cad = (stepSp * cadenceBoost) / strideEff;
+    if (this.ikW > 0.01) cad = Math.max(cad, 1.4);
+    this.cadence = cad;
+    this.beta = 0.5 - 0.2 * stepN;
+    this.reach = stepSp * (this.beta / Math.max(0.5, cad));
+    this.phase += cad * TAU * dt;
     const ph = this.phase;
     const sinP = Math.sin(ph);
     const swing = G.legSwing * A;
@@ -880,14 +964,25 @@ export class FighterAnimator {
     P.hipsRY = hipOff * sN;
     P.spineRY = -hipOff * sN * 0.85;
     P.headRY = -hipOff * sN * 0.12;
-    P.legLX = -sinP * swing * fwdK;
-    P.legRX = sinP * swing * fwdK;
-    P.legLZ = sinP * swing * sideK;
-    P.legRZ = -sinP * swing * sideK;
+    P.legLX = -sinP * swing * fwdK * legDir;
+    P.legRX = sinP * swing * fwdK * legDir;
+    P.legLZ = sinP * swing * sideK * legDir;
+    P.legRZ = -sinP * swing * sideK * legDir;
     P.kneeL = Math.max(0, Math.cos(ph) * legDir) * G.kneeLift * A + 0.06 * A;
     P.kneeR = Math.max(0, -Math.cos(ph) * legDir) * G.kneeLift * A + 0.06 * A;
     // Highest at mid-stance (legs passing), lowest at double support.
     P.bodyY = G.bob * A * (0.5 + 0.5 * Math.cos(2 * ph)) - G.bob * A * 0.5;
+    // Beta 2.1 — with planted feet the body runs, it does not vault: lowest at mid-stance (the knee takes the weight),
+    // highest in the short flight; and it sits as low as the stride needs for the legs to reach the floor
+    if (this.ikW > 0.001) {
+      const d = this.rig.dims;
+      const L = (d.thigh + d.shin) * 0.95;
+      const half = this.reach * 0.5;
+      const crouch = clamp(d.thigh + d.shin - Math.sqrt(Math.max(0, L * L - half * half)) + 0.012, 0, 0.16) * this.rig.root.scale.y;
+      const mid = Math.PI / 2 + this.beta * Math.PI;
+      const runBob = -G.bob * A * 0.4 * (0.5 + 0.5 * Math.cos(2 * (ph - mid)));
+      P.bodyY = mix(P.bodyY, runBob - crouch, this.ikW);
+    }
     // Weight over the stance leg.
     P.hipsRZ = sinP * G.sway * A;
     P.bodyX = -sinP * G.sway * A * 0.6;
@@ -1044,7 +1139,7 @@ export class FighterAnimator {
     if (idleW > 0) {
       switch (this.idleStyle) {
         case 'bouncy': {
-          const b = 0.5 + 0.5 * Math.sin(t * 6.2);
+          const b = 0.5 + 0.5 * Math.sin(t * 6.2) * (0.85 + 0.15 * this.wob(t, 0.37, 1));
           P.bodyY += (b * 0.04 - 0.02) * idleW;
           P.kneeL += (0.24 + b * 0.14) * idleW;
           P.kneeR += (0.24 + b * 0.14) * idleW;
@@ -1053,12 +1148,12 @@ export class FighterAnimator {
           P.legLZ += 0.07 * idleW;
           P.legRZ -= 0.07 * idleW;
           P.spineRX += 0.07 * idleW;
-          P.headRX += Math.sin(t * 6.2 + 0.6) * 0.035 * idleW;
-          P.spineRY += Math.sin(t * 1.3) * 0.05 * idleW;
+          P.headRX += (Math.sin(t * 6.2 + 0.6) * 0.03 + this.wob(t, 0.9, 2) * 0.012) * idleW;
+          P.spineRY += this.wob(t, 1.3, 3) * 0.05 * idleW;
           break;
         }
         case 'heavy': {
-          const br = Math.sin(t * 1.6);
+          const br = this.wob(t, 1.6, 4);
           P.spineRX += (br * 0.04 + 0.05) * idleW;
           P.legLZ += 0.13 * idleW;
           P.legRZ -= 0.13 * idleW;
@@ -1070,12 +1165,12 @@ export class FighterAnimator {
           P.headRX += br * 0.03 * idleW;
           P.shLZ += br * 0.05 * idleW;
           P.shRZ -= br * 0.05 * idleW;
-          P.hipsRZ += Math.sin(t * 0.8) * 0.03 * idleW;
+          P.hipsRZ += this.wob(t, 0.8, 5) * 0.03 * idleW;
           break;
         }
         case 'poise': {
           // composed: weight settled on one hip, slow breathing, a slight chin-up
-          const br = Math.sin(t * 1.2);
+          const br = this.wob(t, 1.2, 6);
           P.hipsRZ += (0.06 + br * 0.015) * idleW;
           P.bodyX += 0.025 * idleW;
           P.spineRZ -= 0.07 * idleW;
@@ -1088,11 +1183,11 @@ export class FighterAnimator {
           break;
         }
         case 'sway': {
-          const sw = Math.sin(t * 1.5);
+          const sw = this.wob(t, 1.5, 7);
           P.hipsRZ += sw * 0.08 * idleW;
           P.bodyX += sw * 0.03 * idleW;
           P.spineRZ -= sw * 0.09 * idleW;
-          P.headRZ += Math.sin(t * 1.5 + 0.7) * 0.08 * idleW;
+          P.headRZ += this.wob(t + 0.47, 1.5, 7) * 0.08 * idleW;
           P.kneeL += (0.1 + Math.max(0, sw) * 0.2) * idleW;
           P.kneeR += (0.1 + Math.max(0, -sw) * 0.2) * idleW;
           P.legLX -= Math.max(0, sw) * 0.09 * idleW;
@@ -1101,7 +1196,7 @@ export class FighterAnimator {
         }
         case 'showman': {
           // Kai: cocky — weight on the back leg, the head nodding to the show's beat
-          const beat = Math.sin(t * 4.4);
+          const beat = Math.sin(t * 4.4) * (0.8 + 0.2 * this.wob(t, 0.31, 8));
           P.hipsRZ -= 0.05 * idleW;
           P.bodyX -= 0.02 * idleW;
           P.spineRZ += 0.05 * idleW;
@@ -1110,13 +1205,13 @@ export class FighterAnimator {
           P.kneeR += 0.05 * idleW;
           P.headRX += beat * 0.035 * idleW;
           P.headRZ += 0.04 * idleW;
-          P.spineRY += Math.sin(t * 2.2) * 0.04 * idleW;
+          P.spineRY += this.wob(t, 2.2, 9) * 0.04 * idleW;
           P.shLZ += 0.06 * idleW;
           break;
         }
         case 'feint': {
           // Rina: light on the balls of the feet, small shuffles from side to side
-          const sh = Math.sin(t * 3.4);
+          const sh = this.wob(t, 3.4, 10);
           const b = 0.5 + 0.5 * Math.sin(t * 6.8);
           P.bodyX += sh * 0.035 * idleW;
           P.bodyY += (b * 0.02 - 0.03) * idleW;
@@ -1128,13 +1223,13 @@ export class FighterAnimator {
           P.legRZ -= 0.06 * idleW;
           P.spineRX += 0.08 * idleW;
           P.hipsRZ += sh * 0.04 * idleW;
-          P.headRY += Math.sin(t * 1.7) * 0.06 * idleW;
+          P.headRY += this.wob(t, 1.7, 11) * 0.06 * idleW;
           break;
         }
         case 'brawler': {
           // Crash: restless — bouncing weight, rolling shoulders, a twitchy head
           const b = Math.abs(Math.sin(t * 5));
-          const roll = Math.sin(t * 2.6);
+          const roll = this.wob(t, 2.6, 12);
           P.bodyY += (b * 0.03 - 0.03) * idleW;
           P.kneeL += (0.28 + b * 0.08) * idleW;
           P.kneeR += (0.28 + b * 0.08) * idleW;
@@ -1146,12 +1241,17 @@ export class FighterAnimator {
           P.shLZ += roll * 0.08 * idleW;
           P.shRZ += roll * 0.08 * idleW;
           P.spineRY += roll * 0.06 * idleW;
-          P.headRZ += (Math.floor(t * 1.3) % 3 === 0 ? 0.08 : 0) * idleW;
+          // (Beta 2.1: the twitch eases in and out — it was a one-frame step of 0.08 rad)
+          const tw = (t * 1.3) % 3;
+          P.headRZ += (tw < 1 ? Math.pow(Math.sin(Math.PI * tw), 2) * 0.08 : 0) * idleW;
           break;
         }
         case 'tactician': {
           // Zoe: low ready, weight forward, the head scanning the arena in short deliberate stops
-          const scan = Math.sin(Math.floor(t * 0.9) * 2.4) * 0.22;
+          // (Beta 2.1: deliberate stops, each head turn eased over ~0.4 s instead of one frame)
+          const sc = t * 0.9;
+          const si = Math.floor(sc);
+          const scan = (Math.sin((si - 1) * 2.4) + (Math.sin(si * 2.4) - Math.sin((si - 1) * 2.4)) * smoothstep(0, 0.35, sc - si)) * 0.22;
           P.kneeL += 0.22 * idleW;
           P.kneeR += 0.22 * idleW;
           P.legLX -= 0.1 * idleW;
@@ -1168,7 +1268,7 @@ export class FighterAnimator {
         case 'duelist': {
           // Lucien: upright and poised — the weight on the back leg, the front foot pointed, chest high,
           // chin up, a slow sway as if he listens to music only he can hear
-          const sw = Math.sin(t * 1.1);
+          const sw = this.wob(t, 1.1, 13);
           P.hipsRZ += (0.05 + sw * 0.012) * idleW;
           P.bodyX += 0.02 * idleW;
           P.kneeL += 0.16 * idleW;
@@ -1205,7 +1305,7 @@ export class FighterAnimator {
         case 'headliner': {
           // Alpha 1.9.8 — ACE: an easy star's stance — the weight on one leg, the other knee loose, a slight hip, the chest
           // open and the chin up, a slow sway as if the music of the show plays for him
-          const sw = Math.sin(t * 1.2);
+          const sw = this.wob(t, 1.2, 14);
           P.hipsRZ += (0.045 + sw * 0.01) * idleW;
           P.bodyX += 0.018 * idleW;
           P.kneeR += 0.12 * idleW;
@@ -1219,7 +1319,7 @@ export class FighterAnimator {
         }
         case 'champion': {
           // Victor: still and upright — a slow deep breath, chin up, a wide planted stance
-          const br = Math.sin(t * 1.05);
+          const br = this.wob(t, 1.05, 15);
           P.spineRX += (-0.05 + br * 0.02) * idleW;
           P.headRX -= 0.06 * idleW;
           P.legLZ += 0.09 * idleW;
@@ -1232,8 +1332,12 @@ export class FighterAnimator {
         }
       }
       // every fighter: breathing (chest and shoulders rise), weight shifts, glances
-      const br = Math.sin(t * this.breathRate);
-      P.spineRX += (Math.sin(t * 2.3) * 0.016 - br * 0.012) * idleW;
+      // (Beta 2.1: breathing is a breath — a slightly irregular one — and the chest's small sway never repeats exactly)
+      const br = Math.sin(t * this.breathRate + this.wob(t, 0.23, 16) * 0.6);
+      P.spineRX += (this.wob(t, 2.3, 17) * 0.016 - br * 0.012) * idleW;
+      // a living head: tiny, slow drift around where it looks (a few mm at the face)
+      P.headRX += this.wob(t, 0.53, 18) * 0.012 * idleW;
+      P.headRY += this.wob(t, 0.41, 19) * 0.018 * idleW;
       P.shLZ += br * 0.015 * idleW;
       P.shRZ -= br * 0.015 * idleW;
       P.bodyY += br * 0.004 * idleW;
@@ -1980,6 +2084,8 @@ export class FighterAnimator {
       P.shRZ = -0.4 - jolt * 0.5;
       P.elL = -0.25;
       P.elR = -0.25;
+      // Beta 2.1: a long gun (Kai's trick pistol) dangles from the hand while dizzy — its barrel went into the body
+      if (this.rig.look.weapon === 'ricochet') this.wFlip = -1.2;
       P.kneeL = 0.32 + Math.max(0, wob) * 0.12;
       P.kneeR = 0.32 + Math.max(0, -wob) * 0.12;
       P.legLX = -0.14;
@@ -2098,10 +2204,37 @@ export class FighterAnimator {
     // ---------------------------------------------------- apply pose
     const C = this.cur;
     const rate = this.koT >= 0 ? 16 : this.dashT >= 0 ? 30 : this.staggerT >= 0 ? 24 : 18;
+    // Beta 2.1 — frame-rate independence: the pose follows its target in steps of at most 1/120 s, the target moving in
+    // a straight line from last frame's to this frame's. At 30 fps the old single step let fast targets (the stride,
+    // a shot's kick) through with another size and timing than at 120 fps (animlab «fps30»).
+    // Beta 2.1 — and it follows as a CRITICALLY DAMPED second-order system (no overshoot, the same rise time as the old
+    // first-order step: ω = 2.15 × rate): a joint's speed is continuous, so a new state (a stun, a cast, a stop) starts
+    // and ends its motion with an ease instead of a jump in speed (the «pop» animlab counts).
+    const Q = this.prevTgt;
+    const V = this.curVel;
+    const n = Math.min(8, Math.max(1, Math.ceil(dt * 120 - 1e-6)));
+    const h = dt / n;
+    const om = rate * 2.15;
+    const om2 = om * om;
+    const om2x = 2 * om;
     for (const k of POSE_KEYS) {
-      const v = damp(C[k], P[k], rate, dt);
-      C[k] = Number.isFinite(v) ? v : 0;
+      const from = this.prevValid ? Q[k] : P[k];
+      let c = C[k];
+      let v = V[k];
+      for (let j = 1; j <= n; j++) {
+        v += (om2 * (from + (P[k] - from) * (j / n) - c) - om2x * v) * h;
+        c += v * h;
+      }
+      if (Number.isFinite(c) && Number.isFinite(v)) {
+        C[k] = c;
+        V[k] = v;
+      } else {
+        C[k] = P[k];
+        V[k] = 0;
+      }
+      Q[k] = P[k];
     }
+    this.prevValid = true;
 
     const rR = this.recoilR.update(dt);
     const rL = this.recoilL.update(dt);
@@ -2183,6 +2316,24 @@ export class FighterAnimator {
     const sqk = clamp(sq * 0.012, -0.12, 0.18);
     rig.body.scale.set(bodyScaleX * this.sx * (1 + sqk * 0.5), bodyScaleY * this.sy * (1 - sqk), bodyScaleZ * this.sz * (1 + sqk * 0.5));
 
+    // Beta 2.1 — planted feet while moving on the ground (not in a dash, a stagger, a knockback, a stun, a KO or a
+    // victory routine: those keep their own leg poses)
+    const grounded = !terminal && !inp.ko && !inp.knockback && !inp.stunned && this.dashT < 0 && this.staggerT < 0 && this.flair <= 0;
+    // (a very fast turn of the body — a snap to a new target — hands the legs back to the turn-on-the-spot steps: the leg
+    // has no ankle to twist a planted foot through half a turn)
+    const turnFade = 1 - smoothstep(5, 9, Math.abs(this.yawRate));
+    const ikTarget = grounded ? smoothstep(0.25, 0.9, speed) * turnFade : 0;
+    this.ikW = damp(this.ikW, ikTarget, ikTarget > this.ikW ? 9 : 6, dt);
+    let framed = false;
+    if (this.ikW > 0.002) {
+      this.plantFeet(inp, speed, dt);
+      framed = true;
+    } else {
+      this.footL.mode = -1;
+      this.footR.mode = -1;
+    }
+    this.levelFeet(framed);
+
     // ---------------------------------------------------------- face
     this.blinkT -= dt;
     if (this.blinkT <= 0) {
@@ -2226,6 +2377,298 @@ export class FighterAnimator {
     }
     if (!rig.holo) {
       (rig.glowMat as MeshBasicMaterial).color.setScalar(1 + this.glowPulse);
+    }
+  }
+
+  /**
+   * Beta 2.1 — PLANTED LOCOMOTION. The angle-driven legs swung on a sine and the low-pass pose lagged them, so a foot
+   * touched down while still swinging forward and then slid (it moved at ~95 % of the running speed on the floor —
+   * `npm run animlab`). Here each foot follows a footstep: in stance it holds its point on the floor while the body
+   * passes over it (the knee takes the body's bob), in swing it lifts and travels to where the next stance will need it.
+   * A two-bone IK (hip pitch and roll, knee) reaches that point from the hip, every frame, after the body's own pose,
+   * so leans, sways, squash and recoil never drag a planted foot. The result is blended with the angle-driven legs by
+   * `ikW` (standing still, dashing, stunned, KO and victory keep their own legs). Visual only: the simulation, hit boxes
+   * and speeds are untouched.
+   */
+  private plantFeet(inp: AnimInput, speed: number, dt: number): void {
+    const rig = this.rig;
+    const d = rig.dims;
+    const w = this.ikW;
+    // the travel direction (parent space), smoothed so a sudden reversal turns the steps instead of flipping them
+    const vx = this.stepVX;
+    const vz = this.stepVZ;
+    const sp = Math.hypot(vx, vz);
+    if (sp > 0.2) {
+      const k = 1 - Math.exp(-14 * dt);
+      this.travelX += (vx / sp - this.travelX) * k;
+      this.travelZ += (vz / sp - this.travelZ) * k;
+      const n = Math.hypot(this.travelX, this.travelZ) || 1;
+      this.travelX /= n;
+      this.travelZ /= n;
+    }
+    const cad = Math.max(0.5, this.cadence);
+    const sN = clamp01(sp / Math.max(0.1, inp.maxSpeed));
+    // (the stance share and the reach come from the locomotion section — the same numbers that lowered the body)
+    const beta = this.beta;
+    const swingT = (1 - beta) / cad;
+    const reach = this.reach;
+    const lift = (0.05 + 0.065 * this.gait.kneeLift) * clamp01(sN * 1.4) * rig.root.scale.y;
+    const ankleY = (d.hipY - 0.04 - d.thigh - d.shin) * rig.root.scale.y;
+    // the chain root → body → roll → hips, with this frame's transforms
+    this.hipsFrame();
+    for (let side = 0; side < 2; side++) {
+      const leg = side === 0 ? rig.legL : rig.legR;
+      const knee = side === 0 ? rig.kneeL : rig.kneeR;
+      const f = side === 0 ? this.footL : this.footR;
+      // where this leg is in its cycle: touchdown at 0 (the left at the phase of the old left-front contact), swing from beta
+      const c = (((this.phase - Math.PI / 2) / TAU + (side === 0 ? 0 : 0.5)) % 1 + 1) % 1;
+      const inStance = c < beta;
+      // the hip joint on the floor plane
+      IK_H.copy(leg.position).applyMatrix4(IK_M);
+      if (f.mode === -1) {
+        f.aX = leg.rotation.x;
+        f.aZ = leg.rotation.z;
+        f.aK = knee.rotation.x;
+        // first step: start where the cycle says the foot is
+        if (inStance) {
+          const s = reach / 2 - (c / beta) * reach;
+          f.plantX = IK_H.x + this.travelX * s;
+          f.plantZ = IK_H.z + this.travelZ * s;
+          f.mode = 0;
+        } else {
+          f.relX = -this.travelX * reach * 0.5;
+          f.relZ = -this.travelZ * reach * 0.5;
+          f.vX = vx;
+          f.vZ = vz;
+          f.mode = 1;
+        }
+      } else if (inStance && f.mode === 1) {
+        // touchdown: the foot stays where the swing put it
+        f.plantX = IK_H.x + this.travelX * reach * 0.5;
+        f.plantZ = IK_H.z + this.travelZ * reach * 0.5;
+        f.mode = 0;
+      } else if (!inStance && f.mode === 0) {
+        // lift-off: remember where the foot is relative to the hip and how fast the hip moves away from it
+        f.relX = f.plantX - IK_H.x;
+        f.relZ = f.plantZ - IK_H.z;
+        f.vX = vx;
+        f.vZ = vz;
+        f.mode = 1;
+      }
+      let tx: number;
+      let ty: number;
+      let tz: number;
+      if (f.mode === 0) {
+        tx = f.plantX;
+        tz = f.plantZ;
+        ty = ankleY;
+      } else {
+        // swing: Hermite from the lift-off point to the next touchdown point (both relative to the hip); the tangents
+        // carry the foot's speed relative to the hip, so it leaves the floor and meets it without a jolt
+        const u = clamp01((c - beta) / (1 - beta));
+        const ex = this.travelX * reach * 0.5;
+        const ez = this.travelZ * reach * 0.5;
+        // (the foot leaves the floor already slowing against the hip — a push-off, not a further stretch of the leg)
+        const m0x = -f.vX * swingT * 0.35;
+        const m0z = -f.vZ * swingT * 0.35;
+        const m1x = -vx * swingT;
+        const m1z = -vz * swingT;
+        const u2 = u * u;
+        const u3 = u2 * u;
+        const h00 = 2 * u3 - 3 * u2 + 1;
+        const h10 = u3 - 2 * u2 + u;
+        const h01 = -2 * u3 + 3 * u2;
+        const h11 = u3 - u2;
+        tx = IK_H.x + h00 * f.relX + h10 * m0x + h01 * ex + h11 * m1x;
+        tz = IK_H.z + h00 * f.relZ + h10 * m0z + h01 * ez + h11 * m1z;
+        // the lift peaks a little before the middle of the swing (the foot clears the floor early, then reaches); it
+        // leaves and meets the floor with no vertical speed (sin^1.6), so the knee does not jolt at contact
+        ty = ankleY + lift * Math.pow(Math.sin(Math.PI * Math.pow(u, 0.85)), 1.6);
+      }
+      this.solveLeg(side, tx, ty, tz, dt);
+      leg.rotation.set(mix(leg.rotation.x, f.aX, w), 0, mix(leg.rotation.z, f.aZ, w));
+      knee.rotation.set(mix(knee.rotation.x, f.aK, w), 0, 0);
+    }
+  }
+
+  /**
+   * Beta 2.1 — the two-bone leg IK: the hip pitch and roll and the knee that put this leg's ankle at (tx, ty, tz) in the
+   * fighter's parent space (IK_INV must hold the hips' inverse transform of this frame). The result goes to the foot
+   * state's angles, rate-limited (a running leg swings at up to ~18 rad/s; faster is spread over a few frames).
+   */
+  private solveLeg(side: number, tx: number, ty: number, tz: number, dt: number): void {
+    const rig = this.rig;
+    const d = rig.dims;
+    const leg = side === 0 ? rig.legL : rig.legR;
+    const f = side === 0 ? this.footL : this.footR;
+    // the target in the leg's own space (relative to the hip joint, before the leg's rotation); never above the knee's
+    // reach under the hip (a foot left far behind by a sudden turn is reached for, not swung over the head)
+    IK_V.set(tx, ty, tz).applyMatrix4(IK_INV).sub(leg.position);
+    const below = (d.thigh + d.shin) * 0.35;
+    if (IK_V.y > -below) IK_V.y = -below;
+    const L1 = d.thigh;
+    const L2 = d.shin;
+    // soft reach: the last 6 % of the leg's length is approached smoothly, so the knee never snaps straight
+    const Lmax = L1 + L2;
+    const soft = Lmax * 0.94;
+    let D = IK_V.length();
+    if (D > soft) D = soft + (Lmax * 0.998 - soft) * (1 - Math.exp(-(D - soft) / (Lmax * 0.998 - soft)));
+    D = Math.max(D, Math.abs(L1 - L2) + 0.01);
+    // knee: law of cosines (the knee bends backwards, + is the bend)
+    const cosK = clamp((L1 * L1 + L2 * L2 - D * D) / (2 * L1 * L2), -1, 1);
+    const kneeA = Math.PI - Math.acos(cosK);
+    // the leg chain with that knee: (0, fy, fz) in the leg's space, then the hip's roll (z) and pitch (x)
+    const fy = -L1 - L2 * Math.cos(kneeA);
+    const fz = -L2 * Math.sin(kneeA);
+    const n = IK_V.length() || 1;
+    const sx = (IK_V.x / n) * D;
+    const syy = (IK_V.y / n) * D;
+    const sz = (IK_V.z / n) * D;
+    const roll = clamp(Math.asin(clamp(sx / Math.max(1e-4, -fy), -1, 1)), -0.6, 0.6);
+    const v = fy * Math.cos(roll);
+    // (the thigh's range: up to ~92° forward, ~57° back)
+    const pitch = clamp(wrapAngle(Math.atan2(sz, syy) - Math.atan2(fz, v)), -1.6, 1.0);
+    const lim = 24 * dt;
+    f.aX += clamp(pitch - f.aX, -lim, lim);
+    f.aK += clamp(kneeA - f.aK, -lim, lim);
+    f.aZ += clamp(roll - f.aZ, -lim * 0.42, lim * 0.42);
+  }
+
+  /** Beta 2.1: this frame's hips transform (root → body → roll → hips) and its inverse, for the leg IK and the feet. */
+  private hipsFrame(): void {
+    const rig = this.rig;
+    rig.root.updateMatrix();
+    rig.body.updateMatrix();
+    rig.roll.updateMatrix();
+    rig.hips.updateMatrix();
+    IK_M.copy(rig.root.matrix).multiply(rig.body.matrix).multiply(rig.roll.matrix).multiply(rig.hips.matrix);
+    IK_INV.copy(IK_M).invert();
+  }
+
+  /**
+   * Beta 2.1 — LEVEL FEET. The shoes used to be part of the shin, so a bent knee tipped the toe into the floor (3–9 cm in
+   * the old idle) and lifted the heel. Now each shoe turns on its ankle: whenever it is near the floor it stays level
+   * with it (pitch and a little roll, within an ankle's range); in the air it goes back to following the shin. A
+   * planted step adds a small toe-down after lift-off and a toe-up before the next contact (both zero at the contacts).
+   */
+  /** The shoe's extent in its foot's frame (m, the root's scale aside): built once from the shoe's own meshes. */
+  private shoeBoxCache: { y0: number; y1: number; z0: number; z1: number } | null = null;
+  private shoeBox(): { y0: number; y1: number; z0: number; z1: number } {
+    if (this.shoeBoxCache) return this.shoeBoxCache;
+    const b = { y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+    for (const ch of this.rig.footL.children) {
+      const m = ch as unknown as { isMesh?: boolean; material?: { side?: number }; position: Vector3; geometry?: { boundingBox: { min: Vector3; max: Vector3 } | null; computeBoundingBox(): void } };
+      // (the outline shells — back faces — are left out: the shoe itself is what touches the floor)
+      if (!m.isMesh || !m.geometry || m.material?.side === 1) continue;
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      const bb = m.geometry.boundingBox!;
+      b.y0 = Math.min(b.y0, bb.min.y + m.position.y);
+      b.y1 = Math.max(b.y1, bb.max.y + m.position.y);
+      b.z0 = Math.min(b.z0, bb.min.z + m.position.z);
+      b.z1 = Math.max(b.z1, bb.max.z + m.position.z);
+    }
+    // (a rig without shoe meshes: the sole line of the shoe's dimensions, as before)
+    if (!Number.isFinite(b.y0)) {
+      const d = this.rig.dims;
+      Object.assign(b, { y0: 0, y1: 0, z0: 0.07 - d.shoeL * 0.5, z1: 0.07 + d.shoeL * 0.5 });
+    }
+    this.shoeBoxCache = b;
+    return b;
+  }
+
+  private levelFeet(framed: boolean): void {
+    const rig = this.rig;
+    const terminalKO = this.koT >= 0;
+    const sc = Math.max(0.01, rig.root.scale.y);
+    // the ankle's height when the sole is on the floor (the shoes are built with the sole at the ankle)
+    const floorY = 0;
+    // (the hips' transform of this frame — already there when the planted steps ran)
+    if (!framed) this.hipsFrame();
+    for (let side = 0; side < 2; side++) {
+      const leg = side === 0 ? rig.legL : rig.legR;
+      const knee = side === 0 ? rig.kneeL : rig.kneeR;
+      const foot = side === 0 ? rig.footL : rig.footR;
+      const f = side === 0 ? this.footL : this.footR;
+      leg.updateMatrix();
+      knee.updateMatrix();
+      FT_M.copy(IK_M).multiply(leg.matrix).multiply(knee.matrix);
+      // the ankle's height above the floor (the foot's origin)
+      FT_F.copy(foot.position).applyMatrix4(FT_M);
+      // THE FLOOR: in any pose on the ground, an ankle below the floor is lifted onto it by the leg IK (the knee bends)
+      // — the old poses lowered the body (a crouch, a bob, a landing) without shortening the legs, so the shoes sank
+      if (!terminalKO && FT_F.y < floorY - 0.002) {
+        f.aX = leg.rotation.x;
+        f.aZ = leg.rotation.z;
+        f.aK = knee.rotation.x;
+        this.solveLeg(side, FT_F.x, floorY, FT_F.z, 1);
+        leg.rotation.set(f.aX, 0, f.aZ);
+        knee.rotation.set(f.aK, 0, 0);
+        leg.updateMatrix();
+        knee.updateMatrix();
+        FT_M.copy(IK_M).multiply(leg.matrix).multiply(knee.matrix);
+        FT_F.copy(foot.position).applyMatrix4(FT_M);
+      }
+      const ankleY = FT_F.y / sc;
+      // level when the shoe is at the floor (ankle within ~6 cm), back to the shin's line by ~20 cm (jumps, tucks)
+      const w = terminalKO ? 0 : 1 - smoothstep(0.06, 0.2, ankleY);
+      // the shin's own axes in the world (columns of its matrix): the shoe's toe line at ankle angle `a` is
+      // (0, −sin a, cos a) in the shin's frame, so its world height changes by z·(−sin a·Yy + cos a·Zy)
+      const e = FT_M.elements;
+      const ys = Math.hypot(e[4], e[5], e[6]) || 1;
+      const zs = Math.hypot(e[8], e[9], e[10]) || 1;
+      const Yy = e[5] / ys;
+      const Zy = e[9] / zs;
+      const Xy = e[1] / (Math.hypot(e[0], e[1], e[2]) || 1);
+      // the angle that lays the sole flat (toe forward), and a little roll against the shin's side tilt
+      const level = clamp(Math.atan2(Zy, Yy), -0.75, 1.3);
+      let px = level * w;
+      const pz = clamp(-Math.asin(clamp(Xy, -1, 1)), -0.35, 0.35) * w;
+      // a planted step: toe down after lift-off, toe up before contact (zero at both)
+      if (this.ikW > 0.002 && f.mode === 1) {
+        const c = (((this.phase - Math.PI / 2) / TAU + (side === 0 ? 0 : 0.5)) % 1 + 1) % 1;
+        const u = clamp01((c - this.beta) / (1 - this.beta));
+        const toe = 0.35 * Math.sin(Math.PI * clamp01(u / 0.55)) - 0.18 * Math.sin(Math.PI * clamp01((u - 0.55) / 0.45));
+        px += toe * this.ikW * clamp01(this.speedN * 1.5);
+      }
+      // toe and heel stay above the floor: among the ankle's angles (−0.75 … +1.3 rad) the one nearest the wanted angle
+      // whose shoe clears the floor; if none does, the one that clears it most. Beta 2.1 final: the WHOLE shoe is
+      // measured (its box: sole, toe, heel and the top of the upper — a steep angle swings the upper down, and measuring
+      // the sole line alone let a kneeling slide bury it 12–16 cm), and a kneeling slide (the shin along the floor, no
+      // angle in the range clears) may point the toe back further, the instep on the floor (to −1.65 rad).
+      if (!terminalKO && ankleY < 0.4) {
+        const box = this.shoeBox();
+        const clear = (a: number) => {
+          // a point (h up the shoe, z along it) at ankle angle a rises by h·(cos a·Yy + sin a·Zy) + z·(cos a·Zy − sin a·Yy)
+          const hy = Math.cos(a) * Yy + Math.sin(a) * Zy;
+          const zy = Math.cos(a) * Zy - Math.sin(a) * Yy;
+          const lo = Math.min(box.y0 * hy, box.y1 * hy) + Math.min(box.z0 * zy, box.z1 * zy);
+          return FT_F.y - floorY + lo * sc;
+        };
+        if (clear(px) < -0.004) {
+          const search = (from: number, to: number) => {
+            let best = px;
+            let bestC = -Infinity;
+            let near = Infinity;
+            for (let a = from; a <= to + 1e-4; a += 0.05) {
+              const cl = clear(a);
+              const dist = Math.abs(a - px);
+              if (cl >= -0.004 ? dist < near : near === Infinity && cl > bestC) {
+                if (cl >= -0.004) near = dist;
+                bestC = cl;
+                best = a;
+              }
+            }
+            return { a: best, c: bestC, ok: near < Infinity };
+          };
+          let r = search(-0.75, 1.3);
+          if (!r.ok) {
+            const wide = search(-1.65, 1.3);
+            if (wide.ok || wide.c > r.c) r = wide;
+          }
+          px = r.a;
+        }
+      }
+      foot.rotation.set(px, 0, pz);
     }
   }
 
@@ -2305,6 +2748,16 @@ export class FighterAnimator {
     P.spineRX += 0.08 * lunge;
     this.lungeZ = 0.24 * lunge;
     if (p >= w && p < w + 0.06) this.glowPulse = Math.max(this.glowPulse, 1.1);
+  }
+
+  /**
+   * Beta 2.1 — organic idle motion: three sines at golden-ratio-spaced frequencies around `f` (rad/s), offset by this
+   * fighter's own seed and a channel number, so the idle never loops visibly and two fighters never move in step.
+   * Range about −1..1, mean 0, the same «speed» as sin(f·t).
+   */
+  private wob(t: number, f: number, ch: number): number {
+    const s = this.seed + ch * 2.399;
+    return 0.66 * Math.sin(f * t + s) + 0.24 * Math.sin(f * 1.618 * t + s * 1.7 + 1.1) + 0.1 * Math.sin(f * 2.618 * t + s * 2.3 + 2.3);
   }
 
   /** Blend one pose key toward `v` by the current mix weight `this.w` (no per-frame closures). */

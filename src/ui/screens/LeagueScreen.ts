@@ -15,7 +15,7 @@ import { gradeFor } from '../../meta/CareerSystem';
 import { defenseBase, newOp, type LeagueApi, type LeagueArenaPref, type LeagueBoard, type LeagueFinish, type LeagueHistory, type LeagueMatch, type LeagueMe, type LeagueSeries, type LeagueSlot } from '../../net/LeagueApi';
 import { PrimeApiError } from '../../net/PrimeApi';
 import { ARENA_ART } from '../arenaArt';
-import { cardHTML, countUp, el, esc, portraitHTML } from '../dom';
+import { cardHTML, countUp, el, esc, portraitHTML, swapToggles } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
 import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
@@ -390,11 +390,8 @@ export class LeagueScreen implements Screen {
       this.render();
       return;
     }
-    ed.querySelectorAll<HTMLButtonElement>('.lg-cardpick[data-act="deck-card"]').forEach((btn) => {
-      const on = d.includes(btn.dataset.c as CardId);
-      btn.classList.toggle('on', on);
-      btn.setAttribute('aria-pressed', String(on));
-    });
+    // Beta 2.1: picks whose state changes are re-created whole (iPhone Safari half-repainted an in-place class change)
+    swapToggles(ed.querySelectorAll<HTMLElement>('.lg-cardpick[data-act="deck-card"]'), (btn) => d.includes(btn.dataset.c as CardId), 'aria-pressed');
     ed.classList.toggle('full', d.length >= 4);
     const n = ed.querySelector('[data-deckn]');
     if (n) n.textContent = String(d.length);
@@ -536,9 +533,24 @@ export class LeagueScreen implements Screen {
           <div class="lg-rank-rp"><b>${me.rp}</b> RP${me.place ? ` · ${tr('место', 'place')} ${me.place}` : ''}</div>
           <div class="lg-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(r.progress * 100)}"><i style="width:${Math.round(r.progress * 100)}%"></i></div>
           <div class="lg-rank-next">${toNext !== null ? `${tr('до', 'to')} ${esc(nextLabel)}: <b>${toNext}</b> RP` : esc(nextLabel)}</div>
+          ${this.rankGoalLine(me, toNext)}
         </div>
       </div>
       <div class="lg-season">${me.season.number ? `${tr('Сезон', 'Season')} ${me.season.number} · ${tr('до', 'until')} ${fmtDate(me.season.end!)} (${days} ${tr('дн.', 'days')})` : me.season.end ? `${tr('Предсезонье', 'Pre-season')} · ${tr('сезон 1 стартует', 'season 1 starts')} ${fmtDate(me.season.end)}` : `${tr('Предсезонье', 'Pre-season')} · ${tr('дату старта сезона объявит PRIME NETWORK', 'PRIME NETWORK announces the season start')}`}${me.calibration ? ` · ${tr('калибровка', 'calibration')}: ${me.calibration}` : ''}</div>`;
+  }
+
+  /**
+   * Beta 2.1 — the next step as a readable goal: about how many wins over an equal opponent it takes (LEAGUE.rp.base RP
+   * each — a stronger one gives more), and, at division I below a major rank that needs it, the PRIME CHALLENGE
+   * qualifier on the way (its own wins and losses, not RP). At the top: what keeps the place.
+   */
+  private rankGoalLine(me: LeagueMe, toNext: number | null): string {
+    const r = me.rank;
+    if (me.challenge) return `<div class="lg-rank-goal">${tr('Идёт квалификация', 'Qualifier running')}: <b>${me.challenge.wins}/${LEAGUE.challenge.wins}</b> ${tr('побед', 'wins')} · ${me.challenge.losses}/${LEAGUE.challenge.losses} ${tr('поражений', 'losses')}</div>`;
+    if (toNext === null) return `<div class="lg-rank-goal">${tr('Место в таблице держат победы — каждый сезон начинается с мягкого пересчёта RP.', 'Wins keep the place — each season starts with a soft RP reset.')}</div>`;
+    const wins = Math.max(1, Math.ceil(toNext / LEAGUE.rp.base));
+    const major = r.division === 'I' && r.index + 1 < RANKS.length && r.index + 1 >= LEAGUE.challenge.from;
+    return `<div class="lg-rank-goal">≈ <b>${wins}</b> ${tr(plural(wins, ['победа', 'победы', 'побед']), wins === 1 ? 'win' : 'wins')} ${tr('над равным соперником (над сильным — меньше)', 'over an equal opponent (fewer over a stronger one)')}${major ? ` · ${tr('новый ранг откроет квалификация PRIME CHALLENGE', 'the new rank opens with a PRIME CHALLENGE qualifier')}: ${LEAGUE.challenge.wins} ${tr('победы раньше', 'wins before')} ${LEAGUE.challenge.losses} ${tr('поражений', 'losses')}` : ''}</div>`;
   }
 
   private play(me: LeagueMe): string {
@@ -659,7 +671,7 @@ export class LeagueScreen implements Screen {
     const dirty = JSON.stringify(slots) !== JSON.stringify(me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck, tactic: d.tactic, look: d.look, enabled: d.enabled })));
     return `${report}
       <div class="lg-card lg-defhead"><div><b>${tr('Защита в эфире', 'Defence on air')}</b><small>${tr('Выключите — и ваши составы не попадут в новые матчи. Начатые бои доиграются по своим снимкам.', 'Switch off — your line-ups join no new match. Started fights finish by their snapshots.')}</small></div><button class="switch lg-defswitch ${me.defenseOn ? 'on' : ''}" data-act="def-global" role="switch" aria-checked="${me.defenseOn}" aria-label="${tr('Защита в эфире', 'Defence on air')}" ${this.busy ? 'disabled aria-busy="true"' : ''}></button></div>
-      <p class="muted lg-defnote">${tr('От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS, эфирных очков и репутации продюсера: +${LEAGUE.defenseRep.win} ★ за победу, до ${LEAGUE.defenseRep.perDay} ★ в день, один раз за каждого соперника (с общим дневным пределом: пять слотов не дают пятикратного дохода).', '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
+      <p class="muted lg-defnote">${tr(`От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS, эфирных очков и репутации продюсера: +${LEAGUE.defenseRep.win} ★ за победу, до ${LEAGUE.defenseRep.perDay} ★ в день, один раз за каждого соперника (с общим дневным пределом: пять слотов не дают пятикратного дохода).`, '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
       ${cards || this.empty(UI_ICONS.shieldMini, tr('Защита пуста', 'No defence yet'), tr('Выберите бойца ниже — он будет защищать ваш рейтинг, пока вас нет в эфире.', 'Pick a fighter below — they will guard your rating while you are off air.'))}
       ${preview}
       ${slots.length < LEAGUE.defense.slots && free.length ? `<div class="lg-k">${tr('ДОБАВИТЬ БОЙЦА', 'ADD A FIGHTER')}</div><div class="lg-add" role="list" data-strip="add">${free.map((id) => `<button class="lg-fpick" data-act="slot-add" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('')}${lockedPicks(g)}</div>` : ''}
@@ -1300,11 +1312,7 @@ function openPrestart(g: Game, p: Prestart): void {
         if (tile) {
           if (busy || p.next) return;
           pick = tile.dataset.arena as LeagueArenaPref;
-          root.querySelectorAll<HTMLElement>('[data-arena]').forEach((x) => {
-            const on = x === tile;
-            x.classList.toggle('on', on);
-            x.setAttribute('aria-checked', String(on));
-          });
+          swapToggles(root.querySelectorAll<HTMLElement>('[data-arena]'), (x) => x.dataset.arena === pick, 'aria-checked');
           (root.querySelector('.lg-pre-sel') as HTMLElement).innerHTML = arenaDetail(pick, series, false, list.length, until());
           g.audio.ui('click');
           return;

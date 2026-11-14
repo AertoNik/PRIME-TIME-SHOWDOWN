@@ -60,6 +60,34 @@ export function setScreenHTML(root: HTMLElement, html: string, keep = true): voi
   });
 }
 
+/**
+ * Beta 2.1 — switches a group of toggle buttons (tabs, chips, picks) to a new chosen state by RE-CREATING the buttons
+ * whose look changes, never by flipping their class in place. On iPhone Safari an in-place class change of a button
+ * inside nested scrolling areas was repainted only in part: the text's rectangle took the new colour while the rest of
+ * the rounded button kept the old one (owner's screenshot, 14.11.2026). A new element is always painted whole — the
+ * path every screen used before Beta 2.0. The container is untouched, so its horizontal scroll stays where it was;
+ * click handlers are delegated (they live on the screens), so a new button needs nothing re-bound. Returns how many
+ * buttons were replaced (0 when nothing changed — nothing is repainted at all then).
+ */
+export function swapToggles(buttons: Iterable<HTMLElement>, isOn: (b: HTMLElement) => boolean, aria: 'aria-selected' | 'aria-pressed' | 'aria-checked' | null = null): number {
+  let n = 0;
+  for (const b of Array.from(buttons)) {
+    const on = isOn(b);
+    if (b.classList.contains('on') === on && (!aria || b.getAttribute(aria) === String(on))) continue;
+    const parent = b.parentElement;
+    const x = parent?.scrollLeft ?? 0;
+    const fresh = b.cloneNode(true) as HTMLElement;
+    fresh.classList.toggle('on', on);
+    if (aria) fresh.setAttribute(aria, String(on));
+    const focused = document.activeElement === b;
+    b.replaceWith(fresh);
+    if (focused) fresh.focus({ preventScroll: true });
+    if (parent && parent.scrollLeft !== x) parent.scrollLeft = x;
+    n++;
+  }
+  return n;
+}
+
 export function portraitHTML(url: string | undefined, main: string, dark: string, cls = ''): string {
   return `<div class="portrait ${cls}" style="--pc:${main};--pd:${dark}">${url ? `<img src="${url}" alt="" draggable="false"/>` : ''}</div>`;
 }

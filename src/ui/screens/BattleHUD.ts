@@ -80,6 +80,24 @@ const _v = new Vector3();
 const _p = { x: 0, y: 0 };
 
 /** In-battle HUD: health, timer, show rating, cards, energy and all feedback text. */
+/**
+ * Beta 2.1 — the HUD writes a style only when its value changes (most of its bars hold still most frames): every write
+ * invalidates the element's style, and a phone redoes that work for nothing. Values are rounded so a bar that does not
+ * really move is not re-written by a rounding wobble.
+ */
+const STYLE_SEEN = new WeakMap<HTMLElement, { transform?: string; opacity?: string }>();
+function setStyle(el: HTMLElement, prop: 'transform' | 'opacity', v: string): void {
+  let c = STYLE_SEEN.get(el);
+  if (!c) {
+    c = {};
+    STYLE_SEEN.set(el, c);
+  }
+  if (c[prop] === v) return;
+  c[prop] = v;
+  el.style[prop] = v;
+}
+const r3 = (x: number) => Math.round(x * 1000) / 1000;
+
 export class BattleHUD implements Screen {
   readonly el: HTMLElement;
   private g: Game;
@@ -685,6 +703,26 @@ export class BattleHUD implements Screen {
   }
 
   // ------------------------------------------------------------- update
+  /** Beta 2.1: what the HP numbers and the viewers counter show now (formatted only on a change). */
+  private hpShown: number[] = [NaN, NaN];
+  private viewersShown = NaN;
+  /** Beta 2.1: each hand slot's live card and its parts, looked up once per card instead of four queries a frame. */
+  private slotParts: ({ el: HTMLElement; drain: HTMLElement; rib: HTMLElement; lock: HTMLElement } | null)[] = [null, null, null];
+
+  private slotCard(i: number): { el: HTMLElement; drain: HTMLElement; rib: HTMLElement; lock: HTMLElement } | null {
+    const slot = this.slots[i];
+    const c = this.slotParts[i];
+    if (c && c.el.parentElement === slot && !c.el.classList.contains('played')) return c;
+    const el = slot.querySelector('.hand-card:not(.played)') as HTMLElement | null;
+    if (!el) {
+      this.slotParts[i] = null;
+      return null;
+    }
+    const parts = { el, drain: el.querySelector('.drain') as HTMLElement, rib: el.querySelector('.combo-ribbon') as HTMLElement, lock: el.querySelector('.lock-overlay') as HTMLElement };
+    this.slotParts[i] = parts;
+    return parts;
+  }
+
   update(dt: number): void {
     if (this.tut) {
       this.tutAskT -= dt;
@@ -701,12 +739,16 @@ export class BattleHUD implements Screen {
     for (const side of [0, 1] as Side[]) {
       const f = m.fighters[side];
       const frac = f.hpFrac;
-      this.hpVal[side].style.transform = `scaleX(${frac})`;
+      setStyle(this.hpVal[side], 'transform', `scaleX(${r3(frac)})`);
       this.hpBoxes[side].classList.toggle('low', frac < 0.25 && !f.ko);
       this.lag[side] = this.lag[side] > frac ? damp(this.lag[side], frac, 3, dt) : frac;
-      this.hpLag[side].style.transform = `scaleX(${this.lag[side]})`;
-      const txt = `${Math.ceil(f.hp).toLocaleString('ru-RU')}`;
-      if (this.hpNum[side].textContent !== txt) this.hpNum[side].textContent = txt;
+      setStyle(this.hpLag[side], 'transform', `scaleX(${r3(this.lag[side])})`);
+      // (Beta 2.1: the number is formatted only when it changes — toLocaleString is not free, twice a frame)
+      const hpInt = Math.ceil(f.hp);
+      if (this.hpShown[side] !== hpInt) {
+        this.hpShown[side] = hpInt;
+        this.hpNum[side].textContent = hpInt.toLocaleString('ru-RU');
+      }
       // statuses: only the most important few, so the top bar stays readable
       const on: Record<string, boolean> = {
         stun: f.stun > 0,
@@ -744,7 +786,7 @@ export class BattleHUD implements Screen {
     // rating
     const rt = m.broadcast.rating;
     this.displayRating = damp(this.displayRating, rt, 8, dt);
-    this.ratingFill.style.transform = `scaleX(${Math.max(0.02, rt / 100)})`;
+    setStyle(this.ratingFill, 'transform', `scaleX(${r3(Math.max(0.02, rt / 100))})`);
     const rTxt = String(Math.round(this.displayRating));
     if (this.ratingNum.textContent !== rTxt) this.ratingNum.textContent = rTxt;
     this.ratingMeter.classList.toggle('hot', rt >= 75);
@@ -757,8 +799,12 @@ export class BattleHUD implements Screen {
       this.energyNeedT -= dt;
       if (this.energyNeedT <= 0) this.energyBar.querySelectorAll('i.need').forEach((s) => s.classList.remove('need'));
     }
-    const viewers = formatNumber(m.broadcast.viewers(m.cfg.fans));
-    if (this.viewersEl.textContent !== viewers) this.viewersEl.textContent = viewers;
+    const vRaw = Math.round(m.broadcast.viewers(m.cfg.fans));
+    if (vRaw !== this.viewersShown) {
+      this.viewersShown = vRaw;
+      const viewers = formatNumber(vRaw);
+      if (this.viewersEl.textContent !== viewers) this.viewersEl.textContent = viewers;
+    }
     // PRIME SPOTLIGHT: the final rating as the results screen will compute it right now
     if (this.modeLive && this.challenge?.goal.minRating !== undefined) {
       const proj = m.broadcast.finalRating();
@@ -779,7 +825,7 @@ export class BattleHUD implements Screen {
     if (this.energyNum.textContent !== eTxt) this.energyNum.textContent = eTxt;
     for (let i = 0; i < 10; i++) {
       const fill = Math.max(0, Math.min(1, energy - i));
-      this.energySegs[i].style.transform = `scaleX(${fill})`;
+      setStyle(this.energySegs[i], 'transform', `scaleX(${r3(fill)})`);
     }
     this.energyBar.classList.toggle('full', energy >= MATCH.maxEnergy - 0.01);
     let comboPrimed: string | null = null;
@@ -788,8 +834,9 @@ export class BattleHUD implements Screen {
     let openers = 0;
     for (let i = 0; i < 3; i++) {
       const c = hand.hand[i];
-      const cardEl = this.slots[i].querySelector('.hand-card:not(.played)') as HTMLElement | null;
-      if (!c || !cardEl) continue;
+      const parts = this.slotCard(i);
+      const cardEl = parts?.el ?? null;
+      if (!c || !cardEl || !parts) continue;
       const cost = CARDS[c].cost;
       const can = energy >= cost;
       if (can && !this.affordable[i]) {
@@ -799,8 +846,7 @@ export class BattleHUD implements Screen {
       }
       this.affordable[i] = can;
       cardEl.classList.toggle('disabled', !can);
-      const drain = cardEl.querySelector('.drain') as HTMLElement;
-      drain.style.transform = `scaleY(${can ? 0 : 1 - energy / cost})`;
+      setStyle(parts.drain, 'transform', `scaleY(${can ? 0 : r3(1 - energy / cost)})`);
       const combo = m.phase === 'fight' ? m.comboHint(0, c) : null;
       cardEl.classList.toggle('combo-ready', !!combo);
       // Chain badge: this card opens a combo with another card already in hand
@@ -812,7 +858,7 @@ export class BattleHUD implements Screen {
       const fresh = combo ? m.combos.power(0, combo.id, m.time) : 1;
       cardEl.classList.toggle('stale', !!combo && fresh < 1);
       if (combo) {
-        const rib = cardEl.querySelector('.combo-ribbon') as HTMLElement;
+        const rib = parts.rib;
         const label = fresh < 1 ? `${combo.name} · ${Math.round(fresh * 100)}%` : combo.name;
         if (rib.textContent !== label) rib.textContent = label;
         comboPrimed = combo.name;
@@ -826,7 +872,7 @@ export class BattleHUD implements Screen {
       const noTake = c === 'second_take' && m.phase === 'fight' && !m.takeReady(p);
       cardEl.classList.toggle('stunned', (stunned || staked || noTake) && !glitched);
       cardEl.classList.toggle('glitched', glitched);
-      const lock = cardEl.querySelector('.lock-overlay') as HTMLElement;
+      const lock = parts.lock;
       const lt = glitched ? 'ERROR' : stunned ? 'STUN' : stake === 'risk' ? 'HP' : stake === 'recharge' ? (p.stakesUses >= CARD_TUNING.high_stakes.uses ? '—' : `${Math.ceil(p.stakesCd)}s`) : noTake ? '—' : '';
       if (lock.textContent !== lt) lock.textContent = lt;
     }
@@ -834,7 +880,7 @@ export class BattleHUD implements Screen {
     this.comboStrip.classList.toggle('on', !!comboPrimed && win > 0);
     this.comboStrip.classList.toggle('urgent', !!comboPrimed && win > 0 && win < 1);
     if (comboPrimed) {
-      this.comboTrack.style.transform = `scaleX(${Math.min(1, win / m.combos.window)})`;
+      setStyle(this.comboTrack, 'transform', `scaleX(${r3(Math.min(1, win / m.combos.window))})`);
       if (!this.hints.combo && !g.save.data.hintsSeen) {
         this.hints.combo = true;
         this.showHint(`<b>КОМБО ГОТОВО</b><br/>Золотая карта сработает как комбо — сыграйте её за ${MATCH.comboWindow} с, пока идёт полоска!`);
@@ -845,13 +891,13 @@ export class BattleHUD implements Screen {
     }
     this.glitchEl.classList.toggle('on', p.glitch > 0);
     const lowHp = p.hpFrac < 0.25 && !p.ko && m.phase === 'fight';
-    this.vignette.style.opacity = String(Math.max(lowHp ? 0.35 + Math.sin(performance.now() / 300) * 0.15 : 0, this.flashVignette));
+    setStyle(this.vignette, 'opacity', String(r3(Math.max(lowHp ? 0.35 + Math.sin(performance.now() / 300) * 0.15 : 0, this.flashVignette))));
     this.flashVignette = Math.max(0, this.flashVignette - dt * 1.5);
 
     // flash
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 3.5);
-      this.flashEl.style.opacity = String(this.flash);
+      setStyle(this.flashEl, 'opacity', String(r3(this.flash)));
     }
 
     // floating text

@@ -1,10 +1,12 @@
 import { contractCost } from '../../config/careerPrices';
-import { CAREER_STAGES, GOALS, type GoalId, type StageId } from '../../config/career';
+import { CAREER_STAGES, GOALS, REWARDS, type GoalId, type StageId } from '../../config/career';
+import { plural } from '../../config/events.config';
+import { CAREER_GOAL_ART, careerGoalArt } from '../rewardArt';
 import { COSMETICS } from '../../config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
-import { fameTier } from '../../meta/CareerSystem';
+import { fameTier, levelFor, nextLevelGoal } from '../../meta/CareerSystem';
 import { fameIcon, levelBadge, stageArt } from '../careerArt';
 import { inRoster } from '../../meta/roster';
 import type { StageView } from '../../meta/careerStages';
@@ -188,7 +190,7 @@ export class CareerScreen implements Screen {
       if (st.done && !st.claimed) btn = `<button class="btn" data-act="claim" data-goal="${goal.id}"><span class="shine"></span>Забрать</button>`;
       else if (st.claimed) btn = `<span class="chip teal">${UI_ICONS.check.replace('<svg', '<svg width="10" height="10"')} Получено</span>`;
       return `<div class="goal ${st.done ? 'done' : ''} ${st.claimed ? 'claimed' : ''}">
-        <div class="gi">${st.done ? UI_ICONS.trophy : UI_ICONS.star}</div>
+        <div class="gi${CAREER_GOAL_ART[goal.id] ? ' has-art' : ''}">${careerGoalArt(goal.id, 40) ?? (st.done ? UI_ICONS.trophy : UI_ICONS.star)}</div>
         <div class="gm">
           <div class="gt">${esc(goal.title)}</div>
           <div class="gd">${esc(goal.desc)} · <span style="color:var(--gold)">$${goal.reward.money}</span> · <span style="color:var(--teal)">+${goal.reward.rep}★</span></div>
@@ -241,6 +243,7 @@ export class CareerScreen implements Screen {
               <div class="progress"><i style="transform:scaleX(${repInLevel})"></i></div>
             </div>
           </div>
+          ${this.nextLevelHTML()}
         </div>
         ${this.renderStages()}
         <div class="stats-grid">
@@ -265,6 +268,14 @@ export class CareerScreen implements Screen {
   }
 
   // ------------------------------------------------- career stages (1.5)
+  /** Beta 2.1: the nearest level as a readable goal — its badge, title, the ★ still missing and ≈ fights at the player's pace. */
+  private nextLevelHTML(): string {
+    const s = this.g.save.data;
+    const n = nextLevelGoal(s.reputation, s.matches, REWARDS.rep.win);
+    if (!n) return `<div class="cl-next top"><span>Высший уровень продюсера — «${esc(levelFor(s.reputation).title)}». Дальше — коллекция, PRIME LEAGUE и рекорды.</span></div>`;
+    return `<div class="cl-next">${levelBadge(n.level, 30, 'cl-next-badge')}<span>До уровня ${n.level} «${esc(n.title)}»: <b>${formatNumber(n.need)} ★</b> · ≈ ${n.fights} ${plural(n.fights, ['бой', 'боя', 'боёв'])} в вашем темпе</span></div>`;
+  }
+
   private renderStages(): string {
     const g = this.g;
     const all = g.career.stages();

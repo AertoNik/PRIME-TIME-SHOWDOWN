@@ -80,6 +80,19 @@ export function levelFor(rep: number): LevelInfo {
   };
 }
 
+/**
+ * Beta 2.1 — the nearest producer level as a goal the player can read: the reputation still missing, the next title and
+ * about how many fights it takes AT THIS PLAYER'S OWN PACE (lifetime reputation per fight — goals, stages and modes
+ * included; a fresh career counts a win's reputation). `null` at the top level.
+ */
+export function nextLevelGoal(rep: number, matches: number, winRep: number): { level: number; title: string; need: number; fights: number } | null {
+  const l = levelFor(rep);
+  if (l.next === null) return null;
+  const need = Math.max(1, Math.ceil(l.next - rep));
+  const pace = matches >= 5 ? Math.max(1, rep / matches) : winRep;
+  return { level: l.level + 1, title: LEVEL_TITLES[l.level], need, fights: Math.max(1, Math.ceil(need / pace)) };
+}
+
 export function fameTier(fans: number): string {
   let label = FAME_TIERS[0].label;
   for (const t of FAME_TIERS) if (fans >= t.min) label = t.label;

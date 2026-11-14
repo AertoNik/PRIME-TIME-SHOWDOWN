@@ -12,7 +12,7 @@ import { paidSource } from '../../meta/entitlements';
 import { inRoster } from '../../meta/roster';
 import { stageArt } from '../careerArt';
 import { currencyArt } from '../currencyArt';
-import { el, esc, portraitHTML, setScreenHTML } from '../dom';
+import { el, esc, portraitHTML, setScreenHTML, swapToggles } from '../dom';
 import { cosmeticPic } from '../effectArt';
 import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
@@ -380,15 +380,13 @@ export class CollectionScreen implements Screen {
     const d = this.state();
     const y = scroller.scrollTop;
     top.innerHTML = this.topHTML(d);
+    // Beta 2.1: a tab whose state changes is re-created whole (iPhone Safari half-repainted an in-place class change)
     nav.querySelectorAll<HTMLElement>('button[data-sec]').forEach((b) => {
       const s = SECTIONS.find((x) => x.id === b.dataset.sec);
-      if (!s) return;
-      const on = s.id === this.section;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-selected', String(on));
-      const html = this.tabHTML(s, d.counts);
-      if (b.innerHTML !== html) b.innerHTML = html;
+      const html = s ? this.tabHTML(s, d.counts) : '';
+      if (s && b.innerHTML !== html) b.innerHTML = html;
     });
+    swapToggles(nav.querySelectorAll<HTMLElement>('button[data-sec]'), (b) => b.dataset.sec === this.section, 'aria-selected');
     const back = sectionChanged ? null : keepScrollX(body);
     body.innerHTML = this.bodyHTML(d);
     back?.();
@@ -407,9 +405,10 @@ export class CollectionScreen implements Screen {
     else this.refreshInPlace();
   }
 
-  /** Marks `chip` as the chosen one of its row, in place (the row keeps its scroll). */
+  /** Marks `chip` as the chosen one of its row (the row and its scroll stay; the two changed chips are re-created). */
   private pickChip(chip: HTMLElement): void {
-    chip.parentElement?.querySelectorAll('.cl-chip').forEach((c) => c.classList.toggle('on', c === chip));
+    const row = chip.parentElement;
+    if (row) swapToggles(row.querySelectorAll<HTMLElement>('.cl-chip'), (c) => c === chip);
   }
 
   /** Scrolls the tab bar just enough for the open tab to be fully visible (never the page itself). */
@@ -645,7 +644,7 @@ export class CollectionScreen implements Screen {
   private achievementsHTML(ach: AchievementView[]): string {
     const done = ach.filter((a) => a.done);
     const todo = ach.filter((a) => !a.done);
-    return `<div class="cl-ach-sum panel"><b>${done.length}</b> из ${ach.length} достижений · новые достижения появятся в Beta 2.1</div>
+    return `<div class="cl-ach-sum panel"><b>${done.length}</b> из ${ach.length} достижений · новые достижения появятся в следующих обновлениях</div>
       <div class="cl-ach">${done.map((a) => this.achievementCard(a)).join('')}</div>
       ${todo.length ? `<div class="cl-block-head"><span class="h2">В процессе</span><span class="label">${todo.length}</span></div><div class="cl-ach">${todo.map((a) => this.achievementCard(a)).join('')}</div>` : ''}`;
   }

@@ -1,5 +1,6 @@
 import { crypto } from './node';
 import { getRigGeometry } from '../../src/render/FighterModel';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { BufferGeometry } from 'three';
 
 // Alpha 1.8.8 — a fingerprint of a look's procedural geometry (every bone's toon and glow parts, the
@@ -25,6 +26,19 @@ function geoPrint(h: any, g: BufferGeometry | null): void {
   h.update('i' + (idx ? idx.count : 0));
 }
 
+/**
+ * Beta 2.1: the shoes moved from the shin onto their own ankle bone (`footL` / `footR`, origin = the shin's end, d.shin
+ * below the knee) so a foot can stay flat on the floor — the same shapes. The print measures the model, not the bone
+ * split: the foot's geometry is put back where it was, appended to the shin's in the shin's frame, exactly as the shin
+ * built it before — so every look must still match its pre-1.8.8 print value for value (no tolerance).
+ */
+function shinWithFoot(shin: BufferGeometry | null, foot: BufferGeometry | null, shinLen: number): BufferGeometry | null {
+  if (!foot) return shin;
+  const f = foot.clone();
+  f.translate(0, -shinLen, 0);
+  return shin ? mergeGeometries([shin.clone(), f], false) : f;
+}
+
 export function rigPrint(lookId: string): string {
   const G = getRigGeometry(lookId);
   const h = crypto.createHash('sha256');
@@ -33,7 +47,15 @@ export function rigPrint(lookId: string): string {
     // (1.9.7: the optional bones of CRAX — the key and the crank — are empty for everyone else; an empty one is left out,
     // so every look without them keeps exactly its earlier print)
     if ((bone === 'key' || bone === 'crank') && !b.toon && !b.glow) continue;
+    // (Beta 2.1: the foot is printed inside its shin — see shinWithFoot)
+    if (bone === 'footL' || bone === 'footR') continue;
     h.update(bone);
+    if (bone === 'shinL' || bone === 'shinR') {
+      const foot = G.bones[bone === 'shinL' ? 'footL' : 'footR'];
+      geoPrint(h, shinWithFoot(b.toon, foot.toon, G.dims.shin));
+      geoPrint(h, shinWithFoot(b.glow, foot.glow, G.dims.shin));
+      continue;
+    }
     geoPrint(h, b.toon);
     geoPrint(h, b.glow);
   }

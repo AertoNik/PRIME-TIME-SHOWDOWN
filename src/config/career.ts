@@ -19,7 +19,12 @@ export const CAREER_START = {
  * in ~5½ months, an active one in ~2 months, a beginner (3 short days a week) climbs one level every 1–2 months.
  * A later level: append here (thresholds only grow) and, when its picture exists, to LEVEL_ART (src/ui/careerArt.ts).
  */
-export const LEVEL_THRESHOLDS = [0, 60, 150, 290, 480, 720, 1020, 1400, 1850, 2400, 3100, 3950, 5000, 6300, 7900, 9850, 12250, 15200, 18800, 23200];
+// Beta 2.1 (npm run careerpace): levels 11–20 re-paced — each level takes ONE more play day than the one before for a
+// regular player (≈3 → ≈12 days) instead of a wait that grew to 23 play days; level 20 at ≈ day 120 instead of 167. Every
+// threshold is at or below Beta 2.0's (3100 … 23200), so no producer ever drops a level; levels 1–10 are untouched.
+export const LEVEL_THRESHOLDS = [0, 60, 150, 290, 480, 720, 1020, 1400, 1850, 2400, 3060, 3900, 4950, 6250, 7700, 9400, 11300, 13450, 15750, 18300];
+/** Beta 2.0's thresholds (for the checks: the re-pace may only lower them). */
+export const LEVEL_THRESHOLDS_200 = [0, 60, 150, 290, 480, 720, 1020, 1400, 1850, 2400, 3100, 3950, 5000, 6300, 7900, 9850, 12250, 15200, 18800, 23200];
 
 export const LEVEL_TITLES = [
   'Стажёр эфира',

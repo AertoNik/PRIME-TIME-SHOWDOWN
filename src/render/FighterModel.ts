@@ -437,6 +437,9 @@ export type BoneName =
   | 'shinL'
   | 'thighR'
   | 'shinR'
+  /** Beta 2.1: the shoes on their own ankle bone (the same geometry — it was merged into the shin) so a foot can stay flat. */
+  | 'footL'
+  | 'footR'
   | 'weaponR'
   | 'weaponL'
   /** Alpha 1.7: coat tails on their own light bone (they flare with speed). */
@@ -499,6 +502,8 @@ class Bones {
       'shinL',
       'thighR',
       'shinR',
+      'footL',
+      'footR',
       'weaponR',
       'weaponL',
       'tail',
@@ -638,43 +643,45 @@ export function getRigGeometry(lookId: string): RigGeometry {
     }
 
     // ---------------- shoes (built at ankle = ground)
-    const g = -d.shin;
+    // Beta 2.1: on the foot bone, whose origin IS the ankle (g = 0 here = -d.shin on the shin before) — the same shapes
+    const g = 0;
+    const F = B.t(side === 'L' ? 'footL' : 'footR');
     const sw = d.shoeW;
     const sl = d.shoeL;
     const sm = look.shoes.main;
     const sa = look.shoes.accent;
     const so = look.shoes.sole;
     const boots = !!look.shoes.boots;
-    S.add(rbox(sw, 0.1, sl, 0.045), so, { p: [0, g + 0.05, 0.07] });
-    S.add(rbox(sw + 0.012, 0.035, sl + 0.012, 0.017), boots ? shade(so, 1.6) : sa, { p: [0, g + 0.105, 0.07] });
+    F.add(rbox(sw, 0.1, sl, 0.045), so, { p: [0, g + 0.05, 0.07] });
+    F.add(rbox(sw + 0.012, 0.035, sl + 0.012, 0.017), boots ? shade(so, 1.6) : sa, { p: [0, g + 0.105, 0.07] });
     const upH = boots ? 0.27 : 0.17;
-    S.add(rbox(sw * 0.9, upH, sl * 0.78, 0.07), sm, { p: [0, g + 0.11 + upH / 2, 0.02] });
-    S.add(sph(sw * 0.46, 14, 10), sm, { p: [0, g + 0.15, sl * 0.33], s: [1, 0.62, 1.08] });
+    F.add(rbox(sw * 0.9, upH, sl * 0.78, 0.07), sm, { p: [0, g + 0.11 + upH / 2, 0.02] });
+    F.add(sph(sw * 0.46, 14, 10), sm, { p: [0, g + 0.15, sl * 0.33], s: [1, 0.62, 1.08] });
     // toe cap
-    S.add(sph(sw * 0.42, 12, 8), boots ? shade(sm, 0.75) : sa, { p: [0, g + 0.13, sl * 0.42], s: [1, 0.48, 0.8] });
+    F.add(sph(sw * 0.42, 12, 8), boots ? shade(sm, 0.75) : sa, { p: [0, g + 0.13, sl * 0.42], s: [1, 0.48, 0.8] });
     if (style === 'tailored') {
       // Alpha 1.7: polished dress boots — a slim pointed toe with a metal tip, a low heel
-      S.add(sph(sw * 0.3, 10, 8), sa, { p: [0, g + 0.1, sl * 0.52], s: [0.9, 0.5, 0.9] });
-      S.add(rbox(sw * 0.8, 0.08, 0.12, 0.02), shade(so, 1.4), { p: [0, g + 0.04, -sl * 0.3] });
+      F.add(sph(sw * 0.3, 10, 8), sa, { p: [0, g + 0.1, sl * 0.52], s: [0.9, 0.5, 0.9] });
+      F.add(rbox(sw * 0.8, 0.08, 0.12, 0.02), shade(so, 1.4), { p: [0, g + 0.04, -sl * 0.3] });
     } else {
       // laces
       for (let i = 0; i < 3; i++) {
-        S.add(rbox(sw * 0.62, 0.022, 0.035, 0.01), boots ? sa : 0xffffff, {
+        F.add(rbox(sw * 0.62, 0.022, 0.035, 0.01), boots ? sa : 0xffffff, {
           p: [0, g + 0.23 + (boots ? 0.06 : 0) - i * 0.022, 0.06 + i * 0.06],
           r: [0.45, 0, 0],
         });
       }
       // side swoosh
       for (const ss of [1, -1]) {
-        S.add(rbox(0.012, 0.045, sl * 0.5, 0.01), sa, { p: [ss * sw * 0.455, g + 0.17, 0.02], r: [-0.25, 0, 0] });
+        F.add(rbox(0.012, 0.045, sl * 0.5, 0.01), sa, { p: [ss * sw * 0.455, g + 0.17, 0.02], r: [-0.25, 0, 0] });
       }
     }
     // heel tab
-    S.add(rbox(sw * 0.4, 0.09, 0.05, 0.02), sa, { p: [0, g + 0.24 + (boots ? 0.08 : 0), -sl * 0.36] });
+    F.add(rbox(sw * 0.4, 0.09, 0.05, 0.02), sa, { p: [0, g + 0.24 + (boots ? 0.08 : 0), -sl * 0.36] });
     // collar
     const col = tor(sr * 1.05, 0.04);
     col.rotateX(Math.PI / 2);
-    S.add(col, shade(sm, 0.7), { p: [0, g + 0.11 + upH, 0.0] });
+    F.add(col, shade(sm, 0.7), { p: [0, g + 0.11 + upH, 0.0] });
   }
 
   // ---------------------------------------------------------------- torso
@@ -2544,6 +2551,9 @@ export interface FighterRig {
   kneeL: Group;
   legR: Group;
   kneeR: Group;
+  /** Beta 2.1: the ankles (the shoes) — level with the floor while a foot stands on it. */
+  footL: Group;
+  footR: Group;
   weaponR: Group | null;
   weaponL: Group | null;
   /** Alpha 1.7: coat tails (Lucien) — null for everyone else. */
@@ -2617,10 +2627,16 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
   attach('thighL', legL);
   const kneeL = boneGroup('kneeL', legL, [0, -d.thigh, 0]);
   attach('shinL', kneeL);
+  const footL = boneGroup('footL', kneeL, [0, -d.shin, 0]);
+  attach('footL', footL);
   const legR = boneGroup('legR', hips, [-d.hipW, -0.04, 0]);
   attach('thighR', legR);
   const kneeR = boneGroup('kneeR', legR, [0, -d.thigh, 0]);
   attach('shinR', kneeR);
+  const footR = boneGroup('footR', kneeR, [0, -d.shin, 0]);
+  attach('footR', footR);
+  // (Beta 2.1: a shoe stands on the floor — its shadow is under it anyway; no extra draw calls in the shadow pass)
+  for (const f of [footL, footR]) for (const o of f.children) o.castShadow = false;
 
   // Alpha 1.7: the coat tails swing on their own light bone at the back of the waist
   let tail: Group | null = null;
@@ -2727,6 +2743,8 @@ export function createFighterRig(lookId: string, holo = false): FighterRig {
     kneeL,
     legR,
     kneeR,
+    footL,
+    footR,
     weaponR,
     weaponL,
     tail,

@@ -18,7 +18,8 @@ import { fameIcon, fameIndex, LEVEL_ART, levelBadge, stageArt } from '../src/ui/
 import { currencyArt } from '../src/ui/currencyArt';
 import { cosmeticPic, EFFECT_ART } from '../src/ui/effectArt';
 import { leagueSymbol, modeEmblem, rankEmblem, rankEmblemSvg, seasonEmblem } from '../src/ui/leagueArt';
-import { achievementArt, achievementArtId, GOAL_ART, goalArt, rewardSectionArt } from '../src/ui/rewardArt';
+import { achievementArt, achievementArtId, CAREER_GOAL_ART, careerGoalArt, rewardSectionArt } from '../src/ui/rewardArt';
+import { GOALS } from '../src/config/career';
 import { EVENTS } from '../src/config/events.config';
 import { CHALLENGES } from '../src/config/modes.config';
 import { BOSSES } from '../src/config/boss.config';
@@ -139,11 +140,12 @@ check('the reward sections: the collection\'s «Награды» and its three s
 check('a failed reward emblem falls back to a 1.x drawing', (['collection', 'career', 'boss', 'daily'] as const).every((id) => fallbackHTML(`rw|${id}`).includes('<svg')));
 const cs = read('src/ui/screens/CollectionScreen.ts');
 check('MY COLLECTION uses them: the overview, the rewards section and its groups, the achievements', cs.includes("rewardSectionArt('collection', 44)") && cs.includes('rewardSectionArt(s.id, 40)') && cs.includes('achievementArt(a, 64)'));
-const goals = EVENTS.flatMap((e) => e.quests);
-check('two seasonal goal pictures: «Дебют в эфире» (the first goal on air) and «Мастер комбо» (the combo goals)', Object.keys(GOAL_ART).sort().join() === 'combo_carnival,first_night,first_snow,garland_combo' && new Set(Object.values(GOAL_ART)).size === 2 && goals.filter((q) => GOAL_ART[q.id] === 'combo').every((q) => q.metric.kind === 'combos') && goals.filter((q) => GOAL_ART[q.id] === 'debut').every((q) => q.metric.kind === 'wins' || q.metric.kind === 'matches'));
-check('every mapped goal exists; the others keep their 1.x icon (six pictures wait for Beta 2.1)', Object.keys(GOAL_ART).every((id) => goals.some((q) => q.id === id)) && goals.filter((q) => !GOAL_ART[q.id]).every((q) => goalArt(q, 40).startsWith('<svg')) && srcOf(goalArt(goals.find((q) => q.id === 'first_snow')!, 40)).endsWith('ui/goals/sm/debut.webp') && srcOf(goalArt(goals.find((q) => q.id === 'first_night')!, 24)).endsWith('ui/goals/xs/debut.webp') && file('goals', 'combo', 40));
-check('the goals themselves are unchanged (FIRST SNOW ON AIR: 5 matches, 30; GARLAND COMBO: 60 combos, 50)', ((q) => q?.target === 5 && q.reward === 30)(goals.find((q) => q.id === 'first_snow')) && ((q) => q?.target === 60 && q.reward === 50)(goals.find((q) => q.id === 'garland_combo')) && fallbackHTML('goal|combo').includes('<svg'));
-check('the events screen draws the goal pictures', read('src/ui/screens/EventsScreen.ts').includes('goalArt(d, 40)'));
+// Beta 2.1: «Дебют в эфире» and «Мастер комбо» are the career's «Цели сезона» (career.ts GOALS: first_win, combo_3) —
+// Beta 2.0 had put the two pictures on the winter event's quests by mistake
+check('the two goal pictures belong to the career goals «Дебют в эфире» (first_win) and «Мастер комбо» (combo_3)', JSON.stringify(CAREER_GOAL_ART) === '{"first_win":"debut","combo_3":"combo"}' && GOALS.find((g) => g.id === 'first_win')?.title === 'Дебют в эфире' && GOALS.find((g) => g.id === 'combo_3')?.title === 'Мастер комбо' && GOALS.length === 8);
+check('they load their files; the six other career goals keep their icon (pictures wait for a later update)', srcOf(careerGoalArt('first_win', 40) ?? '').endsWith('ui/goals/sm/debut.webp') && srcOf(careerGoalArt('combo_3', 24) ?? '').endsWith('ui/goals/xs/combo.webp') && GOALS.filter((g) => !CAREER_GOAL_ART[g.id]).every((g) => careerGoalArt(g.id, 40) === null) && file('goals', 'debut', 40) && fallbackHTML('goal|first_win').includes('<svg'));
+check('the goals themselves are unchanged (first win $150 +15★; 3 combos in a match $200 +15★)', ((g) => g?.target === 1 && g.reward.money === 150 && g.reward.rep === 15)(GOALS.find((g) => g.id === 'first_win')) && ((g) => g?.target === 3 && g.reward.money === 200 && g.reward.rep === 15)(GOALS.find((g) => g.id === 'combo_3')));
+check('the Career screen and the results draw them; the winter quests keep their own icons', read('src/ui/screens/CareerScreen.ts').includes('careerGoalArt(goal.id, 40)') && read('src/ui/screens/ResultsScreen.ts').includes('careerGoalArt(id, 22') && !read('src/ui/screens/EventsScreen.ts').includes('goalArt') && EVENTS.length > 0);
 
 let failed = 0;
 for (const [name, pass] of checks) {

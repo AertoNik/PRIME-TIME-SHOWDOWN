@@ -1,7 +1,7 @@
-import type { QuestDef } from '../config/events.config';
+import type { GoalId } from '../config/career';
 import type { AchievementView } from '../meta/Collection';
 import { artImg, registerFallback } from './artIcons';
-import { ICONS, REWARD_ART } from './eventArt';
+import { REWARD_ART } from './eventArt';
 import { UI_ICONS } from './icons';
 import { MODE_ICONS } from './modeArt';
 
@@ -59,20 +59,21 @@ export function rewardSectionArt(id: RewardSection, size: number, cls = ''): str
 
 registerFallback('rw', ([id]) => `<span class="rw-art-old">${(REWARD_OLD[id as RewardSection] ?? REWARD_OLD.collection)()}</span>`);
 
-/** Seasonal goal → picture id (events.config.ts goal ids). The other goals keep their icons until Beta 2.1. */
-export const GOAL_ART: Readonly<Record<string, string>> = {
-  // «Дебют в эфире»: the season's first goal on air
-  first_night: 'debut',
-  first_snow: 'debut',
-  // «Мастер комбо»: the season's combo goal
-  combo_carnival: 'combo',
-  garland_combo: 'combo',
+/**
+ * The career's «Цели сезона» (career.ts GOALS — the eight goals of the Career screen) → picture id. Beta 2.1: the two
+ * pictures the owner prepared for «Дебют в эфире» and «Мастер комбо» belong HERE — Beta 2.0 had put them on the winter
+ * event's quests by mistake (the event opens on 02.12, so no player saw them there). The six other goals keep their icon
+ * until their pictures are ready.
+ */
+export const CAREER_GOAL_ART: Readonly<Partial<Record<GoalId, string>>> = {
+  first_win: 'debut',
+  combo_3: 'combo',
 };
 
-/** A seasonal goal's icon: the owner's picture where there is one, else the goal's 1.x icon. */
-export function goalArt(q: Pick<QuestDef, 'id' | 'icon'>, size: number): string {
-  const id = GOAL_ART[q.id];
-  return id ? artImg('goals', id, size, { cls: 'goal-art', fb: `goal|${q.icon}` }) : ICONS[q.icon];
+/** A career goal's picture (`null` when it has none yet — the screen draws its usual icon). */
+export function careerGoalArt(id: GoalId, size: number, cls = ''): string | null {
+  const pic = CAREER_GOAL_ART[id];
+  return pic ? artImg('goals', pic, size, { cls: `goal-art ${cls}`, fb: `goal|${id}` }) : null;
 }
 
-registerFallback('goal', ([icon]) => ICONS[icon as QuestDef['icon']] ?? '');
+registerFallback('goal', () => UI_ICONS.star);

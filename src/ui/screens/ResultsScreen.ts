@@ -1,5 +1,7 @@
 import { cosmeticPic } from '../effectArt';
-import { GOALS } from '../../config/career';
+import { GOALS, REWARDS } from '../../config/career';
+import { plural } from '../../config/events.config';
+import { careerGoalArt } from '../rewardArt';
 import { COSMETICS } from '../../config/cosmetics.config';
 import { RIVALS } from '../../config/fighters';
 import { COMBOS } from '../../config/cards';
@@ -11,7 +13,7 @@ import { ICONS } from '../eventArt';
 import { currencyIcon } from './EventsScreen';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game, ModeSession } from '../../game/Game';
-import { gradeFor, levelFor, type MatchOutcome } from '../../meta/CareerSystem';
+import { gradeFor, levelFor, nextLevelGoal, type MatchOutcome } from '../../meta/CareerSystem';
 import { levelBadge } from '../careerArt';
 import { formatChallengeValue, type BossOutcome, type ChallengeOutcome } from '../../meta/GameModes';
 import { MODE_ICONS } from '../modeArt';
@@ -95,6 +97,8 @@ export class ResultsScreen implements Screen {
     const lvlAfter = levelFor(this.g.save.data.reputation);
     const lvlBefore = levelFor(o.repBefore);
     const levelUp = o.levelAfter > o.levelBefore;
+    // Beta 2.1: the nearest level as a goal (★ still missing, ≈ fights at this player's own pace)
+    const nextUp = nextLevelGoal(this.g.save.data.reputation, this.g.save.data.matches, REWARDS.rep.win);
     // quick, readable reveal (skippable with a tap)
     const T0 = 0.45;
     const STEP = 0.07;
@@ -110,7 +114,7 @@ export class ResultsScreen implements Screen {
     const goals = o.newGoals
       .map((id) => {
         const g = GOALS.find((x) => x.id === id)!;
-        return `<div class="goal-done">${UI_ICONS.star}<div class="fill"><div class="h2" style="font-size:12px">Цель выполнена: ${esc(g.title)}</div><div class="muted" style="font-size:11px">Заберите $${g.reward.money} и +${g.reward.rep}★ в разделе «Карьера»</div></div></div>`;
+        return `<div class="goal-done">${careerGoalArt(id, 22, 'gd-art') ?? UI_ICONS.star}<div class="fill"><div class="h2" style="font-size:12px">Цель выполнена: ${esc(g.title)}</div><div class="muted" style="font-size:11px">Заберите $${g.reward.money} и +${g.reward.rep}★ в разделе «Карьера»</div></div></div>`;
       })
       .join('') + stageNoticeHTML(o.newStage);
     // combos landed this match, best first
@@ -256,11 +260,12 @@ export class ResultsScreen implements Screen {
             <span class="display" style="font-size:13px;color:#ff8ae6"><span data-fans>${formatNumber(o.fighterFansBefore)}</span></span>
           </div>
           <div class="row between" style="margin-top:12px">
-            <span class="h2 res-lvl">${levelBadge(lvlAfter.level, 30)}Уровень продюсера ${lvlAfter.level}${levelUp ? ' <span class="chip gold" style="margin-left:6px">LEVEL UP!</span>' : ''}</span>
+            <span class="h2 res-lvl">${levelBadge(lvlAfter.level, 30, levelUp ? 'lvl-pop' : '')}Уровень продюсера ${lvlAfter.level}${levelUp ? ' <span class="chip gold" style="margin-left:6px">LEVEL UP!</span>' : ''}</span>
             <span class="label">${Math.floor(this.g.save.data.reputation)}${lvlAfter.next !== null ? ' / ' + lvlAfter.next : ''} ★</span>
           </div>
           <div class="progress" style="margin-top:8px"><i data-lvl style="transform:scaleX(${levelUp ? 0 : lvlBefore.progress})"></i></div>
           ${levelUp ? `<div class="muted" style="font-size:12px;margin-top:8px">${lvlAfter.level <= 6 ? `Новые возможности: проверьте контракты и сложность «${lvlAfter.level >= 4 ? 'Чемпион' : 'Профи'}».` : `Новое звание продюсера: «${esc(lvlAfter.title)}».`}</div>` : ''}
+          ${nextUp ? `<div class="res-next">До уровня ${nextUp.level}: <b>${formatNumber(nextUp.need)} ★</b> · ≈ ${nextUp.fights} ${plural(nextUp.fights, ['бой', 'боя', 'боёв'])}</div>` : ''}
         </div>
         <div style="margin:0 12px">${goals}</div>
       </div>

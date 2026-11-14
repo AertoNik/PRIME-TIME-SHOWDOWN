@@ -19107,12 +19107,13 @@ button.lg-arena:active {
 /* ===================================================================== Beta 2.0 (final)
    The owner's pictures of the existing achievements, reward sections and two seasonal goals; MY COLLECTION's tab bar
    and chip rows scroll smoothly by touch on iPhone (momentum, no rubber-banding of the page, no double-tap zoom). */
+/* (Beta 2.1: no legacy `-webkit-overflow-scrolling: touch` on these bars nested in the page's scroller — modern iOS
+   scrolls them with momentum anyway, and a second legacy touch-scrolling layer is one less thing to repaint) */
 .cl-nav,
 .cl-subnav,
 .cl-strip {
-  -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  scroll-padding-inline: 14px;
+  scroll-padding-inline: 12px;
 }
 .cl-nav button,
 .cl-subnav .cl-chip,
@@ -19175,18 +19176,26 @@ button.lg-arena:active {
   font-size: 11px;
   color: var(--muted, #a9b0d8);
 }
-.eq-ico.has-art {
-  padding: 1px;
+/* Beta 2.1: the two goal pictures belong to the career's «Цели сезона» (they were on the winter quests in 2.0) */
+.goal .gi.has-art {
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
   background: none;
   box-shadow: none;
 }
-.eq-ico .goal-art {
+.goal .gi .goal-art {
   display: block;
   width: 100%;
   height: 100%;
 }
-.ev-quest.claimed .eq-ico .goal-art {
-  opacity: 0.7;
+.goal:not(.done) .gi .goal-art {
+  filter: grayscale(0.55) brightness(0.85);
+}
+.goal-done .gd-art {
+  flex: none;
+  width: 26px;
+  height: 26px;
 }
 
 /* ===================================================================== Beta 2.0 patch (iPhone Safari)
@@ -19217,6 +19226,70 @@ button.lg-arena:active {
   .menu-head {
     margin-top: 24px;
   }
+}
+
+/* Beta 2.1 — the nearest producer level as a goal (Career, Results) and a little pop of the badge on a level up */
+.cl-next {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted, #a9b0d8);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.cl-next b {
+  color: var(--teal);
+}
+.cl-next.top {
+  color: #ffe9a8;
+}
+.cl-next-badge {
+  flex: none;
+}
+.res-next {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted, #a9b0d8);
+}
+.res-next b {
+  color: var(--teal);
+}
+.lvl-pop {
+  animation: lvl-pop 0.7s cubic-bezier(0.2, 1.6, 0.4, 1) 0.25s both;
+}
+@keyframes lvl-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lvl-pop {
+    animation: none;
+  }
+}
+
+/* Beta 2.1 — PRIME LEAGUE: the next step as a goal (≈ wins over an equal opponent, the qualifier ahead) */
+.lg-rank-goal {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted, #a9b0d8);
+}
+.lg-rank-goal b {
+  color: #fff;
 }
 
 /* Beta 2.0 hotfix — the bundle's buy button fits every iPhone: «КУПИТЬ КОМПЛЕКТ» on its own line in a size that follows
