@@ -7,6 +7,8 @@ import { UI_ICONS } from '../icons';
 import { CHALLENGES, SURVIVAL } from '../../config/modes.config';
 import type { Screen } from '../UI';
 import { openFightEntry } from './LeagueScreen';
+import { levelBadge } from '../careerArt';
+import { currencyArt } from '../currencyArt';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
 import { openDaily } from '../dailyUI';
 import { cardCatalog, catalogStats } from '../cardCatalog';
@@ -285,9 +287,9 @@ export class MenuScreen implements Screen {
     this.el.innerHTML = `
       <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${UI_ICONS.gift}<i class="daily-dot" aria-hidden="true"></i></button>
       <div class="topbar" style="padding-right:62px">
-        <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge">${lvl.level}</span><span class="lvl-id">ID</span></button>${hint}
-        <div class="stat-pill"><span class="ico money">${UI_ICONS.money}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
-        <div class="stat-pill"><span class="ico rep">${UI_ICONS.rep}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
+        <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge-box">${levelBadge(lvl.level, 44, 'lvl-badge')}</span><span class="lvl-id">ID</span></button>${hint}
+        <div class="stat-pill"><span class="ico pic">${currencyArt('money', 30)}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
+        <div class="stat-pill"><span class="ico pic">${currencyArt('rep', 30)}</span><span data-rep>${Math.floor(this.shownRep < 0 ? s.reputation : this.shownRep)}</span></div>
       </div>
       <div class="menu-head">
         <div class="logo"><span class="live">LIVE</span><span class="l1">PRIME TIME</span><span class="l2">SHOWDOWN</span>${ev ? `<span class="season-tag">${esc(ev.title)}</span>` : ''}</div>

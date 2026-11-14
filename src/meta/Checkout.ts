@@ -1,5 +1,5 @@
 import { offerSells, type OfferRevision } from '../config/offer.config';
-import { SHOP_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
+import { SALE_ITEMS, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { ShopItemState } from './Shop';
 
 // Alpha 1.8.8 (stage 3) — PRIME CHECKOUT: what the purchase window shows and why a purchase cannot
@@ -56,6 +56,10 @@ export type CheckoutBlock =
   | 'unavailable'
   | 'owned'
   | 'seasonal_only'
+  /** Beta 2.0: a bundle with an item the account owns already (sold only whole — the saving would be false). */
+  | 'bundle_owned'
+  /** Beta 2.0: another open order would give the same item (a bundle and one of its items). */
+  | 'overlap_order'
   | 'price_pending'
   | 'sales_closed'
   | 'offer_missing'
@@ -132,7 +136,7 @@ export function consentOf(offer: OfferRevision | null, acceptedRevision: number)
 
 /** Everything the PRIME CHECKOUT window shows, and the first reason it cannot go on. */
 export function buildCheckout(i: CheckoutInput): CheckoutView {
-  const item = SHOP_ITEMS.find((x) => x.sku === i.sku) ?? null;
+  const item = SALE_ITEMS.find((x) => x.sku === i.sku) ?? null;
   const consent = consentOf(i.offer, i.acceptedRevision);
   let block: CheckoutBlock | null = null;
   const st = i.state;
@@ -140,7 +144,10 @@ export function buildCheckout(i: CheckoutInput): CheckoutView {
   if (!item || !st) block = 'unavailable';
   else if (st.owned || st.status === 'received') block = 'owned';
   else if (st.status === 'seasonal' || st.status === 'upcoming') block = 'seasonal_only';
+  else if (st.ownedParts?.length) block = 'bundle_owned';
   else if (i.priceRub === null) block = 'price_pending';
+  // Beta 2.0: a bundle only under terms that sell bundles (the server refuses it too — bundles_closed)
+  else if (item.bundle && i.offer && i.offer.bundles !== true) block = 'price_pending';
   // 1.9.5: an approved price, but the offer revision shown does not name the item in its Appendix 1 (the server refuses it too)
   else if (i.offer && !offerSells(i.offer, i.sku)) block = 'price_pending';
   else if (!i.salesOpen) block = 'sales_closed';
@@ -241,7 +248,7 @@ export function loadPending(store: MiniStorage | null, now: number = Date.now())
     !!p &&
     p.v === 1 &&
     typeof p.sku === 'string' &&
-    SHOP_ITEMS.some((i) => i.sku === p!.sku) &&
+    SALE_ITEMS.some((i) => i.sku === p!.sku) &&
     (p.from === 'menu' || p.from === 'collection') &&
     (p.step === 'item' || p.step === 'checkout') &&
     typeof p.at === 'number' &&

@@ -18,12 +18,12 @@ import { ARENA_ORDER } from '../src/config/arenas.config';
 import { leagueArenaCatalog } from '../src/meta/LeagueArenas';
 import { CAREER_STAGES, GOALS } from '../src/config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../src/config/cards';
-import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, isServerEarned } from '../src/config/cosmetics.config';
+import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, FX_SLOTS, isServerEarned } from '../src/config/cosmetics.config';
 import { DAILY } from '../src/config/daily.config';
 import { EVENTS } from '../src/config/events.config';
 import { seasonOf } from '../src/config/seasonal';
 import { DEMO_OFFER, SHOP_OFFERS, TEST_OFFER } from '../src/config/offer.config';
-import { MINOR_PURCHASES, SHOP_ITEMS, SHOP_PRICES_APPROVED_ON, SHOP_PRICES_RUB, SHOP_PRICE_STATUS, SHOP_PROMOS, SHOP_SALES_OPEN, SHOP_TEST_PRICES_RUB, SKINS, approvedPriceRub, receiptNameOf, rubToKop } from '../src/config/shop.config';
+import { BUNDLE_ITEMS, MINOR_PURCHASES, SALE_ITEMS, SHOP_ITEMS, SHOP_PRICES_APPROVED_ON, SHOP_PRICES_RUB, SHOP_PRICE_STATUS, SHOP_PROMOS, SHOP_SALES_OPEN, SHOP_TEST_PRICES_RUB, SKINS, approvedPriceRub, receiptNameOf, rubToKop } from '../src/config/shop.config';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../src/config/fighters';
 import { PERK_ORDER, SURVIVAL } from '../src/config/modes.config';
 import { CARD_KIND, LEAGUE, LEAGUE_FIGHTERS, LEAGUE_RULES_VERSION, RANKS, SYSTEM_ROSTER, TACTIC_ORDER } from '../src/config/league.config';
@@ -107,6 +107,7 @@ export function rulesSource(): string {
     serverEarned,
     cosmetics,
     cosmeticSlots: COSMETIC_SLOTS,
+    fxSlots: FX_SLOTS,
     shopCosmetics,
     skins,
     events,
@@ -137,7 +138,7 @@ export function rulesSource(): string {
  * tells the server a price: this file is the price list the server trusts.
  */
 export function shopRulesSource(): string {
-  const catalog: Record<string, { kind: 'skin' | 'cosmetic' | 'fighter'; item: string; fighter?: string }> = {};
+  const catalog: Record<string, { kind: 'skin' | 'cosmetic' | 'fighter' | 'bundle'; item: string; fighter?: string; items?: string[] }> = {};
   const seasons: Record<string, { event: string; start: string; end: string }> = {};
   for (const it of SHOP_ITEMS) {
     if (it.skin) catalog[it.sku] = { kind: 'skin', item: it.skin, fighter: SKINS[it.skin].fighter };
@@ -151,6 +152,20 @@ export function shopRulesSource(): string {
       seasons[it.sku] = { event: s.event.id, start: s.event.start, end: s.event.end };
     }
   }
+  // Beta 2.0: a bundle is its own sku whose right owns its items (lib/payments.js expands it): 2–3 distinct existing
+  // single items, never a fighter, never a seasonal item; its approved price below the sum of its items' approved prices
+  for (const b of BUNDLE_ITEMS) {
+    const parts = b.bundle ?? [];
+    if (parts.length < 2 || parts.length > 3 || new Set(parts).size !== parts.length) throw new Error(`${b.sku}: a bundle has 2–3 distinct items`);
+    for (const p of parts) {
+      const it = SHOP_ITEMS.find((i) => i.sku === p);
+      if (!it || (it.fighter && !it.skin) || it.bundle || seasonOf(it)) throw new Error(`${b.sku}: «${p}» is not a single, non-seasonal cosmetic or skin`);
+    }
+    const price = approvedPriceRub(b.sku);
+    const sum = parts.reduce((a, p) => a + (approvedPriceRub(p) ?? NaN), 0);
+    if (price !== null && !(price < sum)) throw new Error(`${b.sku}: an approved bundle price must be below its items' sum (${sum})`);
+    catalog[b.sku] = { kind: 'bundle', item: b.sku, items: parts };
+  }
   // 1.8.8 stage 4: the names an order keeps, and the STAGING-only block a server in Robokassa's test mode
   // uses instead of the real prices / offer (lib/payments.js). The server turns roubles into whole
   // kopecks itself (exactly, never a fraction) — one price list, no second table.
@@ -159,11 +174,11 @@ export function shopRulesSource(): string {
     if (SHOP_PRICES_RUB[s] === null ? SHOP_PRICE_STATUS[s] === 'approved' : rubToKop(SHOP_PRICES_RUB[s]) === null) throw new Error(`SHOP_PRICES_RUB.${s}: not a whole number of kopecks${SHOP_PRICES_RUB[s] === null ? ' (approved without a price)' : ''}`);
     if (rubToKop(SHOP_TEST_PRICES_RUB[s]) === null) throw new Error(`SHOP_TEST_PRICES_RUB.${s}: not a whole number of kopecks`);
   }
-  const titles = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, i.name]));
+  const titles = Object.fromEntries(SALE_ITEMS.map((i) => [i.sku, i.bundle ? `Комплект ${i.name}` : i.name]));
   // what the buyer pays for (Robokassa's Description, the НПД receipt): cosmetics vs a playable character
-  const receiptNames = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, receiptNameOf(i)]));
+  const receiptNames = Object.fromEntries(SALE_ITEMS.map((i) => [i.sku, receiptNameOf(i)]));
   // only APPROVED prices reach the server, item by item: a proposed price is never charged (SHOP_PRICE_STATUS)
-  const prices = Object.fromEntries(SHOP_ITEMS.map((i) => [i.sku, approvedPriceRub(i.sku)]));
+  const prices = Object.fromEntries(SALE_ITEMS.map((i) => [i.sku, approvedPriceRub(i.sku)]));
   const test = { note: 'staging only: Robokassa test mode (IsTest=1), no money moves', prices: SHOP_TEST_PRICES_RUB, offer: TEST_OFFER };
   // 1.8.8 final: the official site's demonstration (PRIME_PAY_MODE=demo) — the approved prices, its own terms
   const demo = { note: 'demonstration only: Robokassa test mode (IsTest=1), no money moves, cosmetics only', offer: DEMO_OFFER };

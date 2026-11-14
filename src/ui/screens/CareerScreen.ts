@@ -5,9 +5,9 @@ import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
+import { fameIcon, levelBadge, stageArt } from '../careerArt';
 import { inRoster } from '../../meta/roster';
 import type { StageView } from '../../meta/careerStages';
-import { REWARD_ART } from '../eventArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
 import { currencyIcon } from './EventsScreen';
@@ -206,7 +206,7 @@ export class CareerScreen implements Screen {
       const open = inRoster(s, id);
       const offer = f.seasonal && !open ? g.events.fighterOffer(id) : null;
       let right = '';
-      let note = open ? `${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать');
+      let note = open ? `${fameIcon(fp.fans, 16)}${formatNumber(fp.fans)} фанатов · ${esc(fameTier(fp.fans))}` : esc(c.reason || 'Готов подписать');
       if (open) right = `<span class="chip teal">В составе</span>`;
       else if (offer) {
         right = `<button class="btn ${g.events.tokens(offer.event) >= offer.cost ? '' : 'ghost'}" data-act="season">${offer.cost}<span class="eq-coin">${currencyIcon(offer.event)}</span></button>`;
@@ -234,7 +234,7 @@ export class CareerScreen implements Screen {
         <div class="org-card panel">
           <form class="org-name" action="#" autocomplete="off" data-editing="0"><input type="text" name="studio" maxlength="${STUDIO_NAME_MAX}" value="${esc(s.orgName)}" readonly data-act="edit" aria-label="Название студии" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done"/><button type="button" class="icon-btn org-edit" data-act="edit" aria-label="Переименовать">${UI_ICONS.pencil}</button><button type="submit" class="icon-btn org-x" data-name-aim="save" aria-label="Сохранить">${UI_ICONS.check}</button><button type="button" class="icon-btn org-x" data-act="cancel-name" data-name-aim="cancel" aria-label="Отменить"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button></form>
           <div class="row" style="margin-top:12px;gap:12px">
-            <div class="lvl-badge" style="width:52px;height:52px;font-size:20px">${lvl.level}</div>
+            ${levelBadge(lvl.level, 60, 'career-lvl')}
             <div class="fill">
               <div class="h2">${esc(lvl.title)}</div>
               <div class="label" style="margin:4px 0 6px">Репутация ${Math.floor(s.reputation)}${lvl.next !== null ? ` / ${lvl.next}` : ' · максимум'}</div>
@@ -273,7 +273,8 @@ export class CareerScreen implements Screen {
     const track = all
       .map((st) => {
         const state = st.reached ? (st.index === cur.index ? 'cur' : 'done') : next && st.index === next.index ? 'next' : '';
-        return `<div class="st-step ${state}"><span class="st-dot">${st.reached ? UI_ICONS.check.replace('<svg', '<svg width="11" height="11"') : st.index + 1}</span><span class="st-name">${esc(st.def.short)}</span></div>`;
+        // Beta 2.0: each step shows its stage emblem (grey until reached), a check once reached
+        return `<div class="st-step ${state}"><span class="st-dot st-pic">${stageArt(st.def.id, 34)}${st.reached ? `<i class="st-ok">${UI_ICONS.check.replace('<svg', '<svg width="9" height="9"')}</i>` : ''}</span><span class="st-name">${esc(st.def.short)}</span></div>`;
       })
       .join('<i class="st-line"></i>');
     // rewards of reached stages that are still waiting
@@ -308,11 +309,10 @@ export class CareerScreen implements Screen {
     } else {
       nextBlock = `<div class="stage-next top"><div class="h2">Вершина карьеры</div><div class="muted sn-desc">Все этапы пройдены: ваша студия — легенда прайм-тайма.</div></div>`;
     }
-    const art = cur.def.id === 'legendary' ? REWARD_ART.studio : cur.def.id === 'star' ? REWARD_ART.star : UI_ICONS.trophy;
     return `<div class="section panel stage-panel">
         <div class="section-title"><span class="h2">Путь продюсера</span><span class="label">этап ${cur.index + 1}/${CAREER_STAGES.length}</span></div>
         <div class="stage-cur">
-          <div class="sc-art">${art}</div>
+          <div class="sc-art pic">${stageArt(cur.def.id, 64)}</div>
           <div class="fill"><div class="sc-title">${esc(cur.def.title)}</div><div class="label">${esc(cur.def.subtitle)}</div><div class="muted sc-desc">${esc(cur.def.desc)}</div></div>
         </div>
         <div class="stage-track">${track}</div>

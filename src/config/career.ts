@@ -8,8 +8,18 @@ export const CAREER_START = {
   reputation: 0,
 };
 
-/** Reputation needed to reach each producer level (index 0 = level 1). */
-export const LEVEL_THRESHOLDS = [0, 60, 150, 290, 480, 720, 1020, 1400, 1850, 2400];
+/**
+ * Reputation needed to reach each producer level (index 0 = level 1).
+ *
+ * Levels 1–10 (Alpha 1.0–1.9) are untouched: they gate the difficulties, contracts and career cards (levels 2–6).
+ * Beta 2.0 — the career goes on past 10: levels 11–20 are titles only (no unlocks, no rewards — rewards come with
+ * Beta 2.1). A level is never stored: it is read from the reputation every time (levelFor, SaveSystem.summarize), so a
+ * veteran gets his level at once and no save changes. Steps grow ~22 % a level (700 → 4 400 ★); with the measured
+ * pace of `npm run economy` (Beta 2.0 report) a regular player (5 days a week) reaches 11 about 4 days after 10 and 20
+ * in ~5½ months, an active one in ~2 months, a beginner (3 short days a week) climbs one level every 1–2 months.
+ * A later level: append here (thresholds only grow) and, when its picture exists, to LEVEL_ART (src/ui/careerArt.ts).
+ */
+export const LEVEL_THRESHOLDS = [0, 60, 150, 290, 480, 720, 1020, 1400, 1850, 2400, 3100, 3950, 5000, 6300, 7900, 9850, 12250, 15200, 18800, 23200];
 
 export const LEVEL_TITLES = [
   'Стажёр эфира',
@@ -22,7 +32,21 @@ export const LEVEL_TITLES = [
   'Король прайм-тайма',
   'Икона эфира',
   'Легенда ТВ',
+  // Beta 2.0
+  'Продюсер года',
+  'Хитмейкер',
+  'Хозяин рейтингов',
+  'Архитектор эфира',
+  'Звезда индустрии',
+  'Медиаимператор',
+  'Титан телевидения',
+  'Легенда прайм-тайма',
+  'Бессмертный эфир',
+  'Зал славы ТВ',
 ];
+
+/** The levels of Alpha 1.0–1.9 (the ones that open things). */
+export const CLASSIC_LEVELS = 10;
 
 export const REWARDS: {
   purse: { win: number; draw: number; loss: number };

@@ -1,6 +1,6 @@
 import { BOSSES } from '../config/boss.config';
 import { CHALLENGES, SURVIVAL } from '../config/modes.config';
-import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, type CosmeticDef, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, isFxSlot, type CosmeticDef, type CosmeticId, type CosmeticSlot, type FxSlot } from '../config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../config/fighters';
 import type { FighterId } from '../config/types';
 import { careerStages } from './careerStages';
@@ -141,8 +141,22 @@ export class Collection {
     return this.paidIn(slot) ?? this.c.equipped[slot] ?? null;
   }
 
-  /** What a fighter actually wears in a slot: its own personal item, otherwise the common one. */
+  /**
+   * What a fighter actually wears in a slot. Beta 2.0: a fighter's own effect choice (save.fx) comes first — 'off' wears
+   * none; an item no longer owned (a refund) is skipped and the fighter inherits. Then, as before: a worn PRIME SHOP
+   * item, the fighter's personal reward, the producer's common item.
+   */
   equippedFor(slot: CosmeticSlot, fighter: FighterId): CosmeticId | null {
+    if (isFxSlot(slot)) {
+      const own = this.store.data.fx?.[fighter]?.[slot];
+      if (own === 'off') return null;
+      if (own && COSMETICS[own]?.slot === slot && this.ownsFor(own, fighter)) return own;
+    }
+    return this.commonFor(slot, fighter);
+  }
+
+  /** The choice a fighter inherits when it has no effect of its own (the 1.9.9 rule). */
+  commonFor(slot: CosmeticSlot, fighter: FighterId): CosmeticId | null {
     const paid = this.paidIn(slot);
     if (paid) return paid;
     const own = this.c.personalEquipped[fighter]?.[slot];
@@ -209,6 +223,61 @@ export class Collection {
     } else if (eq[def.slot] === id) delete eq[def.slot];
     this.store.save();
     return true;
+  }
+
+  // ------------------------------------------------------- Beta 2.0 personal effects
+  /** A fighter's own effect choice: an item, 'off', or null (inherits the common choice). */
+  fighterFx(fighter: FighterId, slot: FxSlot): CosmeticId | 'off' | null {
+    return this.store.data.fx?.[fighter]?.[slot] ?? null;
+  }
+
+  /**
+   * Sets a fighter's own effect (an OWNED item of that slot), 'off' (this fighter wears none), or null (back to the common
+   * choice). Never grants anything: an item the account does not own is refused. Saves; the caller re-applies the look.
+   */
+  setFighterFx(fighter: FighterId, slot: FxSlot, choice: CosmeticId | 'off' | null): boolean {
+    if (!FIGHTER_ORDER.includes(fighter)) return false;
+    if (choice !== null && choice !== 'off' && (COSMETICS[choice]?.slot !== slot || !this.ownsFor(choice, fighter))) return false;
+    const fx = (this.store.data.fx ??= {});
+    const row = (fx[fighter] ??= {});
+    if (choice === null) delete row[slot];
+    else row[slot] = choice;
+    if (!Object.keys(row).length) delete fx[fighter];
+    this.store.save();
+    return true;
+  }
+
+  /**
+   * «Применить ко всем»: the item becomes the common choice AND the fighters' own choices of that slot are cleared, so
+   * every fighter shows it (what you tap is what you see). Returns false if the item is not owned.
+   */
+  equipForAll(id: CosmeticId): boolean {
+    const slot = COSMETICS[id].slot;
+    if (!this.setEquipped(id, true)) return false;
+    if (isFxSlot(slot)) this.clearFighterFx(slot);
+    return true;
+  }
+
+  /** Takes the common item of a slot off (fighters with their own choice keep it). */
+  clearFighterFx(slot: FxSlot): void {
+    const fx = this.store.data.fx;
+    if (!fx) return;
+    let changed = false;
+    for (const f of Object.keys(fx) as FighterId[]) {
+      const row = fx[f];
+      if (row && slot in row) {
+        delete row[slot];
+        if (!Object.keys(row).length) delete fx[f];
+        changed = true;
+      }
+    }
+    if (changed) this.store.save();
+  }
+
+  /** The fighters (of `fighters`) that actually wear this item now. */
+  wornBy(id: CosmeticId, fighters: readonly FighterId[]): FighterId[] {
+    const slot = COSMETICS[id].slot;
+    return fighters.filter((f) => this.equippedFor(slot, f) === id);
   }
 
   /** Personal items from an older save that the records could not tie to a fighter. */

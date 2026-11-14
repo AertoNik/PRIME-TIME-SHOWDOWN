@@ -97,6 +97,8 @@ export interface CareerRun {
   at: { firstContract: number | null; firstCard: number | null; half: number | null; allContracts: number | null; allCards: number | null; everything: number | null };
   /** Dollars earned in all (every source) by the end of these days. */
   earnedBy: Record<number, number>;
+  /** Beta 2.0: reputation (★) in hand at the end of these days — the producer-level pace (career extension). */
+  repBy: Record<number, number>;
   /** The most fights between two purchases in a row (until everything is bought) — «saving up» for one item. */
   maxGap: number;
   /** Fights at each purchase (the progress curve: early steps close together, later ones further apart). */
@@ -151,6 +153,7 @@ function runCareerNow(a: Archetype, samples: Record<Difficulty, Record<Skill, Fi
   const sinkTotal = CONTRACTS.reduce((t, c) => t + c.cost, 0) + SHOP_CARDS.reduce((t, c) => t + c.price, 0);
   const at: CareerRun['at'] = { firstContract: null, firstCard: null, half: null, allContracts: null, allCards: null, everything: null };
   const earnedBy: Record<number, number> = {};
+  const repBy: Record<number, number> = {};
   let spent = 0;
   const buys: number[] = [];
   const saved: Record<string, unknown> = {};
@@ -316,6 +319,7 @@ function runCareerNow(a: Archetype, samples: Record<Difficulty, Record<Skill, Fi
       if (blocked) waitSince ??= d;
       else if (waitSince !== null) (longestWait = Math.max(longestWait, d - waitSince), (waitSince = null));
       earnedBy[d] = Math.round(earned.matches + earned.modes + earned.goals + earned.stages + earned.daily);
+      repBy[d] = Math.floor(rep);
       if (levelOf(rep) >= 5) day.level5 ??= d;
       if (levelOf(rep) >= 10) day.level10 ??= d;
       if (signed - 1 >= CONTRACTS.length) day.allContracts ??= d;
@@ -326,7 +330,7 @@ function runCareerNow(a: Archetype, samples: Record<Difficulty, Record<Skill, Fi
     if (waitSince !== null) longestWait = Math.max(longestWait, days - waitSince);
     let maxGap = 0;
     for (let i = 1; i < buys.length; i++) maxGap = Math.max(maxGap, buys[i] - buys[i - 1]);
-    return { archetype: a.id, matches, day, money: moneyAt, earned, hoursToEverything, longestWait, at, earnedBy, maxGap, buys, sink: { contracts: CONTRACTS.reduce((t, c) => t + c.cost, 0), cards: SHOP_CARDS.reduce((t, c) => t + c.price, 0), total: sinkTotal } };
+    return { archetype: a.id, matches, day, money: moneyAt, earned, hoursToEverything, longestWait, at, earnedBy, repBy, maxGap, buys, sink: { contracts: CONTRACTS.reduce((t, c) => t + c.cost, 0), cards: SHOP_CARDS.reduce((t, c) => t + c.price, 0), total: sinkTotal } };
   } finally {
     for (const [k, v] of Object.entries(saved)) (REWARDS as Record<string, unknown>)[k] = v;
   }

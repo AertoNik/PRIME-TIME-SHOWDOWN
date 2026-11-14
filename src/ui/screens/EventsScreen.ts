@@ -1,3 +1,4 @@
+import { cosmeticPic } from '../effectArt';
 import { RARITY_LABEL } from '../../config/cosmetics.config';
 import { CARDS } from '../../config/cards';
 import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosmetics.config';
@@ -9,7 +10,8 @@ import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
-import { ICONS, REWARD_ART } from '../eventArt';
+import { ICONS } from '../eventArt';
+import { GOAL_ART, goalArt } from '../rewardArt';
 import { serverTimeKnown } from '../../meta/serverClock';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -255,7 +257,7 @@ export class EventsScreen implements Screen {
     g.ui.modal(
       `<div class="reward-pop rarity-${c.rarity}">
          <div class="rp-rays"></div>
-         <div class="rp-art">${REWARD_ART[c.art]}</div>
+         <div class="rp-art">${cosmeticPic(id, 112)}</div>
          <div class="label rp-kind">Новая награда · ${RARITY[c.rarity]}</div>
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>
@@ -450,7 +452,7 @@ export class EventsScreen implements Screen {
           ? `<button class="btn" data-act="grand"><span class="shine"></span>Забрать</button>`
           : `<span class="eg-lock">${ICONS.lock}</span>`;
       grand = `<div class="ev-grand ${owned ? 'owned' : ''} ${em.canClaimGrand() ? 'ready' : ''}">
-          <div class="eg-art">${REWARD_ART[gp.art]}</div>
+          <div class="eg-art">${cosmeticPic(gp.id, 58)}</div>
           <div class="eg-main">
             <div class="label eg-kind">Главный приз сезона</div>
             <div class="eg-name">${esc(gp.name)}</div>
@@ -471,7 +473,7 @@ export class EventsScreen implements Screen {
         else side = `<span class="eq-reward">+${d.reward}<span class="eq-coin">${icon}</span></span>`;
         const prog = d.target > 1 ? `${q.progress}/${d.target}` : q.done ? 'Готово' : '0/1';
         return `<div class="ev-quest ${q.done ? 'done' : ''} ${q.claimed ? 'claimed' : ''}">
-            <div class="eq-ico">${ICONS[d.icon]}</div>
+            <div class="eq-ico${GOAL_ART[d.id] ? ' has-art' : ''}">${goalArt(d, 40)}</div>
             <div class="eq-main">
               <div class="eq-title">${esc(d.title)}</div>
               <div class="eq-desc">${esc(d.desc)}</div>
@@ -515,7 +517,7 @@ export class EventsScreen implements Screen {
       btn = `<span class="er-lock">${ICONS.lock} ${e && !em.playable ? 'Во время события' : 'Недоступно'}</span>`;
     }
     return `<div class="ev-reward rarity-${c.rarity} ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
-        <div class="er-art">${REWARD_ART[c.art]}</div>
+        <div class="er-art">${cosmeticPic(c.id, 72)}</div>
         <div class="er-rarity">${RARITY[c.rarity]}</div>
         <div class="er-name">${esc(c.name)}</div>
         <div class="er-desc">${esc(c.desc)}</div>

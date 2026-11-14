@@ -6,6 +6,8 @@ import type { Game } from '../../game/Game';
 import { buildProfile, hallOfFame, type FighterRecord, type HallSort, type ProfileView } from '../../meta/ProducerProfile';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { UI_ICONS } from '../icons';
+import { levelBadge } from '../careerArt';
+import { currencyArt } from '../currencyArt';
 import type { Screen } from '../UI';
 import { accountsOffNotice } from '../../net/build';
 import { producerSVG } from '../producerArt';
@@ -187,11 +189,11 @@ export class ProfileScreen implements Screen {
           </div>
         </div>
         <div class="pid-level">
-          <span class="pid-hex">${p.level.level}</span>
+          ${levelBadge(p.level.level, 52, 'pid-lvl-art')}
           <div class="pid-lvl-text">
             <div class="pid-lvl-top"><b>${esc(p.level.title)}</b><span>Уровень ${p.level.level}</span></div>
             <div class="pid-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p.levelProgress * 100)}" aria-label="Прогресс до следующего уровня"><i style="width:${Math.round(p.levelProgress * 100)}%"></i></div>
-            <div class="pid-lvl-rep">${UI_ICONS.rep.replace('<svg', '<svg width="11" height="11"')} Репутация ${repLine}</div>
+            <div class="pid-lvl-rep">${currencyArt('rep', 16)} Репутация ${repLine}</div>
           </div>
         </div>
         <div class="pid-strip">

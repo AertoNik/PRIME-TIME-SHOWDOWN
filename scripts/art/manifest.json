@@ -1138,5 +1138,2715 @@
         }
       }
     }
+  },
+  "icon": {
+    "margin": 0.03,
+    "sizes": {
+      "ranks": {
+        "xs": 96,
+        "sm": 192,
+        "md": 400
+      },
+      "ranks-plain": {
+        "xs": 96,
+        "sm": 192
+      },
+      "league": {
+        "sm": 192,
+        "md": 400
+      },
+      "levels": {
+        "sm": 192
+      },
+      "stages": {
+        "sm": 192,
+        "md": 400
+      },
+      "fame": {
+        "xs": 96,
+        "sm": 192
+      },
+      "modes": {
+        "sm": 192,
+        "md": 400
+      },
+      "currency": {
+        "xs": 96,
+        "sm": 192
+      },
+      "effects": {
+        "sm": 256,
+        "md": 512
+      },
+      "achievements": {
+        "sm": 192,
+        "md": 400
+      },
+      "rewards": {
+        "xs": 96,
+        "sm": 192
+      },
+      "goals": {
+        "xs": 96,
+        "sm": 192
+      }
+    }
+  },
+  "icons": {
+    "ranks": {
+      "casting_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:01_casting_iii.png",
+        "sha256": "633fb699f0fe1225ebc2d126fd6ba75085399c25a3d2bf92f8c9eb388b45abfb",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/casting_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 3808,
+            "sha256": "394453b33c1be641f305202e7d0659144b2f25b8befa0598bd6fec0f64bd6391"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/casting_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 8540,
+            "sha256": "7a6187db7a405d7f6e7bc88d2e4160312b0ead136a1e45cf057ed2b93310b276"
+          },
+          "md": {
+            "file": "ui/ranks/md/casting_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 20180,
+            "sha256": "63b8b2b61948530b74143a4caff52fecd6b56303d9d9cc447eac69720f2ae0b5"
+          }
+        },
+        "bbox": [
+          219,
+          95,
+          1036,
+          1155
+        ]
+      },
+      "casting_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:01_casting_ii.png",
+        "sha256": "ec11327e66b29a53fbb36de2140b46de837528f0d1bf3d8eadcc43ddb0080445",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/casting_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4078,
+            "sha256": "e82994a8318dec4357f542428b6071f606a865eab62c02ce32c547026f3b549f"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/casting_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 9700,
+            "sha256": "f208ac342872f643f7af247ba796f5a51ce7b01f66b3843a899d8a10133b2f38"
+          },
+          "md": {
+            "file": "ui/ranks/md/casting_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 23492,
+            "sha256": "22de798db9504163fb26afbb2484251336146990689c65b72de373b1965f4d0f"
+          }
+        },
+        "bbox": [
+          214,
+          95,
+          1042,
+          1159
+        ]
+      },
+      "casting_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:01_casting_i.png",
+        "sha256": "26c15d9d0dade22fd276713961e1a20f8254502de8d8aa5a7e8667e586733b51",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/casting_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4420,
+            "sha256": "e60b6e3d6dcdcb443217d9f6346340b6cb1f6891e24e5da2844ad2e1fe91e5d9"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/casting_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10148,
+            "sha256": "9b0dd2e077c263ca7d46295a91087c6e9811b66da953606da7058c57581dde28"
+          },
+          "md": {
+            "file": "ui/ranks/md/casting_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 26008,
+            "sha256": "5e135a3d39e077022c8ce96cbaf607e4b62c2c9c9cc0cede0e538e12d768d424"
+          }
+        },
+        "bbox": [
+          209,
+          116,
+          1046,
+          1176
+        ]
+      },
+      "first_take_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:02_first_take_iii.png",
+        "sha256": "585c8102c936915bd012b0697472ab29edc7f23aa40d06e47d69a98c789aef58",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/first_take_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4656,
+            "sha256": "707071c28edabdae4d834811d716c67f4e7218ac263c070bab7b05fc06ba73bd"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/first_take_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10786,
+            "sha256": "b2d0f8e34835b2ce22d8d05859f1d288936d572e0d4cbc69150bfcd536e72b57"
+          },
+          "md": {
+            "file": "ui/ranks/md/first_take_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 26892,
+            "sha256": "06aacd9c53ea6fb73d51b66bfb4ad1622b88b1947ead95c12e0d9798edf43a25"
+          }
+        },
+        "bbox": [
+          225,
+          95,
+          1029,
+          1126
+        ]
+      },
+      "first_take_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:02_first_take_ii.png",
+        "sha256": "414a4d99357d8725e15876451b97e1c4a96c042f8c3b26941bdf1406ef40a006",
+        "size": [
+          1024,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/first_take_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4734,
+            "sha256": "246b5087c510ee475aff160b9098c11e2a868292746634d5af3c81512318d023"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/first_take_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10736,
+            "sha256": "1fcd0d03f503b6106a175073c6abb4a0a92194de7192ed3156425cb90fe8c2f5"
+          },
+          "md": {
+            "file": "ui/ranks/md/first_take_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 27336,
+            "sha256": "51c52e160736ad9f5f4f8f1ad2769725d7e201c83c9869f259babd7fea4f2827"
+          }
+        },
+        "bbox": [
+          182,
+          77,
+          841,
+          920
+        ]
+      },
+      "first_take_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:02_first_take_i.png",
+        "sha256": "c5d485fa91466945c42621b4e5f34c535f19c8545af925326e1cda87a056ee5e",
+        "size": [
+          1024,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/first_take_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4754,
+            "sha256": "ad961b5322732df634f862f3124943b674eafdd79a313b22388e99aad6d6e791"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/first_take_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10844,
+            "sha256": "8e7b3ee8e8e155532de007a94f6f8e39d37c76b69b3368162be459e4c4bd8dc7"
+          },
+          "md": {
+            "file": "ui/ranks/md/first_take_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 27276,
+            "sha256": "89372f43b5fc883e3db2d5419e1be4eca9ae0cb5de94a43ea3e34e575819adc8"
+          }
+        },
+        "bbox": [
+          182,
+          77,
+          841,
+          920
+        ]
+      },
+      "night_air_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:03_night_air_iii.png",
+        "sha256": "8569d9b5cef70a895b9b92ef3528600c8d9479784dfd3ffb3d1803468f439526",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/night_air_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4766,
+            "sha256": "fc2ad769f7cada9249a5ccc908dd86bc8349eae3cc9481dc5866fc4be4be30b3"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/night_air_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11406,
+            "sha256": "61576bc7d405d86d6239c7ca0582f08012a3fa2ea8f10f7805a8b5d056871305"
+          },
+          "md": {
+            "file": "ui/ranks/md/night_air_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 28522,
+            "sha256": "71953f9a640400e2bfb599f84fe765111c4e55113288ec130cad3f72885f5463"
+          }
+        },
+        "bbox": [
+          211,
+          56,
+          1043,
+          1140
+        ]
+      },
+      "night_air_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:03_night_air_ii.png",
+        "sha256": "6c7e588aa6b41200e768e361b856d7ee26e2f0d00ad7179a35dd1ed8abc647f2",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/night_air_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4840,
+            "sha256": "41b558a911cac2f3eaf86826163a1ea763640dfd6623a2fd3ccad6f6adbeb7a6"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/night_air_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11482,
+            "sha256": "f3729b905db74ed1a92078f35b2dee725fa2c4707cb6ea3912baaabdcad7c6db"
+          },
+          "md": {
+            "file": "ui/ranks/md/night_air_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 29886,
+            "sha256": "e2c73f650ef4bf4dea0bc9dd8e31148d02f91d4f15f32721fe2281721a5ba5d3"
+          }
+        },
+        "bbox": [
+          213,
+          59,
+          1041,
+          1139
+        ]
+      },
+      "night_air_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:03_night_air_i.png",
+        "sha256": "3d46d9ab1fcc1457d09ccfae9ba552aefb91890ef4cd5fcbf94611fffd62944d",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/night_air_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5000,
+            "sha256": "237ce1edb100846b370b4b8064cb8ccea0803fbedc8a87b09ed8055e1ae39e31"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/night_air_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11530,
+            "sha256": "245a609032fb14fd4c908d3f8eb4e8e4e82ad50ec731aa38b4dd39b7879f2d37"
+          },
+          "md": {
+            "file": "ui/ranks/md/night_air_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 29222,
+            "sha256": "f823909bbd5f2d35577bd2256836d9ef02cc2576dfab42a7961464e3c65454c6"
+          }
+        },
+        "bbox": [
+          214,
+          68,
+          1041,
+          1140
+        ]
+      },
+      "contender_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:04_contender_iii.png",
+        "sha256": "c677a8511d65a7c56c1fd27931331286940956cac884728db6eb3f4dfebfc5c1",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/contender_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5892,
+            "sha256": "b3c391a0f9dbf45bfd2a8dee61a8ff81ae1a2a064595ce2c2425cdae7f634020"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/contender_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14564,
+            "sha256": "82c74bc61cd82e860826f451922748a51a6176478a43241d6db147ca2dc596ab"
+          },
+          "md": {
+            "file": "ui/ranks/md/contender_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38760,
+            "sha256": "6f8f16738577e7f69a12699967667da293e0ee503945b6765333f754a92a2ed2"
+          }
+        },
+        "bbox": [
+          180,
+          63,
+          1074,
+          1169
+        ]
+      },
+      "contender_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:04_contender_ii.png",
+        "sha256": "7672f5ceb569431c2a5c61e4986eadc1cf331ce289f49a25f4e18da1e2345b7e",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/contender_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5806,
+            "sha256": "6172ef0a062b78cc018dc291afd99b6ae1ed9e6bf732d825f5dde5e56e5d88be"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/contender_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14382,
+            "sha256": "bc2090f1488feb27b60c75d039660e5622e3564f77f06c5735a9f6732a5a9092"
+          },
+          "md": {
+            "file": "ui/ranks/md/contender_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38422,
+            "sha256": "ac7d6be0b60f64b3c593378c306a3e8065eba6cf10938ea60dbe3be25a059889"
+          }
+        },
+        "bbox": [
+          179,
+          61,
+          1075,
+          1170
+        ]
+      },
+      "contender_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:04_contender_i.png",
+        "sha256": "f9ea47a4a4064d6b9b2b9e2cf2b312bc3b4302383476fba7379d4d08771d5733",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/contender_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5912,
+            "sha256": "d970799a8044542967d6958924a4fde17134c8a8a71c247b24a0a139ab73b5b9"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/contender_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14806,
+            "sha256": "c90c84b6026adc309e4eba58eb801ad1f2bd6d8aba7a220eead177e31fe0eb93"
+          },
+          "md": {
+            "file": "ui/ranks/md/contender_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38590,
+            "sha256": "b3aad80a70201e909535f004d629b600ea3c4985a0c020706cb47ef480d6d8d9"
+          }
+        },
+        "bbox": [
+          179,
+          62,
+          1075,
+          1171
+        ]
+      },
+      "headliner_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:05_headliner_iii.png",
+        "sha256": "21f36061e8b5a3df57209556c33aa91e4ce3c27f480ebbec2c8d0a64d78f547e",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/headliner_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5800,
+            "sha256": "ebcbf417b1caa4e3a75950bdadafc9ceb4c9201aae074dac4d47b42fe1706af9"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/headliner_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13594,
+            "sha256": "1bcee8f36346dc5d00f3a310116d378557b2a462bf0f63910b165056265360e3"
+          },
+          "md": {
+            "file": "ui/ranks/md/headliner_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 35946,
+            "sha256": "f8a2fd4a84141165c10929aa8c15591fa0288005917b501e6d81e1f2ba4240a6"
+          }
+        },
+        "bbox": [
+          90,
+          98,
+          1165,
+          1173
+        ]
+      },
+      "headliner_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:05_headliner_ii.png",
+        "sha256": "f50a65b71a2cedd3b73421192d64907901748674020b748638e001392764f52c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/headliner_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5926,
+            "sha256": "ad6572db348ad079c4362caad5e5b3c564f24a3708b042d079f6692550dea217"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/headliner_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13820,
+            "sha256": "14f2eeda39850aa8c5937011ed0424aa070abd4b3348193d184566541d3f1020"
+          },
+          "md": {
+            "file": "ui/ranks/md/headliner_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 36382,
+            "sha256": "e38d382b8e9adf34ae0c4c1edd21d872b2da1e93d1404075d06bb791be23cc4b"
+          }
+        },
+        "bbox": [
+          88,
+          97,
+          1167,
+          1174
+        ]
+      },
+      "headliner_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:05_headliner_i.png",
+        "sha256": "7891953fbfd0d49b04cdfe6e22be9f38194cfaad7c278a3d66e72e51769aaa76",
+        "size": [
+          1024,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/headliner_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5936,
+            "sha256": "edc717f44a589151ca00b7b2fb39dfa8812c76239dc0b4ff626dcb373f82a999"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/headliner_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14018,
+            "sha256": "eb61c9e3a062e88ecfc6ea879f0788368722af145a45f62fc3c521bae9adbfcf"
+          },
+          "md": {
+            "file": "ui/ranks/md/headliner_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 36478,
+            "sha256": "8841889a6ec37f7fce3817c3ad90c6c6fdb5e0faaa787dc6e98507e84c564f71"
+          }
+        },
+        "bbox": [
+          118,
+          125,
+          907,
+          912
+        ]
+      },
+      "star_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:06_star_iii.png",
+        "sha256": "71fe4023be2f76fff6c6ed062bd6be4aea5b4c7f229daed7ea7212fbbfd8a604",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/star_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5762,
+            "sha256": "75a88e7b5c5a7bc77773b55b180ea561e98be804e5ebb65b4864a8498f1c85e3"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/star_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14358,
+            "sha256": "83d78e7a186a25de788bc22a48a174c361c2ad1c42fcd8a9a76eea9832b03014"
+          },
+          "md": {
+            "file": "ui/ranks/md/star_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37176,
+            "sha256": "7655ad15b67510c20178df9ac9b26acf1b6846a1ba3981dd94d60fe8e40d432c"
+          }
+        },
+        "bbox": [
+          59,
+          69,
+          1194,
+          1154
+        ]
+      },
+      "star_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:06_star_ii.png",
+        "sha256": "42167f096f69cad974ba6f9a792eaa58920475358cd5d24daa9e6f5cc4076e2d",
+        "size": [
+          1024,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/star_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5826,
+            "sha256": "0122ccea184946926311145d39835378b63521c4ed1c9b49b649fa3644331b02"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/star_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14374,
+            "sha256": "77b91d32b7173b8e1cf1346fd61be2847c8f7bff63a78b21553f3258c672a66a"
+          },
+          "md": {
+            "file": "ui/ranks/md/star_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37188,
+            "sha256": "25e9514e180a9ad47050c01f55d0c6c3eeb3ad5a84b64bdbc7dac8cee4a8e4f7"
+          }
+        },
+        "bbox": [
+          48,
+          56,
+          975,
+          944
+        ]
+      },
+      "star_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:06_star_i.png",
+        "sha256": "b9ac71317bfc1fe53a174d7c8cfe07efa4b597b33b10b399d806d7d52a72d201",
+        "size": [
+          1024,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/star_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5822,
+            "sha256": "3eb89b1cc2871f360f217abce709cf6636aca1830add50a4e546d86502bdc665"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/star_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14412,
+            "sha256": "0562b539beaf3835288474370844978693781d018cbca747f5f7f9003caaef01"
+          },
+          "md": {
+            "file": "ui/ranks/md/star_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37026,
+            "sha256": "eb0dbb30acc4f2846e84790f24c3a2c0dd65c62e6f718402f31f0e0433e8b44e"
+          }
+        },
+        "bbox": [
+          48,
+          56,
+          975,
+          944
+        ]
+      },
+      "icon_iii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:07_icon_iii.png",
+        "sha256": "e870826f11c4ea5d1ff7d111030e182db854b75fa886839d02a989b3b0763a11",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/icon_iii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5962,
+            "sha256": "d702d9327973b35ed0a3fde8342321d8564f8cb34f8de052df7cca25a61857e6"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/icon_iii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14970,
+            "sha256": "72d12dff86f88d26148849a33d6c342790a60a41e6359e200a56761f156c4fec"
+          },
+          "md": {
+            "file": "ui/ranks/md/icon_iii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38826,
+            "sha256": "ca7af2e6cc00632d0d1077494238a88ada84fe1d2baa69144877b97bcd43a108"
+          }
+        },
+        "bbox": [
+          65,
+          28,
+          1187,
+          1221
+        ]
+      },
+      "icon_ii": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:07_icon_ii.png",
+        "sha256": "aa105e986944d81d3aa242a62ae5f97a0ca5681fcaab115903aa051a3ac530b8",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/icon_ii.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6132,
+            "sha256": "a92713cfb7826b9dada4570e9c54c95b763365cac9b8981b2f076e925fc4d6e3"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/icon_ii.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15450,
+            "sha256": "31023fc63232cdfe27d2ca7dd377956e0d2fc18cbd1586c5293776db45206c45"
+          },
+          "md": {
+            "file": "ui/ranks/md/icon_ii.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 39792,
+            "sha256": "b0c01f13dad4f762f67243e9bffd88de268231363635d266e4bcf1a8950701af"
+          }
+        },
+        "bbox": [
+          61,
+          26,
+          1193,
+          1224
+        ]
+      },
+      "icon_i": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:07_icon_i.png",
+        "sha256": "7c7a7e501e31f11e48ac241358a249b79acbc893e2baf330e9a46cf1e931ea13",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/icon_i.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6214,
+            "sha256": "caae76b25ee30ff832edd60752c97687e17ef8f853608a3bebe80a8e9967d480"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/icon_i.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15544,
+            "sha256": "52ef872c0e6d2206858c2a3acf954cf3e15d2b5b047b17100eecfa78ad1c6508"
+          },
+          "md": {
+            "file": "ui/ranks/md/icon_i.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 40046,
+            "sha256": "2a7e6aaabf082de33ca409408ab70f3ebe7cec8d0d2148bdd2d00a2de52819c4"
+          }
+        },
+        "bbox": [
+          58,
+          22,
+          1194,
+          1222
+        ]
+      },
+      "legend": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:08_legend.png",
+        "sha256": "deeaa3a9b34e121dc97f8b19cb664d00045ad2d9b1f71d9b95cb831eea7a4166",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks/xs/legend.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6120,
+            "sha256": "ffc040105b24abc6f9aa1fe9e3e2b0239f452a2d205b1078defaa630d7f16115"
+          },
+          "sm": {
+            "file": "ui/ranks/sm/legend.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16014,
+            "sha256": "8df3e512208c4d06bc6ad9e97ae423f656574c077960e4d16d1a7544c9321c4b"
+          },
+          "md": {
+            "file": "ui/ranks/md/legend.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42974,
+            "sha256": "44ff74409df8f01d0ed826f917576d300908de6f76a80833b688372bf5516343"
+          }
+        },
+        "bbox": [
+          17,
+          12,
+          1236,
+          1245
+        ]
+      }
+    },
+    "ranks-plain": {
+      "casting": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:01_casting_iii.png",
+        "sha256": "633fb699f0fe1225ebc2d126fd6ba75085399c25a3d2bf92f8c9eb388b45abfb",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/casting.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 3638,
+            "sha256": "93970c78c9bad0a4aad92f5f15f580f70d4ba3c5774c7a770d3f37049d378c50"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/casting.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 8560,
+            "sha256": "18fc0d09a68f919bc7818755e3ab3ee41fc68f142b0ceaa383f275a13a7981a1"
+          }
+        },
+        "cutAt": 1057,
+        "bbox": [
+          219,
+          95,
+          1036,
+          1032
+        ]
+      },
+      "first_take": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:02_first_take_iii.png",
+        "sha256": "585c8102c936915bd012b0697472ab29edc7f23aa40d06e47d69a98c789aef58",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/first_take.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4664,
+            "sha256": "e7487ce59c964d2f79276dc956d527abcda6fa49e3839983fa1e49669503bb81"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/first_take.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10562,
+            "sha256": "40442a357e640b999ea472b6225e8d7909a61fd16e5ea9e5ad8389b2ef56fad3"
+          }
+        },
+        "cutAt": 1031,
+        "bbox": [
+          225,
+          95,
+          1029,
+          1014
+        ]
+      },
+      "night_air": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:03_night_air_iii.png",
+        "sha256": "8569d9b5cef70a895b9b92ef3528600c8d9479784dfd3ffb3d1803468f439526",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/night_air.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4734,
+            "sha256": "d3733da1f894fd770d5d3599cdc7bc1b933ba70de9f19929ab032ffc5e3f123d"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/night_air.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11142,
+            "sha256": "a34b0ee1f90d0c1ecde44196ae54e35803b6e1c9e635c986a940e4481e58c206"
+          }
+        },
+        "cutAt": 1046,
+        "bbox": [
+          211,
+          56,
+          1043,
+          1036
+        ]
+      },
+      "contender": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:04_contender_iii.png",
+        "sha256": "c677a8511d65a7c56c1fd27931331286940956cac884728db6eb3f4dfebfc5c1",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/contender.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5910,
+            "sha256": "8c510c4be19d8ea0c3baf1c52a18f84d3cc3c81aa70f5252b3551a0bd0f33335"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/contender.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14356,
+            "sha256": "26f3c83c09bade7146f54d514d643f4d09219241cf154158e8dba63dfd026dd8"
+          }
+        },
+        "cutAt": 1034,
+        "bbox": [
+          180,
+          63,
+          1074,
+          1024
+        ]
+      },
+      "headliner": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:05_headliner_iii.png",
+        "sha256": "21f36061e8b5a3df57209556c33aa91e4ce3c27f480ebbec2c8d0a64d78f547e",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/headliner.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5056,
+            "sha256": "21dec7c732173104baea2b47165f9549703bd196af803cca195c9ba844f87927"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/headliner.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 12256,
+            "sha256": "4d9f553abaf1d5192217621a0a2ba810708f994a2c5c5e9486f7856d867222de"
+          }
+        },
+        "cutAt": 1060,
+        "bbox": [
+          90,
+          98,
+          1165,
+          1037
+        ]
+      },
+      "star": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:06_star_iii.png",
+        "sha256": "71fe4023be2f76fff6c6ed062bd6be4aea5b4c7f229daed7ea7212fbbfd8a604",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/star.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4950,
+            "sha256": "f3607c311575f7f7888359e4291322f724a123d1401258e6d1f65308883736d3"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/star.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 12132,
+            "sha256": "916590832b269d59f0d6080af9c3ab2b08e68f3da44d9dc9a753bd000319d438"
+          }
+        },
+        "cutAt": 1035,
+        "bbox": [
+          59,
+          69,
+          1194,
+          1033
+        ]
+      },
+      "icon": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:07_icon_iii.png",
+        "sha256": "e870826f11c4ea5d1ff7d111030e182db854b75fa886839d02a989b3b0763a11",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/icon.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5558,
+            "sha256": "ef3d244098167b2ee775052621acd05dcde7f14791fe33b5f855364abb2128be"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/icon.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14124,
+            "sha256": "eaaa5588e06192fb70e22b228502b9241077460b69af7790036a5999c92841cd"
+          }
+        },
+        "cutAt": 1096,
+        "bbox": [
+          65,
+          28,
+          1187,
+          1096
+        ]
+      },
+      "legend": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league:08_legend.png",
+        "sha256": "deeaa3a9b34e121dc97f8b19cb664d00045ad2d9b1f71d9b95cb831eea7a4166",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ranks-plain/xs/legend.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6120,
+            "sha256": "ffc040105b24abc6f9aa1fe9e3e2b0239f452a2d205b1078defaa630d7f16115"
+          },
+          "sm": {
+            "file": "ui/ranks-plain/sm/legend.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16014,
+            "sha256": "8df3e512208c4d06bc6ad9e97ae423f656574c077960e4d16d1a7544c9321c4b"
+          }
+        },
+        "bbox": [
+          17,
+          12,
+          1236,
+          1245
+        ]
+      }
+    },
+    "league": {
+      "symbol": {
+        "src": "PRIME_TIME_2_0_RANK_ART/ league_ui:04_contender_generic.png",
+        "sha256": "944c149fdb4f2bf64ae57a87915fccfe4b4a22c3d093dc7ee9275664394f77b9",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/league/sm/symbol.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14040,
+            "sha256": "8fcf9285dfdfd6eeaeb86dddeeed16881e6a69b25f171fa14de750cd03fdb337"
+          },
+          "md": {
+            "file": "ui/league/md/symbol.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 39524,
+            "sha256": "022343e2af5aa52a3cdd3466d6f33535b8f8f0ae9334f30b500cb2ec04657a2b"
+          }
+        },
+        "bbox": [
+          112,
+          66,
+          1143,
+          1184
+        ]
+      },
+      "season": {
+        "src": "PRIME_TIME_2_0_RANK_ART/league_ui:07_icon_generic.png",
+        "sha256": "2531c2c95fe9b4d92eb3ae592a229b0fba853d332507e91730a85612598237b4",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/league/sm/season.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14800,
+            "sha256": "25bac2e63ce81be6d1a93c51dceb1146787be987982eefd4a9e9b8b3684e1f7c"
+          },
+          "md": {
+            "file": "ui/league/md/season.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38656,
+            "sha256": "e217faf4b8edf1c90cd69191ee3cf06d468c2b67a2b67662917febb50468ce60"
+          }
+        },
+        "bbox": [
+          24,
+          18,
+          1229,
+          1230
+        ]
+      }
+    },
+    "levels": {
+      "01": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_01.png",
+        "sha256": "4ec320cc3b6782170fafe1caaa3c71c9ce2cae3ae4108c8a08fc4ff012c67305",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/01.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 9784,
+            "sha256": "5f0a3f522260d9086a0cf9b9bca962f157265c9c84331a18f72f6ba3c84636f2"
+          }
+        },
+        "bbox": [
+          138,
+          109,
+          1110,
+          1181
+        ]
+      },
+      "02": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_02.png",
+        "sha256": "8b9298a5ee23d770a4474fc0f4883cc6079a99f992b0fe764f293e827be099b6",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/02.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11070,
+            "sha256": "e9d0c5ad92c64e46b8257a93982d54ecce040dddbd8eeaf98fe75ea3c4906a89"
+          }
+        },
+        "bbox": [
+          135,
+          105,
+          1115,
+          1189
+        ]
+      },
+      "03": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_03.png",
+        "sha256": "f77e49e170e97b12d7e13f9902b8fa6c85229846ca23b9fa9ea7411e39300812",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/03.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13240,
+            "sha256": "f22c33d52640adfeb5956ba3a0ef3dbebd36b5b2dc1ad6f5e1c36e89ba05de4c"
+          }
+        },
+        "bbox": [
+          130,
+          95,
+          1124,
+          1200
+        ]
+      },
+      "04": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_04.png",
+        "sha256": "89d8f45a3d22bb7fb0dc9facceff5d043afe169a135b3ec7a5ef31f4b994372a",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/04.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 12568,
+            "sha256": "af77e696dbdeed53b13be39425bf359b27d27ead4ecfd7cff85157f98decd0a1"
+          }
+        },
+        "bbox": [
+          114,
+          88,
+          1140,
+          1199
+        ]
+      },
+      "05": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_05.png",
+        "sha256": "dccd23dcd132c12dc779bbefc505ce36cec71a1155d1df85e2d781068f5cc2cc",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/05.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13852,
+            "sha256": "b5f6c60432a30c204bd9fb48c5a53a8e250252f1eb867873db05b99ee9cc8990"
+          }
+        },
+        "bbox": [
+          109,
+          82,
+          1139,
+          1206
+        ]
+      },
+      "06": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_06.png",
+        "sha256": "572fb0e9984f4f2ad21deceaf8a32cdb807fcb560952c20de854649466a868b3",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/06.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14520,
+            "sha256": "c57b6cb3f9c8ebf6e08ea673ac88359d34e26afb0cffa8b3632163def03fe84c"
+          }
+        },
+        "bbox": [
+          98,
+          82,
+          1152,
+          1202
+        ]
+      },
+      "07": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_07.png",
+        "sha256": "5506f0a4bec0a9c6f23fabb6d4ace8904df03f42a3c411bc43f0f024e1352672",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/07.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13686,
+            "sha256": "0ecd2805fd0d6fc5dac583e27f2b0888dc9a9609d852ad788b3cdbae080d6da4"
+          }
+        },
+        "bbox": [
+          89,
+          70,
+          1163,
+          1220
+        ]
+      },
+      "08": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_08.png",
+        "sha256": "9b11cd1e20dc88bae50706ed1f06b623047c3b973b6d94c8d3a60b26212eba48",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/08.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14156,
+            "sha256": "c916089aa70959e3c37f87fc3882e0ec2a9ac8274569d8d5eb63b31cd87da523"
+          }
+        },
+        "bbox": [
+          94,
+          40,
+          1161,
+          1223
+        ]
+      },
+      "09": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_09.png",
+        "sha256": "aabf62e5fcb6e1c03a37c54d71b965585c9c8ec29f36b612a0f518bf14a61808",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/09.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14508,
+            "sha256": "01122da6cb5bd955c51ac3db305a79c3ae82a94fcd8695af59cef92d8c1f109b"
+          }
+        },
+        "bbox": [
+          99,
+          40,
+          1155,
+          1233
+        ]
+      },
+      "10": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_levels:level_10.png",
+        "sha256": "bdb6abdcfad007d622d9723a0e26789d0030bde4a33b7b86380825f67e5a9206",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/10.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15654,
+            "sha256": "6f12eabd881c821f668735dfd7cc817b35979b6c19fe08aa118b5ce13f3919ac"
+          }
+        },
+        "bbox": [
+          81,
+          30,
+          1174,
+          1244
+        ]
+      },
+      "11": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_11.png",
+        "sha256": "0031a85ed5e5b739b8a842f699bd18c16f70cb3902fb5b2feffa94521678d915",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/11.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14110,
+            "sha256": "4a8e15a53d7ee65fa552764e8c5afa092ad63c225c929fd30db69c9ebfc7c1a6"
+          }
+        },
+        "bbox": [
+          90,
+          37,
+          1162,
+          1231
+        ]
+      },
+      "12": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_12.png",
+        "sha256": "a78d3aa3b8f3239bb5cd854f828e0b15899144e7b6b8c4618e61c5ba0f28e8ba",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/12.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15352,
+            "sha256": "068c11750d3bcc222378b6ac9c9fbd93cc0e1ecdebd70ca0764d8515869bd4de"
+          }
+        },
+        "bbox": [
+          92,
+          18,
+          1162,
+          1233
+        ]
+      },
+      "13": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_13.png",
+        "sha256": "f42be9ec580c4866cdbabbc8432074b134ba99b3b6f1a3a1fdd0bf56cb477dfa",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/13.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15490,
+            "sha256": "4ee9755eff0e40e83c1d479c1320f37cfefbf4f2f7a1f8ecf87bac94b5f60f02"
+          }
+        },
+        "bbox": [
+          80,
+          30,
+          1175,
+          1244
+        ]
+      },
+      "14": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_14.png",
+        "sha256": "3903fda6af9189df3867364526787a74af7f572a20f377ee9efba22da7d3d349",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/14.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15594,
+            "sha256": "4065fa8cfae9d41cbf2e883d2fbd6ebd56ceb610d13420bbb3c445e94fdb1c53"
+          }
+        },
+        "bbox": [
+          62,
+          17,
+          1191,
+          1254
+        ]
+      },
+      "15": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_15.png",
+        "sha256": "374569aafbb1ca61b0cc3166a0811df74c0f81752ddee41f50df707ed47cb7e7",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/15.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15522,
+            "sha256": "fdce9eef42e2da447e5c2b77b7a37c792a4ebccff412b9c52af8f20a7b6ce1ee"
+          }
+        },
+        "bbox": [
+          60,
+          13,
+          1190,
+          1240
+        ]
+      },
+      "16": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_16.png",
+        "sha256": "c62f491d01beba175cf4be51ba9487562de27df5552e6188eddc14dc8711e8c8",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/16.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16454,
+            "sha256": "08bff923fa86cc355da50ce358bd63cae7b026ce456e78d5d4c2d4ca3ac1a70d"
+          }
+        },
+        "bbox": [
+          48,
+          15,
+          1205,
+          1254
+        ]
+      },
+      "17": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_17.png",
+        "sha256": "ff1451c4eb1cf501955ec9d207b392784fdba2e994e64fddcd18baaddb59cfa7",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/17.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18188,
+            "sha256": "7614e2bf6bd5c2ee3a965a6c551d2a19bc4e526b6f52e6963b71351b989eeed4"
+          }
+        },
+        "bbox": [
+          26,
+          15,
+          1228,
+          1240
+        ]
+      },
+      "18": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_18.png",
+        "sha256": "989aa14fc8829ed757efe19cb3e92b73291bb413321271540bdb8c2b1d54ee90",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/18.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18214,
+            "sha256": "3feaab2a391e9ced7d787cac7f9c3f0db5a02ff808d3e4a92cdbf21cf0f19ab8"
+          }
+        },
+        "bbox": [
+          32,
+          7,
+          1224,
+          1252
+        ]
+      },
+      "19": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_19.png",
+        "sha256": "c8397266cef88cd90af7bc3017044b24038b1a9af582c1e5801798ffd724de6d",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/19.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16280,
+            "sha256": "bece1c4cc359fffd280c7a75a2543c36ff4c248fe5111d2c943d742f2d1f8700"
+          }
+        },
+        "bbox": [
+          41,
+          9,
+          1213,
+          1247
+        ]
+      },
+      "20": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/level_20.png",
+        "sha256": "2f0b51b135da91fca270f2bc2c039cb08635c4a63d6c738f17d87f01256e95cf",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/levels/sm/20.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17538,
+            "sha256": "19e48455d56e591311388873f9ccb1f56b054424f07261709874597df007b985"
+          }
+        },
+        "bbox": [
+          32,
+          5,
+          1223,
+          1249
+        ]
+      }
+    },
+    "stages": {
+      "rookie": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_stages:stage_1_rookie.png",
+        "sha256": "5a088015bf54ace7b49896131830d7c340eb1b3329e7ef0003c673f5984c9fe0",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/stages/sm/rookie.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13918,
+            "sha256": "ff1065777e8cd9082f27e3139e35f8c5506f30621bd1679ebe3397810fd2b588"
+          },
+          "md": {
+            "file": "ui/stages/md/rookie.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 36542,
+            "sha256": "9251b71c5452268baf15b22a7c02429729b9dae8bc8b84079b1b55a028909f96"
+          }
+        },
+        "bbox": [
+          140,
+          106,
+          1097,
+          1178
+        ]
+      },
+      "rising": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_stages:stage_2_rising.png",
+        "sha256": "350a9eea1916bfc7ead50268bb9450653f577dbf229428370b6eff0ad1915500",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/stages/sm/rising.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14694,
+            "sha256": "7ec1d3df4103e2f81eec329bb9562890a049805116f4c018229dcfa855f5e8ad"
+          },
+          "md": {
+            "file": "ui/stages/md/rising.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38850,
+            "sha256": "1fb8150fd2094f26f0577a1249830f1b1af086377fd1d98f08a8c1a3c30e177f"
+          }
+        },
+        "bbox": [
+          131,
+          74,
+          1107,
+          1223
+        ]
+      },
+      "star": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_stages:stage_3_star.png",
+        "sha256": "d3ffc2eaa4b7453a00c77d75e6205dbccee35895fc1362dac55315620b59d5b5",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/stages/sm/star.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14168,
+            "sha256": "e73f140ae18e67cfad9bf49168d4a49de0535dee8c125b432cc256bb90874bb2"
+          },
+          "md": {
+            "file": "ui/stages/md/star.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37996,
+            "sha256": "1cec8e717454676f2f3146fb0609c57330a055d2442a2484241a305db7112543"
+          }
+        },
+        "bbox": [
+          122,
+          68,
+          1115,
+          1223
+        ]
+      },
+      "legendary": {
+        "src": "PRIME_TIME_2_0_RANK_ART/career_stages:stage_4_legendary.png",
+        "sha256": "52ce7063fdae1d6483fa7590a01810986bddfb62d0a6a04b2d78183a82173f89",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/stages/sm/legendary.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15984,
+            "sha256": "53a8cc102f10ce46eae811f767b3014e0ae69bdcfbd26fb5b54a984d7ff91249"
+          },
+          "md": {
+            "file": "ui/stages/md/legendary.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 44554,
+            "sha256": "3330a14c6d16400af939aa7960d5cde8c89aef692bf93588985ec3cb1c76615a"
+          }
+        },
+        "bbox": [
+          115,
+          60,
+          1124,
+          1229
+        ]
+      }
+    },
+    "fame": {
+      "1": {
+        "src": "PRIME_TIME_2_0_RANK_ART/fighter_fame:fame_01.png",
+        "sha256": "9fb129870d023cce9c1ef9ccd64829b3a4774b218d2b92ef52f4b581e3afc879",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/fame/xs/1.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5778,
+            "sha256": "4b9f9d0e1e786d9508f595d6b66f295494b85d2760d274f4da284bd54e009661"
+          },
+          "sm": {
+            "file": "ui/fame/sm/1.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14720,
+            "sha256": "bd826b421a44fbdb0b924b5d507974a32c2572a35b53592bf592be73f87355a1"
+          }
+        },
+        "bbox": [
+          113,
+          120,
+          1112,
+          1175
+        ]
+      },
+      "2": {
+        "src": "PRIME_TIME_2_0_RANK_ART/fighter_fame:fame_02.png",
+        "sha256": "c14d21c67e6054b2ae6f32dc6f5ddea8a8806321f18aea871cfbf7ddb0977af5",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/fame/xs/2.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5812,
+            "sha256": "2d5ca8179b6cdf2e8e6527dd31eeee8569c679ff47e776b573a15dd59114b921"
+          },
+          "sm": {
+            "file": "ui/fame/sm/2.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14316,
+            "sha256": "8cf237f72f8e5eb442cb3a073ee99492ac69acc84117a426531c67dc0374dbbd"
+          }
+        },
+        "bbox": [
+          112,
+          117,
+          1118,
+          1176
+        ]
+      },
+      "3": {
+        "src": "PRIME_TIME_2_0_RANK_ART/fighter_fame:fame_03.png",
+        "sha256": "c68707e9056419a7cc888843bb76ae1462a9309adb10333e862004e89131add7",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/fame/xs/3.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6518,
+            "sha256": "1c07efc4943013228a2ea6809abbf83121a1e932ec82bc543a3b631505378b23"
+          },
+          "sm": {
+            "file": "ui/fame/sm/3.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16252,
+            "sha256": "4ab75dc116efa6a2f5c5e395273d3a98d22964f5ed27a5a2571d8031f54eb685"
+          }
+        },
+        "bbox": [
+          108,
+          120,
+          1119,
+          1178
+        ]
+      },
+      "4": {
+        "src": "PRIME_TIME_2_0_RANK_ART/fighter_fame:fame_04.png",
+        "sha256": "862e5bc70685ba56f58810b50714c8dd02194118a20eed50a930127df0e70b98",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/fame/xs/4.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6960,
+            "sha256": "458439a02814c8e21ec53b91638d9d33421000dab8934dabf18c0b98ce08b6d0"
+          },
+          "sm": {
+            "file": "ui/fame/sm/4.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18008,
+            "sha256": "e9fb44a549775cc873044a2f06830f3af72a2a19a5b1a63234ac884f9437a6b8"
+          }
+        },
+        "bbox": [
+          108,
+          115,
+          1118,
+          1178
+        ]
+      },
+      "5": {
+        "src": "PRIME_TIME_2_0_RANK_ART/fighter_fame:fame_05.png",
+        "sha256": "740a51a5349b28439383e7fa86efc2bf131aaa31ffa742ac0eeaafc172578e48",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/fame/xs/5.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7156,
+            "sha256": "18cbc01370d52499cc95df726d3a239215b1cb5160aaef8ae58c14b3e2d593fb"
+          },
+          "sm": {
+            "file": "ui/fame/sm/5.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19504,
+            "sha256": "173eb29fe87a6b469abb59513f5dc6cdb02108aed4e704c6d662eaf8498b1e08"
+          }
+        },
+        "bbox": [
+          91,
+          89,
+          1151,
+          1197
+        ]
+      }
+    },
+    "modes": {
+      "career": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/career_mode_emblem.png",
+        "sha256": "8e8dd68d0868779ffb63caa3bc3a407790465471a236993055c1e38304fb4a47",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/career.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16832,
+            "sha256": "c758ebf8b0879bb66539b7e72650536b3b59fad32c3ce9dcf617b1172a1cb731"
+          },
+          "md": {
+            "file": "ui/modes/md/career.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42734,
+            "sha256": "7d662f367d7bb59bfe38c6a18883cd0a94ec7b2428423cf10f4154c21366a0b5"
+          }
+        },
+        "bbox": [
+          95,
+          81,
+          1194,
+          1178
+        ]
+      },
+      "league": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/league_mode_emblem.png",
+        "sha256": "086aabb3c856694ee5719f57890b41d8af272f48a6eeda1efc1e63847cd15460",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/league.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 20954,
+            "sha256": "606d72a3a1c06131f8d17f736a550529db455d09f8038200e30428e5dc8fbdbe"
+          },
+          "md": {
+            "file": "ui/modes/md/league.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 57338,
+            "sha256": "f8605e096512bf687429e1a1979fc518ba2e8f7cf4fa9f7a77b0200cef6ed895"
+          }
+        },
+        "bbox": [
+          20,
+          14,
+          1235,
+          1247
+        ]
+      }
+    },
+    "currency": {
+      "money": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/career_dollars.png",
+        "sha256": "b9fa1857ab3ff5ae87f32ef9f9cab897c1ab74a3b4d3481860599456759f587b",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/currency/xs/money.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5420,
+            "sha256": "bb229883fb766293408474c36e810747262ef37acebddbfec9cafdd2bda2a5d4"
+          },
+          "sm": {
+            "file": "ui/currency/sm/money.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13794,
+            "sha256": "94c07d0355c0b85f1bd9dc3e5b9cef86fc1e066a47cb848e707ce3eb6fba74cd"
+          }
+        },
+        "bbox": [
+          49,
+          127,
+          1207,
+          1139
+        ]
+      },
+      "rep": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/show_stars.png",
+        "sha256": "db5d41d879f43840d41e99c620c3a921c7a6e1dbe3fba59ebf9035bae43beb4f",
+        "size": [
+          1536,
+          1024
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/currency/xs/rep.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5396,
+            "sha256": "3324a0b65e7c0fd95e85db2c0e350ca908431e024b5c7f824a4b7b6d6146d74e"
+          },
+          "sm": {
+            "file": "ui/currency/sm/rep.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13574,
+            "sha256": "efc98f2ba349051aa06a8e2adf9a0d3b2403b1f992f828568b8092aa5cfb772f"
+          }
+        },
+        "bbox": [
+          242,
+          124,
+          1277,
+          913
+        ]
+      },
+      "tokens": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/prime_tokens.png",
+        "sha256": "2eb1505f6209926725d975e965f9567f8f341d5195293f440be43a78a59b427f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/currency/xs/tokens.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5950,
+            "sha256": "9ae58917f3c10156e4af3384c1782d6b51974e015d0184f000afb752fbc843c2"
+          },
+          "sm": {
+            "file": "ui/currency/sm/tokens.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14790,
+            "sha256": "9ae517422df14ec1c711436c8242a9b752a14720d0dda17b106b1324c8afe005"
+          }
+        },
+        "bbox": [
+          34,
+          34,
+          1204,
+          1216
+        ]
+      }
+    },
+    "effects": {
+      "dash_prime_phantom": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/phantom_dash.png",
+        "sha256": "f4610858489eb2a78444261d5ecd1d72c292f23fc58632228fc566a2fdd1395e",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_prime_phantom.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 17124,
+            "sha256": "db6f4b32b41e42560612f5d6674db2283f187159adafb0de1dfa58d57b703ebf"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_prime_phantom.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 41840,
+            "sha256": "20445c8bc93ba25e7554c142091287812bc596ac8e0464225a3fde1a5e5f2194"
+          }
+        },
+        "bbox": [
+          18,
+          308,
+          1237,
+          963
+        ]
+      },
+      "dash_glitch": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/ glitch_dash.png",
+        "sha256": "8b8f8f5e93b61c706a93ed65424e49750561b7a853b5aa6d97506966adb49579",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_glitch.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 17116,
+            "sha256": "62dce7aca3f7f6ec540e185b0c2968177dc710cc93b6d1aeb46ed520c39560dd"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_glitch.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 41176,
+            "sha256": "5576187c693fd7a3b85a04cdce46292e2f19f03e7c49222d2f1be4ab74b77987"
+          }
+        },
+        "bbox": [
+          25,
+          232,
+          1227,
+          1034
+        ]
+      },
+      "dash_comet": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/comet_trail.png",
+        "sha256": "b0636b86e63ddf23f6f441f34f03f1df9795f0290b1ecf7630b86f6d5fd74a22",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_comet.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 17636,
+            "sha256": "c1914a608332fbf05c10bfecd171e6a8aaf61997e6df9d3436a54dd5ec35905f"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_comet.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 43790,
+            "sha256": "679df5a21ec303281e371ccb4f6631da40f5ab2e640facd301446c04507257c8"
+          }
+        },
+        "bbox": [
+          34,
+          110,
+          1220,
+          1140
+        ]
+      },
+      "dash_league_arc": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/arc_surge.png",
+        "sha256": "a3d2fc023116c6405b1996bf1bb4f3f8ede17da2e1cab7f3b052805ef56a084f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_league_arc.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 18356,
+            "sha256": "f58cb4d3a7ce821fe7c4172d7e3521102bc0fc893e77cf564f183520ed756773"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_league_arc.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 48254,
+            "sha256": "fa6b821f58fa2f79f81f8217829d8b2a436af1e40885ea7ce6f97995514e34c4"
+          }
+        },
+        "bbox": [
+          33,
+          159,
+          1232,
+          1116
+        ]
+      },
+      "dash_candy_comet": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/candy_comet.png",
+        "sha256": "072e80da6f5966b74a9972168ffd49e8f68dbe324bd0121516420e32af1274e4",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_candy_comet.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 21950,
+            "sha256": "03034eb8f02f58e3ae756b872eeed1d8cf6b112a4eafbe7c2f5b08f7cebe7432"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_candy_comet.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 55594,
+            "sha256": "b73930bed79640067c8b94b0a978d094defecf2d3f67f75b115f1cf71d95a5a7"
+          }
+        },
+        "bbox": [
+          32,
+          177,
+          1221,
+          1138
+        ]
+      },
+      "victory_golden_confetti": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/golden_confetti.png",
+        "sha256": "6484ac16f622c86129e326d3617d9ece3456466a2f6fb38207de19b8f48a5f76",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_golden_confetti.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 31870,
+            "sha256": "62839b687458cc3fa6d7399fd8899177488746d0b0e197342d09083d66e907c0"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_golden_confetti.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 81308,
+            "sha256": "8edfa506bf50368da2fd412492d5dbc643606dfb8e47a3039d1c98c1d380337f"
+          }
+        },
+        "bbox": [
+          69,
+          106,
+          1178,
+          1162
+        ]
+      },
+      "victory_studio_spotlights": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/studio_spotlights.png",
+        "sha256": "e2905a3f9c0f366e8cb5a1504dc79bd060c34221409145a85d83973b83257981",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_studio_spotlights.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 21842,
+            "sha256": "70beb87c1557bfb9eaa3cf9ad389a82c5b6153f7a5d91ccded839c93bfbe477f"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_studio_spotlights.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 55826,
+            "sha256": "6b0e282a890549e8aaee91fa2e004ec538057641e9dc6dd0383a572fc1c9473b"
+          }
+        },
+        "bbox": [
+          37,
+          177,
+          1223,
+          1137
+        ]
+      },
+      "victory_neon_fireworks": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/neon_fireworks.png",
+        "sha256": "75be97bd7751e720a4da7d5e05d5e459369d1b60659d195ee74b7092c095ebbe",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_neon_fireworks.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 34412,
+            "sha256": "a91e348772e176eb7f2d2a8593dae06f781b4d3524320df63a4e24c4761ef250"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_neon_fireworks.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 86982,
+            "sha256": "86caa88abefaaaf145d1d512dfcb3bbf02c641e36ebf2c67c0fa3238b184f5ba"
+          }
+        },
+        "bbox": [
+          21,
+          56,
+          1217,
+          1216
+        ]
+      },
+      "victory_pumpkin": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/pumpkin_victory.png",
+        "sha256": "f760da3dc35a28a19fd9cdd101272bf34796e6f1e105e579c77ba1efea93b0d0",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_pumpkin.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 30148,
+            "sha256": "3363c0e956a9c2fbe753bb46980ae2993f91ca82ec4b4539474628b3176578ae"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_pumpkin.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 71526,
+            "sha256": "d96b23d0bd4634fbd6b8ba669344c68cb58310db679a95f2f02f688be8b482b1"
+          }
+        },
+        "bbox": [
+          61,
+          80,
+          1208,
+          1174
+        ]
+      },
+      "victory_midnight_confetti": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/midnight_confetti.png",
+        "sha256": "f0cafaf4b1bac9adec328e5fd549689ad988cbf04c21186274f5baa4f9201249",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_midnight_confetti.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 30444,
+            "sha256": "883ebf515d95cd3285c39c91146311bf3d7eb1a7df5f082857cb6e686ab171a0"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_midnight_confetti.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 73688,
+            "sha256": "d17a4629b502ff0eacc5c674e0b45aa96e98341f548a7a6a45c68596a17ec354"
+          }
+        },
+        "bbox": [
+          65,
+          82,
+          1174,
+          1180
+        ]
+      }
+    },
+    "achievements": {
+      "boss": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_boss_legend_victory.png",
+        "sha256": "58a5f99da232226102012761ee857fe949acf11d53b99b98eb6df69b38be0d72",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/boss.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15654,
+            "sha256": "0ec34849e1998a2dfcaecedbc38d1e0f34149ec3397c7183f988bc1c31828fa3"
+          },
+          "md": {
+            "file": "ui/achievements/md/boss.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42694,
+            "sha256": "3abd7cf5e290ad8ba15a1cc572b5e642e8c4bbaa654cdc276462e58652239dcf"
+          }
+        },
+        "bbox": [
+          74,
+          16,
+          1174,
+          1251
+        ]
+      },
+      "survival": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_survival_final_star.png",
+        "sha256": "cee4e7a0b0a0aeb60cbe02e2c85743ebd7b1a434b87b8e3839b90bd1e495210f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/survival.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16230,
+            "sha256": "967df9743d85a529b86d030635fba5b2e072d40e86635ab2ae196d0d2cc2bf37"
+          },
+          "md": {
+            "file": "ui/achievements/md/survival.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42638,
+            "sha256": "bfb28a22bfba937e765d1b0e18841d20c0c92abba12587ed325570d04b35ac0d"
+          }
+        },
+        "bbox": [
+          27,
+          9,
+          1225,
+          1244
+        ]
+      },
+      "energy_rush": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_challenge_energy_rush.png",
+        "sha256": "723bc43debf4da418604083ebab60011fcbdf0c275150c75182f4ab8dd9c2ce9",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/energy_rush.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16906,
+            "sha256": "172402832f436c0d8023edab21caba16e05b3e598da6ed56dbadb8009a429738"
+          },
+          "md": {
+            "file": "ui/achievements/md/energy_rush.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 45324,
+            "sha256": "759d9f3d84e248f9b6e9cd881a4fa6eedb136b83a2a538cd5211e874be2150ce"
+          }
+        },
+        "bbox": [
+          42,
+          62,
+          1211,
+          1229
+        ]
+      },
+      "high_stakes": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_challenge_high_stakes.png",
+        "sha256": "ccc93b257727d54fc71ad44e0097cb5c32c5123bd6c90879aaed0c63415ad03f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/high_stakes.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19520,
+            "sha256": "48893feb0b602312928d87f24ff2c189846f2a7624ee12a37a00d100a7b918a6"
+          },
+          "md": {
+            "file": "ui/achievements/md/high_stakes.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 52958,
+            "sha256": "19fd0b2a5fcc5bb106c05c1ea1f69756116d90cebc84adb65fa50878b1dac56d"
+          }
+        },
+        "bbox": [
+          16,
+          7,
+          1235,
+          1253
+        ]
+      },
+      "spotlight": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_challenge_prime_spotlight.png",
+        "sha256": "0e546c19e0b4b2fc18b1dc1436a19ecf58b165c0f555178eb2791ffefdd4e8bc",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/spotlight.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19492,
+            "sha256": "5e91aaceff78fe8cdc8e4988bdfafd715d2eee9e235a0372ff0160f384b8f2d0"
+          },
+          "md": {
+            "file": "ui/achievements/md/spotlight.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 52944,
+            "sha256": "80627675e6f41675331171fd2e75b28bb2ee6e4102e97c07efac4b521f533a66"
+          }
+        },
+        "bbox": [
+          17,
+          1,
+          1237,
+          1250
+        ]
+      }
+    },
+    "rewards": {
+      "collection": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/collection_rewards_emblem.png",
+        "sha256": "520b2f65c2ddcbd350f763a446d7e906dfebad76bb704d46992c108ca65c6a4c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/rewards/xs/collection.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6102,
+            "sha256": "6491aaf7fca469658e19d1f492fabdb99c5ecc5983daff49f474ffe538a034c0"
+          },
+          "sm": {
+            "file": "ui/rewards/sm/collection.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15638,
+            "sha256": "8347c2e1ed8e5d6060fc87a9535f932a740bfd02155ce0a65f51c9889ad301f2"
+          }
+        },
+        "bbox": [
+          88,
+          26,
+          1165,
+          1238
+        ]
+      },
+      "career": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/reward_career_emblem.png",
+        "sha256": "42f35ceab17cb0449afca1ebc1b68aad924fdba2852d678997ce39519205da9c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/rewards/xs/career.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5910,
+            "sha256": "db357d7eb416cc3b082377966086ed4a057829788bb4ad2bd1a8b0fcad792cf0"
+          },
+          "sm": {
+            "file": "ui/rewards/sm/career.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15070,
+            "sha256": "062560cc3eb478280abc2b3954ebbdb00c6ad3339dfc01ac98d1c402afbee2f0"
+          }
+        },
+        "bbox": [
+          91,
+          18,
+          1155,
+          1238
+        ]
+      },
+      "boss": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/reward_boss_fight_emblem.png",
+        "sha256": "61cc56202fa98860bf9a55f19137a7434e4ef501c4e67916d5108bd9749aebf3",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/rewards/xs/boss.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6986,
+            "sha256": "dd46064e8678e5e43c08733945a5b577419c6a946c8763ae2686bd21a6df311f"
+          },
+          "sm": {
+            "file": "ui/rewards/sm/boss.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18514,
+            "sha256": "ed0bb3ad112d650b9d43ef1991754cc7d7508e9551c169a754ad693642da9fe7"
+          }
+        },
+        "bbox": [
+          64,
+          78,
+          1191,
+          1223
+        ]
+      },
+      "daily": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/reward_daily_streak_emblem.png",
+        "sha256": "fe8c3fc59f42f5940c5f8041ec8d74efd5a7f664df464f76bd13a2a3a19c4476",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/rewards/xs/daily.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6540,
+            "sha256": "8c142e8a39312b3e12b8dd4a48fd3e8dbfd1b3c19174cecaeafb63d6c0516e71"
+          },
+          "sm": {
+            "file": "ui/rewards/sm/daily.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16422,
+            "sha256": "486d772315421a8a8d55ee04e19f6b98e007cb035318dbd7678a1cde27d205e9"
+          }
+        },
+        "bbox": [
+          31,
+          22,
+          1222,
+          1246
+        ]
+      }
+    },
+    "goals": {
+      "debut": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/season_goal_debut_in_broadcast.png",
+        "sha256": "975801935795bd46aa5a375669aa3b49dcb7c775eb0ba7699bf9fab2ba63972f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/debut.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7894,
+            "sha256": "2a192da0b3d105697c6c4e8d26a30775be99de5f7a59023df3234b5f3bd934b3"
+          },
+          "sm": {
+            "file": "ui/goals/sm/debut.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 20632,
+            "sha256": "20c19d94aec33141da86c9267598f30518170176fd4ba8912f934feff7a93a82"
+          }
+        },
+        "bbox": [
+          65,
+          4,
+          1187,
+          1254
+        ]
+      },
+      "combo": {
+        "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/season_goal_combo_master.png",
+        "sha256": "799df0a079b89c596d59576e6217e266dad4e5cc7c6df78407c05ff481f92fa3",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/combo.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6630,
+            "sha256": "daa3834c9ab8f238eb1e1d6567d37197daeb3735d2e17f759ea884e3219691a0"
+          },
+          "sm": {
+            "file": "ui/goals/sm/combo.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17156,
+            "sha256": "8b21d779d561cfbe09c59d23fbab18145632652d837056a61088e7a8a3efde07"
+          }
+        },
+        "bbox": [
+          69,
+          79,
+          1145,
+          1167
+        ]
+      }
+    }
   }
 }

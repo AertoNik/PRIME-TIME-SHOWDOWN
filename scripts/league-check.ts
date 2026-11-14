@@ -587,6 +587,7 @@ async function serverChecks(): Promise<void> {
   // C (no fights against B yet) gives up at once against B twice: B's defence wins; it is paid ONCE per attacker and day
   const pBt0 = (await prof(B)).tokens;
   const airB0 = (await prof(B)).air;
+  const repB0 = Number((await prof(B)).stats?.repTotal ?? 0);
   let againstB = 0;
   let gaveUp = 0;
   for (let i = 0; i < 2; i++) {
@@ -599,6 +600,9 @@ async function serverChecks(): Promise<void> {
   const pBt = await prof(B);
   check(`a forfeit is a loss at once (${gaveUp}/2) — no waiting, no too_early`, gaveUp === 2);
   check(`defence wins pay the owner ${LEAGUE.tokens.defenseWin} tokens ONCE per attacker and day (2 wins vs C → +${pBt.tokens - pBt0}), air points too`, againstB === 2 && pBt.tokens - pBt0 === LEAGUE.tokens.defenseWin && pBt.air > airB0);
+  // Beta 2.0: and producer reputation — the same rule (once per attacker and day), the server's lifetime sum for the game
+  const repB = Number(pBt.stats?.repTotal ?? 0);
+  check(`Beta 2.0: a won defence adds ${LEAGUE.defenseRep.win} ★ producer reputation ONCE per attacker and day (2 wins vs C → +${repB - repB0}), today's count kept for the cap`, againstB === 2 && repB - repB0 === LEAGUE.defenseRep.win && (pBt.stats as any)?.rep?.n >= LEAGUE.defenseRep.win);
   // A has already fought B three times today: the pair limit sends A elsewhere
   const pairBefore = (await admin.collection('league_matches').getFullList({ filter: `attacker = "${A.id}" && defOwner = "${B.id}" && ranked = true && status != "void"` })).length;
   const mPair = (await startA()).j.match;

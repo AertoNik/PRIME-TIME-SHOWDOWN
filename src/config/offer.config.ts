@@ -47,6 +47,12 @@ export interface OfferRevision {
    * approved for anything else. Each list is the published appendix of its revision, item for item.
    */
   items?: string[];
+  /**
+   * Beta 2.0: this revision's text sells BUNDLES (several digital items in one order for one price, refunded only whole).
+   * Without it the server never sells a bundle (lib/payments.js bundlesOffered): revisions 1–6 define an order as ONE
+   * digital item (§1.7) and a refund as the sum paid «for it» (§9.2), so a bundle needs new terms first.
+   */
+  bundles?: boolean;
 }
 
 /** Appendix 1 of revisions 1–3 (published 24.10 / 30.10.2026): the two skins and the four effects. */
@@ -99,6 +105,20 @@ export const OFFER_R6_PLAN: Omit<OfferRevision, 'url' | 'sha256' | 'effectiveFro
 };
 
 /**
+ * Beta 2.0 — revision 7, APPROVED (Р-29, 14.11.2026): revision 6 and BUNDLES — several digital items in one order for one
+ * price (§1.12 «Комплект»), all of them delivered by that one order (§7.6), sold only whole and never to an account that
+ * owns one of them (§3.9–3.10), refused only whole (§9.2), a defect claimable for one item or the whole bundle with its
+ * share in proportion to the items' own prices (§9.3), an item owned by the time of payment → a full refund (§9.5), a
+ * full refund takes every item back (§9.10). The owner's 12:00 MSK of 14.11 had passed before the release was ready, so
+ * it takes effect at a safe moment after the publication: 14.11.2026 16:00 MSK (13:00 UTC). docs/legal-drafts/OFFER_R7_DRAFT.md.
+ */
+export const OFFER_R7_PLAN: Omit<OfferRevision, 'url' | 'sha256' | 'effectiveFrom'> = {
+  ...OFFER_R6_PLAN,
+  revision: 7,
+  bundles: true,
+};
+
+/**
  * Approved, published revisions (oldest first). A revision is never edited once published: its text stays at its
  * own address with the same SHA-256 (what its buyers accepted), and any change of the text is a new revision.
  * 1 — approved by the owner and published on 24.10.2026; kept byte for byte as offer-r1.html.
@@ -123,7 +143,10 @@ export const SHOP_OFFERS: OfferRevision[] = [
   { revision: 5, title: 'Публичная оферта PRIME SHOP', url: 'https://primetimeshowdown.online/legal/ru/offer-r5.html', effectiveFrom: '2026-11-08T06:00:00Z', sha256: 'b27d40719feb62e6ef326dca1e8d2b956c708b99d2f1bd300e7b6b1211bd42b4', minors: true, fighters: true, minorLimits: { orderMaxRub: 500, per30DaysRub: 2000, characters: true }, items: GOODS_R5 },
   // Alpha 1.9.7 (Р-27, approved 13.11.2026): the UNIVERSAL terms — no list of goods (the whole priced catalog), in force
   // from the release, 13.11.2026 05:00 MSK; revision 5 is kept byte for byte at offer-r5.html
-  { ...OFFER_R6_PLAN, url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-11-13T02:00:00Z', sha256: '45862f5d820774ca3f4592329d2a4a67b0acf633368fbabdc2624cecb85c5978' },
+  { ...OFFER_R6_PLAN, url: 'https://primetimeshowdown.online/legal/ru/offer-r6.html', effectiveFrom: '2026-11-13T02:00:00Z', sha256: '45862f5d820774ca3f4592329d2a4a67b0acf633368fbabdc2624cecb85c5978' },
+  // Beta 2.0 (Р-29, approved 14.11.2026): revision 6 + BUNDLES, in force 14.11.2026 16:00 MSK (13:00 UTC) — until then the
+  // server sells under revision 6 at its archived address (byte for byte, offer-r6.html), and no bundle
+  { ...OFFER_R7_PLAN, url: 'https://primetimeshowdown.online/legal/ru/offer.html', effectiveFrom: '2026-11-14T13:00:00Z', sha256: 'b74180fdd2763fb36a40b32aef771f5cbb534815a8411c64a7897af135d796e4' },
 ];
 
 /**
@@ -143,6 +166,8 @@ export const TEST_OFFER: OfferRevision = {
   // 1.8.9.5: TEST ONLY — lets a staging server with PRIME_SHOP_MINORS=on check purchases by 14–17 on test payments
   // (no money). Never a production text: production uses SHOP_OFFERS only.
   minors: true,
+  // Beta 2.0: a staging server may rehearse BUNDLES in test mode (no money moves); production needs a revision with `bundles`
+  bundles: true,
 };
 
 /**

@@ -3,7 +3,10 @@ import { FIGHTERS } from '../config/fighters';
 import { plural } from '../config/events.config';
 import { currentOffer, offerSells } from '../config/offer.config';
 import {
+  SALE_ITEMS,
   SHOP_ITEMS,
+  SHOP_PRICES_RUB,
+  SHOP_PRICE_STATUS,
   SHOP_SALES_OPEN,
   SKINS,
   SKU_OF_SKIN,
@@ -93,6 +96,8 @@ export interface ShopItemState {
   /** One more line of explanation (seasonal rules, how to wear it). */
   note: string;
   owned: boolean;
+  /** Beta 2.0: a bundle with items this account owns already — their names (the bundle cannot be bought). */
+  ownedParts?: string[];
 }
 
 /**
@@ -144,6 +149,8 @@ export class Shop {
 
   // ------------------------------------------------------------ ownership
   owns(item: ShopItemDef): boolean {
+    // Beta 2.0: a bundle — its own right, or every item of it owned anyway (nothing left to sell)
+    if (item.bundle) return ownsPaid(item.sku) || item.bundle.every((s) => this.owns(shopItem(s)));
     if (item.skin) return this.ownsSkin(item.skin);
     if (item.cosmetic) return this.collection.owns(item.cosmetic);
     if (item.fighter) return this.events.ownsFighter(item.fighter);
@@ -168,6 +175,11 @@ export class Shop {
    * terms that sell it take effect.
    */
   listed(item: ShopItemDef): boolean {
+    // Beta 2.0: a bundle shows on the official site only with an approved price under terms that sell bundles
+    if (item.bundle) {
+      if ((approvedPriceRub(item.sku) !== null && currentOffer(this.offerNow())?.bundles === true) || ownsPaid(item.sku)) return true;
+      return !!import.meta.env?.DEV || this.server?.env === 'test';
+    }
     if ((approvedPriceRub(item.sku) !== null && offerSells(currentOffer(this.offerNow()), item.sku)) || this.owns(item) || this.seasonShown(item)) return true;
     return !!import.meta.env?.DEV || this.server?.env === 'test';
   }
@@ -268,6 +280,7 @@ export class Shop {
 
   state(item: ShopItemDef): ShopItemState {
     if (item.fighter && !item.skin) return this.fighterState(item);
+    if (item.bundle) return this.bundleState(item);
     const owned = this.owns(item);
     const price = this.priceOf(item.sku);
     const season = this.events.itemSeason(item);
@@ -416,9 +429,62 @@ export class Shop {
     };
   }
 
-  /** The catalog: every listed item (listed()) with its state. */
+  /** The catalog: every listed item (listed()) with its state (Beta 2.0: and the listed bundles). */
   states(): ShopItemState[] {
-    return SHOP_ITEMS.filter((i) => this.listed(i)).map((i) => this.state(i));
+    return SALE_ITEMS.filter((i) => this.listed(i)).map((i) => this.state(i));
+  }
+
+  // ------------------------------------------------------------ Beta 2.0 bundles
+  /**
+   * A bundle in numbers, honestly: its items, the ones this account owns already, the sum of the items' official prices
+   * and the bundle's own price (null until approved / known), the saving. A bundle with an owned item cannot be bought
+   * (the server refuses it too — lib/checkout.js «bundle_owned»): the saving would be false.
+   */
+  bundleView(item: ShopItemDef): { parts: ShopItemDef[]; owned: ShopItemDef[]; sumKop: number | null; priceKop: number | null; savingKop: number | null; savingPct: number | null; proposedRub: number | null } {
+    const parts = (item.bundle ?? []).map((s) => shopItem(s));
+    const owned = parts.filter((p) => this.owns(p));
+    let sumKop: number | null = 0;
+    for (const p of parts) {
+      const k = this.priceKop(p.sku);
+      sumKop = k === null || sumKop === null ? null : sumKop + k;
+    }
+    const priceKop = this.chargeKop(item.sku) !== null && !isTestPay(this.server?.env) ? this.chargeKop(item.sku) : this.priceKop(item.sku);
+    const savingKop = sumKop !== null && priceKop !== null && priceKop < sumKop ? sumKop - priceKop : null;
+    // the owner's proposal (not approved) — shown only in development builds and on a staging server, marked as such
+    const proposed = SHOP_PRICE_STATUS[item.sku] === 'proposed' && (import.meta.env?.DEV || this.server?.env === 'test') ? SHOP_PRICES_RUB[item.sku] : null;
+    return { parts, owned, sumKop, priceKop, savingKop, savingPct: savingKop !== null && sumKop ? Math.round((savingKop / sumKop) * 100) : null, proposedRub: typeof proposed === 'number' ? proposed : null };
+  }
+
+  private bundleState(item: ShopItemDef): ShopItemState {
+    const v = this.bundleView(item);
+    const env = this.server?.env;
+    if (this.owns(item)) {
+      return { item, status: 'owned', chip: 'В КОЛЛЕКЦИИ', price: ownsPaid(item.sku) ? 'Приобретено' : 'Всё уже у вас', note: 'Все предметы комплекта — в «Моей коллекции».', owned: true };
+    }
+    const open = this.selling(item.sku);
+    if (v.owned.length) {
+      return {
+        item,
+        status: 'soon',
+        chip: 'ЧАСТЬ УЖЕ У ВАС',
+        ownedParts: v.owned.map((p) => p.name),
+        price: this.priceOf(item.sku),
+        note: `У вас уже есть: ${v.owned.map((p) => p.name).join(', ')}. Комплект продаётся только целиком, поэтому его покупка недоступна — остальное можно купить по отдельности.`,
+        owned: false,
+      };
+    }
+    return {
+      item,
+      status: open ? 'on_sale' : 'soon',
+      chip: !open ? (v.priceKop === null ? 'ЦЕНА УТОЧНЯЕТСЯ' : 'ПОКА НЕ В ПРОДАЖЕ') : env === 'demo' ? 'ДЕМО-ОПЛАТА' : env === 'test' ? 'ТЕСТ-ОПЛАТА' : 'В ПРОДАЖЕ',
+      price: this.priceOf(item.sku),
+      note: open
+        ? isTestPay(env)
+          ? 'Тестовая покупка комплекта: одна оплата в тестовом режиме Robokassa, деньги не списываются; все предметы появятся вместе.'
+          : 'Одна покупка — все предметы комплекта сразу. Оплата на защищённой странице Robokassa.'
+        : 'Комплекты откроются, когда владелец утвердит их цены и вступит в силу редакция оферты PRIME SHOP с условиями о комплектах. Предметы можно купить по отдельности.',
+      owned: false,
+    };
   }
 
   // ------------------------------------------------------------ wardrobe (skins)

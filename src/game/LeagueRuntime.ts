@@ -159,8 +159,26 @@ export class LeagueRuntime {
     this.emit();
   }
 
+  /**
+   * Beta 2.0: the producer reputation won defences earned (the server's lifetime sum, stats.repTotal) goes into the
+   * career once: only the part above what this save already holds (save.leagueRep.credited) — the mark moves with the
+   * reputation in the same document, so nothing is added twice; a smaller server sum (a restored database) takes nothing.
+   */
+  private takeDefenseRep(): void {
+    const total = Number(this.me?.stats?.repTotal ?? 0);
+    const s = this.g.save.data;
+    const lr = (s.leagueRep ??= { credited: 0 });
+    if (!Number.isFinite(total) || total <= lr.credited || !this.g.save.writable) return;
+    const add = Math.floor(total - lr.credited);
+    s.reputation += add;
+    lr.credited = Math.floor(total);
+    this.g.save.save();
+    this.g.ui.toast(`Защита в PRIME LEAGUE: +${add} ★ репутации продюсера`, true);
+  }
+
   /** 1.9.6: the exchange items the server holds for this account go into MY COLLECTION (an older server: none). */
   private takeEarned(): void {
+    this.takeDefenseRep();
     const owned = this.me?.exchange?.owned;
     if (owned && owned.length) this.g.grantEarned(owned, 'league', false);
   }

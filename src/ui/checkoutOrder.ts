@@ -208,6 +208,8 @@ function supportHTML(v: OrderView): string {
 }
 
 function whatYouGot(it: ShopItemDef): string {
+  // Beta 2.0: a bundle — every item of it at once
+  if (it.bundle) return `Все предметы комплекта ${it.name} теперь в вашем PRIME ID — наденьте их в «Моей коллекции», когда захотите.`;
   if (it.skin) return 'Новый облик теперь в вашем PRIME ID. Выберите его в «Моей коллекции» → «Облики бойцов».';
   if (it.cosmetic) return `Предмет «${COSMETICS[it.cosmetic].name}» теперь в вашем PRIME ID — наденьте его в «Моей коллекции», когда захотите.`;
   return 'Люсьен «Ночная звезда» теперь в вашем составе — с тростью VAMPIRE CANE BLASTER и фирменной картой BAT BITE.';

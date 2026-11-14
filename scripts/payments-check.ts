@@ -145,10 +145,12 @@ function protocolChecks(): void {
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
   // (1.9.5: the eleven approved on 06.11.2026 carry a price too — 18 in all; what is SOLD is still the offer's Appendix 1)
-  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items; 1.9.8: 25 with KAI and RINA (149)', sold.length === 25 && sold.includes('fighter_lucien') && sold.includes('skin_kai_cue_master') && sold.includes('skin_rina_dune_mirage') && rules.prices.skin_kai_cue_master === 149 && rules.prices.skin_rina_dune_mirage === 149 && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
+  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items; 1.9.8: 25 with KAI and RINA (149); Beta 2.0: + the six bundles approved 14.11.2026 (one line each, at the bundle\'s price)', sold.length === 25 + 6 && sold.filter((k: string) => rules.catalog[k].kind === 'bundle').length === 6 && rules.prices.bundle_ray_glitch === 129 && rules.prices.bundle_broadcast_trio === 119 && /^Комплект цифровых предметов NEON GLITCH \(2 шт\.\) для игры PRIME TIME: SHOWDOWN$/.test(PAYJS.receiptName('bundle_ray_glitch')) && sold.includes('fighter_lucien') && sold.includes('skin_kai_cue_master') && sold.includes('skin_rina_dune_mirage') && rules.prices.skin_kai_cue_master === 149 && rules.prices.skin_rina_dune_mirage === 149 && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
-    return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && n.includes(rules.titles[k]);
+    // (a bundle's title is «Комплект NAME»; its receipt line says «Комплект цифровых предметов NAME (N шт.) …»)
+    const named = rules.catalog[k].kind === 'bundle' ? n.startsWith('Комплект цифровых предметов ' + rules.titles[k].replace(/^Комплект /, '') + ' (') : n.includes(rules.titles[k]);
+    return j2.items[0].name === n && n.length <= 128 && RK.description(n) === n && j2.items[0].sum === rules.prices[k] && named;
   }));
   check('ResultURL is untouched by the Receipt: its signature stays "OutSum:InvId:Password#2[:Shp_*]"', RK.checkResult(signedNote(500000000000123, '99.00', 'ord000000000001'), { password2: TEST_P2, password1: TEST_P1, alg: 'sha256', H, equal: (a: string, b: string) => a === b, test: true }).ok === true);
 
@@ -265,7 +267,7 @@ function protocolChecks(): void {
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
   const rnames = Object.keys(realRules().catalog).map((k: string) => PAYJS.receiptName(k));
   // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced; 1.9.8: 25)
-  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 25 && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
+  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 25 + 6 /* Beta 2.0: + the six bundles */ && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
 }
 
 // ======================================================================== safety

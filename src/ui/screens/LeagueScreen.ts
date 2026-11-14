@@ -20,7 +20,9 @@ import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
 import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
 import { MODE_ICONS } from '../modeArt';
-import { onAir, rankEmblem, tacticIcon } from '../leagueArt';
+import { leagueSymbol, modeEmblem, onAir, rankEmblem, seasonEmblem, tacticIcon } from '../leagueArt';
+import { currencyArt } from '../currencyArt';
+import { effectImg, hasEffectArt } from '../effectArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
 import type { Screen } from '../UI';
 
@@ -124,14 +126,13 @@ function skinName(look: string | null | undefined): string {
  * (Modifier classes are es-* / ec-*: plain «career» / «league» are the screens' own classes — «.league::before»
  * painted the league screen's dark backdrop over the whole switch.)
  */
-const CAREER_EMBLEM = `<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M1 23 Q10 20 18 21 V43 Q10 44 1 41 Z" fill="#e8641a"/><path d="M63 23 Q54 20 46 21 V43 Q54 44 63 41 Z" fill="#e8641a"/><path d="M1 34 Q10 35 18 34 V43 Q10 44 1 41 Z M63 34 Q54 35 46 34 V43 Q54 44 63 41 Z" fill="#a8400c"/><path d="M2 24.5 Q10 22 18 23 M62 24.5 Q54 22 46 23" stroke="#ffb06a" stroke-width="1.6" fill="none" stroke-linecap="round"/><rect x="8" y="26" width="5" height="12" rx="1.6" fill="#ffd56b"/><rect x="51" y="26" width="5" height="12" rx="1.6" fill="#ffd56b"/><circle cx="32" cy="33" r="17.5" fill="#ffc23a" stroke="#7a3a00" stroke-width="2.2"/><circle cx="29" cy="28.5" r="10" fill="#ffe58a" opacity=".55"/><circle cx="32" cy="33" r="13" fill="none" stroke="#fff3c4" stroke-width="1.3" opacity=".85"/><path d="M32 23 L35 29.6 L42.2 30.3 L36.8 35 L38.4 42 L32 38.3 L25.6 42 L27.2 35 L21.8 30.3 L29 29.6 Z" fill="#ff5a1f" stroke="#7a1f00" stroke-width="1.3" stroke-linejoin="round"/><path d="M24.5 14.5 L27 8 L32 12.5 L37 8 L39.5 14.5 Z" fill="#ffd23a" stroke="#7a3a00" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
 
 /** 1.9.1: PRIME SQUAD's sign — three fighters shoulder to shoulder. */
 const SQUAD_ICON = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="16" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M4 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="48" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M36 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="32" cy="20" r="9" fill="#fff"/><path d="M17 54c0-10 7-17 15-17s15 7 15 17z" fill="#fff"/></svg>`;
 
-/** 1.9.1: the PRIME TOKEN as a coin (a league currency, never money) — one inline SVG, no image file. */
+/** The PRIME TOKEN (a league currency, never money): Beta 2.0 — the owner's gold T coin (currencyArt.ts). */
 function tokenCoin(size: number): string {
-  return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#ffb21a"/><circle cx="24" cy="24" r="21" fill="none" stroke="#ffe9a8" stroke-width="2.5"/><circle cx="24" cy="24" r="15.5" fill="#ff8a1a" opacity=".55"/><path d="M16 15h16v5h-5.5v14h-5V20H16z" fill="#fff"/><path d="M9 18a17 17 0 0 1 9-10" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none" opacity=".6"/></svg>`;
+  return currencyArt('tokens', size, 'lg-coin');
 }
 
 /**
@@ -140,8 +141,8 @@ function tokenCoin(size: number): string {
  */
 export function entrySwitch(active: 'career' | 'league'): string {
   return `<div class="ent-switch" role="tablist" aria-label="${tr('Эфир', 'Broadcast')}">
-      <button class="es-opt es-career ${active === 'career' ? 'on' : ''}" data-act="to-career" role="tab" aria-selected="${active === 'career'}"><span class="es-ico" aria-hidden="true">${CAREER_EMBLEM}</span><span>${tr('КАРЬЕРА', 'CAREER')}</span></button>
-      <button class="es-opt es-league ${active === 'league' ? 'on' : ''}" data-act="to-league" role="tab" aria-selected="${active === 'league'}"><span class="es-ico" aria-hidden="true">${rankEmblem(3, null, 22)}</span><span>PRIME LEAGUE</span></button>
+      <button class="es-opt es-career ${active === 'career' ? 'on' : ''}" data-act="to-career" role="tab" aria-selected="${active === 'career'}"><span class="es-ico" aria-hidden="true">${modeEmblem('career', 22)}</span><span>${tr('КАРЬЕРА', 'CAREER')}</span></button>
+      <button class="es-opt es-league ${active === 'league' ? 'on' : ''}" data-act="to-league" role="tab" aria-selected="${active === 'league'}"><span class="es-ico" aria-hidden="true">${modeEmblem('league', 22)}</span><span>PRIME LEAGUE</span></button>
     </div>`;
 }
 
@@ -207,12 +208,12 @@ export function openFightEntry(g: Game): void {
        <div class="ent-head"><span class="ent-k">${onAir()} PRIME NETWORK</span><div class="h1" id="ent-title">${tr('Выберите эфир', 'Choose your broadcast')}</div>
          <p>${tr('Карьера и PRIME LEAGUE — две части одного шоу. Сменить эфир можно в любой момент кнопкой в шапке экрана.', 'The career and PRIME LEAGUE are two halves of one show. Switch any time with the button in the screen’s head.')}</p></div>
        <button class="ent-card ec-career" data-e="career">
-         <span class="ent-ico">${CAREER_EMBLEM}</span>
+         <span class="ent-ico">${modeEmblem('career', 56)}</span>
          <span class="ent-txt"><span class="ent-kick">${tr('СЮЖЕТ · БОССЫ · ОТКРЫТИЯ', 'STORY · BOSSES · UNLOCKS')}</span><b>${tr('КАРЬЕРА', 'CAREER')}</b><small>${tr('Ваше шоу против соперников карьеры: гонорары, новые бойцы и карты.', 'Your show against the career rivals: fees, new fighters and cards.')}</small></span>
          <span class="ent-go" aria-hidden="true">${UI_ICONS.next}</span>
        </button>
        <button class="ent-card ec-league" data-e="league">
-         <span class="ent-ico">${rankEmblem(3, null, 46)}</span>
+         <span class="ent-ico">${modeEmblem('league', 56)}</span>
          <span class="ent-txt"><span class="ent-kick">${tr('РЕЙТИНГ · РАНГИ · СЕЗОН', 'RANKING · RANKS · SEASON')}</span><b>PRIME LEAGUE</b><small>${tr('Дуэли с сохранёнными составами других продюсеров: RP, ранги, сезон.', 'Duels against other producers’ saved line-ups: RP, ranks, the season.')}</small></span>
          <span class="ent-go" aria-hidden="true">${UI_ICONS.next}</span>
        </button>
@@ -485,12 +486,19 @@ export class LeagueScreen implements Screen {
             ? tr('PRIME ID на этой странице ещё не готов к эфиру (сессия или документы). Откройте профиль.', 'Your PRIME ID is not ready here yet (session or documents). Open the profile.')
             : tr('Лига доступна с подтверждённым PRIME ID. Гостевая карьера остаётся как есть.', 'The league needs a confirmed PRIME ID. The guest career stays as it is.');
     return `<div class="lg-hero">
-        ${rankEmblem(3, 'II', 92, 'lg-hero-emb')}
+        ${leagueSymbol(92, 'lg-hero-emb')}
         <div class="lg-hero-k">${tr('ЗВЁЗДНЫЙ ЭФИР PRIME NETWORK', 'THE PRIME NETWORK STAR BROADCAST')}</div>
         <div class="lg-hero-t">${tr('Докажи, что твоё шоу — лучшее', 'Prove your show is the best')}</div>
       </div>
       ${this.rulesList()}
       <div class="lg-card"><p>${why}</p>${acc === 'guest' || acc === 'held' || acc === 'unverified' ? `<button class="btn teal wide" data-act="profile">${tr('Открыть PRIME ID', 'Open PRIME ID')}</button>` : ''}</div>`;
+  }
+
+  /** Beta 2.0: today's producer reputation from won defences (the server's capped count), or ''. */
+  private defenseRepLine(): string {
+    const r = this.g.league.me?.stats?.rep as unknown as { d?: number; n?: number } | undefined;
+    const n = r && typeof r.n === 'number' ? r.n : 0;
+    return n > 0 ? ` ${tr(`Победы защиты сегодня: +${n} ★ репутации продюсера (до ${LEAGUE.defenseRep.perDay} в день).`, `Won defences today: +${n} ★ producer reputation (up to ${LEAGUE.defenseRep.perDay} a day).`)}` : '';
   }
 
   private rulesList(): string {
@@ -544,7 +552,7 @@ export class LeagueScreen implements Screen {
     }
     if (me.report.matches) {
       const r = me.report;
-      banner += `<div class="lg-card lg-report"><div class="lg-k">${tr('ПОКА ТЕБЯ НЕ БЫЛО В ЭФИРЕ', 'WHILE YOU WERE OFF AIR')}</div><div class="lg-report-row"><span><b>${r.matches}</b> ${tr(plural(r.matches, ['матч', 'матча', 'матчей']), r.matches === 1 ? 'match' : 'matches')}</span><span class="w"><b>${r.wins}</b> ${tr(plural(r.wins, ['победа', 'победы', 'побед']), r.wins === 1 ? 'win' : 'wins')}</span><span class="l"><b>${r.losses}</b> ${tr(plural(r.losses, ['поражение', 'поражения', 'поражений']), r.losses === 1 ? 'loss' : 'losses')}</span>${r.tokens ? `<span class="t"><b>+${r.tokens}</b> TOKENS</span>` : ''}</div><small>${tr('RP за защиту не меняется.', 'Defence never changes RP.')}</small><button class="btn ghost" data-act="tab" data-v="defense">${tr('Подробнее', 'Details')}</button></div>`;
+      banner += `<div class="lg-card lg-report"><div class="lg-k">${tr('ПОКА ТЕБЯ НЕ БЫЛО В ЭФИРЕ', 'WHILE YOU WERE OFF AIR')}</div><div class="lg-report-row"><span><b>${r.matches}</b> ${tr(plural(r.matches, ['матч', 'матча', 'матчей']), r.matches === 1 ? 'match' : 'matches')}</span><span class="w"><b>${r.wins}</b> ${tr(plural(r.wins, ['победа', 'победы', 'побед']), r.wins === 1 ? 'win' : 'wins')}</span><span class="l"><b>${r.losses}</b> ${tr(plural(r.losses, ['поражение', 'поражения', 'поражений']), r.losses === 1 ? 'loss' : 'losses')}</span>${r.tokens ? `<span class="t"><b>+${r.tokens}</b> TOKENS</span>` : ''}</div><small>${tr('RP за защиту не меняется.', 'Defence never changes RP.')}${this.defenseRepLine()}</small><button class="btn ghost" data-act="tab" data-v="defense">${tr('Подробнее', 'Details')}</button></div>`;
     }
     const ch = me.challenge;
     // 1.9.2: the start button lives inside «ВАШ БОЕЦ» (fighter → deck → on air); the qualifier's card goes above it
@@ -595,7 +603,7 @@ export class LeagueScreen implements Screen {
     if (!b) return `<div class="lg-state">${tr('Загружаем таблицу сезона…', 'Loading the season table…')}</div>`;
     if (!b.rows.length) return this.empty(UI_ICONS.trophy, tr('Таблица сезона ждёт первого', 'The season table awaits its first'), tr('Ещё никто не сыграл рейтинговый бой в этом сезоне. Одна победа — и первая строка ваша.', 'Nobody has played a ranked fight this season yet. One win — and the first line is yours.'), { tab: 'play', label: tr('В эфир', 'Go on air') });
     const rows = b.rows
-      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''}" style="--rk:${r.rank.color}"><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 18)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
+      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''}" style="--rk:${r.rank.color}"><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 22)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
       .join('');
     return `<div class="lg-k">${tr('СЕЗОН', 'SEASON')} ${b.season.number} · ${tr('реальные игроки', 'real players')} · ${b.total}</div><ol class="lg-board">${rows}</ol>${me.place && !b.rows.some((r) => r.me) ? `<div class="lg-note">${tr('Ваше место', 'Your place')}: ${me.place}</div>` : ''}<small class="muted">${tr('Участники PRIME NETWORK в таблице не участвуют.', 'PRIME NETWORK participants are never in the table.')}</small>`;
   }
@@ -651,7 +659,7 @@ export class LeagueScreen implements Screen {
     const dirty = JSON.stringify(slots) !== JSON.stringify(me.defense.map((d) => ({ slot: d.slot, fighter: d.fighter, deck: d.deck, tactic: d.tactic, look: d.look, enabled: d.enabled })));
     return `${report}
       <div class="lg-card lg-defhead"><div><b>${tr('Защита в эфире', 'Defence on air')}</b><small>${tr('Выключите — и ваши составы не попадут в новые матчи. Начатые бои доиграются по своим снимкам.', 'Switch off — your line-ups join no new match. Started fights finish by their snapshots.')}</small></div><button class="switch lg-defswitch ${me.defenseOn ? 'on' : ''}" data-act="def-global" role="switch" aria-checked="${me.defenseOn}" aria-label="${tr('Защита в эфире', 'Defence on air')}" ${this.busy ? 'disabled aria-busy="true"' : ''}></button></div>
-      <p class="muted lg-defnote">${tr('От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS и эфирных очков (с общим дневным пределом: пять слотов не дают пятикратного дохода).', '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
+      <p class="muted lg-defnote">${tr('От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS, эфирных очков и репутации продюсера: +${LEAGUE.defenseRep.win} ★ за победу, до ${LEAGUE.defenseRep.perDay} ★ в день, один раз за каждого соперника (с общим дневным пределом: пять слотов не дают пятикратного дохода).', '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
       ${cards || this.empty(UI_ICONS.shieldMini, tr('Защита пуста', 'No defence yet'), tr('Выберите бойца ниже — он будет защищать ваш рейтинг, пока вас нет в эфире.', 'Pick a fighter below — they will guard your rating while you are off air.'))}
       ${preview}
       ${slots.length < LEAGUE.defense.slots && free.length ? `<div class="lg-k">${tr('ДОБАВИТЬ БОЙЦА', 'ADD A FIGHTER')}</div><div class="lg-add" role="list" data-strip="add">${free.map((id) => `<button class="lg-fpick" data-act="slot-add" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('')}${lockedPicks(g)}</div>` : ''}
@@ -690,7 +698,7 @@ export class LeagueScreen implements Screen {
         const reached = me.air >= t.at;
         const can = reached && !got;
         const kind = t.tokens ? 'tokens' : t.title ? 'title' : 'emblem';
-        const icon = kind === 'tokens' ? tokenCoin(30) : kind === 'title' ? ICONS.crown : rankEmblem(6, null, 30);
+        const icon = kind === 'tokens' ? tokenCoin(38) : kind === 'title' ? ICONS.crown : seasonEmblem(38);
         const what = kind === 'tokens' ? `<b>${t.tokens}</b> PRIME TOKENS` : kind === 'title' ? `${tr('Титул', 'Title')} <b>«${esc(t.title!)}»</b>` : `<b>${tr('Эмблема сезона', 'Season emblem')}</b>`;
         const act = got
           ? `<span class="lg-step-got">${UI_ICONS.check}<span>${tr('Получено', 'Claimed')}</span></span>`
@@ -724,7 +732,7 @@ export class LeagueScreen implements Screen {
         const act = owned
           ? `<span class="lg-ex-owned">${tr('В коллекции', 'In your collection')}</span>`
           : `<button class="btn ${short ? 'ghost' : 'teal'} lg-ex-buy" data-act="exchange" data-item="${esc(x.item)}"${short ? ' disabled' : ''}>${tokenCoin(16)} ${x.tokens.toLocaleString('ru-RU')}</button>`;
-        return `<li class="lg-ex-item${owned ? ' owned' : ''}" data-rarity="${def.rarity}"><span class="lg-ex-art" data-ex="${esc(x.item)}" aria-hidden="true"></span><span class="lg-ex-what"><b>${esc(def.name)}</b><small>${esc(SLOT_LABELS[def.slot])} · ${esc(RARITY_LABEL[def.rarity])}</small><small class="muted">${esc(def.desc)}</small></span><span class="lg-ex-act">${act}</span></li>`;
+        return `<li class="lg-ex-item${owned ? ' owned' : ''}" data-rarity="${def.rarity}"><span class="lg-ex-art${hasEffectArt(x.item) ? ' pic' : ''}" data-ex="${esc(x.item)}" aria-hidden="true">${hasEffectArt(x.item) ? effectImg(x.item, 56, 'fill') : ''}</span><span class="lg-ex-what"><b>${esc(def.name)}</b><small>${esc(SLOT_LABELS[def.slot])} · ${esc(RARITY_LABEL[def.rarity])}</small><small class="muted">${esc(def.desc)}</small></span><span class="lg-ex-act">${act}</span></li>`;
       })
       .join('');
     return `<div class="lg-card lg-exchange"><div class="lg-k">${tr('ОБМЕН PRIME TOKENS', 'PRIME TOKENS EXCHANGE')}</div>

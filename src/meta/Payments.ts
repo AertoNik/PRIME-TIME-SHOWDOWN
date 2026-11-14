@@ -1,4 +1,4 @@
-import { SHOP_ITEMS, type ShopSku } from '../config/shop.config';
+import { SALE_ITEMS, type ShopSku } from '../config/shop.config';
 
 // Alpha 1.8.8 (stage 4) — PRIME PAYMENTS: what the game knows about an order and the way back from
 // Robokassa, as pure functions. The SERVER decides everything (backend lib/payments.js): an item is the
@@ -239,7 +239,7 @@ export function loadReturn(store: MiniStorage | null, now: number = Date.now()):
     typeof p.inv === 'number' &&
     Number.isInteger(p.inv) &&
     p.inv > 0 &&
-    (p.sku === null || (typeof p.sku === 'string' && SHOP_ITEMS.some((i) => i.sku === p!.sku))) &&
+    (p.sku === null || (typeof p.sku === 'string' && SALE_ITEMS.some((i) => i.sku === p!.sku))) &&
     (p.account === null || (typeof p.account === 'string' && p.account.length <= 64)) &&
     typeof p.at === 'number' &&
     now - p.at >= 0 &&

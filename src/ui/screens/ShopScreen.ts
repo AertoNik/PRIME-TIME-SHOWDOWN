@@ -3,7 +3,7 @@ import { Color } from 'three';
 import { FIGHTERS } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
 import { currentOffer, offerDate } from '../../config/offer.config';
-import { SHOP_CATEGORIES, SHOP_ITEMS, SKINS, shopItem, type ShopCategory, type ShopItemDef, type ShopSku } from '../../config/shop.config';
+import { SALE_ITEMS, SHOP_CATEGORIES, SKINS, formatKop, shopItem, type ShopCategory, type ShopItemDef, type ShopSku } from '../../config/shop.config';
 import { Rng } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { clearPending, loadPending, resumeDecision, sessionStore } from '../../meta/Checkout';
@@ -111,7 +111,7 @@ export class ShopScreen implements Screen {
     this.backTo = p?.from === 'collection' ? 'collection' : 'menu';
     this.cat = 'all';
     this.catScroll = 0;
-    const sku = p?.sku && SHOP_ITEMS.some((i) => i.sku === p.sku) ? p.sku : null;
+    const sku = p?.sku && SALE_ITEMS.some((i) => i.sku === p.sku) ? p.sku : null;
     if (sku) this.openItem(sku);
     else this.showCatalog(false);
     // 1.8.8 stage 3: back after PRIME ID (the sign-in reloaded the page) — the note says to which item
@@ -308,14 +308,15 @@ export class ShopScreen implements Screen {
     const g = this.g;
     const states = g.shop.states();
     const signedIn = !!g.account?.api?.sessionRecord;
-    const cats = SHOP_CATEGORIES.filter((c) => this.cat === 'all' || this.cat === c.id);
+    // Beta 2.0: the bundles section only when a bundle is listed (Shop.listed: approved and under terms that sell them)
+    const cats = SHOP_CATEGORIES.filter((c) => (this.cat === 'all' || this.cat === c.id) && (c.id !== 'bundles' || states.some((s) => s.item.category === 'bundles')));
     const sections = cats
       .map((c) => {
         const list = states.filter((s) => s.item.category === c.id);
-        const size = c.id === 'skins' ? 'hero' : c.id === 'fighters' ? 'wide' : 'tile';
+        const size = c.id === 'skins' ? 'hero' : c.id === 'fighters' || c.id === 'bundles' ? 'wide' : 'tile';
         return `<section class="shop-sec sec-${c.id}">
           <div class="shop-sec-title"><span>${esc(c.title)}</span><i></i><b>${list.length}</b></div>
-          <div class="shop-grid g-${size}">${list.map((s) => this.itemCard(s, size)).join('')}</div>
+          <div class="shop-grid g-${size}">${list.map((s) => (s.item.bundle ? this.bundleCard(s) : this.itemCard(s, size))).join('')}</div>
         </section>`;
       })
       .join('');
@@ -346,7 +347,7 @@ export class ShopScreen implements Screen {
       <div class="fill scroll shop-scroll">
         <div class="shop-strip"><span>${TOOL_ICONS.rotate}Примерка бесплатно</span><span>Покупки — с PRIME ID</span><span>${esc(g.shop.priceNote())}</span></div>
         <div class="seg-control shop-cats" role="tablist">
-          ${[{ id: 'all', title: 'Всё' }, ...SHOP_CATEGORIES.map((c) => ({ id: c.id, title: c.id === 'effects' ? 'Эффекты' : c.title }))]
+          ${[{ id: 'all', title: 'Всё' }, ...SHOP_CATEGORIES.filter((c) => c.id !== 'bundles' || states.some((s) => s.item.category === 'bundles')).map((c) => ({ id: c.id, title: c.id === 'effects' ? 'Эффекты' : c.title }))]
             .map((c) => `<button class="${this.cat === c.id ? 'on' : ''}" role="tab" aria-selected="${this.cat === c.id}" data-act="cat" data-cat="${c.id}">${esc(c.title)}</button>`)
             .join('')}
         </div>
@@ -407,10 +408,71 @@ export class ShopScreen implements Screen {
       </article>`;
   }
 
+  /** Beta 2.0: a bundle's card — its items' pictures, the honest comparison, the state. */
+  private bundleCard(st: ShopItemState): string {
+    const it = st.item;
+    const v = this.g.shop.bundleView(it);
+    const cmp = this.bundlePrices(v);
+    return `<article class="si si-wide si-bundle rar-${it.rarity} st-${st.status} ${st.owned ? 'is-owned' : ''}">
+        <div class="si-art" data-act="open" data-sku="${it.sku}">${shopArt(this.g, it)}<span class="si-rar">${RARITY[it.rarity]}</span>${st.owned ? `<span class="si-ribbon r-owned">${UI_ICONS.check.replace('<svg', '<svg width="9" height="9"')}В КОЛЛЕКЦИИ</span>` : v.savingPct ? `<span class="si-ribbon r-new">−${v.savingPct} %</span>` : ''}</div>
+        <div class="si-body">
+          <div class="si-kind">${esc(it.kind)}</div>
+          <div class="si-name">${nameHTML(it.name)}</div>
+          <ul class="sb-parts">${v.parts.map((p) => `<li class="${v.owned.includes(p) ? 'own' : ''}">${v.owned.includes(p) ? UI_ICONS.check.replace('<svg', '<svg width="9" height="9"') : ''}${esc(p.name)}</li>`).join('')}</ul>
+          ${cmp}
+          <div class="si-foot"><span class="si-chip">${esc(st.chip)}</span><span class="si-price">${esc(st.price)}</span></div>
+          <div class="si-actions"><button class="btn si-more" data-act="open" data-sku="${it.sku}">Состав и покупка</button></div>
+        </div>
+      </article>`;
+  }
+
+  /** The honest comparison: the items one by one, the bundle, the saving (and, off the official site, a proposal). */
+  private bundlePrices(v: ReturnType<Game['shop']['bundleView']>): string {
+    const fmt = (kop: number) => formatKop(kop);
+    if (v.sumKop !== null && v.priceKop !== null && v.savingKop !== null)
+      return `<div class="sb-cmp"><span>По отдельности <s>${fmt(v.sumKop)}</s></span><b>${fmt(v.priceKop)}</b><em>выгода ${fmt(v.savingKop)}</em></div>`;
+    if (v.sumKop !== null && v.proposedRub !== null)
+      return `<div class="sb-cmp proposed"><span>По отдельности ${fmt(v.sumKop)}</span><b>${v.proposedRub} ₽</b><em>предложение — не утверждено</em></div>`;
+    return v.sumKop !== null ? `<div class="sb-cmp"><span>По отдельности ${fmt(v.sumKop)}</span></div>` : '';
+  }
+
+  /** Beta 2.0: a bundle's page — every item with its own price, the comparison, the purchase (never a fitting room). */
+  private renderBundle(keep: boolean): void {
+    const g = this.g;
+    const it = shopItem(this.sku!);
+    const st = g.shop.state(it);
+    const v = g.shop.bundleView(it);
+    const canBuy = st.status === 'on_sale' && !st.owned && !st.ownedParts?.length;
+    const parts = v.parts
+      .map((p) => {
+        const own = v.owned.includes(p);
+        const k = g.shop.priceKop(p.sku);
+        return `<div class="sb-row rar-${p.rarity} ${own ? 'own' : ''}"><span class="sb-art">${shopArt(g, p)}</span><span class="sb-txt"><small>${esc(p.kind.split(' · ')[0])} · ${RARITY[p.rarity]}</small><b>${esc(p.name)}</b><em>${own ? 'Уже у вас' : k !== null ? `отдельно ${formatKop(k)}` : 'цена уточняется'}</em></span><button class="btn ghost sb-see" data-act="open" data-sku="${p.sku}">Смотреть</button></div>`;
+      })
+      .join('');
+    // (no fitting room: a bundle page is a plain page over the catalog's background)
+    this.el.classList.remove('at-item', 'dom-preview');
+    setScreenHTML(
+      this.el,
+      `${this.head(`<div class="sh-logo"><span>PRIME</span><b>SHOP</b></div><div class="sh-sub">Комплект ${esc(it.name)} · ${esc(it.kind.split(' · ')[1] ?? '')}</div>`, false)}
+      <div class="fill scroll shop-scroll sb-page rar-${it.rarity}">
+        <div class="sb-hero si-art">${shopArt(g, it)}</div>
+        <p class="sb-desc">${esc(it.desc)}</p>
+        <div class="sb-list">${parts}</div>
+        ${this.bundlePrices(v)}
+        <div class="sb-note ${st.ownedParts?.length ? 'warn' : ''}">${esc(st.note)}</div>
+        <div class="sb-rules muted">Комплект — одна покупка и одна оплата: все предметы выдаются вместе и только после подтверждения оплаты сервером. Он продаётся только целиком и не продаётся, если что-то из него уже у вас. Отказаться от покупки можно только от всего комплекта; если у одного из предметов есть недостаток, права покупателя сохраняются (оферта, п. 9.3).</div>
+        <div class="sb-actions"><button class="btn big wide ${canBuy ? '' : 'ghost'}" data-act="buy" ${canBuy || st.status === 'soon' ? '' : 'disabled'}><span class="shine"></span>${st.owned ? 'Уже в коллекции' : canBuy ? `Купить комплект · ${esc(st.price)}` : 'Подробнее о покупке'}</button></div>
+      </div>`,
+      keep,
+    );
+  }
+
   // ------------------------------------------------------------ item page + fitting room
   private renderItem(keep = true): void {
     const g = this.g;
     const it = shopItem(this.sku!);
+    if (it.bundle) return this.renderBundle(keep);
     const st = g.shop.state(it);
     const p = it.preview;
     const three = p === 'model' || p === 'dash' || p === 'confetti' || p === 'fighter';

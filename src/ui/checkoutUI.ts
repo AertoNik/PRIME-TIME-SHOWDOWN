@@ -2,7 +2,7 @@ import { RARITY_LABEL } from '../config/cosmetics.config';
 import { COSMETICS } from '../config/cosmetics.config';
 import { FIGHTERS } from '../config/fighters';
 import { currentOffer, offerDate } from '../config/offer.config';
-import { MINOR_PURCHASES, SHOP_SALES_OPEN, SKINS, SHOP_ITEMS, approvedPriceRub, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
+import { MINOR_PURCHASES, SHOP_SALES_OPEN, SKINS, SALE_ITEMS, approvedPriceRub, shopItem, formatKop, rubToKop, type ShopItemDef, type ShopSku } from '../config/shop.config';
 import type { Game } from '../game/Game';
 import { CLIENT_PAYMENTS, buildCheckout, maskEmail, savePending, sessionStore, type CheckoutAccount, type CheckoutBlock, type CheckoutInput, type CheckoutView } from '../meta/Checkout';
 import { PAY_TRIES_MAX, POLL_DELAYS_MS, TEST_PAY_BAND, checkPaymentPage, isTestPay, keepChecking, noteTry, onOrderSignal, orderPhase, saveReturn, signalOrder, triesOf, type OrderPhase, type PayEnv, type PaymentPage, type ServerOrder } from '../meta/Payments';
@@ -84,6 +84,10 @@ const SERVER_BLOCK: Record<string, CheckoutBlock> = {
   minor_limit: 'minor_limit',
   owned: 'owned',
   seasonal_only: 'seasonal_only',
+  // Beta 2.0 bundles
+  bundle_owned: 'bundle_owned',
+  overlap_open_order: 'overlap_order',
+  bundles_closed: 'price_pending',
   price_pending: 'price_pending',
   // 1.9.4: a character under terms that do not sell one (the server's check) — the same «not for sale yet» window
   not_in_offer: 'price_pending',
@@ -197,7 +201,7 @@ export class PrimeCheckout {
 
   /** Show the window for `sku` (one window: an open one is reused). */
   open(sku: ShopSku, o: { opener?: HTMLElement | null; from?: 'menu' | 'collection'; startedFor?: string | null } = {}): void {
-    if (!SHOP_ITEMS.some((i) => i.sku === sku)) return;
+    if (!SALE_ITEMS.some((i) => i.sku === sku)) return;
     const fresh = this.sku !== sku || !this.root;
     this.sku = sku;
     this.from = o.from ?? this.from;
@@ -224,7 +228,7 @@ export class PrimeCheckout {
    * (another tab): the server's order names it.
    */
   openOrder(inv: number, o: { sku?: ShopSku | null; result?: 'success' | 'fail' | 'left' | null; opener?: HTMLElement | null; from?: 'menu' | 'collection' } = {}): void {
-    if (o.sku && SHOP_ITEMS.some((i) => i.sku === o.sku)) this.sku = o.sku;
+    if (o.sku && SALE_ITEMS.some((i) => i.sku === o.sku)) this.sku = o.sku;
     this.from = o.from ?? this.from;
     this.leaveOrder();
     this.orderInv = inv;
@@ -360,7 +364,7 @@ export class PrimeCheckout {
   // ---------------------------------------------------------------- the data
   private input(): CheckoutInput {
     const g = this.g;
-    const item = SHOP_ITEMS.find((i) => i.sku === this.sku)!;
+    const item = SALE_ITEMS.find((i) => i.sku === this.sku)!;
     const s = this.server;
     let account = checkoutAccount(g);
     // what the server found is newer than the page's picture of the account
@@ -813,7 +817,7 @@ export class PrimeCheckout {
       this.orderIssue = null;
       this.orderIssueCode = '';
       if (!this.sku || this.sku !== r.order.sku) {
-        const it = SHOP_ITEMS.find((i) => i.sku === r.order.sku);
+        const it = SALE_ITEMS.find((i) => i.sku === r.order.sku);
         if (it) this.sku = it.sku;
       }
       g.account?.applyRights(r.owned);
@@ -839,7 +843,7 @@ export class PrimeCheckout {
 
   private orderView(): OrderView | null {
     if (this.orderInv === null || !this.sku) return null;
-    const item = SHOP_ITEMS.find((i) => i.sku === this.sku)!;
+    const item = SALE_ITEMS.find((i) => i.sku === this.sku)!;
     if (DEV_PREVIEW && this.dev.order !== 'none') return devOrderView(item, this.dev, this.orderInv);
     return {
       item,
@@ -981,7 +985,7 @@ export class PrimeCheckout {
 
   private itemHTML(v: CheckoutView, it: ShopItemDef): string {
     const who = it.skin ? FIGHTERS[SKINS[it.skin].fighter] : it.fighter ? FIGHTERS[it.fighter] : null;
-    const kind = it.skin ? '3D-скин' : it.cosmetic ? it.kind : 'Сезонный боец';
+    const kind = it.bundle ? it.kind : it.skin ? '3D-скин' : it.cosmetic ? it.kind : 'Сезонный боец';
     return `<article class="pco-item rar-${it.rarity}">
         <div class="pco-art">${shopArt(this.g, it)}</div>
         <div class="pco-info">
@@ -1024,6 +1028,7 @@ export class PrimeCheckout {
 
   /** What the player will have — no promise of an instant delivery. */
   private getsText(it: ShopItemDef): string {
+    if (it.bundle) return `Одна покупка — сразу ${it.bundle.length} предмета: ${it.bundle.map((s) => shopItem(s).name).join(', ')}. Только внешний вид; отказаться от покупки можно только от всего комплекта.`;
     if (it.skin) return 'Новый облик бойца в вашем PRIME ID. Только внешний вид: характеристики, оружие и карты не меняются.';
     if (it.cosmetic) return `Предмет «${COSMETICS[it.cosmetic].name}» в «Моей коллекции» — надевается, когда захотите. Только внешний вид.`;
     return 'Сезонный боец Люсьен в вашем составе — с тростью VAMPIRE CANE BLASTER и фирменной картой BAT BITE.';
@@ -1036,6 +1041,12 @@ export class PrimeCheckout {
         return { tone: 'lock', title: 'Товар сейчас недоступен', text: 'Этот предмет нельзя оформить. Вернитесь в каталог PRIME SHOP.' };
       case 'owned':
         return { tone: 'ok', title: 'Уже в вашей коллекции', text: v.item?.fighter && !v.item.skin ? 'Люсьен уже в вашем составе — повторная покупка не нужна.' : 'Этот предмет уже ваш — повторная покупка не нужна.' };
+      case 'bundle_owned': {
+        const parts = (v.item && this.g.shop.state(v.item).ownedParts) || [];
+        return { tone: 'lock', title: 'Часть комплекта уже у вас', text: `У вас уже есть: ${parts.join(', ') || 'один из предметов'}. Комплект продаётся только целиком, иначе выгода была бы ненастоящей. Остальные предметы можно купить по отдельности.` };
+      }
+      case 'overlap_order':
+        return { tone: 'lock', title: 'Есть неоплаченный заказ', text: 'У вас уже открыт заказ, который выдаёт один из этих предметов. Оплатите его или подождите, пока он закроется сам (до 2 часов), — так ни один предмет не будет оплачен дважды.' };
       case 'seasonal_only': {
         const upcoming = !!v.item && this.g.shop.state(v.item).status === 'upcoming';
         if (v.item?.fighter && !v.item.skin)

@@ -315,6 +315,15 @@ export const LEAGUE = {
   squad: { size: 3, toWin: 2, rpFactor: 1.2 },
   /** Defense Studio. */
   defense: { slots: 5 },
+  /**
+   * Beta 2.0 — the defence's share in the producer's progress: reputation (★, the career's XP — the producer levels) for
+   * a SERVER-CONFIRMED won defence — a ranked fight a real attacker lost against this account's saved defender. `win` ★
+   * a won defence, once per attacker and game day (a second account, a rematch: no more), at most `perDay` ★ a day; a
+   * lost defence gives and takes nothing; no RP, tokens or air points change. Moderate on purpose (scripts/economy-model:
+   * ~5 % of a regular player's daily ★) — a reason to build a defence, never the way to level. PRIME_LEAGUE_DEFENSE_REP=off
+   * switches it off on the server.
+   */
+  defenseRep: { win: 5, perDay: 25 },
 } as const;
 
 /**

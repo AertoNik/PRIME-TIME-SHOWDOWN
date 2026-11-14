@@ -2,7 +2,7 @@ import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config
 import { CAREER_STAGES, CAREER_START, GOALS, LEVEL_THRESHOLDS, type GoalId, type StageId } from '../config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
-import { COSMETICS, COSMETIC_SLOTS, isGameCosmeticId as isCosmeticId, type CosmeticId, type CosmeticSlot } from '../config/cosmetics.config';
+import { COSMETICS, COSMETIC_SLOTS, FX_SLOTS, isGameCosmeticId as isCosmeticId, type CosmeticId, type CosmeticSlot, type FxSlot } from '../config/cosmetics.config';
 import { isSkinId, SKINS, SKU_OF_COSMETIC, type SkinId } from '../config/shop.config';
 import { PERK_ORDER, SURVIVAL, type PerkId } from '../config/modes.config';
 import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
@@ -243,7 +243,25 @@ export interface SaveData {
    * twice. Not the streak itself (that is the server's: GET /api/prime/daily). No save version bump.
    */
   daily: { claims: number; day: number };
+  /**
+   * Beta 2.0 — personal effects: per fighter, the dash / victory effect it wears INSTEAD of the producer's common one;
+   * 'off' = this fighter wears none (unlike an absent entry, which inherits the common choice). Never ownership: an
+   * item the account does not own (any more) is simply not worn (Collection.equippedFor), one bought item serves every
+   * fighter. No save version bump: an older game keeps an unknown top-level field and writes it back unchanged
+   * (SaveSystem.extra), an older server tolerates it (validate.js MAX_UNKNOWN_TOP_FIELDS); the new server checks it.
+   */
+  fx: FighterFx;
+  /**
+   * Beta 2.0: how much of the PRIME LEAGUE server's lifetime defence reputation (league stats.repTotal — ★ for won
+   * defences, server-confirmed and capped) this save has already added to `reputation`. The game adds only the difference
+   * and moves this mark with it, in the same document — so a reload, a second device or a cloud copy never adds it twice.
+   * Never lowered. Older games keep the unknown top-level field unchanged.
+   */
+  leagueRep: { credited: number };
 }
+
+/** Beta 2.0: fighter → slot → its own effect or 'off' (absent: inherits the common choice). */
+export type FighterFx = Partial<Record<FighterId, Partial<Record<FxSlot, CosmeticId | 'off'>>>>;
 
 /**
  * Alpha 1.8.8 — the wardrobe choices for PRIME SHOP items. Ownership is NOT here (paid items are
@@ -347,6 +365,8 @@ export function defaultSave(): SaveData {
     streak: { current: 0, best: 0, since: Date.now() },
     shop: { skins: {}, equip: {} },
     daily: { claims: 0, day: 0 },
+    fx: {},
+    leagueRep: { credited: 0 },
   };
 }
 
@@ -364,6 +384,22 @@ function sanitizeShop(raw: unknown): ShopState {
       // (1.9.5: and a seasonal item sold in PRIME SHOP after its season — worn from here when owned through its purchase)
       if (typeof id === 'string' && id in COSMETICS && (COSMETICS[id as CosmeticId].paid || !!SKU_OF_COSMETIC[id as CosmeticId]) && COSMETICS[id as CosmeticId].slot === slot) out.equip[slot] = id as CosmeticId;
     }
+  }
+  return out;
+}
+
+/** Beta 2.0: keeps only real fighters, the effect slots and items of that slot (or 'off'); ownership is checked when worn. */
+export function sanitizeFx(raw: unknown): FighterFx {
+  const out: FighterFx = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [f, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isFighter(f) || !v || typeof v !== 'object' || Array.isArray(v)) continue;
+    const row: Partial<Record<FxSlot, CosmeticId | 'off'>> = {};
+    for (const slot of FX_SLOTS) {
+      const id = (v as Record<string, unknown>)[slot];
+      if (id === 'off' || (typeof id === 'string' && id in COSMETICS && COSMETICS[id as CosmeticId].slot === slot)) row[slot] = id as CosmeticId | 'off';
+    }
+    if (Object.keys(row).length) out[f] = row;
   }
   return out;
 }
@@ -743,6 +779,14 @@ export function sanitize(raw: unknown): SaveData {
   d.cosmetics = sanitizeCosmetics(r.cosmetics, d.modes);
   // 1.8.8: PRIME SHOP wardrobe choices (absent before -> standard looks, the game's own items)
   d.shop = sanitizeShop(r.shop);
+  // Beta 2.0: personal effects (absent before -> every fighter inherits the common choice, as before)
+  d.fx = sanitizeFx(r.fx);
+  // Beta 2.0: the defence reputation already added (absent before -> 0: the first league visit adds what the server holds)
+  {
+    const lr = r.leagueRep as { credited?: unknown } | undefined;
+    const c = lr && typeof lr === 'object' ? Number(lr.credited) : 0;
+    d.leagueRep = { credited: Number.isFinite(c) && c > 0 ? Math.min(1e9, Math.floor(c)) : 0 };
+  }
   // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)
   if (Array.isArray(r.careerClaimed)) {
     const ids = new Set(CAREER_STAGES.map((st) => st.id));

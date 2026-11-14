@@ -12,6 +12,17 @@
 
 export type CosmeticSlot = 'cardStyle' | 'broadcastFrame' | 'dashFx' | 'victoryFx' | 'title';
 
+/**
+ * Beta 2.0 — the slots a FIGHTER can wear on its own (personal effects): what the fighter itself does on the stage —
+ * its dash trail and its victory effect. Card styles, broadcast frames and titles dress the producer's broadcast and
+ * stay common.
+ */
+export type FxSlot = 'dashFx' | 'victoryFx';
+export const FX_SLOTS: readonly FxSlot[] = ['dashFx', 'victoryFx'];
+export function isFxSlot(s: unknown): s is FxSlot {
+  return s === 'dashFx' || s === 'victoryFx';
+}
+
 export type CosmeticId =
   | 'card_pumpkin'
   | 'frame_spooky'

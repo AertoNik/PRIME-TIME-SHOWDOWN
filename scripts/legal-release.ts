@@ -23,7 +23,7 @@
 // Nothing is published by this command: the site changes only with the usual publish:sync + commit + Sync.
 
 import { SHOP_OFFERS } from '../src/config/offer.config';
-import { SHOP_ITEMS, SHOP_PRICES_APPROVED_LATER, SHOP_PRICES_APPROVED_ON, approvedPriceRub, formatRub, type ShopSku } from '../src/config/shop.config';
+import { BUNDLE_ITEMS, SHOP_ITEMS, SHOP_PRICES_APPROVED_LATER, SHOP_PRICES_APPROVED_ON, approvedPriceRub, bundleListRub, formatRub, shopItem, type ShopSku } from '../src/config/shop.config';
 import { seasonOf } from '../src/config/seasonal';
 import { ROOT } from './lib/backendKit';
 import { crypto, fs, path, proc } from './lib/node';
@@ -122,10 +122,17 @@ const vals: Record<string, string> = {
   // 1.9.5: items approved on the same later day share one line («NIKA: STAGE IDOL, … — 6 ноября 2026 года»)
   PRICES_DATE: [
     dayText(SHOP_PRICES_APPROVED_ON),
-    ...[...new Set(Object.entries(SHOP_PRICES_APPROVED_LATER).filter(([s]) => approvedPriceRub(s as ShopSku) !== null).map(([, d]) => d!))].map(
+    ...[...new Set(Object.entries(SHOP_PRICES_APPROVED_LATER).filter(([s]) => approvedPriceRub(s as ShopSku) !== null && SHOP_ITEMS.some((i) => i.sku === s)).map(([, d]) => d!))].map(
       (d) =>
         `${SHOP_ITEMS.filter((i) => SHOP_PRICES_APPROVED_LATER[i.sku] === d && approvedPriceRub(i.sku) !== null)
           .map((i) => esc(i.name))
+          .join(', ')} — ${dayText(d)}`,
+    ),
+    // Beta 2.0: the bundles' own prices, approved on their day («комплекты NEON GLITCH, … — 14 ноября 2026 года»)
+    ...[...new Set(BUNDLE_ITEMS.filter((b) => approvedPriceRub(b.sku) !== null && SHOP_PRICES_APPROVED_LATER[b.sku]).map((b) => SHOP_PRICES_APPROVED_LATER[b.sku]!))].map(
+      (d) =>
+        `комплекты ${BUNDLE_ITEMS.filter((b) => SHOP_PRICES_APPROVED_LATER[b.sku] === d && approvedPriceRub(b.sku) !== null)
+          .map((b) => esc(b.name))
           .join(', ')} — ${dayText(d)}`,
     ),
   ].join('; '),
@@ -158,6 +165,27 @@ const what = (i: (typeof SHOP_ITEMS)[number]) =>
       ? `${i.desc} Во время своего события предмет получался за ${currencyOf(i)}; учётной записи, получившей его за эту валюту, он повторно не продаётся.${saleFromText(i)}`
       : i.desc;
 vals.CATALOG = sold.map((i) => `  <tr><td><b>${esc(i.name)}</b><br /><small>${esc(i.kind)}</small></td><td>${esc(what(i))}</td><td>${esc(formatRub(approvedPriceRub(i.sku)!))}</td></tr>`).join('\n');
+// Beta 2.0 (offer № 7): the bundles with an approved price — their items, the items' own prices and the bundle's price.
+// A bundle is sold only while the revision in force sells bundles (offer.config.ts `bundles`, the server checks it).
+const bundles = BUNDLE_ITEMS.filter((b) => approvedPriceRub(b.sku) !== null);
+for (const b of bundles) {
+  const sum = bundleListRub(b.sku);
+  if (sum === null || approvedPriceRub(b.sku)! >= sum) problems.push(`комплект ${b.name}: цена должна быть ниже суммы утверждённых цен его предметов`);
+}
+vals.BUNDLES = bundles.length
+  ? `<h2>Комплекты</h2>
+<p>Комплект — несколько определённых предметов в одном заказе по общей цене (раздел 1 и пп. 3.9–3.11 <a href="offer.html">публичной оферты</a>). Каждый предмет комплекта — тот же, что продаётся отдельно; доступ ко всем предметам предоставляется одновременно. Комплект продаётся только целиком и не предлагается, если хотя бы один его предмет уже есть в вашем PRIME ID — недостающие предметы можно купить отдельно. Комплекты продаются с ${vals.DATE}, ${vals.TIME_MSK} по московскому времени (по времени сервера Игры).</p>
+<table class="doc-table">
+  <tr><th>Комплект</th><th>Что получает покупатель</th><th>Цена</th></tr>
+${bundles
+  .map((b) => {
+    const parts = (b.bundle ?? []).map((sku) => shopItem(sku));
+    const list = parts.map((p) => `${esc(p.name)} (${esc(p.kind)}, отдельно ${esc(formatRub(approvedPriceRub(p.sku)!))})`).join('; ');
+    return `  <tr><td><b>${esc(b.name)}</b><br /><small>Комплект · ${parts.length} предмета</small></td><td>${esc(b.desc)} Входят: ${list}. Сумма цен при отдельной покупке — ${esc(formatRub(bundleListRub(b.sku)!))}.</td><td>${esc(formatRub(approvedPriceRub(b.sku)!))}</td></tr>`;
+  })
+  .join('\n')}
+</table>`
+  : '';
 // 1.9.5: every item of the catalog has an approved price (Р-18) — none may be missing from Appendix 1
 if (sold.length !== SHOP_ITEMS.length) problems.push(`в каталоге ${sold.length} предметов из ${SHOP_ITEMS.length}: у остальных цена не утверждена`);
 
@@ -258,9 +286,16 @@ const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July
 const dateEn = `${Number(dateArg.slice(8, 10))} ${MONTHS_EN[Number(dateArg.slice(5, 7)) - 1]} ${dateArg.slice(0, 4)}`;
 for (const p of ['privacy', 'parents', 'analytics']) {
   const src = path.join(DRAFTS, 'site-analytics', 'en', `${p}.html`);
-  const html = (fs.readFileSync(src, 'utf8') as string).split('{{DATE_EN}}').join(dateEn);
+  const tpl = fs.readFileSync(src, 'utf8') as string;
+  const html = tpl.split('{{DATE_EN}}').join(dateEn);
   if (/\{\{|class="todo"|DRAFT/.test(html)) stop(`en/${p}.html: осталась пометка черновика или незаполненное поле`);
-  fs.writeFileSync(path.join(ROOT, 'public', 'legal', 'en', `${p}.html`), html);
+  // Beta 2.0: an unchanged English page keeps its installed file and date (offer № 7 must not re-date privacy v6)
+  const out = path.join(ROOT, 'public', 'legal', 'en', `${p}.html`);
+  const was = fs.existsSync(out) ? (fs.readFileSync(out, 'utf8') as string) : '';
+  const parts = tpl.split('{{DATE_EN}}');
+  const wasDate = was && parts.length > 1 && was.startsWith(parts[0]) ? was.slice(parts[0].length).split(parts[1].slice(0, 40))[0] : '';
+  const same = !!wasDate && /^\d{1,2} [A-Z][a-z]+ \d{4}$/.test(wasDate) && tpl.split('{{DATE_EN}}').join(wasDate) === was;
+  if (!same) fs.writeFileSync(out, html);
 }
 const ymPath = path.join(ROOT, 'public', 'metrika.js');
 fs.writeFileSync(ymPath, (fs.readFileSync(ymPath, 'utf8') as string).replace('var ENABLED = false;', 'var ENABLED = true;'));

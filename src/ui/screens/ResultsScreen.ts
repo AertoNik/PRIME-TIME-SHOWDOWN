@@ -1,3 +1,4 @@
+import { cosmeticPic } from '../effectArt';
 import { GOALS } from '../../config/career';
 import { COSMETICS } from '../../config/cosmetics.config';
 import { RIVALS } from '../../config/fighters';
@@ -6,11 +7,12 @@ import { FIGHTERS } from '../../config/fighters';
 import type { Difficulty, FighterId, RivalId } from '../../config/types';
 import type { MatchResultData } from '../../combat/types';
 import type { MatchEventOutcome } from '../../meta/EventManager';
-import { ICONS, REWARD_ART } from '../eventArt';
+import { ICONS } from '../eventArt';
 import { currencyIcon } from './EventsScreen';
 import { formatMoney, formatNumber } from '../../core/math';
 import type { Game, ModeSession } from '../../game/Game';
 import { gradeFor, levelFor, type MatchOutcome } from '../../meta/CareerSystem';
+import { levelBadge } from '../careerArt';
 import { formatChallengeValue, type BossOutcome, type ChallengeOutcome } from '../../meta/GameModes';
 import { MODE_ICONS } from '../modeArt';
 import { countUp, el, esc } from '../dom';
@@ -254,11 +256,11 @@ export class ResultsScreen implements Screen {
             <span class="display" style="font-size:13px;color:#ff8ae6"><span data-fans>${formatNumber(o.fighterFansBefore)}</span></span>
           </div>
           <div class="row between" style="margin-top:12px">
-            <span class="h2">Уровень продюсера ${lvlAfter.level}${levelUp ? ' <span class="chip gold" style="margin-left:6px">LEVEL UP!</span>' : ''}</span>
+            <span class="h2 res-lvl">${levelBadge(lvlAfter.level, 30)}Уровень продюсера ${lvlAfter.level}${levelUp ? ' <span class="chip gold" style="margin-left:6px">LEVEL UP!</span>' : ''}</span>
             <span class="label">${Math.floor(this.g.save.data.reputation)}${lvlAfter.next !== null ? ' / ' + lvlAfter.next : ''} ★</span>
           </div>
           <div class="progress" style="margin-top:8px"><i data-lvl style="transform:scaleX(${levelUp ? 0 : lvlBefore.progress})"></i></div>
-          ${levelUp ? `<div class="muted" style="font-size:12px;margin-top:8px">Новые возможности: проверьте контракты и сложность «${lvlAfter.level >= 4 ? 'Чемпион' : 'Профи'}».</div>` : ''}
+          ${levelUp ? `<div class="muted" style="font-size:12px;margin-top:8px">${lvlAfter.level <= 6 ? `Новые возможности: проверьте контракты и сложность «${lvlAfter.level >= 4 ? 'Чемпион' : 'Профи'}».` : `Новое звание продюсера: «${esc(lvlAfter.title)}».`}</div>` : ''}
         </div>
         <div style="margin:0 12px">${goals}</div>
       </div>
@@ -315,7 +317,7 @@ export class ResultsScreen implements Screen {
     g.ui.modal(
       `<div class="reward-pop rarity-${c.rarity}">
          <div class="rp-rays"></div>
-         <div class="rp-art">${REWARD_ART[c.art]}</div>
+         <div class="rp-art">${cosmeticPic(c.id, 112)}</div>
          <div class="label rp-kind">Личный титул · ${esc(who)}</div>
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>

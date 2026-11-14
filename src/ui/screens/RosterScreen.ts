@@ -3,6 +3,7 @@ import { CARDS, PASSIVES } from '../../config/cards';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
 import type { SkinId } from '../../config/shop.config';
+import { COSMETICS, type FxSlot } from '../../config/cosmetics.config';
 import { entitlementsVersion } from '../../meta/entitlements';
 import type { WardrobeEntry } from '../../meta/Shop';
 import { inRoster } from '../../meta/roster';
@@ -10,6 +11,7 @@ import type { FighterId } from '../../config/types';
 import { formatNumber } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { fameTier } from '../../meta/CareerSystem';
+import { fameIcon } from '../careerArt';
 import { cardHTML, el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { currencyIcon } from './EventsScreen';
 import { PASSIVE_ICONS, UI_ICONS } from '../icons';
@@ -97,6 +99,12 @@ export class RosterScreen implements Screen {
     if (!t) return;
     const act = t.dataset.act!;
     const g = this.g;
+    if (act === 'fx') {
+      // Beta 2.0: this fighter's own dash / victory effects — set in MY COLLECTION
+      g.audio.ui('click');
+      g.goto('collection', { section: 'overview', fx: this.viewing });
+      return;
+    }
     if (act === 'back') {
       g.audio.ui('click');
       if (this.backTo === 'events') g.goto('events', { tab: 'rewards' });
@@ -307,15 +315,27 @@ export class RosterScreen implements Screen {
           <div><b>ФИРМЕННАЯ КАРТА · ${esc(sig.name)} · ${sig.cost}⚡</b><span>${esc(sig.desc)}</span></div>
         </div>
         <div class="kv-grid">
-          <div class="kv"><div class="v">${formatNumber(fp.fans)}</div><div class="k">${esc(fameTier(fp.fans))}</div></div>
+          <div class="kv kv-fame">${fameIcon(fp.fans, 30, 'kv-fame-ico')}<div><div class="v">${formatNumber(fp.fans)}</div><div class="k">${esc(fameTier(fp.fans))}</div></div></div>
           <div class="kv"><div class="v">${fp.wins}-${fp.losses}${fp.draws ? '-' + fp.draws : ''}</div><div class="k">Победы-поражения</div></div>
           <div class="kv"><div class="v">${fp.bestRating || '—'}</div><div class="k">Лучший рейтинг</div></div>
         </div>
+        ${open ? this.fxRow(id) : ''}
         <div class="spacer-8"></div>
         ${action}
       </div>
       ${this.wardrobe ? this.wardrobeHTML(f.name, looks) : ''}`,
       keep,
     );
+  }
+
+  /** Beta 2.0: what this fighter wears as its dash / victory effect (its own choice or the common one). */
+  private fxRow(id: FighterId): string {
+    const col = this.g.collection;
+    const cell = (slot: FxSlot, label: string) => {
+      const own = col.fighterFx(id, slot);
+      const worn = col.equippedFor(slot, id);
+      return `<span><small>${label} · ${own === 'off' ? 'выкл' : own ? 'свой' : 'общий'}</small><b>${worn ? esc(COSMETICS[worn].name) : 'Стандарт'}</b></span>`;
+    };
+    return `<button class="fx-row" data-act="fx" aria-label="Эффекты бойца">${cell('dashFx', 'Рывок')}${cell('victoryFx', 'Победа')}<em>Настроить</em></button>`;
   }
 }

@@ -47,9 +47,21 @@ export type ShopSku =
   // Alpha 1.9.8 — CONTENT EXPANSION: two epic skins, 149 ₽ each (the owner's brief of 13.11.2026, section 5). Sold under the
   // universal offer № 6 (no item list: the priced catalogue) — no new revision; the server holds the price.
   | 'skin_kai_cue_master'
-  | 'skin_rina_dune_mirage';
+  | 'skin_rina_dune_mirage'
+  // Beta 2.0 — bundles (their own skus; prices proposed, not approved)
+  | BundleSku;
 
-export type ShopCategory = 'skins' | 'effects' | 'fighters';
+export type ShopCategory = 'skins' | 'effects' | 'fighters' | 'bundles';
+
+/**
+ * Beta 2.0 — PRIME SHOP BUNDLES: one offer of two or three EXISTING items for one price below their sum. A bundle is
+ * its own sku (never a new id for an item it contains): one order, one payment, ONE right (shop_entitlements, kind
+ * «bundle»); owning the bundle owns its items (the server expands it — lib/payments.js activeRight / ownedSkus), and a
+ * refund of the bundle takes them all back. A bundle is sold only whole and only to an account that owns none of its
+ * items (no false saving), only at an APPROVED price and only under offer terms that name bundles (offer.config.ts
+ * `bundles`) — the published revision № 6 defines an order as one digital item, so nothing here is sold yet.
+ */
+export type BundleSku = 'bundle_ray_glitch' | 'bundle_bruno_spotlights' | 'bundle_nika_fireworks' | 'bundle_vega_comet' | 'bundle_kai_phantom' | 'bundle_broadcast_trio';
 
 /** Alpha 1.8.8: alternate looks of existing fighters. */
 export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot' | 'kai_cue_master' | 'rina_dune_mirage';
@@ -77,7 +89,7 @@ export function isSkinId(id: unknown): id is SkinId {
 }
 
 /** How the item is shown before buying (the fitting room / preview). */
-export type ShopPreview = 'model' | 'frame' | 'dash' | 'confetti' | 'cards' | 'fighter';
+export type ShopPreview = 'model' | 'frame' | 'dash' | 'confetti' | 'cards' | 'fighter' | 'bundle';
 
 export interface ShopItemDef {
   sku: ShopSku;
@@ -98,6 +110,8 @@ export interface ShopItemDef {
   skin?: SkinId;
   cosmetic?: CosmeticId;
   fighter?: FighterId;
+  /** Beta 2.0: a bundle — the skus of the existing items it contains (2–3). */
+  bundle?: ShopSku[];
   preview: ShopPreview;
   /** Featured block at the top of the shop. */
   featured?: boolean;
@@ -520,13 +534,77 @@ export const SKU_OF_COSMETIC: Partial<Record<CosmeticId, ShopSku>> = Object.from
 export const SKU_OF_SKIN: Record<SkinId, ShopSku> = Object.fromEntries(SHOP_ITEMS.filter((i) => i.skin).map((i) => [i.skin!, i.sku])) as Record<SkinId, ShopSku>;
 
 export function shopItem(sku: ShopSku): ShopItemDef {
-  return SHOP_ITEMS.find((i) => i.sku === sku)!;
+  return SALE_ITEMS.find((i) => i.sku === sku)!;
+}
+
+// ------------------------------------------------------------------ Beta 2.0 bundles
+interface BundlePlan {
+  sku: BundleSku;
+  name: string;
+  desc: string;
+  items: ShopSku[];
+}
+
+/**
+ * The first bundles: a skin with an effect in its colours, and the three first PRIME SHOP effects — existing items only,
+ * no fighter, no seasonal or exclusive item. Their prices are PROPOSED (SHOP_PRICE_STATUS): the owner approves them.
+ */
+const BUNDLE_PLANS: BundlePlan[] = [
+  { sku: 'bundle_ray_glitch', name: 'NEON GLITCH', items: ['skin_ray_neon_runner', 'fx_glitch_dash'], desc: 'Рэй в неоновой куртке-раннере и рывок-сбой трансляции в розово-бирюзовых тонах.' },
+  { sku: 'bundle_bruno_spotlights', name: 'CASINO SPOTLIGHT', items: ['skin_bruno_casino_boss', 'fx_studio_spotlights'], desc: 'Бруно — хозяин ретро-казино — и победа в лучах студийных прожекторов.' },
+  { sku: 'bundle_nika_fireworks', name: 'IDOL FIREWORKS', items: ['skin_nika_stage_idol', 'fx_neon_fireworks'], desc: 'Ника — айдол большой сцены — и неоновый салют в честь победы.' },
+  { sku: 'bundle_vega_comet', name: 'STAR PILOT COMET', items: ['skin_vega_star_pilot', 'fx_comet_trail'], desc: 'Вега-пилот звёздного флота и рывок огненной кометой.' },
+  { sku: 'bundle_kai_phantom', name: 'CUE MASTER PHANTOM', items: ['skin_kai_cue_master', 'fx_phantom_dash'], desc: 'Кай — мастер кия — и фиолетовый голографический след рывка.' },
+  { sku: 'bundle_broadcast_trio', name: 'PRIME BROADCAST SET', items: ['fx_prime_broadcast', 'fx_phantom_dash', 'fx_golden_confetti'], desc: 'Первые эффекты PRIME SHOP вместе: рамка эфира, фантомный рывок и золотое конфетти.' },
+];
+
+const RARITY_RANK: Record<Rarity, number> = { uncommon: 0, rare: 1, epic: 2, legendary: 3 };
+
+/** The bundles as shop items (category «bundles», preview of their items). */
+export const BUNDLE_ITEMS: ShopItemDef[] = BUNDLE_PLANS.map((b) => {
+  const parts = b.items.map((sku) => SHOP_ITEMS.find((i) => i.sku === sku)!);
+  return {
+    sku: b.sku,
+    category: 'bundles',
+    name: b.name,
+    kind: `Комплект · ${parts.length} ${parts.length === 2 ? 'предмета' : 'предмета'}`,
+    desc: b.desc,
+    highlights: parts.map((p) => `${p.name} — ${p.kind}`),
+    rarity: parts.reduce<Rarity>((r, p) => (RARITY_RANK[p.rarity] > RARITY_RANK[r] ? p.rarity : r), 'uncommon'),
+    bundle: b.items,
+    preview: 'bundle',
+  };
+});
+
+/** Everything PRIME SHOP can sell: the single items and the bundles. */
+export const SALE_ITEMS: ShopItemDef[] = [...SHOP_ITEMS, ...BUNDLE_ITEMS];
+
+export function isBundleSku(sku: string): sku is BundleSku {
+  return BUNDLE_ITEMS.some((b) => b.sku === sku);
+}
+
+/** The items of a bundle ([] for a single item). */
+export function bundleParts(sku: ShopSku): ShopSku[] {
+  return BUNDLE_ITEMS.find((b) => b.sku === sku)?.bundle ?? [];
+}
+
+/** The sum of a bundle's items at their approved prices (null if any is not approved) — the honest comparison. */
+export function bundleListRub(sku: ShopSku): number | null {
+  let sum = 0;
+  for (const p of bundleParts(sku)) {
+    const r = approvedPriceRub(p);
+    if (r === null) return null;
+    sum += r;
+  }
+  return sum || null;
 }
 
 export const SHOP_CATEGORIES: { id: ShopCategory; title: string }[] = [
   { id: 'skins', title: 'Скины' },
   { id: 'effects', title: 'Эффекты и оформление' },
   { id: 'fighters', title: 'Персонажи' },
+  // Beta 2.0 — shown only while a bundle is listed (approved, under terms that sell bundles; dev / staging previews)
+  { id: 'bundles', title: 'Комплекты' },
 ];
 
 export type PriceStatus = 'proposed' | 'approved';
@@ -572,6 +650,14 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   // 1.9.8: APPROVED in the owner's brief of 13.11.2026 (section 5: «Цена каждого: 149 ₽»)
   skin_kai_cue_master: 'approved',
   skin_rina_dune_mirage: 'approved',
+  // Beta 2.0 bundles: APPROVED by the owner on 14.11.2026 (the release brief, section 4 — the six at the proposed prices and
+  // the composition of docs/BETA_2_0_DEVELOPMENT_REPORT.md). Sold only under a revision in force with `bundles` (offer № 7)
+  bundle_ray_glitch: 'approved',
+  bundle_bruno_spotlights: 'approved',
+  bundle_nika_fireworks: 'approved',
+  bundle_vega_comet: 'approved',
+  bundle_kai_phantom: 'approved',
+  bundle_broadcast_trio: 'approved',
 };
 
 /** When the owner approved the approved prices (shown nowhere in the game; for the documents and checks). */
@@ -600,6 +686,13 @@ export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
   // 1.9.8: the two epic skins, approved in the brief of 13.11.2026
   skin_kai_cue_master: '2026-11-13',
   skin_rina_dune_mirage: '2026-11-13',
+  // Beta 2.0: the six bundles, approved in the release brief of 14.11.2026
+  bundle_ray_glitch: '2026-11-14',
+  bundle_bruno_spotlights: '2026-11-14',
+  bundle_nika_fireworks: '2026-11-14',
+  bundle_vega_comet: '2026-11-14',
+  bundle_kai_phantom: '2026-11-14',
+  bundle_broadcast_trio: '2026-11-14',
 };
 
 /**
@@ -636,6 +729,13 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number | null> = {
   // 1.9.8 — CONTENT EXPANSION, approved 13.11.2026
   skin_kai_cue_master: 149,
   skin_rina_dune_mirage: 149,
+  // Beta 2.0 bundles — APPROVED 14.11.2026 (−18…−20 % against the items' approved prices)
+  bundle_ray_glitch: 129, // 99 + 59 = 158
+  bundle_bruno_spotlights: 179, // 149 + 69 = 218
+  bundle_nika_fireworks: 179, // 149 + 69 = 218
+  bundle_vega_comet: 169, // 149 + 59 = 208
+  bundle_kai_phantom: 159, // 149 + 49 = 198
+  bundle_broadcast_trio: 119, // 49 + 49 + 49 = 147
 };
 
 /**
@@ -667,6 +767,7 @@ export function approvedPriceRub(sku: ShopSku): number | null {
  * playable character.
  */
 export function receiptNameOf(i: ShopItemDef): string {
+  if (i.bundle) return `Комплект цифровых предметов ${i.name} (${i.bundle.length} шт.) для игры PRIME TIME: SHOWDOWN`;
   if (i.category === 'skins') return `Цифровой облик бойца ${i.name} для игры PRIME TIME: SHOWDOWN`;
   if (i.category === 'effects') return `Цифровой предмет оформления ${i.name} для игры PRIME TIME: SHOWDOWN`;
   return `Открытие игрового персонажа ${i.name} в игре PRIME TIME: SHOWDOWN`;
@@ -704,6 +805,13 @@ export const SHOP_TEST_PRICES_RUB: Record<ShopSku, number> = {
   fighter_crax: 10,
   skin_kai_cue_master: 10,
   skin_rina_dune_mirage: 10,
+  // Beta 2.0 bundles (staging test mode only): below the sum of their items' test amounts
+  bundle_ray_glitch: 15,
+  bundle_bruno_spotlights: 15,
+  bundle_nika_fireworks: 15,
+  bundle_vega_comet: 15,
+  bundle_kai_phantom: 15,
+  bundle_broadcast_trio: 25,
 };
 
 /** The paid way to open a fighter (LUCIEN after his season) — the sku its purchase record carries. */

@@ -1,9 +1,10 @@
 import type { CosmeticId } from '../config/cosmetics.config';
 import { FIGHTERS } from '../config/fighters';
 import { LOOKS } from '../config/looks';
-import { SKINS, type ShopItemDef } from '../config/shop.config';
+import { SKINS, shopItem, type ShopItemDef } from '../config/shop.config';
 import type { Game } from '../game/Game';
 import { cardHTML, esc, portraitHTML } from './dom';
+import { effectImg, hasEffectArt } from './effectArt';
 
 // Alpha 1.8.8 — the pictures and names of PRIME SHOP items, shared by the shop (ShopScreen) and the
 // purchase window (PRIME CHECKOUT): skins and LUCIEN as real 3D portraits (PortraitStudio, drawn once
@@ -137,6 +138,11 @@ const ART = {
 
 /** The picture of an item: a 3D portrait for skins and fighters, a drawing / real cards for the effects. */
 export function shopArt(g: Game, it: ShopItemDef): string {
+  // Beta 2.0: a bundle — the real pictures of its items side by side (nothing drawn for the bundle itself)
+  if (it.bundle) {
+    const parts = it.bundle.map((s, i) => `<span class="ab-part p${i}">${shopArt(g, shopItem(s))}</span>`).join('');
+    return `<div class="art-bundle n${it.bundle.length}">${parts}<span class="ab-plus" aria-hidden="true">+</span></div>`;
+  }
   if (it.skin) {
     const look = LOOKS[SKINS[it.skin].look];
     return portraitHTML(g.portraitFor(look.id, true), hex(look.top.accent), hex(look.top.main), 'si-portrait');
@@ -147,6 +153,8 @@ export function shopArt(g: Game, it: ShopItemDef): string {
   }
   const c = it.cosmetic;
   if (it.preview === 'frame') return ART.frame((c && FRAME_STYLE[c]) || 'prime');
+  // Beta 2.0: the owner's 3D previews of the effects (the fight's VFX itself is unchanged)
+  if ((it.preview === 'dash' || it.preview === 'confetti') && c && hasEffectArt(c)) return `<div class="art-svg art-pic">${effectImg(c, 160, 'fill')}</div>`;
   if (it.preview === 'dash') {
     if (c === 'dash_glitch') return `<div class="art-svg art-dash k-glitch">${ART.glitch}</div>`;
     if (c === 'dash_comet') return `<div class="art-svg art-dash k-comet">${ART.comet}</div>`;
