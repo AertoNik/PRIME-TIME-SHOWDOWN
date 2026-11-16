@@ -319,6 +319,8 @@ export const UI_ICONS = {
   star: S(`<path d="M32 4 L40 23 L60 24 L44 37 L50 57 L32 46 L14 57 L20 37 L4 24 L24 23 Z" fill="#ffd23a"/>`),
   pencil: S(`<path d="M10 54 L14 40 L42 12 L52 22 L24 50 Z" fill="#fff"/><path d="M38 16 L48 26" stroke="#0b1028" stroke-width="4"/>`),
   users: S(`<circle cx="24" cy="22" r="10" fill="#fff"/><path d="M6 54 C6 40 42 40 42 54 Z" fill="#fff"/><circle cx="44" cy="24" r="8" fill="#fff" opacity=".7"/><path d="M40 42 C52 40 60 46 60 54 H46" fill="#fff" opacity=".7"/>`),
+  // Beta 2.2: «Пригласить друга» — a person and a plus
+  invite: S(`<circle cx="24" cy="21" r="10" fill="#fff"/><path d="M5 54 C5 39 43 39 43 54 Z" fill="#fff"/><path d="M50 18 V38 M40 28 H60" stroke="#22f0e0" stroke-width="6" stroke-linecap="round"/>`),
   // Alpha 1.5: MY COLLECTION — a showcase case with a star
   archive: S(`<rect x="8" y="10" width="48" height="44" rx="6" fill="none" stroke="#fff" stroke-width="5"/><path d="M8 38 H56" stroke="#fff" stroke-width="4"/><path d="M32 15 L35.5 23 L44 23.6 L37.5 29 L39.6 37 L32 32.6 L24.4 37 L26.5 29 L20 23.6 L28.5 23 Z" fill="#ffd23a"/><rect x="18" y="43" width="10" height="6" rx="2" fill="#22f0e0"/><rect x="36" y="43" width="10" height="6" rx="2" fill="#ff4fd8"/>`),
   career: S(`<rect x="8" y="36" width="10" height="20" rx="2" fill="#fff"/><rect x="27" y="24" width="10" height="32" rx="2" fill="#fff"/><rect x="46" y="10" width="10" height="46" rx="2" fill="#22f0e0"/>`),

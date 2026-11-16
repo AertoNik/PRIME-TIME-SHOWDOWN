@@ -74,8 +74,10 @@ export class UIManager {
     this.screens.get(this.current)?.update?.(dt);
   }
 
-  toast(text: string, gold = false): void {
-    const t = el('div', 'toast' + (gold ? ' gold' : ''), text);
+  /** A short note at the top. `icon` (Beta 2.2 final): the game's own markup put before the text — never player text. */
+  toast(text: string, gold = false, icon = ''): void {
+    const t = el('div', 'toast' + (gold ? ' gold' : '') + (icon ? ' with-ico' : ''), text);
+    if (icon) t.insertAdjacentHTML('afterbegin', `<span class="toast-ico" aria-hidden="true">${icon}</span>`);
     this.toastZone.appendChild(t);
     setTimeout(() => t.remove(), 2700);
   }

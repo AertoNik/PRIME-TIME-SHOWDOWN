@@ -1,4 +1,4 @@
-import { cosmeticPic } from '../effectArt';
+import { cosmeticPic, titlePic } from '../effectArt';
 import { GOALS, REWARDS } from '../../config/career';
 import { plural } from '../../config/events.config';
 import { careerGoalArt } from '../rewardArt';
@@ -212,7 +212,7 @@ export class ResultsScreen implements Screen {
       bossBlock = `<div class="section panel boss-result ${bo.won ? 'won' : 'lost'}" style="animation:lineIn .35s ease ${T0 + 0.1}s both">
           ${verdict}
           <div class="row between bb-row"><span class="bb-line">${line}</span><span class="bb-pips">${pips}</span></div>
-          ${fw ? `<div class="ch-first">${UI_ICONS.star}<span>Первая победа над легендой: <b>+${formatMoney(fw.money)}</b> · <b>+${formatNumber(fw.fans)}</b> фанатов · <b>+${fw.rep}★</b> · титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span></div>` : ''}
+          ${fw ? `<div class="ch-first">${titlePic(fw.cosmetic, 30, 'ch-title') ?? UI_ICONS.star}<span>Первая победа над легендой: <b>+${formatMoney(fw.money)}</b> · <b>+${formatNumber(fw.fans)}</b> фанатов · <b>+${fw.rep}★</b> · титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span></div>` : ''}
           ${bo.personal && !fw ? `<div class="ch-first">${UI_ICONS.star}<span>Личный титул <b>${esc(COSMETICS[bo.personal.cosmetic].name)}</b> теперь и у бойца <b>${esc(FIGHTERS[bo.personal.fighter].name)}</b></span></div>` : ''}
           <div class="ch-best">${bo.newBestTime && bo.won && !fw ? `<span class="chip gold">${MODE_ICONS.trophy.replace('<svg', '<svg width="11" height="11"')} Новый рекорд времени</span>` : ''}<span class="muted">Побед ${pr.wins} из ${pr.attempts}${pr.bestTime ? ` · лучшее время <b>${pr.bestTime} с</b>` : ''}${pr.bestRating ? ` · лучший рейтинг <b>${pr.bestRating}</b>` : ''}</span></div>
         </div>`;

@@ -15,6 +15,7 @@
 // Options: --dir <path> (another data folder), used by the isolated checks and tests.
 
 import { ARENA_ORDER } from '../src/config/arenas.config';
+import { MASTERY_IDS } from '../src/config/achievements.config';
 import { leagueArenaCatalog } from '../src/meta/LeagueArenas';
 import { CAREER_STAGES, GOALS } from '../src/config/career';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../src/config/cards';
@@ -114,6 +115,8 @@ export function rulesSource(): string {
     rivals: RIVAL_ORDER,
     goals: GOALS.map((g) => g.id),
     stages: CAREER_STAGES.map((s) => s.id),
+    // Beta 2.2: the MASTERY achievements whose reward a save may have taken (save.achClaimed)
+    mastery: MASTERY_IDS,
     arenas: ARENA_ORDER,
     perks: PERK_ORDER,
     survivalWaves: SURVIVAL.waves.length,

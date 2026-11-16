@@ -5,12 +5,15 @@ import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosme
 import type { EventDef } from '../../config/events.config';
 import { FIGHTERS } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
-import { SKINS, type SkinId } from '../../config/shop.config';
+import { SKINS, SKU_OF_COSMETIC, shopItem, type SkinId } from '../../config/shop.config';
 import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
+import { artImg, registerFallback } from '../artIcons';
+import { currencyArt } from '../currencyArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { ICONS } from '../eventArt';
+import { CARD_STYLE, FRAME_STYLE, shopArt } from '../shopArt';
 import { serverTimeKnown } from '../../meta/serverClock';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -27,10 +30,42 @@ export function formatSpan(ms: number): string {
   return `${Math.max(1, mm)} мин`;
 }
 
-/** Icon of the event's currency (or of its theme for theme-only previews). */
+/**
+ * Icon of the event's currency (or of its theme for theme-only previews). Beta 2.2 final: CANDY CANES are the owner's
+ * picture everywhere this is used (menu entry and balance, the event's wallet, quests, exchange prices, the star's price,
+ * results, marathon, career and roster offers) — it fills the box its screen gives it; the 1.9.7 drawing is the fallback.
+ */
 export function currencyIcon(e: EventDef | null): string {
   const kind = e?.currency?.icon ?? (e?.themeId === 'winter' ? 'snowflake' : 'pumpkin');
-  return kind === 'cane' ? ICONS.cane : kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
+  if (kind === 'cane') return currencyArt('candy_canes', 36, 'cur-fill');
+  return kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
+}
+
+/** Beta 2.2 final: WINTER SHOWDOWN's quests with the owner's picture (events.config.ts ids; the others keep their icon). */
+export const QUEST_ART: Readonly<Record<string, true>> = {
+  frost_guard: true,
+  midnight_rating: true,
+  holiday_broadcast: true,
+  champions_eve: true,
+  league_snowfall: true,
+  cane_collector: true,
+};
+
+/** A quest's icon: its picture where there is one (fallback: its drawing). */
+export function questIcon(id: string, icon: keyof typeof ICONS): string {
+  return QUEST_ART[id] ? artImg('winter', `quest_${id}`, 40, { cls: 'eq-pic', fb: `qi|${icon}` }) : ICONS[icon];
+}
+registerFallback('qi', ([icon]) => ICONS[icon as keyof typeof ICONS] ?? '');
+
+/**
+ * Beta 2.2 final: a reward's picture in the event's exchange and its reveal. A card style or a broadcast frame shows
+ * what it really looks like — the game's own demonstration from PRIME SHOP (CLOCKWORK GOLD's cards, FROSTLIGHT LIVE's
+ * frame), never a borrowed drawing; everything else keeps cosmeticPic (the owner's previews / titles / drawings).
+ */
+function rewardPic(g: Game, c: CosmeticDef, size: number): string {
+  const sku = SKU_OF_COSMETIC[c.id];
+  if (sku && (CARD_STYLE[c.id] || FRAME_STYLE[c.id])) return `<span class="er-demo">${shopArt(g, shopItem(sku))}</span>`;
+  return cosmeticPic(c.id, size);
 }
 
 // 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
@@ -119,7 +154,7 @@ export class EventsScreen implements Screen {
       const paid = em.claimQuest(t.dataset.q!);
       if (paid !== null) {
         g.audio.ui('coin');
-        g.ui.toast(`+${paid} ${em.active?.currency?.name ?? ''}`, true);
+        g.ui.toast(`+${paid} ${em.active?.currency?.name ?? ''}`, true, currencyIcon(em.active));
         this.render();
         this.bumpWallet();
       }
@@ -204,7 +239,7 @@ export class EventsScreen implements Screen {
     }
     if (kind === 'quest') {
       g.audio.ui('coin');
-      g.ui.toast(`+${r.reward ?? 0} ${g.events.active?.currency?.name ?? ''}`, true);
+      g.ui.toast(`+${r.reward ?? 0} ${g.events.active?.currency?.name ?? ''}`, true, currencyIcon(g.events.active));
       this.render();
       this.bumpWallet();
     } else if (r.kind === 'fighter' && r.item) {
@@ -256,7 +291,7 @@ export class EventsScreen implements Screen {
     g.ui.modal(
       `<div class="reward-pop rarity-${c.rarity}">
          <div class="rp-rays"></div>
-         <div class="rp-art">${cosmeticPic(id, 112)}</div>
+         <div class="rp-art">${rewardPic(g, c, 112)}</div>
          <div class="label rp-kind">Новая награда · ${RARITY[c.rarity]}</div>
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>
@@ -472,7 +507,7 @@ export class EventsScreen implements Screen {
         else side = `<span class="eq-reward">+${d.reward}<span class="eq-coin">${icon}</span></span>`;
         const prog = d.target > 1 ? `${q.progress}/${d.target}` : q.done ? 'Готово' : '0/1';
         return `<div class="ev-quest ${q.done ? 'done' : ''} ${q.claimed ? 'claimed' : ''}">
-            <div class="eq-ico">${ICONS[d.icon]}</div>
+            <div class="eq-ico ${QUEST_ART[d.id] ? 'pic' : ''}">${questIcon(d.id, d.icon)}</div>
             <div class="eq-main">
               <div class="eq-title">${esc(d.title)}</div>
               <div class="eq-desc">${esc(d.desc)}</div>
@@ -516,7 +551,7 @@ export class EventsScreen implements Screen {
       btn = `<span class="er-lock">${ICONS.lock} ${e && !em.playable ? 'Во время события' : 'Недоступно'}</span>`;
     }
     return `<div class="ev-reward rarity-${c.rarity} ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
-        <div class="er-art">${cosmeticPic(c.id, 72)}</div>
+        <div class="er-art">${rewardPic(this.g, c, 72)}</div>
         <div class="er-rarity">${RARITY[c.rarity]}</div>
         <div class="er-name">${esc(c.name)}</div>
         <div class="er-desc">${esc(c.desc)}</div>

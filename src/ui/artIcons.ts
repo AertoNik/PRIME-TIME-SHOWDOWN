@@ -25,6 +25,11 @@ export const ICON_SIZES = {
   achievements: { sm: 192, md: 400 },
   rewards: { xs: 96, sm: 192 },
   goals: { xs: 96, sm: 192 },
+  // Beta 2.2: MY COLLECTION's section emblems; titles (the PRIME LEAGUE road's and DAILY PRIME STREAK's)
+  sections: { sm: 192, md: 400 },
+  titles: { xs: 96, sm: 192, md: 400 },
+  // Beta 2.2 final: WINTER SHOWDOWN's quests and the season's dress of the DAILY gift
+  winter: { xs: 96, sm: 192, md: 400 },
 } as const;
 
 export type IconGroup = keyof typeof ICON_SIZES;

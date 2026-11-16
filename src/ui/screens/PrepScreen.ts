@@ -5,6 +5,7 @@ import { BEHAVIORS, DIFFICULTIES, DIFFICULTY_ORDER, FIGHTERS, FIGHTER_ORDER, RIV
 import { SURVIVAL, challengeById } from '../../config/modes.config';
 import { bossById } from '../../config/boss.config';
 import { COSMETICS } from '../../config/cosmetics.config';
+import { titlePic } from '../effectArt';
 import type { CardId, Difficulty } from '../../config/types';
 import type { Game } from '../../game/Game';
 import { arenaAvailable, availableArenas } from '../../meta/ArenaSelection';
@@ -344,7 +345,7 @@ export class PrepScreen implements Screen {
             <div class="mode-facts">${
               p.firstWinAt
                 ? `<span>Побед <b>${p.wins}</b></span><span>Лучшее время <b>${p.bestTime} с</b></span><span>Повтор <b>гонорар ×${String(def.rewards.moneyMult).replace('.', ',')}</b></span>`
-                : `<span>Первая победа <b>+$${fw.money} · +${fw.fans} фанатов · +${fw.rep}★</b></span><span>Титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span>${p.attempts ? `<span>Лучшее <b>фаза ${p.bestPhase}/3</b></span>` : ''}`
+                : `<span>Первая победа <b>+$${fw.money} · +${fw.fans} фанатов · +${fw.rep}★</b></span><span class="mf-title">${titlePic(fw.cosmetic, 22, 'mf-title-art') ?? ''}Титул <b>${esc(COSMETICS[fw.cosmetic].name)}</b></span>${p.attempts ? `<span>Лучшее <b>фаза ${p.bestPhase}/3</b></span>` : ''}`
             }</div>
           </div>`,
         start: acc.open ? 'Выйти на бой' : `Закрыто · ${acc.wins}/${acc.need}`,

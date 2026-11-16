@@ -11,6 +11,8 @@ import { levelBadge } from '../careerArt';
 import { currencyArt } from '../currencyArt';
 import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from '../cloudPill';
 import { openDaily } from '../dailyUI';
+import { openReferral } from '../referralUI';
+import { winterGiftArt } from '../rewardArt';
 import { cardCatalog, catalogStats } from '../cardCatalog';
 import { inRoster } from '../../meta/roster';
 
@@ -111,6 +113,7 @@ export class MenuScreen implements Screen {
       else if (act === 'collection') this.g.goto('collection');
       else if (act === 'cards') this.g.goto('cards', { back: 'menu' });
       else if (act === 'profile') this.g.goto('profile');
+      else if (act === 'referral') openReferral(this.g);
       else if (act === 'daily') {
         // 1.8.9: DAILY PRIME STREAK — the window over the menu (never on its own, never during a fight)
         retireDailyHint();
@@ -122,6 +125,7 @@ export class MenuScreen implements Screen {
     g.account?.onChange(() => {
       this.paintCloud();
       this.paintDaily();
+      this.paintReferral();
     });
     // 1.8.9: the gift lights up when today's reward waits, and goes quiet once it is taken
     g.daily.onChange(() => this.paintDaily());
@@ -131,6 +135,12 @@ export class MenuScreen implements Screen {
    * 1.8.9: the DAILY PRIME STREAK gift under the sound button — only where the server has the streak; a soft gold
    * dot while today's reward waits (a short pulse, then still); the one-time note for a first-time PRIME ID.
    */
+  /** Beta 2.2: «Пригласить друга» shows only when the PRIME NETWORK server has invitations on (config referrals). */
+  private paintReferral(): void {
+    const btn = this.el.querySelector('[data-act="referral"].ref-btn') as HTMLButtonElement | null;
+    if (btn) btn.hidden = this.g.account?.serverConfig?.referrals !== true;
+  }
+
   private paintDaily(): void {
     const btn = this.el.querySelector('[data-act="daily"].daily-btn') as HTMLButtonElement | null;
     if (!btn) return;
@@ -285,7 +295,8 @@ export class MenuScreen implements Screen {
         </div>`
       : '';
     this.el.innerHTML = `
-      <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${UI_ICONS.gift}<i class="daily-dot" aria-hidden="true"></i></button>
+      <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${winterGiftArt(g, 34) ?? UI_ICONS.gift}<i class="daily-dot" aria-hidden="true"></i></button>
+      <button class="ref-btn" data-act="referral" aria-label="Пригласить друга" title="Пригласить друга" hidden>${UI_ICONS.invite}</button>
       <div class="topbar" style="padding-right:62px">
         <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge-box">${levelBadge(lvl.level, 44, 'lvl-badge')}</span><span class="lvl-id">ID</span></button>${hint}
         <div class="stat-pill"><span class="ico pic">${currencyArt('money', 30)}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
@@ -321,6 +332,7 @@ export class MenuScreen implements Screen {
     this.shownMoney = s.money;
     this.paintCloud(true);
     this.paintDaily();
+    this.paintReferral();
     void g.daily.refresh();
     this.shownRep = s.reputation;
   }

@@ -2500,10 +2500,173 @@ export function getRigGeometry(lookId: string): RigGeometry {
     muzzleL,
     weaponHand: [0, -d.foreArm - d.handR * 0.5, 0.0],
   };
+  // Beta 2.2: the trouser leg tucked into the boot, and the boot's shaft following the shin (see tuckShin, bootMorphs)
+  const style = look.pants.style;
+  const legR = d.legR * (style === 'cargo' ? 1.18 : style === 'track' ? 1.08 : 0.96);
+  if (!RIG_BUILD.legacy21) {
+    for (const b of ['shinL', 'shinR'] as const) if (geo.bones[b].toon) tuckShin(geo.bones[b].toon!, d, look);
+    for (const b of ['footL', 'footR'] as const) if (geo.bones[b].toon) bootMorphs(geo.bones[b].toon!, legR);
+  }
   // Eye / mouth parts were authored relative to their pivots, so blink and
   // expression scaling happen around the right point.
   geoCache.set(lookId, geo);
   return geo;
+}
+
+/**
+ * Beta 2.2 — THE BOOT BENDS AT THE ANKLE. Since Beta 2.1 the whole shoe turned on the ankle (a level sole, a planted
+ * toe), so its tall upper, laces and collar swung away from the leg — up to 10–20 cm at the collar in a run or a crouch —
+ * and the shin and the trouser leg came out through the back of the boot. A real boot bends instead: the shaft stays
+ * around the leg, the sole and the toe follow the foot, the instep creases between them.
+ *
+ * The shape is NOT changed (the same vertices — the model prints of `npm run shop` stay exact). Every vertex gets a
+ * weight `w`: 0 for the sole, the heel, the toe and the forefoot, 1 for the shaft around the leg (≥ 19 cm above the
+ * sole, behind the instep), smooth between. Eight relative morph targets take a weighted vertex back by the inverse of
+ * the foot's turn — Rz(−roll)·Rx(−pitch), exactly (the four cross terms included) — so with the influences the
+ * animator sets each frame (FighterAnimator.levelFeet) a vertex of weight 1 sits where the shin carries it. Normals get
+ * the same turn (toon shading). `userData.footBox` is the extent of the part that turns with the foot (w < ½): the
+ * floor check measures that part — the shaft is where the leg is.
+ */
+export const BOOT_BEND = { y0: 0.1, y1: 0.19, zBand: 0.1 } as const;
+
+/**
+ * Beta 2.2: `legacy21` builds the Beta 2.1 legs (no tucked trouser leg, no bending boot) — for the measuring tools only
+ * (scripts/anim-lab.ts --legacy21, the dev foot lab &fix=0), set before the first rig is built; the game never sets it.
+ */
+export const RIG_BUILD = { legacy21: false };
+
+/**
+ * Beta 2.2 — THE TROUSER LEG GOES INTO THE BOOT. The shin's trouser capsule was built to the floor and wider than the
+ * boot's upper for cargo / track trousers and heavy bodies (up to 12.4 cm against 11.7 cm), its bottom 2–5 cm below the
+ * sole, and the joggers' and cargo's cuffs inside a tall boot 2–5 cm wider than it: hidden while the boot stood rigid
+ * and level, showing through its sides and under the heel as soon as the foot turned. Now everything of the shin below
+ * the boot's top (1.5 cm under the collar) is kept inside the boot's upper (its width and length less 6–8 mm), and
+ * nothing of the leg goes below the band where the shaft is fixed to the shin (BOOT_BEND.y1 above the ankle) — so
+ * however the foot turns, the leg stays inside the boot. A tailored boot (LUCIEN's look) is itself built on the shin:
+ * its shaft, turned cuff and strap keep their width — only their bottom is closed inside the shoe.
+ */
+function tuckShin(g: BufferGeometry, d: Dims, look: LookDef): void {
+  const pos = g.getAttribute('position');
+  const top = 0.11 + (look.shoes.boots ? 0.27 : 0.17) - 0.015;
+  const hx = d.shoeW * 0.45 - 0.008;
+  const zb = 0.02 - d.shoeL * 0.39 + 0.008;
+  const zf = 0.02 + d.shoeL * 0.39 - 0.008;
+  const tailored = look.pants.style === 'tailored';
+  for (let i = 0; i < pos.count; i++) {
+    let y = pos.getY(i);
+    const h = y + d.shin; // height above the ankle
+    if (h >= top) continue;
+    if (!tailored) {
+      pos.setX(i, Math.min(hx, Math.max(-hx, pos.getX(i))));
+      pos.setZ(i, Math.min(zf, Math.max(zb, pos.getZ(i))));
+    }
+    if (h < BOOT_BEND.y1) y = BOOT_BEND.y1 - d.shin;
+    pos.setY(i, y);
+  }
+  pos.needsUpdate = true;
+  g.computeBoundingSphere();
+}
+
+function bootWeight(y: number, z: number, legR: number): number {
+  const sm = (a: number, b: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  // the crease starts in front of the whole collar ring (radius legR·1.05 + its 4 cm tube) and ends 10 cm further on
+  const z0 = legR * 1.05 + 0.05;
+  return sm(BOOT_BEND.y0, BOOT_BEND.y1, y) * (1 - sm(z0, z0 + BOOT_BEND.zBand, z));
+}
+
+function bootMorphs(g: BufferGeometry, legR: number): void {
+  const pos = g.getAttribute('position');
+  const nor = g.getAttribute('normal');
+  const n = pos.count;
+  // 0: sin p·(0, z, −y)  1: (cos p − 1)·(0, y, z)  2: sin r·(y, −x, 0)  3: (cos r − 1)·(x, y, 0)
+  // 4: sin r sin p·(z, 0, 0)  5: sin r (cos p − 1)·(y, 0, 0)  6: (cos r − 1) sin p·(0, z, 0)  7: (cos r − 1)(cos p − 1)·(0, y, 0)
+  const P = Array.from({ length: 8 }, () => new Float32Array(n * 3));
+  const N = Array.from({ length: 8 }, () => new Float32Array(n * 3));
+  const box = { y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
+  const put = (T: Float32Array[], i: number, x: number, y: number, z: number, w: number) => {
+    const k = i * 3;
+    T[0][k + 1] = w * z;
+    T[0][k + 2] = -w * y;
+    T[1][k + 1] = w * y;
+    T[1][k + 2] = w * z;
+    T[2][k] = w * y;
+    T[2][k + 1] = -w * x;
+    T[3][k] = w * x;
+    T[3][k + 1] = w * y;
+    T[4][k] = w * z;
+    T[5][k] = w * y;
+    T[6][k + 1] = w * z;
+    T[7][k + 1] = w * y;
+  };
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const w = bootWeight(y, z, legR);
+    put(P, i, x, y, z, w);
+    if (nor) put(N, i, nor.getX(i), nor.getY(i), nor.getZ(i), w);
+    if (w < 0.5) {
+      box.y0 = Math.min(box.y0, y);
+      box.y1 = Math.max(box.y1, y);
+      box.z0 = Math.min(box.z0, z);
+      box.z1 = Math.max(box.z1, z);
+    }
+  }
+  // the outline of the turning part seen from the side (its (y, z) convex hull — exact for a turn about x): the floor
+  // check of FighterAnimator.levelFeet measures these few points instead of the box's corners
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) if (bootWeight(pos.getY(i), pos.getZ(i), legR) < 0.5) pts.push([pos.getY(i), pos.getZ(i)]);
+  g.userData.footHull = hull2(pts);
+  // and its half-width (the sole's), for the roll
+  let hw = 0;
+  for (let i = 0; i < n; i++) if (bootWeight(pos.getY(i), pos.getZ(i), legR) < 0.5) hw = Math.max(hw, Math.abs(pos.getX(i)));
+  g.userData.footHalfWidth = hw;
+  g.morphAttributes.position = P.map((a) => new Float32BufferAttribute(a, 3));
+  if (nor) g.morphAttributes.normal = N.map((a) => new Float32BufferAttribute(a, 3));
+  g.morphTargetsRelative = true;
+  g.userData.footBox = box;
+}
+
+/** Convex hull of 2D points (Andrew's monotone chain), rounded to 0.1 mm so near-duplicates collapse. */
+function hull2(points: [number, number][]): [number, number][] {
+  const key = new Set<string>();
+  const ps = points
+    .map(([a, b]) => [Math.round(a * 1e4) / 1e4, Math.round(b * 1e4) / 1e4] as [number, number])
+    .filter(([a, b]) => (key.has(`${a},${b}`) ? false : (key.add(`${a},${b}`), true)))
+    .sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  if (ps.length < 3) return ps;
+  const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const p of ps) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: [number, number][] = [];
+  for (let i = ps.length - 1; i >= 0; i--) {
+    const p = ps[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+/** The influences that put a weight-1 vertex of a boot back on the shin for a foot turned by `pitch` (x) then `roll` (z). */
+export function bootInfluences(out: number[], pitch: number, roll: number): void {
+  const sp = Math.sin(pitch);
+  const cp = Math.cos(pitch) - 1;
+  const sr = Math.sin(roll);
+  const cr = Math.cos(roll) - 1;
+  out[0] = sp;
+  out[1] = cp;
+  out[2] = sr;
+  out[3] = cr;
+  out[4] = sr * sp;
+  out[5] = sr * cp;
+  out[6] = cr * sp;
+  out[7] = cr * cp;
 }
 
 /**

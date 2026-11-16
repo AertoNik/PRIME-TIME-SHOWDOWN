@@ -1359,8 +1359,11 @@ async function serverChecks(): Promise<void> {
   // (after the restore drill PocketBase's fresh log database is applied anew at every start — newer than the
   // payments migration: then the last two are reverted, the log one is re-created by itself)
   let down = '';
-  // (1.9.0: one migration more after it — PRIME LEAGUE — so one step more; the loop stops at the payments migration)
-  for (let i = 0; i < 8 && !/Reverted 1792800000_prime_payments/.test(down); i++) down += cli({}, 'migrate', 'down', i ? '2' : '1');
+  // (1.9.0: one migration more after it — PRIME LEAGUE — so one step more; the loop stops at the payments migration.
+  // Beta 2.2: the bound counts the migrations after it (a fixed 8 ran out when the referrals' one was added) — the
+  // first step reverts the log database, each later one a migration of the game, then the payments migration itself)
+  const later = (fs.readdirSync(MIGRATIONS) as string[]).filter((f) => /^\d+_.+\.js$/.test(f) && f > '1792800000_prime_payments.js').length;
+  for (let i = 0; i < later + 3 && !/Reverted 1792800000_prime_payments/.test(down); i++) down += cli({}, 'migrate', 'down', i ? '2' : '1');
   const gone = sqlite("select count(*) from sqlite_master where name in ('shop_orders','shop_entitlements','shop_payment_events');");
   const up = cli({}, 'migrate', 'up');
   const back2 = sqlite("select count(*) from sqlite_master where name in ('shop_orders','shop_entitlements','shop_payment_events');");

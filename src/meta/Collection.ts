@@ -1,4 +1,5 @@
 import { BOSSES } from '../config/boss.config';
+import { MASTERY, type MasteryId } from '../config/achievements.config';
 import { CHALLENGES, SURVIVAL } from '../config/modes.config';
 import { COSMETICS, COSMETIC_ORDER, COSMETIC_SLOTS, isFxSlot, type CosmeticDef, type CosmeticId, type CosmeticSlot, type FxSlot } from '../config/cosmetics.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../config/fighters';
@@ -48,6 +49,8 @@ export interface AchievementView {
   art: 'belt' | 'star' | 'studio' | 'survival' | 'challenge' | 'career';
   /** Alpha 1.5.5 — a personal achievement: the fighters who earned it (null = the producer's). */
   fighters: FighterId[] | null;
+  /** Beta 2.2 — a MASTERY achievement's one-time reward and whether it was taken (absent for the others). */
+  claim?: { money: number; rep: number; claimed: boolean };
 }
 
 /**
@@ -443,6 +446,39 @@ export class Collection {
         fighters: null,
       });
     }
+    // Beta 2.2: MASTERY — four achievements on monotone numbers of the career; their reward is taken once
+    for (const m of MASTERY) {
+      const p = m.progress(s);
+      const done = p.now >= p.target;
+      const claimed = s.achClaimed.includes(m.id);
+      out.push({
+        id: m.id,
+        title: m.title,
+        desc: m.desc,
+        source: 'Мастерство',
+        done,
+        at: 0,
+        note: done ? (claimed ? 'Награда получена' : 'Награда ждёт — заберите её здесь') : `Прогресс: ${p.now} / ${p.target}`,
+        reward: null,
+        art: m.art,
+        fighters: null,
+        claim: { money: m.reward.money, rep: m.reward.rep, claimed },
+      });
+    }
     return out;
+  }
+
+  /** Beta 2.2: take a MASTERY achievement's reward — once, and only when it is reached (null: nothing to take). */
+  claimMastery(id: MasteryId): { money: number; rep: number } | null {
+    const s = this.store.data;
+    const m = MASTERY.find((x) => x.id === id);
+    if (!m || s.achClaimed.includes(id)) return null;
+    const p = m.progress(s);
+    if (p.now < p.target) return null;
+    s.achClaimed.push(id);
+    s.money += m.reward.money;
+    s.reputation += m.reward.rep;
+    this.store.save();
+    return { ...m.reward };
   }
 }

@@ -423,7 +423,9 @@ const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...C
 {
   const baseline = JSON.parse(read('scripts/lib/look-baseline.json')).looks as Record<string, string>;
   const changed = Object.keys(baseline).filter((id) => rigPrint(id) !== baseline[id]);
-  check(`original looks: all ${Object.keys(baseline).length} fighters and rivals have exactly their pre-1.8.8 models`, changed.length === 0 && Object.keys(baseline).length === 13, changed.join());
+  // (Beta 2.2: the baseline was regenerated once on purpose after the boot fix — npm run boots22 proves that only shin
+  // vertices inside the boots moved and that the Beta 2.1 build still gives the pre-1.8.8 prints kept in `before22`)
+  check(`original looks: all ${Object.keys(baseline).length} fighters and rivals have exactly their models (pre-1.8.8, legs tucked into the boots in Beta 2.2)`, changed.length === 0 && Object.keys(baseline).length === 13, changed.join());
   for (const sk of Object.values(SKINS)) {
     const L = LOOKS[sk.look];
     const B = LOOKS[sk.fighter];

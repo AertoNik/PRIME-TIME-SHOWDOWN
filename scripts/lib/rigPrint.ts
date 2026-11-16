@@ -34,9 +34,18 @@ function geoPrint(h: any, g: BufferGeometry | null): void {
  */
 function shinWithFoot(shin: BufferGeometry | null, foot: BufferGeometry | null, shinLen: number): BufferGeometry | null {
   if (!foot) return shin;
-  const f = foot.clone();
+  // (Beta 2.2: the boot's morph targets — its bend at the ankle — are not part of the shape: left out of the print)
+  const bare = (g: BufferGeometry) => {
+    const c = g.clone();
+    c.morphAttributes = {};
+    c.morphTargetsRelative = false;
+    return c;
+  };
+  const f = bare(foot);
   f.translate(0, -shinLen, 0);
-  return shin ? mergeGeometries([shin.clone(), f], false) : f;
+  const merged = shin ? mergeGeometries([bare(shin), f], false) : f;
+  if (!merged) throw new Error('rigPrint: the shin and the foot could not be merged');
+  return merged;
 }
 
 export function rigPrint(lookId: string): string {

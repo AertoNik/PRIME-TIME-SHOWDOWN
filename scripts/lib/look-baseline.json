@@ -1,6 +1,21 @@
 {
-  "note": "Fingerprints of every look before Alpha 1.8.8 PRIME SHOP skins (scripts/lib/rigPrint.ts). Do not regenerate unless a standard model is changed on purpose.",
+  "note": "Fingerprints of every standard look (scripts/lib/rigPrint.ts). Taken before Alpha 1.8.8 PRIME SHOP skins; regenerated ON PURPOSE once, in Beta 2.2, after the boot fix (the trouser leg tucked into the boot: only shin vertices inside the boot moved — every other bone, the shoes and the faces byte for byte as before; docs/BETA_2_2_DEVELOPMENT_REPORT.md §3). The pre-2.2 prints are kept in `before22`. Do not regenerate unless a standard model is changed on purpose.",
   "looks": {
+    "bot": "01934e9edc16430218704a68",
+    "bruno": "1190046ff9d8de5ba840a572",
+    "crash": "643b9bfb8ae3ca031908fa2f",
+    "dex": "edeed91f1a56fc61a496da5e",
+    "kai": "82d8e8e024735d07c7004193",
+    "lucien": "891a132c74d4a0e3bd853359",
+    "nika": "55a6fb271f8ec4e344167e10",
+    "ray": "809fa5e58309288f46e35157",
+    "rina": "f00195efc2c0095414a989ac",
+    "tank": "3d85170a2d5e7d2cd31cd3e0",
+    "vale": "c8f845313097b93d84361825",
+    "vega": "983245f61c8ebfdd25bf8b5d",
+    "zoe": "a647dcaa7c992967ef145236"
+  },
+  "before22": {
     "bot": "5bb53855f44b637ca67f40f0",
     "bruno": "46b14bf0e5d2b94a6fd0843b",
     "crash": "363e73df231dd795805b97a1",

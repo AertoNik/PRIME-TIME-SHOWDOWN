@@ -23,8 +23,14 @@ const rnd = () => {
 };
 Math.random = rnd;
 
-const { defaultInput } = await import('../src/render/FighterAnimator');
+const { defaultInput, FighterAnimator } = await import('../src/render/FighterAnimator');
 const { ModelCache } = await import('../src/render/ModelCache');
+const { RIG_BUILD } = await import('../src/render/FighterModel');
+// Beta 2.2: `--legacy21` measures the Beta 2.1 legs (no tucked trouser leg, rigid boots) — the «before» of the boot fix
+if (proc.argv.includes('--legacy21')) {
+  RIG_BUILD.legacy21 = true;
+  FighterAnimator.rigidBoots = true;
+}
 type AnimInput = ReturnType<typeof defaultInput>;
 type Cached = ReturnType<InstanceType<typeof ModelCache>['get']>;
 
@@ -164,6 +170,12 @@ interface Result {
   idleHeadMM: number;
   idleRepeat: number;
   drift: number;
+  /** Beta 2.2: how far the boot's collar is from where the shin carries it (m: p95 and max over idle, run, strafe, a busy fight, a dash) */
+  collarP95: number;
+  collarMax: number;
+  /** Beta 2.2: how far the trouser leg reaches out of the boot's upper (m, sideways / lengthwise) and below the shaft's band */
+  legOut: number;
+  legLow: number;
 }
 
 function smoothness(look: string): { pops: number; legPops: number; popMax: number; jerkP99: number } {
@@ -335,6 +347,83 @@ function soleY(c: Cached): number {
     }
   }
   return low;
+}
+
+/**
+ * Beta 2.2 — THE BOOT ON THE LEG. collar: every frame, the boot's top ring (its vertices within 2 cm of the top, with the
+ * boot's morph targets applied as the GPU does) against the same vertices carried rigidly by the shin — 0 = the shaft
+ * stays around the leg. legOut / legLow: the shin's own vertices under the boot's top (1.5 cm below it) that stand out of
+ * the upper's width or length, or below the band where the shaft is fixed to the shin (static geometry).
+ */
+function bootFit(look: string): { collarP95: number; collarMax: number; legOut: number; legLow: number } {
+  const v = new Vector3();
+  const w = new Vector3();
+  const offs: number[] = [];
+  const shoeOf = (foot: import('three').Object3D) =>
+    foot.children.find((ch) => (ch as unknown as { isMesh?: boolean; material?: { side?: number } }).isMesh && (ch as unknown as { material: { side?: number } }).material.side !== 1) as unknown as {
+      geometry: import('three').BufferGeometry;
+      morphTargetInfluences?: number[];
+      matrixWorld: import('three').Matrix4;
+    };
+  const top = (g: import('three').BufferGeometry) => {
+    const p = g.getAttribute('position');
+    let m = -Infinity;
+    for (let i = 0; i < p.count; i++) m = Math.max(m, p.getY(i));
+    return m;
+  };
+  const scripts: [string, Script, number][] = [
+    ['idle', { step: (_c, inp) => ((inp.combat = true), (inp.vx = 0), (inp.vz = 0)), deliberate: () => false }, 4],
+    ['run', { step: (_c, inp) => ((inp.combat = true), (inp.vx = 4.5), (inp.vz = 0), (inp.facing = Math.PI / 2)), deliberate: () => false }, 4],
+    ['strafe', { step: (_c, inp) => ((inp.combat = true), (inp.vx = 0), (inp.vz = 4.2), (inp.facing = 0)), deliberate: () => false }, 4],
+    ['dash', { events: [[1.5, (c) => c.anim.dash(1, 0)]], step: (_c, inp) => ((inp.combat = true), (inp.vx = 0), (inp.vz = 0)), deliberate: () => false }, 2.4],
+    ['fight', busyFight(), 22],
+  ];
+  for (const [, script, secs] of scripts) {
+    run(look, script, () => 1 / 60, secs, (c, t) => {
+      if (t < 0.6) return;
+      c.rig.root.updateMatrixWorld(true);
+      for (const [foot, knee] of [[c.rig.footL, c.rig.kneeL], [c.rig.footR, c.rig.kneeR]] as const) {
+        const m = shoeOf(foot);
+        const g = m.geometry;
+        const pos = g.getAttribute('position');
+        const mt = g.morphAttributes.position ?? [];
+        const inf = m.morphTargetInfluences ?? [];
+        const yTop = top(g);
+        let worst = 0;
+        for (let i = 0; i < pos.count; i++) {
+          if (pos.getY(i) < yTop - 0.02) continue;
+          v.fromBufferAttribute(pos, i);
+          for (let k = 0; k < mt.length; k++) if (inf[k]) v.addScaledVector(w.fromBufferAttribute(mt[k], i), inf[k]);
+          v.applyMatrix4(m.matrixWorld);
+          // the same vertex carried by the shin: the foot's origin is d.shin below the knee, unturned
+          w.fromBufferAttribute(pos, i).add(foot.position).applyMatrix4(knee.matrixWorld);
+          worst = Math.max(worst, v.distanceTo(w));
+        }
+        offs.push(worst);
+      }
+    });
+  }
+  offs.sort((a, b) => a - b);
+  // the trouser leg against the boot (static): the shin's vertices under the boot's top
+  const c0 = fresh(look);
+  const d = c0.rig.dims;
+  const shin = c0.rig.kneeL.children.find((ch) => (ch as unknown as { isMesh?: boolean; material?: { side?: number } }).isMesh && (ch as unknown as { material: { side?: number } }).material.side !== 1) as unknown as { geometry: import('three').BufferGeometry };
+  const g0 = shoeOf(c0.rig.footL).geometry;
+  const boots = top(g0) - 0.015;
+  const hx = d.shoeW * 0.45;
+  const zb = 0.02 - d.shoeL * 0.39;
+  const zf = 0.02 + d.shoeL * 0.39;
+  const tailored = (c0.rig as unknown as { look?: { pants: { style: string } } }).look?.pants.style === 'tailored';
+  let legOut = 0;
+  let legLow = 0;
+  const sp = shin.geometry.getAttribute('position');
+  for (let i = 0; i < sp.count; i++) {
+    const h = sp.getY(i) + d.shin;
+    if (h >= boots) continue;
+    if (!tailored) legOut = Math.max(legOut, Math.abs(sp.getX(i)) - hx, zb - sp.getZ(i), sp.getZ(i) - zf);
+    legLow = Math.max(legLow, 0.19 - h);
+  }
+  return { collarP95: +offs[Math.floor(offs.length * 0.95)].toFixed(3), collarMax: +offs[offs.length - 1].toFixed(3), legOut: +Math.max(0, legOut).toFixed(3), legLow: +Math.max(0, legLow).toFixed(3) };
 }
 
 /**
@@ -530,14 +619,15 @@ for (const look of only ? [only] : lookList ? lookList.split(',') : LOOKS) {
     clip: clip(look),
     ...id,
     drift: drift(look),
+    ...bootFit(look),
   });
   const r = results[results.length - 1];
   console.log(
-    `${look.padEnd(7)} pops ${String(r.pops).padStart(4)} legs ${String(r.legPops).padStart(4)} (max ${r.popMax.toFixed(1).padStart(5)} rad/s) jerkP99 ${String(r.jerkP99).padStart(5)} | fps30 ${r.fps30.toFixed(3)} fps45 ${r.fps45.toFixed(3)} fps144 ${r.fps144.toFixed(3)} jitter ${r.fpsJitter.toFixed(3)} | slip jog ${r.slipJog.toFixed(2)} run ${r.slipRun.toFixed(2)} strafe ${r.slipStrafe.toFixed(2)} | sink ${r.sink.toFixed(3)} float ${r.float.toFixed(3)} clip ${r.clip.toFixed(3)} | idle ${r.idleHeadMM.toFixed(1)} mm repeat ${r.idleRepeat.toFixed(2)} | drift ${r.drift}`,
+    `${look.padEnd(7)} pops ${String(r.pops).padStart(4)} legs ${String(r.legPops).padStart(4)} (max ${r.popMax.toFixed(1).padStart(5)} rad/s) jerkP99 ${String(r.jerkP99).padStart(5)} | fps30 ${r.fps30.toFixed(3)} fps45 ${r.fps45.toFixed(3)} fps144 ${r.fps144.toFixed(3)} jitter ${r.fpsJitter.toFixed(3)} | slip jog ${r.slipJog.toFixed(2)} run ${r.slipRun.toFixed(2)} strafe ${r.slipStrafe.toFixed(2)} | sink ${r.sink.toFixed(3)} float ${r.float.toFixed(3)} clip ${r.clip.toFixed(3)} | idle ${r.idleHeadMM.toFixed(1)} mm repeat ${r.idleRepeat.toFixed(2)} | drift ${r.drift} | boot collar p95 ${(r.collarP95 * 100).toFixed(1)} max ${(r.collarMax * 100).toFixed(1)} cm, leg out ${(r.legOut * 100).toFixed(1)} low ${(r.legLow * 100).toFixed(1)} cm`,
   );
 }
 const avg = (k: keyof Result) => +(results.reduce((s, r) => s + (r[k] as number), 0) / results.length).toFixed(4);
-const summary = Object.fromEntries((['pops', 'legPops', 'popMax', 'jerkP99', 'fps30', 'fps45', 'fps144', 'fpsJitter', 'slipJog', 'slipRun', 'slipStrafe', 'sink', 'float', 'clip', 'idleHeadMM', 'idleRepeat', 'drift'] as (keyof Result)[]).map((k) => [k, avg(k)]));
+const summary = Object.fromEntries((['pops', 'legPops', 'popMax', 'jerkP99', 'fps30', 'fps45', 'fps144', 'fpsJitter', 'slipJog', 'slipRun', 'slipStrafe', 'sink', 'float', 'clip', 'idleHeadMM', 'idleRepeat', 'drift', 'collarP95', 'collarMax', 'legOut', 'legLow'] as (keyof Result)[]).map((k) => [k, avg(k)]));
 console.log('\nmean', JSON.stringify(summary));
 if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ at: new Date().toISOString(), results, summary }, null, 2));
 
@@ -555,11 +645,14 @@ if (checkMode) {
     gate(`${r.look}: standing soles on the floor (−1 … +3 cm: ${r.float} m)`, r.float >= -0.01 && r.float <= 0.03, String(r.float));
     // Beta 2.1 final: the slide dash (RINA, ACE, the training bot) buried the shoe 12–16 cm — the whole shoe is measured now
     gate(`${r.look}: shoes never deeper than 4 cm in the floor running, turning or dashing (${r.sink} m)`, r.sink <= 0.04, String(r.sink));
+    // Beta 2.2: the boot's shaft stays on the leg (2.1: the collar swung 26–40 cm away at p95), the trouser leg inside the boot
+    gate(`${r.look}: the boot's collar stays on the leg — ≤ 1 cm from where the shin carries it (p95 ${r.collarP95}, max ${r.collarMax} m)`, r.collarMax <= 0.01, String(r.collarMax));
+    gate(`${r.look}: the trouser leg inside the boot — never out of its upper or below the shaft's band (${r.legOut} / ${r.legLow} m)`, r.legOut <= 0.002 && r.legLow <= 0.001, `${r.legOut} / ${r.legLow}`);
     gate(`${r.look}: body / arm pops ≤ 20 in the busy fight (${r.pops})`, r.pops <= 20, String(r.pops));
     gate(`${r.look}: 30 fps pose within 0.04 rad RMS of 120 fps (${r.fps30})`, r.fps30 <= 0.04, String(r.fps30));
     gate(`${r.look}: weapon never deeper than 7 cm in the torso (${r.clip} m)`, r.clip <= 0.07, String(r.clip));
     gate(`${r.look}: nothing left in the springs after 10 minutes (${r.drift})`, r.drift < 0.001, String(r.drift));
   }
-  console.log(fails.length ? `\nanim21: FAILED (${fails.length})` : `\nanim21: OK (${results.length * 7} checks)`);
+  console.log(fails.length ? `\nanim21: FAILED (${fails.length})` : `\nanim21: OK (${results.length * 9} checks)`);
   proc.exit(fails.length ? 1 : 0);
 }

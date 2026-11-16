@@ -8,6 +8,7 @@ import type { DailyOutcome } from '../net/SyncManager';
 import { openLogin } from './accountUI';
 import { countUp, esc } from './dom';
 import { UI_ICONS } from './icons';
+import { winterGiftArt } from './rewardArt';
 import type { MenuScreen } from './screens/MenuScreen';
 
 // Alpha 1.8.9 — the DAILY PRIME STREAK window («ЕЖЕДНЕВНЫЙ ЭФИР»): the streak, the record, today's gift, the next
@@ -126,7 +127,7 @@ function clockText(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function statusHTML(s: DailyStatus, note: string, bump: boolean): string {
+function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): string {
   const claimed = s.claimedToday;
   const ready = s.canClaim;
   // the strip: the last days of this streak already received, then the coming ones
@@ -154,7 +155,7 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean): string {
       <div class="dps-stat today ${claimed ? 'done' : ready ? 'ready' : ''}"><span>Сегодня</span><b>${claimed ? icon(UI_ICONS.check, 22) : ready ? icon(UI_ICONS.gift, 26) : '—'}</b><small>${claimed ? 'получено' : ready ? 'подарок ждёт' : '—'}</small></div>
     </div>
     <section class="dps-hero ${heroKind} ${claimed ? 'done' : ready ? 'ready' : ''}">
-      <div class="dps-hero-gift">${icon(UI_ICONS.gift, 58)}</div>
+      <div class="dps-hero-gift">${gift}</div>
       <div class="dps-hero-text">
         <span class="dps-hero-day">${claimed ? 'Завтра · ' : ready ? 'Сегодня · ' : ''}день ${hero.day}</span>
         <b>+${money(hero.money)}</b>
@@ -200,7 +201,7 @@ function reveal(g: Game, host: HTMLElement, c: DailyClaim, done: () => void): vo
   ov.innerHTML = `<div class="dps-rays" aria-hidden="true"></div>
       <div class="dps-sparks" aria-hidden="true">${sparks}</div>
       <div class="dps-confetti" aria-hidden="true">${confetti}</div>
-      <div class="dps-reveal-box">${icon(UI_ICONS.gift, big ? 96 : 84)}</div>
+      <div class="dps-reveal-box">${winterGiftArt(g, big ? 96 : 84) ?? icon(UI_ICONS.gift, big ? 96 : 84)}</div>
       <div class="dps-reveal-head">${headline}</div>
       <b class="dps-reveal-sum">+${money(0)}</b>
       <small class="dps-reveal-label">${esc(big ? (c.first ? 'Особое достижение серии!' : 'Рубеж снова взят!') : c.label)}</small>
@@ -263,7 +264,7 @@ export function openDaily(g: Game): void {
       const s = d.status;
       if (d.gate() !== 'ok') host.innerHTML = gateHTML(g);
       else if (!s) host.innerHTML = `${headHTML()}<div class="dps-gate">${d.error ? `<p><b>Нет связи с PRIME NETWORK</b><span>Не удалось загрузить ежедневный эфир.</span></p><button type="button" class="btn wide ghost" data-dps="retry">Повторить</button>` : '<p class="dps-loading"><span class="dps-spin"></span>Загружаем ежедневный эфир…</p>'}</div>`;
-      else host.innerHTML = statusHTML(s, note, bump);
+      else host.innerHTML = statusHTML(s, note, bump, winterGiftArt(g, 58) ?? icon(UI_ICONS.gift, 58));
       bump = false;
       tickTimer();
     };

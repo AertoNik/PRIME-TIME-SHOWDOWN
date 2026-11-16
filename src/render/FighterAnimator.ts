@@ -2,7 +2,7 @@ import { Matrix4, Vector3, type MeshBasicMaterial } from 'three';
 import { FIRE_STYLE, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type FireStyle, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
 import type { CardId, CastKind, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
 import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
-import type { FighterRig } from './FighterModel';
+import { bootInfluences, type FighterRig } from './FighterModel';
 import { toonUniforms } from './materials';
 
 export interface AnimInput {
@@ -134,6 +134,14 @@ const IK_H = new Vector3();
 // scratch for the level feet
 const FT_M = new Matrix4();
 const FT_F = new Vector3();
+// Beta 2.2 — the floor search's ankle angles (−1.65 … +1.30 rad by 0.05; the usual range starts at index 18, −0.75):
+// their cosines and sines once, the clearance of each kept for the wide pass (no trigonometry or allocation per frame)
+const FS_N = 60;
+const FS_NARROW = 18;
+const FS_A = Float64Array.from({ length: FS_N }, (_, i) => -1.65 + i * 0.05);
+const FS_COS = FS_A.map(Math.cos);
+const FS_SIN = FS_A.map(Math.sin);
+const FS_CL = new Float64Array(FS_N);
 
 /** Last victory routine per fighter look, so the same one never plays twice in a row. */
 const lastVictory = new Map<string, number>();
@@ -212,6 +220,11 @@ export interface AnimEvents {
  * feeds back into the simulation.
  */
 export class FighterAnimator {
+  /**
+   * Beta 2.2: true — the Beta 2.1 rigid shoes (the whole boot turns with the foot). Only the measuring tools switch it
+   * (scripts/anim-lab.ts, the dev foot lab) to compare before and after; the game never does.
+   */
+  static rigidBoots = false;
   readonly rig: FighterRig;
   readonly idleStyle: IdleStyle;
   readonly dashStyle: DashStyle;
@@ -2551,21 +2564,49 @@ export class FighterAnimator {
    * with it (pitch and a little roll, within an ankle's range); in the air it goes back to following the shin. A
    * planted step adds a small toe-down after lift-off and a toe-up before the next contact (both zero at the contacts).
    */
+  /** Beta 2.2: the side outline of the part of the boot that turns with the foot (null: the Beta 2.1 rigid boots). */
+  // (flat [h0, z0, h1, z1, …]: read in the floor search up to ~100 times a foot a frame — no tuples, no allocation)
+  private footHullCache: Float64Array | null | undefined = undefined;
+  private footHalfWidth = 0;
+  private footHull(): Float64Array | null {
+    if (FighterAnimator.rigidBoots) return null;
+    if (this.footHullCache !== undefined) return this.footHullCache;
+    let h: Float64Array | null = null;
+    for (const ch of this.rig.footL.children) {
+      const ud = (ch as unknown as { geometry?: { userData?: { footHull?: [number, number][]; footHalfWidth?: number } } }).geometry?.userData;
+      if (ud?.footHull && ud.footHull.length >= 3) {
+        h = Float64Array.from(ud.footHull.flat());
+        this.footHalfWidth = ud.footHalfWidth ?? 0;
+      }
+    }
+    return (this.footHullCache = h);
+  }
+
   /** The shoe's extent in its foot's frame (m, the root's scale aside): built once from the shoe's own meshes. */
   private shoeBoxCache: { y0: number; y1: number; z0: number; z1: number } | null = null;
   private shoeBox(): { y0: number; y1: number; z0: number; z1: number } {
     if (this.shoeBoxCache) return this.shoeBoxCache;
+    // Beta 2.2: the boot's shaft no longer turns with the foot — only the part that does (the geometry's footBox)
+    for (const ch of this.rig.footL.children) {
+      const fb = (ch as unknown as { geometry?: { userData?: { footBox?: { y0: number; y1: number; z0: number; z1: number } } } }).geometry?.userData?.footBox;
+      if (fb && !FighterAnimator.rigidBoots) return (this.shoeBoxCache = { ...fb });
+    }
     const b = { y0: Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity };
     for (const ch of this.rig.footL.children) {
-      const m = ch as unknown as { isMesh?: boolean; material?: { side?: number }; position: Vector3; geometry?: { boundingBox: { min: Vector3; max: Vector3 } | null; computeBoundingBox(): void } };
+      const m = ch as unknown as { isMesh?: boolean; material?: { side?: number }; position: Vector3; geometry?: { getAttribute(n: string): { count: number; getY(i: number): number; getZ(i: number): number } | undefined } };
       // (the outline shells — back faces — are left out: the shoe itself is what touches the floor)
       if (!m.isMesh || !m.geometry || m.material?.side === 1) continue;
-      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-      const bb = m.geometry.boundingBox!;
-      b.y0 = Math.min(b.y0, bb.min.y + m.position.y);
-      b.y1 = Math.max(b.y1, bb.max.y + m.position.y);
-      b.z0 = Math.min(b.z0, bb.min.z + m.position.z);
-      b.z1 = Math.max(b.z1, bb.max.z + m.position.z);
+      // the vertices themselves (Beta 2.2: never computeBoundingBox — it would add the boot's morph targets to the extent)
+      const pos = m.geometry.getAttribute('position');
+      if (!pos) continue;
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i) + m.position.y;
+        const z = pos.getZ(i) + m.position.z;
+        if (y < b.y0) b.y0 = y;
+        if (y > b.y1) b.y1 = y;
+        if (z < b.z0) b.z0 = z;
+        if (z > b.z1) b.z1 = z;
+      }
     }
     // (a rig without shoe meshes: the sole line of the shoe's dimensions, as before)
     if (!Number.isFinite(b.y0)) {
@@ -2637,38 +2678,66 @@ export class FighterAnimator {
       // angle in the range clears) may point the toe back further, the instep on the floor (to −1.65 rad).
       if (!terminalKO && ankleY < 0.4) {
         const box = this.shoeBox();
-        const clear = (a: number) => {
+        const hull = this.footHull();
+        const hw = this.footHalfWidth;
+        const cb = Math.cos(pz);
+        const sb = Math.sin(pz);
+        const clear = (ca: number, sa: number) => {
           // a point (h up the shoe, z along it) at ankle angle a rises by h·(cos a·Yy + sin a·Zy) + z·(cos a·Zy − sin a·Yy)
-          const hy = Math.cos(a) * Yy + Math.sin(a) * Zy;
-          const zy = Math.cos(a) * Zy - Math.sin(a) * Yy;
-          const lo = Math.min(box.y0 * hy, box.y1 * hy) + Math.min(box.z0 * zy, box.z1 * zy);
+          const hy = ca * Yy + sa * Zy;
+          const zy = ca * Zy - sa * Yy;
+          let lo = Infinity;
+          if (hull) {
+            // Beta 2.2: the outline of the part that turns with the foot (the shaft stays on the shin — it is where the leg
+            // is), its two side edges, turned exactly as the foot is (Rx(a)·Rz(roll)): the roll tips one edge down.
+            // A point (x, h, z) of the boot rises by x·(cb·Xy + sb·hy) + h·(cb·hy − sb·Xy) + z·zy; of the two side edges
+            // (x = ±hw) the lower one is −hw·|cb·Xy + sb·hy| — one pass over the outline instead of two.
+            const kh = cb * hy - sb * Xy;
+            for (let i = 0; i < hull.length; i += 2) {
+              const v = hull[i] * kh + hull[i + 1] * zy;
+              if (v < lo) lo = v;
+            }
+            lo -= hw * Math.abs(cb * Xy + sb * hy);
+          } else lo = Math.min(box.y0 * hy, box.y1 * hy) + Math.min(box.z0 * zy, box.z1 * zy);
           return FT_F.y - floorY + lo * sc;
         };
-        if (clear(px) < -0.004) {
-          const search = (from: number, to: number) => {
-            let best = px;
-            let bestC = -Infinity;
-            let near = Infinity;
-            for (let a = from; a <= to + 1e-4; a += 0.05) {
-              const cl = clear(a);
-              const dist = Math.abs(a - px);
+        if (clear(Math.cos(px), Math.sin(px)) < -0.004) {
+          // the nearest angle that clears (or, if none does, the one that clears most) among FS_A[from …]
+          let best = px;
+          let bestC = -Infinity;
+          let near = Infinity;
+          const search = (from: number) => {
+            best = px;
+            bestC = -Infinity;
+            near = Infinity;
+            for (let i = from; i < FS_N; i++) {
+              const cl = FS_CL[i];
+              const dist = Math.abs(FS_A[i] - px);
               if (cl >= -0.004 ? dist < near : near === Infinity && cl > bestC) {
                 if (cl >= -0.004) near = dist;
                 bestC = cl;
-                best = a;
+                best = FS_A[i];
               }
             }
-            return { a: best, c: bestC, ok: near < Infinity };
           };
-          let r = search(-0.75, 1.3);
-          if (!r.ok) {
-            const wide = search(-1.65, 1.3);
-            if (wide.ok || wide.c > r.c) r = wide;
+          for (let i = FS_NARROW; i < FS_N; i++) FS_CL[i] = clear(FS_COS[i], FS_SIN[i]);
+          search(FS_NARROW);
+          if (near === Infinity) {
+            const narrowA = best;
+            const narrowC = bestC;
+            for (let i = 0; i < FS_NARROW; i++) FS_CL[i] = clear(FS_COS[i], FS_SIN[i]);
+            search(0);
+            if (near === Infinity && !(bestC > narrowC)) best = narrowA;
           }
-          px = r.a;
+          px = best;
         }
       }
       foot.rotation.set(px, 0, pz);
+      // Beta 2.2: the boot's shaft stays on the shin — only the sole, the heel and the toe turn (FighterModel.bootMorphs)
+      if (!FighterAnimator.rigidBoots) for (const ch of foot.children) {
+        const inf = (ch as unknown as { morphTargetInfluences?: number[] }).morphTargetInfluences;
+        if (inf && inf.length >= 8) bootInfluences(inf, px, pz);
+      }
     }
   }
 

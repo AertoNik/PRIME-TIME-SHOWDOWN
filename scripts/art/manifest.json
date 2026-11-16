@@ -1189,6 +1189,20 @@
       "goals": {
         "xs": 96,
         "sm": 192
+      },
+      "sections": {
+        "sm": 192,
+        "md": 400
+      },
+      "titles": {
+        "xs": 96,
+        "sm": 192,
+        "md": 400
+      },
+      "winter": {
+        "xs": 96,
+        "sm": 192,
+        "md": 400
       }
     }
   },
@@ -3208,6 +3222,36 @@
           1204,
           1216
         ]
+      },
+      "candy_canes": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_EVENT_CANDY_CANE_TOKEN.png",
+        "sha256": "19a61f8a89a32b3d03a9437b3804124eb101588023cfbab607b2ba28cfc9c336",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/currency/xs/candy_canes.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6232,
+            "sha256": "e26c0cbc9e210ac6931ac3eae18b6aeec581b21d671d3805c28432a44ddaba9e"
+          },
+          "sm": {
+            "file": "ui/currency/sm/candy_canes.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16118,
+            "sha256": "8220a88898642079c2bcbe72ed174f9711ab6d485f42128d5d51061876c1c7a5"
+          }
+        },
+        "bbox": [
+          131,
+          6,
+          1172,
+          1198
+        ]
       }
     },
     "effects": {
@@ -3510,6 +3554,36 @@
           1174,
           1180
         ]
+      },
+      "victory_daily_sunrise": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/reward_prime_dawn.png",
+        "sha256": "233903521aa1d990bce144809a97cc6e75296b2037a91c3723476d5a2c4700fd",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/victory_daily_sunrise.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 25104,
+            "sha256": "95e3653b3427ac8ad0784941f3985b3b315d62eaf8d4dced08c5a732785617ac"
+          },
+          "md": {
+            "file": "ui/effects/md/victory_daily_sunrise.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 64762,
+            "sha256": "1f7a7aa08ece58655fe92fd69ba6ca932fd88e9743270efe5e183256decd50e7"
+          }
+        },
+        "bbox": [
+          42,
+          111,
+          1215,
+          1203
+        ]
       }
     },
     "achievements": {
@@ -3662,6 +3736,126 @@
           1237,
           1250
         ]
+      },
+      "career_star": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/achievement_prime_time_star.png",
+        "sha256": "a5a6fa1128c464caf8c7a2dc2f02d2efc949856920cb22b7aaed5eccf0404740",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/career_star.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16004,
+            "sha256": "15ccd51aaa82f5c37b41d5fe8c9a8331a9f9021c59574676ade381f7cf79af9f"
+          },
+          "md": {
+            "file": "ui/achievements/md/career_star.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 43158,
+            "sha256": "541535215735e0272f0cf6458d3cdce2b78976a1ede79b7953f33989c943b6ec"
+          }
+        },
+        "bbox": [
+          12,
+          18,
+          1238,
+          1231
+        ]
+      },
+      "career_legendary": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/achievement_prime_legend.png",
+        "sha256": "3da4e24ac0f1f468d973977069cdf938205257eefb2e1b657084744037681b32",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/career_legendary.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19842,
+            "sha256": "c00dedfd36a8f01489afe2cb3930d9e4c565ed4bdee60797f48b5883af60aeda"
+          },
+          "md": {
+            "file": "ui/achievements/md/career_legendary.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 53732,
+            "sha256": "54e4eedae5b5af8f266c0c78c27d789f2f28f5403a59994ae7ac466c39cabc2c"
+          }
+        },
+        "bbox": [
+          28,
+          9,
+          1226,
+          1245
+        ]
+      },
+      "mastery_combo": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/achievement_combo_show.png",
+        "sha256": "e6537d8411b30d1eae309cc8a1da1fad43edf37d8545a11118aa6dbae926b6d5",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/mastery_combo.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16202,
+            "sha256": "9600beef35ff73dc422630ec838e80b829c0fb3f3443d3f60e0b3aecc08a0790"
+          },
+          "md": {
+            "file": "ui/achievements/md/mastery_combo.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 41662,
+            "sha256": "71f3e95da842e7cddeb43f504236d0a33c670bd97741b11296cd6beb18495205"
+          }
+        },
+        "bbox": [
+          77,
+          39,
+          1176,
+          1196
+        ]
+      },
+      "mastery_champion": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/achievement_five_champion_broadcasts.png",
+        "sha256": "0c1497f0ed9a39661c0cb01d993315aba6769d70b2849ddcfafbf946f31140ae",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/mastery_champion.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15974,
+            "sha256": "b6eabbfd014ca4e5c8f427763ae42d0eb8a4fc5d4eadef78c3ff811119d68df7"
+          },
+          "md": {
+            "file": "ui/achievements/md/mastery_champion.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 41018,
+            "sha256": "42d92ba1d150061b9bf071b682df6d9845c528e25db1d40bb247bb58f6c56be2"
+          }
+        },
+        "bbox": [
+          46,
+          40,
+          1208,
+          1223
+        ]
       }
     },
     "rewards": {
@@ -3784,6 +3978,36 @@
           1222,
           1246
         ]
+      },
+      "career_producer": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/reward_career_emblem_v3.png",
+        "sha256": "fd922a05ca11851bd9b9408e79f5022c3a3c897fc55bcdd8fc8e8578a2d7bc51",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/rewards/xs/career_producer.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6256,
+            "sha256": "c3e2ba73b9900bee17be9dd25770272db6445d8807c3bc254efbf0ea33a3f0d8"
+          },
+          "sm": {
+            "file": "ui/rewards/sm/career_producer.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15818,
+            "sha256": "e8bf36d0e3dc1cc2d423815c5cbbe767d1c2fd80247e41a95aaacfb92476bb93"
+          }
+        },
+        "bbox": [
+          115,
+          78,
+          1140,
+          1176
+        ]
       }
     },
     "goals": {
@@ -3845,6 +4069,823 @@
           79,
           1145,
           1167
+        ]
+      },
+      "rising_star": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/season_goal_rising_star.png",
+        "sha256": "9b6b1f7b3618f676748f24414fc1f286730600260af26f7e869b58a3cbb84a8b",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/rising_star.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6304,
+            "sha256": "510178b3ea836a0eed95410b14f0b9bd4f9a1a9babca8b2512190d9be79d80ce"
+          },
+          "sm": {
+            "file": "ui/goals/sm/rising_star.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15576,
+            "sha256": "1eb45591927857c187a5b8ad4496eefcca7ddfa0bf6a99d4ff0d4ce5c47e5181"
+          }
+        },
+        "bbox": [
+          69,
+          22,
+          1175,
+          1246
+        ]
+      },
+      "big_league": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/season_goal_big_league.png",
+        "sha256": "0d837a3c263f91071d9760443c2922b8d7b4fe572b98630def9ffea148bbe299",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/big_league.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7246,
+            "sha256": "5bf8defadc378e451bc54befa34d6eca622d86da67ca3fe40312c9c460cd6beb"
+          },
+          "sm": {
+            "file": "ui/goals/sm/big_league.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18962,
+            "sha256": "a3f080082567878f8e3472b007a34cf93876b5b3b502002d482a102874eb0373"
+          }
+        },
+        "bbox": [
+          8,
+          10,
+          1245,
+          1245
+        ]
+      },
+      "roster_expansion": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/season_goal_roster_expansion.png",
+        "sha256": "cdb5df40ab5d6ea56368aa9212b48a9c1ea6d9e7cb8964a060c646519e9aa681",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/roster_expansion.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6844,
+            "sha256": "0bbb67e9b3b07ac722d20eff850643309bb39ad2a336ec6d0bde384b8a977a0e"
+          },
+          "sm": {
+            "file": "ui/goals/sm/roster_expansion.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17532,
+            "sha256": "f6124fdc537708f93f6f0a9b9b88bf23d7c73e9493bb91673628a14b128a9024"
+          }
+        },
+        "bbox": [
+          61,
+          51,
+          1196,
+          1216
+        ]
+      },
+      "perfect_timing": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/season_goal_perfect_timing.png",
+        "sha256": "43d259ba53180cdcc7e61ad18f28f757af6bacf09110796d2544eae97a7f3ecd",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/perfect_timing.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7122,
+            "sha256": "0d266ea364ac95d44215cde150496d20559a5e378a74d0c573480ff120854fba"
+          },
+          "sm": {
+            "file": "ui/goals/sm/perfect_timing.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18626,
+            "sha256": "7bf2696ee92d6d1ab0372aa6d245d94158731459d9be00d6ef6c110a873e38ad"
+          }
+        },
+        "bbox": [
+          0,
+          17,
+          1254,
+          1239
+        ]
+      },
+      "prime_time_champion": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/season_goal_prime_time_champion.png",
+        "sha256": "db330c803680f9b0836712165e83fe95855f52a7d1a612781255f2d4da617da4",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/prime_time_champion.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7636,
+            "sha256": "73172790757814f41ff01bc50faf266cfa757c8e516740f1b59b1b89c2d03a62"
+          },
+          "sm": {
+            "file": "ui/goals/sm/prime_time_champion.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 20274,
+            "sha256": "296e954e5538764d1e335cb788a9ed5613a14885044062636811ee1eec227fff"
+          }
+        },
+        "bbox": [
+          16,
+          14,
+          1238,
+          1251
+        ]
+      },
+      "golden_rating": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/Золотая звезда стремительного роста.png",
+        "sha256": "db5e644de5a23b900ecdb690fc90d4fc8c01a1281e9d5d3c3750ada673a06148",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/goals/xs/golden_rating.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6530,
+            "sha256": "e52a895a2c9ef836ee00e11895cb5ccc3c8f9c9fce85de7b215f6a185db61fe1"
+          },
+          "sm": {
+            "file": "ui/goals/sm/golden_rating.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17304,
+            "sha256": "67ec25d3f5656641f85ee226fd27e210b4f04e00fa056543e814a0e1f8793f4f"
+          }
+        },
+        "bbox": [
+          3,
+          9,
+          1253,
+          1246
+        ]
+      }
+    },
+    "sections": {
+      "achievements": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/collection_achievements_v2.png",
+        "sha256": "2ead722ed92aa25e48e8b44f457bee95a19f4086b9059ee68ca0958563e06807",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/sections/sm/achievements.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14516,
+            "sha256": "fc24d1c49b76e52d764552c5cd705043ff696ee458f06a3ec22d96015ee22fa1"
+          },
+          "md": {
+            "file": "ui/sections/md/achievements.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37974,
+            "sha256": "9a5d65ce55795e816bf21598667a3f48c8986e75a5fd463d4328eefcefb3531a"
+          }
+        },
+        "bbox": [
+          162,
+          64,
+          1056,
+          1210
+        ]
+      },
+      "seasons": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/collection_seasons_v2.png",
+        "sha256": "33aaa0472279f22f3dde967700f5a8fec51b58b0fd762973efb923150b681ccd",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/sections/sm/seasons.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17372,
+            "sha256": "41ce515d070243350f88a121269a6e8cc025d5129f4c534eccf2178dcf81bd70"
+          },
+          "md": {
+            "file": "ui/sections/md/seasons.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 46680,
+            "sha256": "1469b47dcbd01a8c9abf2ad98bf324fa4db7cfbaf21cc5b1f5a9583de72f20b0"
+          }
+        },
+        "bbox": [
+          60,
+          107,
+          1193,
+          1163
+        ]
+      },
+      "league": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/collection_prime_league_v2.png",
+        "sha256": "4ef35d3d7a8161c4a5da971c77c7bea2d01a6283c7b2be38be8fda65e9378262",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/sections/sm/league.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15854,
+            "sha256": "5fbe0333a5a93a2b6c3630bc5d0d4488287c3b1400db2c0b5af8bcec68182f10"
+          },
+          "md": {
+            "file": "ui/sections/md/league.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42786,
+            "sha256": "37e9105359ed9a45c690bb7bc5f629df9fb1dc4d32a3f6d287507673f5c62309"
+          }
+        },
+        "bbox": [
+          67,
+          46,
+          1186,
+          1195
+        ]
+      },
+      "rewards": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/collection_rewards_v2.png",
+        "sha256": "e59f9b94d5fcd5e10520455518b099d32c35cc2ca5568585244dff7c2602a7ba",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/sections/sm/rewards.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16922,
+            "sha256": "e2fa29351b859ee39c9823fceb35274125edd686dd3e64923b76c00897127380"
+          },
+          "md": {
+            "file": "ui/sections/md/rewards.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 44974,
+            "sha256": "f817a1a6a9b365eb0a865406ff164dc9ca8dda4f4a2782c825d023ccf120cde4"
+          }
+        },
+        "bbox": [
+          73,
+          56,
+          1162,
+          1233
+        ]
+      },
+      "shop": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/collection_purchased_v3.png",
+        "sha256": "23fa93b1118b8bec56e54958813a4bc18ff611e5e1e5ac9ff936ae3ea91e54a7",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/sections/sm/shop.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13756,
+            "sha256": "b6a6cd036f7d411d4c7d17ee90bddff04429aca6bb8591fe984614f89c13905a"
+          },
+          "md": {
+            "file": "ui/sections/md/shop.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 35170,
+            "sha256": "066a78152032638814386402d0aa1daf02e11f3ff6b2cb299638399150f2bd5b"
+          }
+        },
+        "bbox": [
+          130,
+          78,
+          1121,
+          1158
+        ]
+      }
+    },
+    "titles": {
+      "on_air": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/title_on_air.png",
+        "sha256": "7b4194a7d5bcefb02092106dbc5d8699069d84375f517051f106a89dd48c5c1c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/on_air.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6532,
+            "sha256": "23a467b03c89e26f827057d74e39c342b8434c6ece7b3cd94c3b042d05ce2201"
+          },
+          "sm": {
+            "file": "ui/titles/sm/on_air.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15884,
+            "sha256": "0efbd26d210898bee47dbd56b0467a2267df78a031393a8f4521651a67c3ba26"
+          },
+          "md": {
+            "file": "ui/titles/md/on_air.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42104,
+            "sha256": "2cd91d512dba3dd7a216b942d9c222d0e84b2e405270226969f8c2e766e5efd1"
+          }
+        },
+        "bbox": [
+          76,
+          62,
+          1178,
+          1205
+        ]
+      },
+      "voice_of_air": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/title_voice_of_air.png",
+        "sha256": "a0582803b40e3ad7e319e19c80d3b8d26cf7b6ff6312db57ef87847b5ce2db3f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/voice_of_air.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6786,
+            "sha256": "6f81189f29fe29f90bed2a8a575d73acee36fc71ac9740ee72338feac786f94f"
+          },
+          "sm": {
+            "file": "ui/titles/sm/voice_of_air.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17828,
+            "sha256": "9ab68da9e5a41b2cd16c7d1eb532ae40e1c0aa10a73131aad6d62cfa5be53c95"
+          },
+          "md": {
+            "file": "ui/titles/md/voice_of_air.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 49550,
+            "sha256": "298db4e1f05e7ddaaa5b1b74fcc1859dbf40f0a89ea370366ab30cd604664f65"
+          }
+        },
+        "bbox": [
+          46,
+          20,
+          1180,
+          1217
+        ]
+      },
+      "prime_time": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/title_prime_time.png",
+        "sha256": "a0ba5b6b7781ad627cba056a9c89d3e7933df77ec3ba7f13c4842bb128e1c187",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/prime_time.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6568,
+            "sha256": "c34db2ba38a95bffaac7c705a448092da58f1159d59d7d691c1947c863ed5a8e"
+          },
+          "sm": {
+            "file": "ui/titles/sm/prime_time.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17308,
+            "sha256": "37dbb6d015d33f6caf013982222c746d0f6d6993e546dd28012d7cbc88e7b365"
+          },
+          "md": {
+            "file": "ui/titles/md/prime_time.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 47534,
+            "sha256": "789ae23f6017c538c24bdb6c8986cc46a55c834b38c9d09d2364faac3dd4aacf"
+          }
+        },
+        "bbox": [
+          46,
+          18,
+          1205,
+          1243
+        ]
+      },
+      "title_daily_regular": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/reward_daily_broadcast.png",
+        "sha256": "51f2eb77ea4733a9a878d3abe376ed575f45e4195e09864b563304b3ff8c47c5",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/title_daily_regular.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6266,
+            "sha256": "2f4b53c25305009440dc8363a05b848dbffa3cd46b7caa918288e607c65ab30b"
+          },
+          "sm": {
+            "file": "ui/titles/sm/title_daily_regular.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15018,
+            "sha256": "52afdba73549727405db19d960cd32d7bd6f1d2a8b62a8fa4346646a6a9fcb0d"
+          },
+          "md": {
+            "file": "ui/titles/md/title_daily_regular.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 38114,
+            "sha256": "84a99349dce69d4a634d89f100fd8a64ea076292ef7064f5c2333e4fae7227cc"
+          }
+        },
+        "bbox": [
+          91,
+          48,
+          1155,
+          1159
+        ]
+      },
+      "title_prime_legend": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/title_prime_legend.png",
+        "sha256": "b6d078d7505bf91c4d611549d02ccfe829287875f42e0aca07dbf902cde1f130",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/title_prime_legend.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5774,
+            "sha256": "b51012ba2e7962a67c51e6f143d713ebce505104172a7100da827cc7f83e43ad"
+          },
+          "sm": {
+            "file": "ui/titles/sm/title_prime_legend.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14802,
+            "sha256": "ffcd33cad8b91c2cc6ffde7e226360903405b2c1bc7095366ccd5f2a66afcb5e"
+          },
+          "md": {
+            "file": "ui/titles/md/title_prime_legend.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 40954,
+            "sha256": "7b895139e4194704483ad771b0f328e3da00865aa6bf030533522b7d402c3c48"
+          }
+        },
+        "bbox": [
+          9,
+          83,
+          1246,
+          1133
+        ]
+      },
+      "title_winter_champion": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/winter_champion_title.png",
+        "sha256": "3902302b035a2aac15f920003e23877ce0c4b6d3160729b39bb28b02100bd6f7",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/titles/xs/title_winter_champion.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6840,
+            "sha256": "e4463bfc4dc76a85cd3abf9d7f1c2885e807783c681df643b7273aaca20c6c3a"
+          },
+          "sm": {
+            "file": "ui/titles/sm/title_winter_champion.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17710,
+            "sha256": "71717542a847c6e6be83ee2eca51c154da552dbf5cb8a1a79db27e2a0d86b09f"
+          },
+          "md": {
+            "file": "ui/titles/md/title_winter_champion.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 47140,
+            "sha256": "7735fa21e6ccd6228c0ea2669fc4a0343b6545286b67368cc25727cdb5c02dd5"
+          }
+        },
+        "bbox": [
+          27,
+          34,
+          1226,
+          1233
+        ]
+      }
+    },
+    "winter": {
+      "quest_frost_guard": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_IDEAL_DEFENSE.png",
+        "sha256": "6a3a9328337dd95693b842e186201e588b3f861800cdcbc4e6e68052ab089ee5",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_frost_guard.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6306,
+            "sha256": "6ed05fca45c88d7a5b9c397fec01c08e484f919ceb41a51701328daaf9d9f39f"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_frost_guard.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16100,
+            "sha256": "6c39eb6433e30990e56415e41d290f04eb3867b3224bfd028eb3848693f97b4e"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_frost_guard.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 43420,
+            "sha256": "6c3c6e6ae8c997c56e75fdc2295c459008f39b02d87b8abbf6152f6d17f28bf0"
+          }
+        },
+        "bbox": [
+          158,
+          35,
+          1154,
+          1185
+        ]
+      },
+      "quest_midnight_rating": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_MIDNIGHT_RATING.png",
+        "sha256": "3af4165d367ea8df9140d225e54260cdcf722ba7dd6f7b0b1bae5c461efda1ad",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_midnight_rating.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6922,
+            "sha256": "57b287f267c9bc48fe43704d0fb21a534a3491f19b1264fafd0faab3ef37ebd9"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_midnight_rating.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18320,
+            "sha256": "6a9e2b6629172a3d3a3c59ff76aebd272c38139fe333d5f377996dd631ce33fb"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_midnight_rating.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 49600,
+            "sha256": "01d4ad8b85a22dc1e7e929fce8da72dcc3222cd76aea7f26d2a413bb0f781ddc"
+          }
+        },
+        "bbox": [
+          125,
+          8,
+          1183,
+          1179
+        ]
+      },
+      "quest_holiday_broadcast": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_HOLIDAY_BROADCAST.png",
+        "sha256": "93a78193b1347bef7fd221601ec5ba4bcda0a08b6600265784a9fe1ed5cba104",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_holiday_broadcast.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6834,
+            "sha256": "44701693dd6ef9dc4f2d5ada9c574b120e5c2cce3a1f3d66c873e5e750d9697c"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_holiday_broadcast.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18290,
+            "sha256": "28cd7853e9961ea597e65c54b0fb9a07d86ad3b1b70cffa315a56bed6b33d97a"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_holiday_broadcast.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 49898,
+            "sha256": "b7a9ac87c3e218812b15a2bc88f80b03c523f5dc3674d08390a3c98d24377070"
+          }
+        },
+        "bbox": [
+          99,
+          5,
+          1205,
+          1184
+        ]
+      },
+      "quest_champions_eve": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_CHAMPIONS_EVE.png",
+        "sha256": "f8d776c046a34bac85839e974b6523067d1a9019f597a8cfdb6017de546698f0",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_champions_eve.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7378,
+            "sha256": "5137ebc6b1569807ddc1f8649525eac6a07b0c38e2a6790947eaeac33100abc0"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_champions_eve.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19806,
+            "sha256": "784b847fe70d6978cf6dff0d9382ef40339dbb31f0bc50bea75bfe5957a0b724"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_champions_eve.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 54212,
+            "sha256": "28a9858de7ccc275d6e52943c40f0b6a1a1415e65bc4a27db8e04a84519978db"
+          }
+        },
+        "bbox": [
+          72,
+          0,
+          1243,
+          1199
+        ]
+      },
+      "quest_league_snowfall": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_LEAGUE_SNOWFALL.png",
+        "sha256": "30efd5c6134735f499a544ac20495ab806d3a5b0856d4ff0276705e35e2ef4e5",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_league_snowfall.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6906,
+            "sha256": "5b16cf5ce67431dc61aa989075e535b521d011cc6395cee701ed1c4a0805f56c"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_league_snowfall.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18604,
+            "sha256": "4926a4f1a4d2f18eaf13eea979d1073cb4e889779b195a5ccf188721c2527c98"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_league_snowfall.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 50562,
+            "sha256": "0c51470f57576d9c938c1d618257baac505803d80b44e8af4fb23ccfcbb7c889"
+          }
+        },
+        "bbox": [
+          37,
+          3,
+          1277,
+          1187
+        ]
+      },
+      "quest_cane_collector": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_GOAL_CANDY_CANE_COLLECTOR.png",
+        "sha256": "b6f9690ff4f11d7b98b5f633f12303f667d103be60220ba2b64cb7cb6a03262f",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_cane_collector.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6768,
+            "sha256": "584aec2cce1d33891f38740a446db225adb170fd914725b8591426d8c2f09a2f"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_cane_collector.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17382,
+            "sha256": "7ce8168014057afd11cc78b861acb512cb9311def1331970e4965dd447ac6ab5"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_cane_collector.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 47820,
+            "sha256": "11c330d87f500d18cf606bc94cfde26edcd2cf1edc26766531bf67088c73efc5"
+          }
+        },
+        "bbox": [
+          192,
+          23,
+          1122,
+          1186
+        ]
+      },
+      "daily_gift": {
+        "src": "PRIME_TIME_2_3_WINTER_COLLECTION_ART/WINTER_DAILY_REWARD_GIFT.png",
+        "sha256": "cbf71ebf5810bba8d2a38ee2415f43ca3a1b55a93f173d12603d988bd56133f8",
+        "size": [
+          1312,
+          1199
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/daily_gift.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6858,
+            "sha256": "febc3bda7cc1460b90943286eb3e1b5171d69d49fc918e2bab11f38963f99d73"
+          },
+          "sm": {
+            "file": "ui/winter/sm/daily_gift.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17860,
+            "sha256": "b028f270fe9cd4a53d9adf2b3ec0046fd1ebd5c85a6a9997d4622c33fbe0b8e8"
+          },
+          "md": {
+            "file": "ui/winter/md/daily_gift.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 46990,
+            "sha256": "a82ba9ffa3b6e8e1a2ef954dbb8c7c822a54d4e2a035e7e7ad143ca3544fb70d"
+          }
+        },
+        "bbox": [
+          111,
+          12,
+          1201,
+          1178
         ]
       }
     }

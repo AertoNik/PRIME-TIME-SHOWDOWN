@@ -1,4 +1,6 @@
 import { CAREER_STAGES, type StageId } from '../../config/career';
+import { isMasteryId } from '../../config/achievements.config';
+import { formatMoney } from '../../core/math';
 import { COSMETICS, COSMETIC_SLOTS, FX_SLOTS, RARITY_LABEL, RARITY_ORDER, SLOT_LABELS, isFxSlot, type CosmeticId, type FxSlot, type Rarity } from '../../config/cosmetics.config';
 import { EVENTS } from '../../config/events.config';
 import { FIGHTERS, FIGHTER_ORDER } from '../../config/fighters';
@@ -18,9 +20,16 @@ import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { rankEmblem, seasonEmblem } from '../leagueArt';
 import { MODE_ICONS } from '../modeArt';
-import { achievementArt, rewardSectionArt, type RewardSection } from '../rewardArt';
+import { achievementArt, leagueTitleArt, registerSectionFallback, rewardSectionArt, sectionArt, type RewardSection } from '../rewardArt';
 import { shopArt } from '../shopArt';
 import type { Screen } from '../UI';
+
+// Beta 2.2: if a section emblem's file fails to load, the section shows its Beta 2.1 drawing again
+registerSectionFallback('shop', () => `<span class="cl-sec-ico">${UI_ICONS.shop}</span>`);
+registerSectionFallback('seasons', () => REWARD_ART.card);
+registerSectionFallback('achievements', (n) => stageArt('star', n));
+registerSectionFallback('league', (n) => seasonEmblem(n));
+registerSectionFallback('rewards', (n) => rewardSectionArt('collection', n));
 
 // MY COLLECTION — Beta 2.0: the producer's personal hall of fame. The SAME ownership as before (src/meta/Collection.ts,
 // PRIME SHOP purchases, the league / daily server proofs): this screen only shows and equips — it never grants, never
@@ -256,6 +265,15 @@ export class CollectionScreen implements Screen {
     if (act === 'back') {
       g.audio.ui('click');
       g.goto('menu');
+    } else if (act === 'ach-claim') {
+      // Beta 2.2: a MASTERY reward — once (the save keeps the id with the money and the reputation)
+      const id = t.dataset.id;
+      const got = isMasteryId(id) ? this.g.collection.claimMastery(id) : null;
+      if (got) {
+        this.g.audio.ui('coin');
+        this.g.ui.toast(`Награда получена: ${formatMoney(got.money)} · ${got.rep} ★`, true);
+      }
+      this.refreshInPlace();
     } else if (act === 'sec') {
       const sec = t.dataset.sec as Section;
       if (sec === this.section && t.closest('.cl-nav')) return; // the open tab: nothing to rebuild
@@ -441,7 +459,7 @@ export class CollectionScreen implements Screen {
         : '';
     }
     if (this.section === 'rewards')
-      return `<div class="cl-note cl-rw-note panel"><span class="cl-rw-emb">${rewardSectionArt('collection', 46)}</span><div class="muted">Награды карьеры, BOSS FIGHT и DAILY PRIME STREAK. Ещё не полученные показаны с условием.</div></div>`;
+      return `<div class="cl-note cl-rw-note panel"><span class="cl-rw-emb">${sectionArt('rewards', 46)}</span><div class="muted">Награды карьеры, BOSS FIGHT и DAILY PRIME STREAK. Ещё не полученные показаны с условием.</div></div>`;
     return '';
   }
 
@@ -596,11 +614,11 @@ export class CollectionScreen implements Screen {
       ${fresh.length ? `<div class="cl-block"><div class="cl-block-head"><span class="h2">Новое</span><span class="label">${fresh.length}</span></div><div class="cl-strip">${fresh.map((e) => this.tile(e)).join('')}</div></div>` : ''}
       ${pride.length ? `<div class="cl-block"><div class="cl-block-head"><span class="h2">Гордость коллекции</span><span class="label">эпические и легендарные</span></div><div class="cl-strip">${pride.map((e) => this.tile(e)).join('')}</div></div>` : ''}
       <div class="cl-secs">
-        ${sec('shop', 'Купленное', `${shopN} ${shopN === 1 ? 'предмет' : 'предметов'}`, `<span class="cl-sec-ico">${UI_ICONS.shop}</span>`)}
-        ${sec('seasons', 'Сезоны', `${owned.filter((e) => e.group === 'season').length} наград`, REWARD_ART.card)}
-        ${sec('achievements', 'Достижения', `${done} из ${ach.length}`, stageArt('star', 44))}
-        ${sec('league', 'PRIME LEAGUE', `${owned.filter((e) => e.group === 'league').length} предметов`, seasonEmblem(44))}
-        ${sec('rewards', 'Награды', `${owned.filter((e) => e.group === 'rewards').length} получено`, rewardSectionArt('collection', 44))}
+        ${sec('shop', 'Купленное', `${shopN} ${shopN === 1 ? 'предмет' : 'предметов'}`, sectionArt('shop', 44))}
+        ${sec('seasons', 'Сезоны', `${owned.filter((e) => e.group === 'season').length} наград`, sectionArt('seasons', 44))}
+        ${sec('achievements', 'Достижения', `${done} из ${ach.length}`, sectionArt('achievements', 44))}
+        ${sec('league', 'PRIME LEAGUE', `${owned.filter((e) => e.group === 'league').length} предметов`, sectionArt('league', 44))}
+        ${sec('rewards', 'Награды', `${owned.filter((e) => e.group === 'rewards').length} получено`, sectionArt('rewards', 44))}
       </div>`;
   }
 
@@ -623,7 +641,8 @@ export class CollectionScreen implements Screen {
     }
     const best = Math.max(0, Math.min(RANKS.length - 1, Number(me.stats?.bestRank ?? me.rank.index)));
     const claimed = me.track.tiers.filter((t) => me.track.claimed.includes(t.tier));
-    const titles = claimed.filter((t) => t.title).map((t) => `<span class="cl-ltitle">${UI_ICONS.trophy}«${esc(t.title!)}»</span>`).join('');
+    // Beta 2.2: each title with the owner's picture (a title without one keeps the trophy)
+    const titles = claimed.filter((t) => t.title).map((t) => `<span class="cl-ltitle">${leagueTitleArt(t.title!, 22, 'cl-ltitle-art') ?? UI_ICONS.trophy}«${esc(t.title!)}»</span>`).join('');
     const emblem = claimed.some((t) => t.emblem);
     return `<div class="cl-league panel">
         <div class="cl-league-emb">${rankEmblem(me.rank.index, me.rank.division, 76)}</div>
@@ -662,6 +681,13 @@ export class CollectionScreen implements Screen {
             ? MODE_ICONS.challenge
             : REWARD_ART.star);
     const reward = a.reward ? `<span class="cc-reward">Награда: <b>${esc(COSMETICS[a.reward].name)}</b>${this.g.collection.owns(a.reward) ? ' · в коллекции' : ''}</span>` : '';
+    // Beta 2.2: a MASTERY achievement — its one-time reward, and the button while it waits
+    const prize = a.claim ? `${formatMoney(a.claim.money)} · ${a.claim.rep} ★` : '';
+    const claim = a.claim
+      ? a.done && !a.claim.claimed
+        ? `<button class="btn teal cl-ach-claim" data-act="ach-claim" data-id="${esc(a.id)}">Забрать награду: ${prize}</button>`
+        : `<span class="cc-reward">Награда: <b>${prize}</b>${a.claim.claimed ? ' · получена' : ''}</span>`
+      : '';
     return `<div class="cl-ach-card ${a.done ? 'done' : 'todo'}">
         <div class="cl-ach-art ach-${a.art}${art.startsWith('<img') ? ' has-art' : ''}">${art}</div>
         <div class="cl-ach-body">
@@ -669,7 +695,7 @@ export class CollectionScreen implements Screen {
           <b>${esc(a.title)}</b>
           <p>${esc(a.desc)}</p>
           <small>${esc(a.note)}${a.done && a.at ? ` · ${fmtDate(a.at)}` : ''}</small>
-          ${reward}
+          ${reward}${claim}
         </div>
       </div>`;
   }

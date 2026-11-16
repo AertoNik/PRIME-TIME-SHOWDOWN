@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import sys
+import unicodedata
 
 import numpy as np
 from PIL import Image
@@ -175,6 +176,12 @@ ICON_SIZES = {
     'achievements': {'sm': 192, 'md': 400},
     'rewards': {'xs': 96, 'sm': 192},
     'goals': {'xs': 96, 'sm': 192},
+    # Beta 2.2: MY COLLECTION's section emblems (44–46 CSS px; md for bigger headers), titles (league road 38 px, the
+    # collection's tiles 132 px → md)
+    'sections': {'sm': 192, 'md': 400},
+    'titles': {'xs': 96, 'sm': 192, 'md': 400},
+    # Beta 2.2 final: WINTER SHOWDOWN's quests (40 CSS px) and the season's gift (menu 30 px, the DAILY window 58–96 px)
+    'winter': {'xs': 96, 'sm': 192, 'md': 400},
 }
 
 
@@ -239,9 +246,117 @@ def icon_specs():
     return s
 
 
+# ------------------------------------------------------------------ Beta 2.2 REWARDS & ART INTEGRATION
+# PRIME_TIME_2_2_ART_ASSETS/ — 17 PNG of the owner (1254² RGBA). Each is mapped to an EXISTING game id (docs/
+# BETA_2_2_DEVELOPMENT_REPORT.md §1 has the table and the reasons); nothing new is earned through a picture. The mode
+# icons «Карьера» / «PRIME LEAGUE» stay as they are. `--icons-22` adds exactly these entries and files: every earlier
+# entry of the manifest and every earlier WebP stays byte for byte.
+ART22_SRC = os.path.join(ROOT, 'PRIME_TIME_2_2_ART_ASSETS')
+
+
+def icon_specs_22():
+    s = []
+    # the career stages' achievements (Collection.achievements(): career-star, career-legendary)
+    s.append(('achievements', 'career_star', ART22_SRC, 'achievement_prime_time_star.png'))  # «PRIME TIME STAR»
+    s.append(('achievements', 'career_legendary', ART22_SRC, 'achievement_prime_legend.png'))  # «LEGENDARY PRODUCTION»
+    # MY COLLECTION's sections (the overview's cards and their tabs)
+    for sec in ('achievements', 'seasons', 'league', 'rewards'):
+        s.append(('sections', sec, ART22_SRC, f'collection_{"prime_league" if sec == "league" else sec}_v2.png'))
+    # the career's «Цели сезона» (career.ts GOALS) — the picture id; the goal id is in rewardArt.ts CAREER_GOAL_ART
+    for f, gid in [
+        ('season_goal_rising_star.png', 'rising_star'),  # fans_2500 «Восходящая звезда»
+        ('season_goal_big_league.png', 'big_league'),  # pro_win «Большая лига»
+        ('season_goal_roster_expansion.png', 'roster_expansion'),  # sign_second «Расширение состава»
+        ('season_goal_perfect_timing.png', 'perfect_timing'),  # perfect_3 «Идеальный тайминг»
+        ('season_goal_prime_time_champion.png', 'prime_time_champion'),  # champion_win «Чемпион прайм-тайма»
+        ('Золотая звезда стремительного роста.png', 'golden_rating'),  # rating_70 «Золотой рейтинг» (see the report)
+    ]:
+        s.append(('goals', gid, ART22_SRC, f))
+    # titles: the PRIME LEAGUE road's three titles (league.config.ts track) and DAILY PRIME STREAK's 7-day title
+    s.append(('titles', 'on_air', ART22_SRC, 'title_on_air.png'))  # «ON AIR»
+    s.append(('titles', 'voice_of_air', ART22_SRC, 'title_voice_of_air.png'))  # «ГОЛОС ЭФИРА»
+    s.append(('titles', 'prime_time', ART22_SRC, 'title_prime_time.png'))  # «ПРАЙМ-ТАЙМ»
+    s.append(('titles', 'title_daily_regular', ART22_SRC, 'reward_daily_broadcast.png'))  # «ЕЖЕДНЕВНЫЙ ЭФИР» (7 days)
+    # DAILY PRIME STREAK's 100-day victory effect «РАССВЕТ ПРАЙМ-ТАЙМА» (a preview like the other effects)
+    s.append(('effects', 'victory_daily_sunrise', ART22_SRC, 'reward_prime_dawn.png'))
+    return s
+
+
+def check_mapped(folder, specs):
+    used = {find_src(f, w) for _, _, f, w in specs if f == folder}
+    for f in os.listdir(folder):
+        if f.lower().endswith('.png') and f not in used:
+            sys.exit(f'{os.path.basename(folder)}/{f!r} is not mapped to a game id')
+
+
+def icons_22(manifest):
+    """Beta 2.2: only the new pictures — earlier entries and files are left exactly as they are."""
+    manifest['icon']['sizes'] = ICON_SIZES
+    specs = icon_specs_22()
+    for group, icon_id, _, _ in specs:
+        if icon_id in manifest['icons'].get(group, {}) and not manifest['icons'][group][icon_id]['src'].startswith('PRIME_TIME_2_2_ART_ASSETS/'):
+            sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
+    for spec in specs:
+        icon(*spec, manifest)
+    check_mapped(ART22_SRC, specs)
+
+
+# ------------------------------------------------------------------ Beta 2.2 FINAL (the owner's last batch)
+# PRIME_TIME_2_3_WINTER_COLLECTION_ART/ — 14 PNG (1254² / 1312×1199 RGBA). Each mapped to an EXISTING game id after
+# looking at the picture (docs/BETA_2_2_FINAL_RELEASE_REPORT.md §1); `--icons-23` adds exactly these entries and files,
+# every earlier entry and WebP stays byte for byte (the earlier career emblem `rewards/career` too: the new one is a
+# separate id the reward section points to).
+ART23_SRC = os.path.join(ROOT, 'PRIME_TIME_2_3_WINTER_COLLECTION_ART')
+
+
+def icon_specs_23():
+    s = []
+    # the MASTERY achievements (achievements.config.ts) that now have a picture — «Полный состав» and «Идеальный эфир»
+    # have none in the batch and keep the game's drawing
+    s.append(('achievements', 'mastery_combo', ART23_SRC, 'achievement_combo_show.png'))  # mastery-combo «Комбо-шоу»
+    s.append(('achievements', 'mastery_champion', ART23_SRC, 'achievement_five_champion_broadcasts.png'))  # mastery-champion
+    # MY COLLECTION: the «Купленное» section (overview card and tab head)
+    s.append(('sections', 'shop', ART23_SRC, 'collection_purchased_v3.png'))
+    # the reward CATEGORY «Карьера продюсера» (MY COLLECTION → Награды; never the mode button «Карьера»)
+    s.append(('rewards', 'career_producer', ART23_SRC, 'reward_career_emblem_v3.png'))
+    # titles: BOSS FIGHT's PRIME LEGEND (cosmetics title_prime_legend — not the achievement «PRIME LEGEND» art) and the
+    # winter grand prize WINTER CHAMPION (title_winter_champion)
+    s.append(('titles', 'title_prime_legend', ART23_SRC, 'title_prime_legend.png'))
+    s.append(('titles', 'title_winter_champion', ART23_SRC, 'winter_champion_title.png'))
+    # WINTER SHOWDOWN's currency CANDY CANES (events.config.ts currency.id)
+    s.append(('currency', 'candy_canes', ART23_SRC, 'WINTER_EVENT_CANDY_CANE_TOKEN.png'))
+    # six of the nine winter quests (events.config.ts quests[].id); first_snow, holiday_hat_trick and garland_combo have
+    # no picture in the batch and keep their icons
+    for f, qid in [
+        ('WINTER_GOAL_IDEAL_DEFENSE.png', 'frost_guard'),  # «FROST GUARD»: 40 perfect dodges or blocks — the shield
+        ('WINTER_GOAL_MIDNIGHT_RATING.png', 'midnight_rating'),  # rating 80+
+        ('WINTER_GOAL_HOLIDAY_BROADCAST.png', 'holiday_broadcast'),
+        ('WINTER_GOAL_CHAMPIONS_EVE.png', 'champions_eve'),  # «PRO+»
+        ('WINTER_GOAL_LEAGUE_SNOWFALL.png', 'league_snowfall'),
+        ('WINTER_GOAL_CANDY_CANE_COLLECTOR.png', 'cane_collector'),
+    ]:
+        s.append(('winter', f'quest_{qid}', ART23_SRC, f))
+    # the DAILY PRIME STREAK gift in its winter dress (only while WINTER SHOWDOWN runs)
+    s.append(('winter', 'daily_gift', ART23_SRC, 'WINTER_DAILY_REWARD_GIFT.png'))
+    return s
+
+
+def icons_23(manifest):
+    """Beta 2.2 final: only the last batch — earlier entries and files are left exactly as they are."""
+    manifest['icon']['sizes'] = ICON_SIZES
+    specs = icon_specs_23()
+    for group, icon_id, _, _ in specs:
+        if icon_id in manifest['icons'].get(group, {}) and not manifest['icons'][group][icon_id]['src'].startswith('PRIME_TIME_2_3_WINTER_COLLECTION_ART/'):
+            sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
+    for spec in specs:
+        icon(*spec, manifest)
+    check_mapped(ART23_SRC, specs)
+
+
 def find_src(folder, wanted):
     """The one file of `folder` whose name, spaces trimmed, is `wanted` (exits on none or several)."""
-    hits = [f for f in os.listdir(folder) if f.strip() == wanted]
+    nfc = lambda x: unicodedata.normalize('NFC', x.strip())
+    hits = [f for f in os.listdir(folder) if nfc(f) == nfc(wanted)]
     if len(hits) != 1:
         sys.exit(f'{os.path.basename(folder)}/{wanted}: {len(hits)} matching files')
     return hits[0]
@@ -305,11 +420,11 @@ def icon(group, icon_id, folder, wanted, manifest):
 def icons(manifest):
     manifest['icon'] = {'margin': ICON_MARGIN, 'sizes': ICON_SIZES}
     manifest['icons'] = {}
-    specs = icon_specs()
+    specs = icon_specs() + icon_specs_22() + icon_specs_23()
     for spec in specs:
         icon(*spec, manifest)
     used = {(folder, find_src(folder, wanted)) for _, _, folder, wanted in specs}
-    for folder in (RANK_ART_SRC, FX_ART_SRC):
+    for folder in (RANK_ART_SRC, FX_ART_SRC, ART22_SRC, ART23_SRC):
         for f in os.listdir(folder):
             if f.lower().endswith('.png') and (folder, f) not in used:
                 sys.exit(f'{os.path.basename(folder)}/{f!r} is not mapped to a game id')
@@ -317,6 +432,28 @@ def icons(manifest):
 
 def main():
     path = os.path.join(ROOT, 'scripts', 'art', 'manifest.json')
+    if '--icons-23' in sys.argv:
+        with open(path, encoding='utf-8') as fh:
+            manifest = json.load(fh)
+        icons_23(manifest)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(manifest, fh, indent=2, ensure_ascii=False)
+            fh.write('\n')
+        n = len(icon_specs_23())
+        kb = sum(o['bytes'] for g, i, _, _ in icon_specs_23() for o in manifest['icons'][g][i]['out'].values()) / 1024
+        print(f'Beta 2.2 final: {n} pictures, {kb:.0f} KB of WebP; earlier entries untouched')
+        return
+    if '--icons-22' in sys.argv:
+        with open(path, encoding='utf-8') as fh:
+            manifest = json.load(fh)
+        icons_22(manifest)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(manifest, fh, indent=2, ensure_ascii=False)
+            fh.write('\n')
+        n = len(icon_specs_22())
+        kb = sum(o['bytes'] for g, i, _, _ in icon_specs_22() for o in manifest['icons'][g][i]['out'].values()) / 1024
+        print(f'Beta 2.2: {n} pictures, {kb:.0f} KB of WebP; earlier entries untouched')
+        return
     if '--icons-only' in sys.argv:
         # Beta 2.0: (re)build only the icons; the 1.9.9 card and arena copies and their manifest stay byte for byte
         with open(path, encoding='utf-8') as fh:

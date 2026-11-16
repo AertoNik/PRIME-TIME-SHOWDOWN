@@ -21,6 +21,13 @@ const ACH_ART: Readonly<Record<string, string>> = {
 
 /** The picture id of an achievement, or null (the career stages draw their own stage emblem). */
 export function achievementArtId(a: Pick<AchievementView, 'id'>): string | null {
+  // Beta 2.2: the career stages PRIME TIME STAR and LEGENDARY PRODUCTION (RISING BROADCAST keeps its stage emblem)
+  if (a.id === 'career-star') return 'career_star';
+  if (a.id === 'career-legendary') return 'career_legendary';
+  // Beta 2.2 final (PRIME_TIME_2_3_WINTER_COLLECTION_ART): two of the four MASTERY achievements — «Полный состав» and
+  // «Идеальный эфир» have no picture yet and keep the game's drawing
+  if (a.id === 'mastery-combo') return 'mastery_combo';
+  if (a.id === 'mastery-champion') return 'mastery_champion';
   if (a.id.startsWith('boss-')) return ACH_ART.boss;
   if (a.id === 'survival-clear') return ACH_ART.survival;
   if (a.id.startsWith('challenge-')) return ACH_ART[a.id.slice(10)] ?? null;
@@ -52,9 +59,16 @@ const REWARD_OLD: Record<RewardSection, () => string> = {
   daily: () => UI_ICONS.gift,
 };
 
+/**
+ * Beta 2.2 final: the reward CATEGORY «Карьера продюсера» wears the owner's v3 emblem (reward_career_emblem_v3.png →
+ * rewards/career_producer). The earlier `rewards/career` file stays where it was; the mode button «Карьера» is another
+ * picture (modes/career) and is not touched.
+ */
+const REWARD_SECTION_PIC: Partial<Record<RewardSection, string>> = { career: 'career_producer' };
+
 /** The emblem of a reward section at `size` CSS px. */
 export function rewardSectionArt(id: RewardSection, size: number, cls = ''): string {
-  return artImg('rewards', id, size, { cls: `rw-art ${cls}`, fb: `rw|${id}` });
+  return artImg('rewards', REWARD_SECTION_PIC[id] ?? id, size, { cls: `rw-art ${cls}`, fb: `rw|${id}` });
 }
 
 registerFallback('rw', ([id]) => `<span class="rw-art-old">${(REWARD_OLD[id as RewardSection] ?? REWARD_OLD.collection)()}</span>`);
@@ -68,6 +82,13 @@ registerFallback('rw', ([id]) => `<span class="rw-art-old">${(REWARD_OLD[id as R
 export const CAREER_GOAL_ART: Readonly<Partial<Record<GoalId, string>>> = {
   first_win: 'debut',
   combo_3: 'combo',
+  // Beta 2.2 (PRIME_TIME_2_2_ART_ASSETS): the other six — all eight goals have the owner's picture now
+  rating_70: 'golden_rating', // «Золотая звезда стремительного роста.png»: a gold star over a rising rating chart
+  perfect_3: 'perfect_timing',
+  fans_2500: 'rising_star', // the crowd under the rising star: the fans
+  sign_second: 'roster_expansion',
+  pro_win: 'big_league',
+  champion_win: 'prime_time_champion',
 };
 
 /** A career goal's picture (`null` when it has none yet — the screen draws its usual icon). */
@@ -77,3 +98,48 @@ export function careerGoalArt(id: GoalId, size: number, cls = ''): string | null
 }
 
 registerFallback('goal', () => UI_ICONS.star);
+
+// ------------------------------------------------------------------ Beta 2.2
+/** MY COLLECTION's sections with the owner's emblem (the overview's cards and the sections' heads). */
+export type CollectionSection = 'shop' | 'achievements' | 'seasons' | 'league' | 'rewards';
+
+/** A section's emblem at `size` CSS px; `old` is the drawing it replaces — shown again if the file fails to load. */
+export function sectionArt(id: CollectionSection, size: number, cls = ''): string {
+  return artImg('sections', id, size, { cls: `sec-art ${cls}`, fb: `sec|${id}|${size}` });
+}
+
+const SECTION_OLD = new Map<string, (size: number) => string>();
+/** The previous drawing of a section (registered by the screen that drew it, so this module imports no screen art). */
+export function registerSectionFallback(id: CollectionSection, draw: (size: number) => string): void {
+  SECTION_OLD.set(id, draw);
+}
+registerFallback('sec', ([id, size]) => SECTION_OLD.get(id)?.(Number(size) || 44) ?? '');
+
+/**
+ * The PRIME LEAGUE road's titles (league.config.ts track — the server sends the same strings) → picture id. A title the
+ * game has no picture for keeps the crown.
+ */
+export const LEAGUE_TITLE_ART: Readonly<Record<string, string>> = {
+  'ON AIR': 'on_air',
+  'ГОЛОС ЭФИРА': 'voice_of_air',
+  'ПРАЙМ-ТАЙМ': 'prime_time',
+};
+
+/** A league road title's picture (null: no picture — the caller draws its usual crown). */
+export function leagueTitleArt(title: string, size: number, cls = ''): string | null {
+  const id = LEAGUE_TITLE_ART[title];
+  return id ? artImg('titles', id, size, { cls: `title-art ${cls}`, alt: title, fb: 'ltitle' }) : null;
+}
+registerFallback('ltitle', () => UI_ICONS.trophy);
+
+// ------------------------------------------------------------------ Beta 2.2 final
+/**
+ * The DAILY PRIME STREAK gift in its winter dress (WINTER_DAILY_REWARD_GIFT.png) — only while the winter theme is on
+ * (WINTER SHOWDOWN's dates; the dev preview of its theme): the menu's gift button, the DAILY window's «today» gift and
+ * its reveal. Nothing else changes — the reward, the streak and the server's answer are the same as all year.
+ * null outside winter: the caller keeps the usual gift.
+ */
+export function winterGiftArt(g: { events: { themeId: string } }, size: number, cls = ''): string | null {
+  return g.events.themeId === 'winter' ? artImg('winter', 'daily_gift', size, { cls: `gift-art ${cls}`, fb: 'giftw' }) : null;
+}
+registerFallback('giftw', () => UI_ICONS.gift);

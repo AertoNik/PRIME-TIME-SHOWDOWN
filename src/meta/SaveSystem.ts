@@ -1,5 +1,6 @@
 import { isArenaId, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { CAREER_STAGES, CAREER_START, GOALS, LEVEL_THRESHOLDS, type GoalId, type StageId } from '../config/career';
+import { isMasteryId, type MasteryId } from '../config/achievements.config';
 import { NEW_CARDS, UNIVERSAL_CARDS } from '../config/cards';
 import { FIGHTERS, FIGHTER_ORDER, RIVAL_ORDER } from '../config/fighters';
 import { COSMETICS, COSMETIC_SLOTS, FX_SLOTS, isGameCosmeticId as isCosmeticId, type CosmeticId, type CosmeticSlot, type FxSlot } from '../config/cosmetics.config';
@@ -229,6 +230,8 @@ export interface SaveData {
   arena: ArenaPref;
   /** v8 (1.5): career stages whose reward has been paid (each once). */
   careerClaimed: StageId[];
+  /** Beta 2.2: MASTERY achievements whose reward has been paid (each once — achievements.config.ts). */
+  achClaimed: MasteryId[];
   /** v10 (1.6): the new universal cards bought in the career (each once, kept for good). */
   cards: CardsState;
   /** 1.6.5: FIRST BROADCAST, the first-run tutorial (see TutorialState). */
@@ -360,6 +363,7 @@ export function defaultSave(): SaveData {
     modes: emptyModes(),
     arena: 'original',
     careerClaimed: [],
+    achClaimed: [],
     cards: { owned: [] },
     tutorial: 'pending',
     streak: { current: 0, best: 0, since: Date.now() },
@@ -787,6 +791,8 @@ export function sanitize(raw: unknown): SaveData {
     const c = lr && typeof lr === 'object' ? Number(lr.credited) : 0;
     d.leagueRep = { credited: Number.isFinite(c) && c > 0 ? Math.min(1e9, Math.floor(c)) : 0 };
   }
+  // Beta 2.2: claimed MASTERY achievements (absent before 2.2 -> none claimed; reaching them is read from the counters)
+  if (Array.isArray(r.achClaimed)) d.achClaimed = [...new Set((r.achClaimed as unknown[]).filter(isMasteryId))];
   // v8: claimed career stages (absent before 1.5 -> none claimed; reaching them is read from the counters)
   if (Array.isArray(r.careerClaimed)) {
     const ids = new Set(CAREER_STAGES.map((st) => st.id));

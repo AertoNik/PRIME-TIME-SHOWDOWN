@@ -162,6 +162,8 @@ export interface ServerConfig {
   shop: { selling: boolean; env: PayEnv; pricesKop: Record<string, number | null>; chargeKop: Record<string, number | null>; demoUntil: string } | null;
   /** 1.8.9: DAILY PRIME STREAK exists and is switched on here (/api/prime/daily). */
   daily: boolean;
+  /** Beta 2.2: «ПРИГЛАСИТЬ ДРУГА» is switched on here (/api/prime/referral; a server before 2.2: off). */
+  referrals: boolean;
   /** 1.9.0 PRIME LEAGUE on this server (PRIME_LEAGUE=on), the participation rules version and the fight's SIM_VERSION. */
   league: { on: boolean; rules: number; sim: string | null };
   /** 1.9.0 PRIME PRODUCER AVATARS on this server: the catalogue version (0: a server before 1.9.0). */
@@ -339,6 +341,46 @@ function toError(e: unknown): PrimeApiError {
 type Rec = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.floor(v) : 0);
+
+/** Beta 2.2 — an invitation as the server keeps it: the verified seconds of play since the link, and its confirmation. */
+export interface ReferralInvitation {
+  nickname: string;
+  linkedAt: number;
+  seconds: number;
+  required: number;
+  qualified: boolean;
+  qualifiedAt: number;
+}
+export interface ReferralStatus {
+  code: string;
+  required: number;
+  /** Where the verified seconds come from ('league': PRIME LEAGUE fights the server replayed). */
+  source: string;
+  minCards: number;
+  invitedBy: ReferralInvitation | null;
+  invited: { total: number; confirmed: number };
+  /** Always false in Beta 2.2 — no reward is given for an invitation yet. */
+  rewards: boolean;
+  notice: string;
+}
+function invitationOf(v: unknown): ReferralInvitation | null {
+  if (!v || typeof v !== 'object') return null;
+  const r = v as Rec;
+  return { nickname: str(r.nickname), linkedAt: int(r.linkedAt), seconds: int(r.seconds), required: int(r.required) || 3600, qualified: r.qualified === true, qualifiedAt: int(r.qualifiedAt) };
+}
+function referralOf(r: Rec): ReferralStatus {
+  const inv = (r.invited ?? {}) as Rec;
+  return {
+    code: /^[A-Z0-9]{8}$/.test(str(r.code)) ? str(r.code) : '',
+    required: int(r.required) || 3600,
+    source: str(r.source),
+    minCards: int(r.minCards),
+    invitedBy: invitationOf(r.invitedBy),
+    invited: { total: int(inv.total), confirmed: int(inv.confirmed) },
+    rewards: r.rewards === true,
+    notice: str(r.notice),
+  };
+}
 /** A payment environment as the server names it (anything unknown reads as live — never as a test). */
 const payEnv = (v: unknown): PayEnv => (v === 'test' || v === 'demo' ? v : 'live');
 /** sku → whole kopecks above zero, or null. */
@@ -548,6 +590,7 @@ export class PrimeApi {
         };
       })(),
       daily: r.daily === 1,
+      referrals: r.referrals === 1,
       league: (() => {
         const l = (r.league ?? {}) as Rec;
         return { on: l.on === true, rules: int(l.rules), sim: typeof l.sim === 'string' ? l.sim : null };
@@ -589,6 +632,17 @@ export class PrimeApi {
 
   // ------------------------------------------------------- 1.8.9 DAILY PRIME STREAK
   /** The account's streak today (a verified PRIME ID). */
+  /** Beta 2.2: the account's referral code, its invitation and how many it invited (the server makes the code). */
+  async referralStatus(): Promise<ReferralStatus> {
+    return referralOf(await this.call((o) => this.pb.send<Rec>('/api/prime/referral', { ...o, method: 'GET' })));
+  }
+
+  /** Beta 2.2: link this account to a friend's code — once; the answer is the invitation as the server keeps it. */
+  async referralClaim(code: string): Promise<ReferralInvitation | null> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/referral/claim', { ...o, method: 'POST', body: { code } }));
+    return invitationOf(r.invitedBy);
+  }
+
   async dailyStatus(): Promise<DailyStatus> {
     return dailyStatusOf(await this.call((o) => this.pb.send<Rec>('/api/prime/daily', { ...o, method: 'GET' })));
   }

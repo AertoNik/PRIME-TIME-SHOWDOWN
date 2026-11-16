@@ -44,6 +44,10 @@ if (!stage || !ui) {
   showFatal('Ошибка загрузки страницы.');
 } else if (!webglAvailable()) {
   showFatal('Ваш браузер не поддерживает WebGL. Попробуйте открыть игру в свежей версии Chrome, Safari или Firefox.');
+} else if (import.meta.env.DEV && new URLSearchParams(location.search).has('footlab')) {
+  // Beta 2.2: the foot lab — close-ups of the boots in any pose, before / after (dev builds only, never published)
+  document.getElementById('boot')?.remove();
+  void import('./dev/footLab').then((m) => m.runFootLab(stage));
 } else {
   const game = new Game(stage, ui);
   document.getElementById('boot')?.remove();

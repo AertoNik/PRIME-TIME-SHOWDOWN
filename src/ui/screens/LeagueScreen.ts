@@ -21,6 +21,7 @@ import { ICONS } from '../eventArt';
 import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
 import { MODE_ICONS } from '../modeArt';
 import { leagueSymbol, modeEmblem, onAir, rankEmblem, seasonEmblem, tacticIcon } from '../leagueArt';
+import { leagueTitleArt } from '../rewardArt';
 import { currencyArt } from '../currencyArt';
 import { effectImg, hasEffectArt } from '../effectArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
@@ -710,7 +711,8 @@ export class LeagueScreen implements Screen {
         const reached = me.air >= t.at;
         const can = reached && !got;
         const kind = t.tokens ? 'tokens' : t.title ? 'title' : 'emblem';
-        const icon = kind === 'tokens' ? tokenCoin(38) : kind === 'title' ? ICONS.crown : seasonEmblem(38);
+        // Beta 2.2: the road's titles wear the owner's pictures (a title without one keeps the crown)
+        const icon = kind === 'tokens' ? tokenCoin(38) : kind === 'title' ? (leagueTitleArt(t.title!, 38) ?? ICONS.crown) : seasonEmblem(38);
         const what = kind === 'tokens' ? `<b>${t.tokens}</b> PRIME TOKENS` : kind === 'title' ? `${tr('Титул', 'Title')} <b>«${esc(t.title!)}»</b>` : `<b>${tr('Эмблема сезона', 'Season emblem')}</b>`;
         const act = got
           ? `<span class="lg-step-got">${UI_ICONS.check}<span>${tr('Получено', 'Claimed')}</span></span>`
