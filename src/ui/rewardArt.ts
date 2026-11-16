@@ -21,9 +21,12 @@ const ACH_ART: Readonly<Record<string, string>> = {
 
 /** The picture id of an achievement, or null (the career stages draw their own stage emblem). */
 export function achievementArtId(a: Pick<AchievementView, 'id'>): string | null {
-  // Beta 2.2: the career stages PRIME TIME STAR and LEGENDARY PRODUCTION (RISING BROADCAST keeps its stage emblem)
+  // Beta 2.2: the career stage PRIME TIME STAR (achievement_prime_time_star.png). Mini hotfix: RISING BROADCAST and
+  // LEGENDARY PRODUCTION keep their stage emblems — achievement_prime_legend.png is the PRIME LEGEND achievement below
   if (a.id === 'career-star') return 'career_star';
-  if (a.id === 'career-legendary') return 'career_legendary';
+  // Beta 2.2 mini hotfix: «Победитель легенды» (BOSS FIGHT vs Victor «Legend» Vale — its reward is the title PRIME
+  // LEGEND) wears the owner's PRIME LEGEND achievement picture; the title itself wears title_prime_legend.png
+  if (a.id === 'boss-vale') return 'prime_legend';
   // Beta 2.2 final (PRIME_TIME_2_3_WINTER_COLLECTION_ART): two of the four MASTERY achievements — «Полный состав» and
   // «Идеальный эфир» have no picture yet and keep the game's drawing
   if (a.id === 'mastery-combo') return 'mastery_combo';

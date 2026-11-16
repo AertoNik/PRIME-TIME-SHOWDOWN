@@ -3617,6 +3617,36 @@
           1251
         ]
       },
+      "prime_legend": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/achievement_prime_legend.png",
+        "sha256": "3da4e24ac0f1f468d973977069cdf938205257eefb2e1b657084744037681b32",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/prime_legend.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19842,
+            "sha256": "c00dedfd36a8f01489afe2cb3930d9e4c565ed4bdee60797f48b5883af60aeda"
+          },
+          "md": {
+            "file": "ui/achievements/md/prime_legend.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 53732,
+            "sha256": "54e4eedae5b5af8f266c0c78c27d789f2f28f5403a59994ae7ac466c39cabc2c"
+          }
+        },
+        "bbox": [
+          28,
+          9,
+          1226,
+          1245
+        ]
+      },
       "survival": {
         "src": "PRIME_TIME_2_0_EFFECT_PREVIEWS/achievement_survival_final_star.png",
         "sha256": "cee4e7a0b0a0aeb60cbe02e2c85743ebd7b1a434b87b8e3839b90bd1e495210f",
@@ -3765,36 +3795,6 @@
           18,
           1238,
           1231
-        ]
-      },
-      "career_legendary": {
-        "src": "PRIME_TIME_2_2_ART_ASSETS/achievement_prime_legend.png",
-        "sha256": "3da4e24ac0f1f468d973977069cdf938205257eefb2e1b657084744037681b32",
-        "size": [
-          1254,
-          1254
-        ],
-        "out": {
-          "sm": {
-            "file": "ui/achievements/sm/career_legendary.webp",
-            "w": 192,
-            "h": 192,
-            "bytes": 19842,
-            "sha256": "c00dedfd36a8f01489afe2cb3930d9e4c565ed4bdee60797f48b5883af60aeda"
-          },
-          "md": {
-            "file": "ui/achievements/md/career_legendary.webp",
-            "w": 400,
-            "h": 400,
-            "bytes": 53732,
-            "sha256": "54e4eedae5b5af8f266c0c78c27d789f2f28f5403a59994ae7ac466c39cabc2c"
-          }
-        },
-        "bbox": [
-          28,
-          9,
-          1226,
-          1245
         ]
       },
       "mastery_combo": {

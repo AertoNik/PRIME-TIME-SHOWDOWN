@@ -166,10 +166,13 @@ const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...C
   // (1.9.5: and the six new PRIME SHOP cosmetics and skins; shopArt.ts maps frames / card styles to their CSS for the previews)
   const paidIds = /frame_prime_broadcast|dash_prime_phantom|victory_golden_confetti|card_vhs|skin_ray_neon_runner|skin_bruno_casino_boss|fx_prime_broadcast|fx_phantom_dash|fx_golden_confetti|fx_vhs_card_frame|frame_arcade|card_holo|dash_glitch|dash_comet|victory_studio_spotlights|victory_neon_fireworks|skin_nika_stage_idol|skin_vega_star_pilot|fx_studio_spotlights|fx_neon_fireworks|fx_glitch_dash|fx_comet_trail|fx_arcade_frame|fx_holo_foil/;
   // (Beta 2.0: effectArt.ts maps the effects to the owner's preview pictures — a picture table, nothing more; checked below)
-  const allowed = ['src/config/cosmetics.config.ts', 'src/config/shop.config.ts', 'src/config/offer.config.ts', 'src/game/ThemeManager.ts', 'src/render/cosmeticFx.ts', 'src/ui/shopArt.ts', 'src/ui/effectArt.ts'];
+  // (Beta 2.2 mini hotfix: the frame / card-style map moved from shopArt.ts to styleDemo.ts — the same CSS-name table, used
+  // for the real previews in MY COLLECTION and events; checked below like effectArt.ts)
+  const allowed = ['src/config/cosmetics.config.ts', 'src/config/shop.config.ts', 'src/config/offer.config.ts', 'src/game/ThemeManager.ts', 'src/render/cosmeticFx.ts', 'src/ui/shopArt.ts', 'src/ui/effectArt.ts', 'src/ui/styleDemo.ts'];
   const leaks = srcFiles.filter((f) => paidIds.test(read(f)) && !allowed.includes(f.split(path.sep).join('/')));
   check('no reward path names a paid item (events, career, boss, achievements, modes)', leaks.length === 0, leaks.join());
   check('the effect preview table only draws: no ownership, grant, save or network code in effectArt.ts', !/grant|entitle|owns|setEquipped|save\.|fetch\(|import .*meta\//i.test(noComments(read('src/ui/effectArt.ts'))));
+  check('the frame / card-style preview table only draws: no ownership, grant, save or network code in styleDemo.ts', !/grant|entitle|owns|setEquipped|save\.|fetch\(|import .*meta\//i.test(noComments(read('src/ui/styleDemo.ts'))));
   const setters = srcFiles.filter((f) => /setEntitlements\(|devGrant\(/.test(read(f).replace(/^\s*(\/\/|\*).*$/gm, '')) && !/entitlements\.ts$|Shop\.ts$/.test(f));
   // 1.8.8 stage 4: the one caller of setEntitlements is the accounts layer, with the SERVER's answer for the signed-in PRIME ID
   check('ownership changes only through entitlements.ts: setEntitlements only from AccountRuntime (the server\'s answer), devGrant only from the dev hook', setters.length === 1 && /src[\\/]game[\\/]AccountRuntime\.ts$/.test(setters[0]), setters.join());

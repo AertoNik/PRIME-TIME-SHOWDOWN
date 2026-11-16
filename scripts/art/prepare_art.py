@@ -258,7 +258,10 @@ def icon_specs_22():
     s = []
     # the career stages' achievements (Collection.achievements(): career-star, career-legendary)
     s.append(('achievements', 'career_star', ART22_SRC, 'achievement_prime_time_star.png'))  # «PRIME TIME STAR»
-    s.append(('achievements', 'career_legendary', ART22_SRC, 'achievement_prime_legend.png'))  # «LEGENDARY PRODUCTION»
+    # Beta 2.2 mini hotfix: achievement_prime_legend.png is the PRIME LEGEND achievement — «Победитель легенды» (BOSS
+    # FIGHT, its reward is the title PRIME LEGEND). Beta 2.2 had put it under `career_legendary` (LEGENDARY PRODUCTION);
+    # the id is now `prime_legend` (same bytes) and LEGENDARY PRODUCTION keeps its stage emblem.
+    s.append(('achievements', 'prime_legend', ART22_SRC, 'achievement_prime_legend.png'))  # «Победитель легенды»
     # MY COLLECTION's sections (the overview's cards and their tabs)
     for sec in ('achievements', 'seasons', 'league', 'rewards'):
         s.append(('sections', sec, ART22_SRC, f'collection_{"prime_league" if sec == "league" else sec}_v2.png'))

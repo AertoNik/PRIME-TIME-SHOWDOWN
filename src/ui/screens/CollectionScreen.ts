@@ -15,13 +15,14 @@ import { inRoster } from '../../meta/roster';
 import { stageArt } from '../careerArt';
 import { currencyArt } from '../currencyArt';
 import { el, esc, portraitHTML, setScreenHTML, swapToggles } from '../dom';
-import { cosmeticPic } from '../effectArt';
+import { cosmeticPic, TITLE_ART, titlePic } from '../effectArt';
 import { REWARD_ART } from '../eventArt';
 import { UI_ICONS } from '../icons';
 import { rankEmblem, seasonEmblem } from '../leagueArt';
 import { MODE_ICONS } from '../modeArt';
 import { achievementArt, leagueTitleArt, registerSectionFallback, rewardSectionArt, sectionArt, type RewardSection } from '../rewardArt';
 import { shopArt } from '../shopArt';
+import { cosmeticDemo } from '../styleDemo';
 import type { Screen } from '../UI';
 
 // Beta 2.2: if a section emblem's file fails to load, the section shows its Beta 2.1 drawing again
@@ -570,6 +571,10 @@ export class CollectionScreen implements Screen {
       return portraitHTML(g.portraitOf(f.id), f.theme.main, f.theme.dark);
     }
     const c = COSMETICS[e.id as CosmeticId];
+    // Beta 2.2 mini hotfix: a broadcast frame / card style shows its REAL look (the game's HUD frame on the small
+    // preview screen, real cards in the style — PRIME SHOP's demonstrations), bought or earned alike
+    const demo = cosmeticDemo(c.id, size);
+    if (demo) return `<span class="cl-shopart">${demo}</span>`;
     const item = c.paid ? SHOP_ITEMS.find((i) => i.sku === SKU_OF_COSMETIC[c.id]) : undefined;
     return item ? `<span class="cl-shopart">${shopArt(g, item)}</span>` : `<span class="cl-pic">${cosmeticPic(c.id, size)}</span>`;
   }
@@ -670,17 +675,25 @@ export class CollectionScreen implements Screen {
 
   private achievementCard(a: AchievementView): string {
     const stage = a.id.startsWith('career-') ? (a.id.slice(7) as StageId) : null;
-    // Beta 2.0 final: the owner's pictures of BOSS FIGHT, Survival and the three PRIME CHALLENGE achievements
-    const art = stage && CAREER_STAGES.some((s) => s.id === stage)
+    // Beta 2.0 final: the owner's pictures of BOSS FIGHT, Survival and the three PRIME CHALLENGE achievements.
+    // Beta 2.2 mini hotfix: an achievement's own picture comes FIRST — a career stage drew its stage emblem even when it
+    // had one (PRIME TIME STAR's achievement_prime_time_star.png never reached this screen); the emblem is for the rest
+    const own = achievementArt(a, 64);
+    const art = own
+      ? own
+      : stage && CAREER_STAGES.some((s) => s.id === stage)
       ? stageArt(stage, 64)
-      : achievementArt(a, 64) ?? (a.art === 'belt' || a.art === 'star' || a.art === 'studio'
+      : (a.art === 'belt' || a.art === 'star' || a.art === 'studio'
         ? REWARD_ART[a.art]
         : a.art === 'survival'
           ? MODE_ICONS.survival
           : a.art === 'challenge'
             ? MODE_ICONS.challenge
             : REWARD_ART.star);
-    const reward = a.reward ? `<span class="cc-reward">Награда: <b>${esc(COSMETICS[a.reward].name)}</b>${this.g.collection.owns(a.reward) ? ' · в коллекции' : ''}</span>` : '';
+    // (mini hotfix: a title reward shows its own picture beside its name — the achievement's picture is the achievement)
+    // (only a title with a picture of its own — PRIME TIME STAR's title wears this very achievement's picture)
+    const rewardPic = a.reward && TITLE_ART[a.reward] ? titlePic(a.reward, 20, 'cc-reward-pic') ?? '' : '';
+    const reward = a.reward ? `<span class="cc-reward">Награда: ${rewardPic}<b>${esc(COSMETICS[a.reward].name)}</b>${this.g.collection.owns(a.reward) ? ' · в коллекции' : ''}</span>` : '';
     // Beta 2.2: a MASTERY achievement — its one-time reward, and the button while it waits
     const prize = a.claim ? `${formatMoney(a.claim.money)} · ${a.claim.rep} ★` : '';
     const claim = a.claim

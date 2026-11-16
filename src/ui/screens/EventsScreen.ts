@@ -5,7 +5,7 @@ import { COSMETICS, type CosmeticDef, type CosmeticId } from '../../config/cosme
 import type { EventDef } from '../../config/events.config';
 import { FIGHTERS } from '../../config/fighters';
 import { LOOKS } from '../../config/looks';
-import { SKINS, SKU_OF_COSMETIC, shopItem, type SkinId } from '../../config/shop.config';
+import { SKINS, type SkinId } from '../../config/shop.config';
 import type { FighterId } from '../../config/types';
 import type { Game } from '../../game/Game';
 import type { QuestView } from '../../meta/EventManager';
@@ -13,7 +13,6 @@ import { artImg, registerFallback } from '../artIcons';
 import { currencyArt } from '../currencyArt';
 import { el, esc, portraitHTML, setScreenHTML } from '../dom';
 import { ICONS } from '../eventArt';
-import { CARD_STYLE, FRAME_STYLE, shopArt } from '../shopArt';
 import { serverTimeKnown } from '../../meta/serverClock';
 import { UI_ICONS } from '../icons';
 import type { Screen } from '../UI';
@@ -59,13 +58,11 @@ registerFallback('qi', ([icon]) => ICONS[icon as keyof typeof ICONS] ?? '');
 
 /**
  * Beta 2.2 final: a reward's picture in the event's exchange and its reveal. A card style or a broadcast frame shows
- * what it really looks like — the game's own demonstration from PRIME SHOP (CLOCKWORK GOLD's cards, FROSTLIGHT LIVE's
- * frame), never a borrowed drawing; everything else keeps cosmeticPic (the owner's previews / titles / drawings).
+ * what it really looks like — mini hotfix: through cosmeticPic → styleDemo.ts (CLOCKWORK GOLD's real cards, FROSTLIGHT
+ * LIVE's frame on the game's HUD — no longer the shop's simplified catalog frame); everything else as before.
  */
-function rewardPic(g: Game, c: CosmeticDef, size: number): string {
-  const sku = SKU_OF_COSMETIC[c.id];
-  if (sku && (CARD_STYLE[c.id] || FRAME_STYLE[c.id])) return `<span class="er-demo">${shopArt(g, shopItem(sku))}</span>`;
-  return cosmeticPic(c.id, size);
+function rewardPic(c: CosmeticDef, size: number): string {
+  return `<span class="er-demo">${cosmeticPic(c.id, size)}</span>`;
 }
 
 // 1.9.5: the four tiers of rarity, one wording everywhere (cosmetics.config.ts)
@@ -291,7 +288,7 @@ export class EventsScreen implements Screen {
     g.ui.modal(
       `<div class="reward-pop rarity-${c.rarity}">
          <div class="rp-rays"></div>
-         <div class="rp-art">${rewardPic(g, c, 112)}</div>
+         <div class="rp-art">${rewardPic(c, 112)}</div>
          <div class="label rp-kind">Новая награда · ${RARITY[c.rarity]}</div>
          <div class="h1 rp-name">${esc(c.name)}</div>
          <p class="rp-desc">${esc(c.desc)}</p>
@@ -551,7 +548,7 @@ export class EventsScreen implements Screen {
       btn = `<span class="er-lock">${ICONS.lock} ${e && !em.playable ? 'Во время события' : 'Недоступно'}</span>`;
     }
     return `<div class="ev-reward rarity-${c.rarity} ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}">
-        <div class="er-art">${rewardPic(this.g, c, 72)}</div>
+        <div class="er-art">${rewardPic(c, 72)}</div>
         <div class="er-rarity">${RARITY[c.rarity]}</div>
         <div class="er-name">${esc(c.name)}</div>
         <div class="er-desc">${esc(c.desc)}</div>

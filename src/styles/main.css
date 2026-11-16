@@ -6866,49 +6866,57 @@ input {
 /* =====================================================================
    Alpha 1.5 — career cosmetics: LEGENDARY PRODUCTION frame, PRIME TIME STAR title
    ===================================================================== */
-:root[data-frame='legendary'] .bc-frame {
+:root[data-frame='legendary'] .bc-frame,
+.fd-screen.legendary .fd-frame {
   display: block;
   position: absolute;
   inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
   pointer-events: none !important;
   z-index: 2;
 }
-:root[data-frame='legendary'] .bc-frame i {
+:root[data-frame='legendary'] .bc-frame i,
+.fd-screen.legendary .fd-frame i {
   position: absolute;
   width: 26px;
   height: 26px;
   border: 3px solid #ffd23a;
   filter: drop-shadow(0 0 6px rgba(255, 194, 58, 0.85));
 }
-:root[data-frame='legendary'] .bc-frame .tl {
+:root[data-frame='legendary'] .bc-frame .tl,
+.fd-screen.legendary .fd-frame .tl {
   left: 0;
   top: 0;
   border-right: 0;
   border-bottom: 0;
 }
-:root[data-frame='legendary'] .bc-frame .tr {
+:root[data-frame='legendary'] .bc-frame .tr,
+.fd-screen.legendary .fd-frame .tr {
   right: 0;
   top: 0;
   border-left: 0;
   border-bottom: 0;
 }
-:root[data-frame='legendary'] .bc-frame .bl {
+:root[data-frame='legendary'] .bc-frame .bl,
+.fd-screen.legendary .fd-frame .bl {
   left: 0;
   bottom: 0;
   border-right: 0;
   border-top: 0;
 }
-:root[data-frame='legendary'] .bc-frame .br {
+:root[data-frame='legendary'] .bc-frame .br,
+.fd-screen.legendary .fd-frame .br {
   right: 0;
   bottom: 0;
   border-left: 0;
   border-top: 0;
 }
-:root[data-frame='legendary'] .timer-box {
+:root[data-frame='legendary'] .timer-box,
+.fd-screen.legendary .fd-timer {
   background: linear-gradient(180deg, #3a2a0a, #120c04);
   box-shadow: 0 0 0 1.5px #ffd23a, 0 0 16px rgba(255, 194, 58, 0.55);
 }
-:root[data-frame='legendary'] .timer-box .live {
+:root[data-frame='legendary'] .timer-box .live,
+.fd-screen.legendary .fd-live {
   background: linear-gradient(90deg, #e8202a, #ffc23a);
   color: #1a1208;
 }
@@ -16585,20 +16593,24 @@ button.lg-arena:active {
 
 /* ЭФИР БЕЗ ПЕРЕРЫВА (frame, 30 days): teal corners with a coral «day» square, calendar ticks along the top edge */
 :root[data-frame='daily'] .bc-frame,
-:root[data-frame='ranked'] .bc-frame {
+:root[data-frame='ranked'] .bc-frame,
+.fd-screen.daily .fd-frame,
+.fd-screen.ranked .fd-frame {
   display: block;
   position: absolute;
   inset: calc(var(--safe-top) + 3px) 3px calc(var(--safe-bottom) + 3px);
   pointer-events: none !important;
   z-index: 2;
 }
-:root[data-frame='daily'] .bc-frame {
+:root[data-frame='daily'] .bc-frame,
+.fd-screen.daily .fd-frame {
   background:
     repeating-linear-gradient(90deg, rgba(63, 240, 208, 0.85) 0 2px, transparent 2px 24px) top / 100% 5px no-repeat,
     linear-gradient(90deg, transparent, rgba(63, 240, 208, 0.6) 18%, rgba(255, 111, 97, 0.6) 82%, transparent) top / 100% 1.5px no-repeat,
     linear-gradient(90deg, transparent, rgba(255, 111, 97, 0.55) 18%, rgba(63, 240, 208, 0.55) 82%, transparent) bottom / 100% 1.5px no-repeat;
 }
-:root[data-frame='daily'] .bc-frame i {
+:root[data-frame='daily'] .bc-frame i,
+.fd-screen.daily .fd-frame i {
   position: absolute;
   width: 22px;
   height: 22px;
@@ -16607,7 +16619,8 @@ button.lg-arena:active {
   border-radius: 7px 0 0 0;
   filter: drop-shadow(0 0 5px rgba(63, 240, 208, 0.7));
 }
-:root[data-frame='daily'] .bc-frame i::after {
+:root[data-frame='daily'] .bc-frame i::after,
+.fd-screen.daily .fd-frame i::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -16619,7 +16632,9 @@ button.lg-arena:active {
   box-shadow: 0 0 6px rgba(255, 111, 97, 0.85);
 }
 :root[data-frame='daily'] .bc-frame::before,
-:root[data-frame='ranked'] .bc-frame::before {
+:root[data-frame='ranked'] .bc-frame::before,
+.fd-screen.daily .fd-frame::before,
+.fd-screen.ranked .fd-frame::before {
   position: absolute;
   top: 50%;
   padding: 7px 2px;
@@ -16630,7 +16645,8 @@ button.lg-arena:active {
   letter-spacing: 0.2em;
   opacity: 0.92;
 }
-:root[data-frame='daily'] .bc-frame::before {
+:root[data-frame='daily'] .bc-frame::before,
+.fd-screen.daily .fd-frame::before {
   content: 'ON AIR · DAILY';
   left: -1px;
   transform: translateY(-50%) rotate(180deg);
@@ -16639,11 +16655,13 @@ button.lg-arena:active {
   background: linear-gradient(180deg, #3ff0d0, #ff8a75);
   box-shadow: 0 0 10px rgba(63, 240, 208, 0.5);
 }
-:root[data-frame='daily'] .timer-box {
+:root[data-frame='daily'] .timer-box,
+.fd-screen.daily .fd-timer {
   background: linear-gradient(180deg, #06302c, #031513);
   box-shadow: 0 0 0 1.5px #3ff0d0, 0 0 14px rgba(63, 240, 208, 0.4);
 }
-:root[data-frame='daily'] .timer-box .live {
+:root[data-frame='daily'] .timer-box .live,
+.fd-screen.daily .fd-live {
   background: linear-gradient(90deg, #ff6f61, #ff9a7a);
   color: #2a0805;
 }
@@ -16652,12 +16670,14 @@ button.lg-arena:active {
 }
 
 /* RANKED ARENA (frame, PRIME LEAGUE exchange): silver and cold blue, division chevrons in the corners, a RANKED tag */
-:root[data-frame='ranked'] .bc-frame {
+:root[data-frame='ranked'] .bc-frame,
+.fd-screen.ranked .fd-frame {
   background:
     linear-gradient(90deg, transparent, #c9d6e8 14%, #6fb6ff 50%, #c9d6e8 86%, transparent) top / 100% 2px no-repeat,
     linear-gradient(90deg, transparent, rgba(201, 214, 232, 0.55) 14%, rgba(111, 182, 255, 0.55) 50%, rgba(201, 214, 232, 0.55) 86%, transparent) bottom / 100% 1.5px no-repeat;
 }
-:root[data-frame='ranked'] .bc-frame i {
+:root[data-frame='ranked'] .bc-frame i,
+.fd-screen.ranked .fd-frame i {
   position: absolute;
   width: 26px;
   height: 26px;
@@ -16666,19 +16686,23 @@ button.lg-arena:active {
   filter: drop-shadow(0 0 4px rgba(111, 182, 255, 0.75));
 }
 :root[data-frame='ranked'] .bc-frame i::before,
-:root[data-frame='ranked'] .bc-frame i::after {
+:root[data-frame='ranked'] .bc-frame i::after,
+.fd-screen.ranked .fd-frame i::before,
+.fd-screen.ranked .fd-frame i::after {
   content: '';
   position: absolute;
   border-top: 2px solid #6fb6ff;
   border-left: 2px solid #6fb6ff;
 }
-:root[data-frame='ranked'] .bc-frame i::before {
+:root[data-frame='ranked'] .bc-frame i::before,
+.fd-screen.ranked .fd-frame i::before {
   left: 4px;
   top: 4px;
   width: 12px;
   height: 12px;
 }
-:root[data-frame='ranked'] .bc-frame i::after {
+:root[data-frame='ranked'] .bc-frame i::after,
+.fd-screen.ranked .fd-frame i::after {
   left: 9px;
   top: 9px;
   width: 5px;
@@ -16686,29 +16710,38 @@ button.lg-arena:active {
   border-color: #d8e3f2;
 }
 :root[data-frame='daily'] .bc-frame .tl,
-:root[data-frame='ranked'] .bc-frame .tl {
+:root[data-frame='ranked'] .bc-frame .tl,
+.fd-screen.daily .fd-frame .tl,
+.fd-screen.ranked .fd-frame .tl {
   left: 0;
   top: 0;
 }
 :root[data-frame='daily'] .bc-frame .tr,
-:root[data-frame='ranked'] .bc-frame .tr {
+:root[data-frame='ranked'] .bc-frame .tr,
+.fd-screen.daily .fd-frame .tr,
+.fd-screen.ranked .fd-frame .tr {
   right: 0;
   top: 0;
   transform: scaleX(-1);
 }
 :root[data-frame='daily'] .bc-frame .bl,
-:root[data-frame='ranked'] .bc-frame .bl {
+:root[data-frame='ranked'] .bc-frame .bl,
+.fd-screen.daily .fd-frame .bl,
+.fd-screen.ranked .fd-frame .bl {
   left: 0;
   bottom: 0;
   transform: scaleY(-1);
 }
 :root[data-frame='daily'] .bc-frame .br,
-:root[data-frame='ranked'] .bc-frame .br {
+:root[data-frame='ranked'] .bc-frame .br,
+.fd-screen.daily .fd-frame .br,
+.fd-screen.ranked .fd-frame .br {
   right: 0;
   bottom: 0;
   transform: scale(-1, -1);
 }
-:root[data-frame='ranked'] .bc-frame::before {
+:root[data-frame='ranked'] .bc-frame::before,
+.fd-screen.ranked .fd-frame::before {
   content: 'RANKED';
   right: -1px;
   transform: translateY(-50%);
@@ -16717,11 +16750,13 @@ button.lg-arena:active {
   background: linear-gradient(180deg, #e8f0fa, #8fc3ff);
   box-shadow: 0 0 10px rgba(111, 182, 255, 0.5);
 }
-:root[data-frame='ranked'] .timer-box {
+:root[data-frame='ranked'] .timer-box,
+.fd-screen.ranked .fd-timer {
   background: linear-gradient(180deg, #14213a, #070d1a);
   box-shadow: 0 0 0 1.5px #a9c2e0, 0 0 14px rgba(111, 182, 255, 0.4);
 }
-:root[data-frame='ranked'] .timer-box .live {
+:root[data-frame='ranked'] .timer-box .live,
+.fd-screen.ranked .fd-live {
   background: linear-gradient(90deg, #6fb6ff, #c9d6e8);
   color: #08111f;
 }
@@ -16730,19 +16765,22 @@ button.lg-arena:active {
 }
 
 /* RANKED CARDS (card style, PRIME LEAGUE exchange): dark steel, a silver edge, a blue rank stripe; text reads as before */
-:root[data-card-style='ranked'] .card {
+:root[data-card-style='ranked'] .card,
+.ranked-set .card {
   box-shadow:
     0 5px 0 rgba(0, 0, 0, 0.45),
     inset 0 0 0 2px #c9d6e8,
     inset 0 0 0 3.5px rgba(32, 52, 84, 0.95),
     0 0 10px rgba(111, 182, 255, 0.3);
 }
-:root[data-card-style='ranked'] .card .art::before {
+:root[data-card-style='ranked'] .card .art::before,
+.ranked-set .card .art::before {
   background:
     linear-gradient(90deg, #6fb6ff, #e8f0fa 50%, #6fb6ff) top / 100% 3px no-repeat,
     linear-gradient(180deg, rgba(8, 16, 32, 0.25), transparent 30%, transparent 64%, rgba(6, 12, 24, 0.55) 88%);
 }
-:root[data-card-style='ranked'] .card::before {
+:root[data-card-style='ranked'] .card::before,
+.ranked-set .card::before {
   content: '';
   position: absolute;
   left: 7%;
@@ -16755,16 +16793,20 @@ button.lg-arena:active {
   filter: drop-shadow(0 0 2px rgba(111, 182, 255, 0.9));
   pointer-events: none;
 }
-:root[data-card-style='ranked'] .card .nm {
+:root[data-card-style='ranked'] .card .nm,
+.ranked-set .card .nm {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 6px rgba(111, 182, 255, 0.5);
 }
-:root[data-card-style='ranked'] .hand-card.combo-ready {
+:root[data-card-style='ranked'] .hand-card.combo-ready,
+.ranked-set .hand-card.combo-ready {
   box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 3px #ffe27a, 0 0 24px rgba(255, 210, 58, 0.85), 0 0 10px rgba(111, 182, 255, 0.5);
 }
-:root[data-card-style='ranked'] .card.exclusive {
+:root[data-card-style='ranked'] .card.exclusive,
+.ranked-set .card.exclusive {
   box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #ffe27a, inset 0 0 0 3.5px rgba(32, 52, 84, 0.95), 0 0 14px rgba(255, 210, 58, 0.4);
 }
-:root[data-card-style='ranked'] .card.focus {
+:root[data-card-style='ranked'] .card.focus,
+.ranked-set .card.focus {
   box-shadow: 0 5px 0 rgba(0, 0, 0, 0.45), inset 0 0 0 2px #fff, 0 0 18px rgba(255, 255, 255, 0.5);
 }
 
@@ -17568,10 +17610,12 @@ button.lg-arena:active {
 }
 /* RANKED: a cool steel glow, a silver-blue rank stripe across the top of the art; the rank chevron moves to the right
    corner (the left one holds the energy gem) */
-:root[data-card-style='ranked'] .card.pc {
+:root[data-card-style='ranked'] .card.pc,
+.ranked-set .card.pc {
   --pc-glow: 0 0 10px rgba(111, 182, 255, 0.45), 0 0 2px rgba(201, 214, 232, 0.9);
 }
-:root[data-card-style='ranked'] .card.pc .art::before {
+:root[data-card-style='ranked'] .card.pc .art::before,
+.ranked-set .card.pc .art::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -17579,7 +17623,8 @@ button.lg-arena:active {
     linear-gradient(90deg, transparent 30%, #6fb6ff 30%, #e8f0fa 65%, #6fb6ff) 0 7% / 100% 2px no-repeat,
     radial-gradient(circle at 50% 50%, transparent 60%, rgba(20, 40, 72, 0.3) 100%);
 }
-:root[data-card-style='ranked'] .card.pc::before {
+:root[data-card-style='ranked'] .card.pc::before,
+.ranked-set .card.pc::before {
   left: auto;
   right: 8%;
 }
@@ -19576,4 +19621,115 @@ button.lg-arena:active {
    closed or taken it is back under the gift. (The hint is inserted right after the gift, so it precedes the button.) */
 .menu > .daily-hint ~ .ref-btn {
   top: calc(var(--safe-top) + 196px);
+}
+
+/* ---------------------------------------------------------------- Beta 2.2 mini hotfix: real previews everywhere */
+/* LEGENDARY PRODUCTION, ЭФИР БЕЗ ПЕРЕРЫВА, RANKED ARENA on the small preview screen (.fd-screen): the in-game rules above
+   apply through their aliases; only the corners, chevrons and side tags are scaled to the small screen, as the shop does
+   for SPOOKY / PRIME BROADCAST */
+.fd-screen.legendary .fd-frame,
+.fd-screen.daily .fd-frame,
+.fd-screen.ranked .fd-frame {
+  inset: 3px;
+}
+.fd-screen.legendary .fd-frame i,
+.fd-screen.ranked .fd-frame i {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+.fd-screen.daily .fd-frame i {
+  width: 13px;
+  height: 13px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-radius: 5px 0 0 0;
+}
+.fd-screen.daily .fd-frame i::after {
+  left: 2px;
+  top: 2px;
+  width: 4px;
+  height: 4px;
+}
+.fd-screen.ranked .fd-frame i::before {
+  left: 3px;
+  top: 3px;
+  width: 7px;
+  height: 7px;
+  border-width: 1.5px;
+}
+.fd-screen.ranked .fd-frame i::after {
+  left: 6px;
+  top: 6px;
+  width: 3px;
+  height: 3px;
+}
+.fd-screen.daily .fd-frame::before,
+.fd-screen.ranked .fd-frame::before {
+  padding: 4px 1px;
+  font-size: 5px;
+}
+/* A cosmetic's real look where a picture would not show it (styleDemo.ts): a broadcast frame on the small preview screen,
+   a card style on two real cards — the same markup and rules as PRIME SHOP and the game */
+.cos-demo {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cos-demo.frame {
+  display: grid;
+  place-items: center;
+}
+.cos-demo.frame .fd-screen {
+  width: auto;
+  height: 90%;
+  max-height: none;
+  aspect-ratio: 0.6;
+  border-radius: 10px;
+}
+/* in the smallest boxes (a slot, a wardrobe row): the frame on its screen only */
+.cos-demo.tiny .fd-top,
+.cos-demo.tiny .fd-floor,
+.cos-demo.tiny .fd-hand {
+  display: none;
+}
+.cos-demo.tiny .fd-screen {
+  height: 100%;
+  border-radius: 5px;
+}
+.cos-demo.tiny .fd-frame {
+  inset: 2px;
+}
+.cos-demo.tiny .fd-frame i {
+  width: 7px;
+  height: 7px;
+  border-width: 1.5px;
+}
+.cos-demo.tiny .fd-frame::before,
+.cos-demo.tiny .fd-frame i::before,
+.cos-demo.tiny .fd-frame i::after {
+  display: none;
+}
+/* an achievement's title reward with the title's own picture beside its name (PRIME LEGEND, PRIME TIME STAR) */
+.cc-reward .cc-reward-pic {
+  width: 20px;
+  height: 20px;
+  margin: 0 3px -5px 2px;
+  vertical-align: baseline;
+}
+/* MY COLLECTION's big view: «PRIME LEAGUE · ОБМЕН PRIME TOKENS» was wider than a 390 px phone (nowrap) and was cut at
+   both edges — the big view's buttons wrap to a second line instead */
+.cl-item .btn.wide {
+  white-space: normal;
+  line-height: 1.15;
+}
+/* a frame in a small box (an event's exchange card, 72 px): the frame, its tag and the floor — no HUD bar or hand */
+.cos-demo.small .fd-top,
+.cos-demo.small .fd-hand {
+  display: none;
+}
+.cos-demo.small .fd-screen {
+  height: 100%;
+  border-radius: 7px;
 }

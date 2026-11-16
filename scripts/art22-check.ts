@@ -78,7 +78,9 @@ const at = (g: string, i: string) => manifest.icons[g]?.[i]?.src.slice(DIR.lengt
 const save = defaultSave();
 const store = { data: save, save: () => {} } as never;
 const ach = new Collection(store).achievements();
-check('PRIME TIME STAR / LEGENDARY PRODUCTION: the career stages\' achievements (career-star, career-legendary) wear achievement_prime_time_star / achievement_prime_legend', ach.some((a) => a.id === 'career-star') && ach.some((a) => a.id === 'career-legendary') && at('achievements', 'career_star') === 'achievement_prime_time_star.png' && at('achievements', 'career_legendary') === 'achievement_prime_legend.png' && srcOf(achievementArt({ id: 'career-star', art: 'career', title: '' }, 64) ?? '').endsWith('ui/achievements/sm/career_star.webp') && achievementArtId({ id: 'career-rising' }) === null);
+// (Beta 2.2 mini hotfix: achievement_prime_legend.png is the PRIME LEGEND achievement «Победитель легенды» — id prime_legend;
+// LEGENDARY PRODUCTION keeps its stage emblem)
+check('PRIME TIME STAR: the career stage\'s achievement wears achievement_prime_time_star; «Победитель легенды» (boss-vale) achievement_prime_legend; LEGENDARY PRODUCTION its stage emblem', ach.some((a) => a.id === 'career-star') && ach.some((a) => a.id === 'boss-vale') && at('achievements', 'career_star') === 'achievement_prime_time_star.png' && at('achievements', 'prime_legend') === 'achievement_prime_legend.png' && !('career_legendary' in manifest.icons.achievements) && achievementArtId({ id: 'boss-vale' }) === 'prime_legend' && achievementArtId({ id: 'career-legendary' }) === null && srcOf(achievementArt({ id: 'career-star', art: 'career', title: '' }, 64) ?? '').endsWith('ui/achievements/sm/career_star.webp') && achievementArtId({ id: 'career-rising' }) === null);
 const goalMap: Record<string, [string, string]> = {
   rating_70: ['golden_rating', 'Золотая звезда стремительного роста.png'],
   perfect_3: ['perfect_timing', 'season_goal_perfect_timing.png'],

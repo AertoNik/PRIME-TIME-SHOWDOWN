@@ -72,6 +72,7 @@
     "art20": "tsx scripts/art20-check.ts",
     "art22": "tsx scripts/art22-check.ts",
     "art23": "tsx scripts/art23-check.ts",
+    "hotfix22": "tsx scripts/hotfix22-check.ts",
     "ach22": "tsx scripts/ach22-check.ts",
     "career20": "tsx scripts/career20-check.ts",
     "collection20": "tsx scripts/collection20-check.ts",
