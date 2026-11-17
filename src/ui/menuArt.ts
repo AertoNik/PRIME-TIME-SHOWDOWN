@@ -40,12 +40,26 @@ export type NavSkin = keyof typeof NAV_SKIN;
 const BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? './';
 
 /**
+ * Beta 2.3 release fix: the skin's address is ABSOLUTE. A url() inside a CSS custom property is resolved where var() is
+ * used — the stylesheet in assets/ — so the relative './ui/…' of the published build (base './') pointed at
+ * assets/ui/nav/… (404) and the three skins did not show; dev (base '/') hid it. Resolved against the page here.
+ */
+export function skinUrl(rel: string): string {
+  const base = typeof document !== 'undefined' ? document.baseURI : 'http://localhost/';
+  try {
+    return new URL(BASE + rel, base).href;
+  } catch {
+    return BASE + rel;
+  }
+}
+
+/**
  * The inline style of a skinned bottom-bar button: the picture (the sharper variant — the bar is 48 px tall, 3× on an
  * iPhone ≈ 144 px: «sm» is 160 px) and its slice shares as CSS variables (main.css `.nav-skin`).
  */
 export function navSkinStyle(id: NavSkin): string {
   const s = NAV_SKIN[id];
-  return `--skin:url('${BASE}ui/nav/sm/${id}.webp');--lk:${(s.l * s.aspect).toFixed(4)};--rk:${(s.r * s.aspect).toFixed(4)};--sl:${Math.round(s.l * 1000) / 10}%;--sr:${Math.round(s.r * 1000) / 10}%`;
+  return `--skin:url('${skinUrl(`ui/nav/sm/${id}.webp`)}');--lk:${(s.l * s.aspect).toFixed(4)};--rk:${(s.r * s.aspect).toFixed(4)};--sl:${Math.round(s.l * 1000) / 10}%;--sr:${Math.round(s.r * 1000) / 10}%`;
 }
 
 /** The game modes with the owner's picture: the career's three cards and PRIME LEAGUE's two series. */
