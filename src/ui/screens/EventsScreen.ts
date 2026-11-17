@@ -40,8 +40,14 @@ export function currencyIcon(e: EventDef | null): string {
   return kind === 'snowflake' ? ICONS.snowflake : ICONS.pumpkin;
 }
 
-/** Beta 2.2 final: WINTER SHOWDOWN's quests with the owner's picture (events.config.ts ids; the others keep their icon). */
+/**
+ * WINTER SHOWDOWN's quests with the owner's picture (events.config.ts ids). Beta 2.2 final: six; Beta 2.3
+ * (PRIME_TIME_2_3_UI_MODE_ART_REFINED): the other three — FIRST SNOW ON AIR, HOLIDAY WINS, GARLAND COMBO — so all nine.
+ */
 export const QUEST_ART: Readonly<Record<string, true>> = {
+  first_snow: true,
+  holiday_hat_trick: true,
+  garland_combo: true,
   frost_guard: true,
   midnight_rating: true,
   holiday_broadcast: true,
@@ -55,6 +61,13 @@ export function questIcon(id: string, icon: keyof typeof ICONS): string {
   return QUEST_ART[id] ? artImg('winter', `quest_${id}`, 40, { cls: 'eq-pic', fb: `qi|${icon}` }) : ICONS[icon];
 }
 registerFallback('qi', ([icon]) => ICONS[icon as keyof typeof ICONS] ?? '');
+
+/** WINTER SHOWDOWN 2026–2027 (events.config.ts) — the event the emblem belongs to. */
+const WINTER_EVENT_ID = 'winter-2026';
+
+/** The winter banner's snowflakes (1.9.7) — and the fallback of WINTER SHOWDOWN's emblem. */
+const SNOW_ART = `<span class="evb-a a1">${ICONS.snowflake}</span><span class="evb-a a2">${ICONS.snowflake}</span><span class="evb-a a3">${ICONS.snowflake}</span>`;
+registerFallback('evb', () => `<span class="evb-snow">${SNOW_ART}</span>`);
 
 /**
  * Beta 2.2 final: a reward's picture in the event's exchange and its reveal. A card style or a broadcast frame shows
@@ -430,12 +443,16 @@ export class EventsScreen implements Screen {
   }
 
   private banner(e: EventDef, live: boolean, sub: string): string {
-    const art =
-      e.themeId === 'winter'
-        ? `<span class="evb-a a1">${ICONS.snowflake}</span><span class="evb-a a2">${ICONS.snowflake}</span><span class="evb-a a3">${ICONS.snowflake}</span>`
+    // Beta 2.3: WINTER SHOWDOWN's emblem (winter_event_emblem.png) on its own banner — only that event's (its id, not
+    // the winter theme: another winter event would be a different show); the snowflakes are its fallback
+    const emblem = e.id === WINTER_EVENT_ID;
+    const art = emblem
+      ? `<span class="evb-emblem">${artImg('winter', 'event_emblem', 96, { cls: 'evb-pic', fb: 'evb|' })}</span>`
+      : e.themeId === 'winter'
+        ? SNOW_ART
         : `<span class="evb-a moon">${ICONS.moon}</span><span class="evb-a a1">${ICONS.pumpkin}</span><span class="evb-a a2">${ICONS.pumpkin}</span><span class="evb-a a3">${ICONS.pumpkin}</span>`;
     const [w1, ...rest] = e.title.split(' ');
-    return `<div class="ev-banner theme-${e.themeId}">
+    return `<div class="ev-banner theme-${e.themeId}${emblem ? ' has-emblem' : ''}">
         <div class="evb-art">${art}</div>
         <div class="evb-top">${live ? '<span class="live">LIVE</span>' : '<span class="evb-soon">СКОРО</span>'}<span class="evb-time">${sub}</span></div>
         <div class="evb-title">${esc(w1)}<b>${esc(rest.join(' '))}</b></div>

@@ -6,7 +6,8 @@ import type { Game } from '../../game/Game';
 import { formatChallengeValue } from '../../meta/GameModes';
 import { el, esc, portraitHTML } from '../dom';
 import { UI_ICONS } from '../icons';
-import { DUEL_EMBLEM, MODE_ICONS } from '../modeArt';
+import { MODE_ICONS } from '../modeArt';
+import { modePic } from '../menuArt';
 import type { Screen } from '../UI';
 import { rememberEntry } from '../../game/LeagueRuntime';
 import { entrySwitch } from './LeagueScreen';
@@ -84,7 +85,7 @@ export class ModesScreen implements Screen {
       <div class="fill scroll modes-scroll">
         <section class="mode-card classic featured">
           <div class="mc-head">
-            <span class="mc-ico">${DUEL_EMBLEM}</span>
+            <span class="mc-ico pic">${modePic('classic_duel', 56)}</span>
             <span class="mc-titles"><span class="mc-kicker">Основной эфир</span><span class="mc-title">CLASSIC DUEL</span></span>
           </div>
           <p class="mc-desc">Обычная дуэль 1 на 1, как всегда: боец сражается сам, вы командуете картами.</p>
@@ -97,7 +98,7 @@ export class ModesScreen implements Screen {
 
         <section class="mode-card survival">
           <div class="mc-head">
-            <span class="mc-ico">${MODE_ICONS.survival}</span>
+            <span class="mc-ico pic">${modePic('survival', 56)}</span>
             <span class="mc-titles"><span class="mc-kicker">${esc(SURVIVAL.subtitle)}</span><span class="mc-title">SURVIVAL</span></span>
             ${rec.runs ? '' : '<span class="chip gold mc-new">NEW</span>'}
           </div>
@@ -122,7 +123,7 @@ export class ModesScreen implements Screen {
 
         <section class="mode-card challenge">
           <div class="mc-head">
-            <span class="mc-ico">${MODE_ICONS.challenge}</span>
+            <span class="mc-ico pic">${modePic('prime_challenge', 56)}</span>
             <span class="mc-titles"><span class="mc-kicker">Special broadcasts</span><span class="mc-title">PRIME CHALLENGE</span></span>
             <span class="chip mc-count">${cleared}/${CHALLENGES.length}</span>
           </div>

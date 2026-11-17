@@ -333,3 +333,81 @@ export const VICTORY_SETS = {
 } as const satisfies Record<VictoryStyle, readonly string[]>;
 
 export type VictoryMove = (typeof VICTORY_SETS)[VictoryStyle][number];
+
+/**
+ * Beta 2.3 — a fighter who LOST ON HIS FEET (the time ran out and he had lost more, or any other ending without a
+ * knock-out) reacts instead of keeping his fighting stance. Render only: the result is the simulation's, the reaction
+ * never changes it. Four moves every fighter can make —
+ *   slump   head and shoulders drop, a slow shake of the head;
+ *   shrug   the hands open for a moment («how?»), then fall;
+ *   exhale  a deep breath out, the weapon lowered;
+ *   glance  a look at the winner / the scoreboard, then down
+ * — and one of his own by idle style (the first of each set). One is picked at random per defeat, never the same one
+ * twice in a row for the same fighter. A draw has its own small, neutral reaction for both fighters.
+ */
+export const DEFEAT_SETS = {
+  // Ray, Dex: scuffs the floor with a toe, the blasters hanging
+  bouncy: ['kick', 'slump', 'shrug', 'glance'],
+  // Bruno, Tank: a slow, heavy shake of the head, the free fist clenched and dropped
+  heavy: ['grumble', 'exhale', 'slump', 'glance'],
+  // Nika, Zoe (rival): the head tips aside, a little stamp of the foot
+  sway: ['pout', 'slump', 'shrug', 'glance'],
+  // Vega: the weapon lowered and a crisp nod of respect
+  poise: ['composed', 'exhale', 'glance'],
+  // Kai: a theatrical hand to the forehead
+  showman: ['facepalm', 'shrug', 'exhale', 'glance'],
+  // Rina: turns half away, the free hand on the hip
+  feint: ['turnaway', 'exhale', 'glance', 'slump'],
+  // Crash, the training bot: an angry stomp, fists down
+  brawler: ['stomp', 'shrug', 'slump', 'glance'],
+  // Victor: a measured nod, the fist to the chest — he honours the winner
+  champion: ['respect', 'exhale', 'glance'],
+  // Zoe: checks the weapon, a short shake of the head
+  tactician: ['recheck', 'exhale', 'glance', 'slump'],
+  // Lucien: a small formal bow of the head, the cane lowered
+  duelist: ['bowout', 'exhale', 'glance'],
+  // CRAX: the spring runs down — head and arms drop in clockwork steps
+  clockwork: ['winddown', 'slump', 'glance'],
+  // ACE: a wry tilt of the head while he straightens the cuff
+  headliner: ['cufffix', 'shrug', 'exhale', 'glance'],
+} as const satisfies Record<IdleStyle, readonly string[]>;
+
+export type DefeatMove = (typeof DEFEAT_SETS)[IdleStyle][number] | 'draw';
+
+/** Seconds after the fight ends before the loser on his feet reacts (the winner starts celebrating at 0.2 s). */
+export const DEFEAT_DELAY = 0.35;
+
+/**
+ * Beta 2.3 (Opus) — LOBBY GESTURES. Each fighter had ONE flourish in the menu, the same every 6–10 s (it read as a loop).
+ * Now each victory style has a few small gestures in its character — taken in turn at random, never the same one twice
+ * in a row — each easing in from the living idle, holding, and easing back (the first of each set is the 2.2 one).
+ */
+export const FLAIR_SETS = {
+  // Ray: a blaster spin / a look around, the blasters at the ready / a quick blaster pump
+  hype: ['spin', 'scan', 'pump'],
+  // Bruno: the biceps / a neck crack / the shoulders rolled
+  flex: ['flex', 'neck', 'shrugroll'],
+  // Nika, Zoe: the peace sign / a wave to the camera / a look around
+  peace: ['peace', 'wave', 'scan'],
+  // Vega: a look down the sights / the rifle checked / a look around
+  precise: ['sights', 'check', 'scan'],
+  // Kai, the training bot: the pistol flipped / a finger pointed at the camera / a showman's bow
+  showman: ['flip', 'point', 'bow'],
+  // Rina: a hand through the hair / a stretch of the free arm / a wave
+  graceful: ['hair', 'stretch', 'wave'],
+  // Crash: the knuckles / a jab-jab / a neck crack
+  brawler: ['knuckles', 'jab', 'neck'],
+  // Victor: the collar / the hand to the chest and a nod / a look over the arena
+  champion: ['collar', 'heart', 'scan'],
+  // Lucien: the cane twirled / the glove pulled tight / a short formal bow
+  nightstar: ['twirl', 'glove', 'bow'],
+  // CRAX: the salute / the head in clockwork ticks
+  clockwork: ['salute', 'tick'],
+  // ACE: the cuff / GOLDEN ACE spun on the finger (as in 1.9.8)
+  headliner: ['cuff', 'acespin'],
+} as const satisfies Record<VictoryStyle, readonly string[]>;
+
+export type FlairMove = (typeof FLAIR_SETS)[VictoryStyle][number];
+
+/** How long a lobby gesture lasts (s): ease-in, hold, ease-out; 1.6 s unless listed. */
+export const FLAIR_TIME: Partial<Record<FlairMove, number>> = { scan: 2.4, wave: 2.0, check: 2.0, bow: 2.0, heart: 2.1, glove: 1.9, neck: 1.8, shrugroll: 1.9, jab: 1.7, stretch: 2.0, tick: 1.9, pump: 1.4, point: 1.7 };

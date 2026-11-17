@@ -12,7 +12,7 @@ import {
   SpriteMaterial,
   Vector3,
 } from 'three';
-import { RECOIL } from '../config/animation';
+import { DEFEAT_DELAY, RECOIL } from '../config/animation';
 import { ARENA } from '../config/balance';
 import { CARDS, TAKE_CARDS } from '../config/cards';
 import type { CastKind, Side, WeaponType } from '../config/types';
@@ -85,6 +85,12 @@ interface Slot {
   trailT: number;
   koHandled: boolean;
   victoryDelay: number;
+  /**
+   * Beta 2.3: seconds until this fighter reacts to a defeat on his feet or a draw (-1: nothing pending). Set when the
+   * fight ends without his knock-out; the reaction is the animator's (FighterAnimator.defeat) — render only.
+   */
+  defeatDelay: number;
+  defeatKind: 'loss' | 'draw';
 }
 
 const _v = new Vector3();
@@ -248,6 +254,8 @@ export class BattleView {
         trailT: 0,
         koHandled: false,
         victoryDelay: -1,
+        defeatDelay: -1,
+        defeatKind: 'loss',
       };
       this.slots.push(slot);
       fx.trail.color.copy(accent);
@@ -513,6 +521,16 @@ export class BattleView {
     if (s.victoryDelay >= 0) {
       s.victoryDelay -= dt;
       if (s.victoryDelay < 0) s.model.anim.victory();
+    }
+    // Beta 2.3: lost on his feet (or drew) — the reaction, glancing toward the other fighter. Never for a knocked-out
+    // fighter (the knock-out plays instead) and never for the winner (the animator refuses both as well).
+    if (s.defeatDelay >= 0) {
+      s.defeatDelay -= dt;
+      if (s.defeatDelay < 0 && !f.ko && !f.victory) {
+        const o = this.slots[1 - f.side];
+        const toward = o ? Math.atan2(o.pos.x - x, o.pos.z - z) - f.facing : 0;
+        s.model.anim.defeat(s.defeatKind, undefined, toward);
+      }
     }
     s.model.anim.update(dt, inp);
     s.model.rig.root.updateMatrixWorld(true);
@@ -1358,6 +1376,12 @@ export class BattleView {
         if (e.phase === 'outro' && m.winner !== null) {
           const w = this.slots[m.winner];
           if (w.victoryDelay < 0) w.victoryDelay = m.fighters[1 - m.winner].ko ? 0.9 : 0.2;
+          // Beta 2.3: the loser is still on his feet (the time ran out) — he reacts; a knocked-out loser has his knock-out
+          const l = this.slots[1 - m.winner];
+          if (l && !m.fighters[1 - m.winner].ko) {
+            l.defeatKind = 'loss';
+            l.defeatDelay = DEFEAT_DELAY;
+          }
           this.cam.finishFocus.copy(w.pos);
           if (m.winner === 0) {
             const fx = this.style.victoryFx;
@@ -1369,6 +1393,12 @@ export class BattleView {
           }
         } else if (e.phase === 'outro') {
           this.cam.finishFocus.set(0, 0, 0);
+          // Beta 2.3: a draw — both fighters stand; each lets the weapon down with a small shrug (one a beat later)
+          this.slots.forEach((sl, i) => {
+            if (m.fighters[i].ko) return;
+            sl.defeatKind = 'draw';
+            sl.defeatDelay = DEFEAT_DELAY + i * 0.18;
+          });
         }
         break;
       }

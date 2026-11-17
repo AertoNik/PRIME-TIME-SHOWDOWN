@@ -13,6 +13,7 @@ import { CLOUD_SYNCED_MS, cloudPillPlan, type CloudKind, type CloudState } from 
 import { openDaily } from '../dailyUI';
 import { openReferral } from '../referralUI';
 import { winterGiftArt } from '../rewardArt';
+import { navSkinStyle, uiIcon } from '../menuArt';
 import { cardCatalog, catalogStats } from '../cardCatalog';
 import { inRoster } from '../../meta/roster';
 
@@ -271,14 +272,14 @@ export class MenuScreen implements Screen {
     // 1.8.8 stage 2: the real PRIME SHOP — purple and gold, a step below the orange «В БОЙ!»
     const shopEntry = `<button class="shop-entry" data-act="shop" aria-label="PRIME SHOP — магазин: скины, эффекты и бесплатная примерка">
         <span class="se-glint" aria-hidden="true"></span>
-        <span class="se-ico">${UI_ICONS.shop}</span>
+        <span class="se-ico pic">${uiIcon('shop', 46)}</span>
         <span class="se-text"><b>PRIME <em>SHOP</em></b><small>Скины · эффекты<span class="se-more"> · примерка</span></small></span>
         <span class="se-go">${UI_ICONS.next}</span>
       </button>`;
     // Alpha 1.9.8: CARDS beside PRIME SHOP — the cards for career dollars (browse, buy); a dot when one can be bought now
     const cardStats = catalogStats(cardCatalog(g.career, s, (f) => inRoster(s, f)));
     const cardsEntry = `<button class="cards-entry" data-act="cards" aria-label="Карты: все карты, их эффекты и покупка за гонорары${cardStats.buyable ? ` — можно купить: ${cardStats.buyable}` : ''}">
-        <span class="ce-ico">${UI_ICONS.cards}</span>
+        <span class="ce-ico pic">${uiIcon('cards', 46)}</span>
         <span class="ce-text"><b>КАРТЫ</b><small>${cardStats.have}/${cardStats.total}</small></span>
         ${cardStats.buyable ? `<span class="badge-dot">${cardStats.buyable}</span>` : ''}
       </button>`;
@@ -295,8 +296,8 @@ export class MenuScreen implements Screen {
         </div>`
       : '';
     this.el.innerHTML = `
-      <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${winterGiftArt(g, 34) ?? UI_ICONS.gift}<i class="daily-dot" aria-hidden="true"></i></button>
-      <button class="ref-btn" data-act="referral" aria-label="Пригласить друга" title="Пригласить друга" hidden>${UI_ICONS.invite}</button>
+      <button class="daily-btn" data-act="daily" aria-label="DAILY PRIME STREAK — ежедневный эфир" hidden>${winterGiftArt(g, 46) ?? uiIcon('gift', 46)}<i class="daily-dot" aria-hidden="true"></i></button>
+      <button class="ref-btn" data-act="referral" aria-label="Пригласить друга" title="Пригласить друга" hidden>${uiIcon('invite', 46)}</button>
       <div class="topbar" style="padding-right:62px">
         <button class="lvl-btn" data-act="profile" aria-label="PRIME ID: профиль продюсера, уровень ${lvl.level}"><span class="lvl-badge-box">${levelBadge(lvl.level, 44, 'lvl-badge')}</span><span class="lvl-id">ID</span></button>${hint}
         <div class="stat-pill"><span class="ico pic">${currencyArt('money', 30)}</span><span data-money>${formatMoney(this.shownMoney < 0 ? s.money : this.shownMoney)}</span></div>
@@ -314,11 +315,11 @@ export class MenuScreen implements Screen {
           ${fightEntry}
           <div class="menu-shops">${shopEntry}${cardsEntry}</div>
         </div>
-        <div class="menu-nav">
-          <button class="btn ghost" data-act="roster">${UI_ICONS.users.replace('<svg', '<svg width="18" height="18"')} Бойцы</button>
-          <button class="btn ghost" data-act="career" style="position:relative">${UI_ICONS.career.replace('<svg', '<svg width="18" height="18"')} Карьера${unclaimed ? `<span class="badge-dot">${unclaimed}</span>` : ''}</button>
-          <button class="btn ghost" data-act="collection" style="position:relative" aria-label="Моя коллекция">${UI_ICONS.archive.replace('<svg', '<svg width="18" height="18"')} Коллекция${freshItems ? `<span class="badge-dot">${freshItems}</span>` : ''}</button>
-          <button class="icon-btn" data-act="settings" aria-label="Настройки" style="width:50px;height:46px">${UI_ICONS.gear}</button>
+        <div class="menu-nav skinned">
+          <button class="btn nav-skin" data-act="roster" style="${navSkinStyle('fighters')}"><span class="nav-label">Бойцы</span></button>
+          <button class="btn nav-skin" data-act="career" style="${navSkinStyle('career')}"><span class="nav-label">Карьера</span>${unclaimed ? `<span class="badge-dot">${unclaimed}</span>` : ''}</button>
+          <button class="btn nav-skin" data-act="collection" style="${navSkinStyle('collection')}" aria-label="Моя коллекция"><span class="nav-label">Коллекция</span>${freshItems ? `<span class="badge-dot">${freshItems}</span>` : ''}</button>
+          <button class="btn nav-settings" data-act="settings" aria-label="Настройки">${uiIcon('settings', 46, 'nav-gear')}<span class="nav-label">Настройки</span></button>
         </div>
       </div>`;
     // currencies roll up to their new values after a match

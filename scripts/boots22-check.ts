@@ -17,7 +17,9 @@ const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
 const read = (p: string) => fs.readFileSync(p, 'utf8') as string;
 const cp = proc.getBuiltinModule('node:child_process');
-const dump = (legacy: boolean) => JSON.parse(cp.execFileSync('npx', ['tsx', 'scripts/lib/rigDump.ts', ...(legacy ? ['--legacy21'] : [])], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }));
+// (Beta 2.3: «today's» side of this Beta 2.2 check is the Beta 2.2 build — RIG_BUILD.v22, exact to the published 2.2
+// prints; what Beta 2.3 changed on purpose on top of it — the head and the limbs — is checked by npm run geo23)
+const dump = (legacy: boolean) => JSON.parse(cp.execFileSync('npx', ['tsx', 'scripts/lib/rigDump.ts', legacy ? '--legacy21' : '--v22'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 }));
 type Dump = Record<string, { bones: Record<string, string>; shins: Record<string, number[]>; shin: number; boots: boolean; morphs: string[]; print: string }>;
 const before: Dump = dump(true);
 const after: Dump = dump(false);

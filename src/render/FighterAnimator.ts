@@ -1,5 +1,5 @@
 import { Matrix4, Vector3, type MeshBasicMaterial } from 'three';
-import { FIRE_STYLE, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type FireStyle, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
+import { DEFEAT_SETS, FIRE_STYLE, FLAIR_SETS, FLAIR_TIME, GAITS, HIT_REACTION, RECOIL, VICTORY_SETS, type DefeatMove, type FireStyle, type FlairMove, type GaitProfile, type RecoilProfile, type VictoryMove } from '../config/animation';
 import type { CardId, CastKind, DashStyle, IdleStyle, VictoryStyle } from '../config/types';
 import { clamp, clamp01, damp, dampAngle, ease, lerp, smoothstep, Spring, TAU, wrapAngle } from '../core/math';
 import { bootInfluences, type FighterRig } from './FighterModel';
@@ -145,6 +145,8 @@ const FS_CL = new Float64Array(FS_N);
 
 /** Last victory routine per fighter look, so the same one never plays twice in a row. */
 const lastVictory = new Map<string, number>();
+/** Beta 2.3: the last defeat reaction of each look (never the same one twice in a row). */
+const lastDefeat = new Map<string, number>();
 
 /** Alpha 1.7: seconds of a cane strike animation (the contact comes at the strike's own windup). */
 const STRIKE_TIME = 0.4;
@@ -321,6 +323,12 @@ export class FighterAnimator {
   private koLanded = 0;
   private victoryT = -1;
   private victoryMove: VictoryMove = 'hype_jump';
+  // Beta 2.3 — a defeat on his feet (no knock-out) or a draw: the reaction playing (-1: none), which one, where the
+  // winner stands (relative yaw, for the glance) and whether its one beat (a stomp) has played
+  private defeatT = -1;
+  private defeatMove: DefeatMove = 'slump';
+  private defeatToward = 0;
+  private defeatBeat = false;
   private beatN = 0;
   private dashT = -1;
   private dashYaw = 0;
@@ -328,10 +336,16 @@ export class FighterAnimator {
   private staggerT = -1;
   private staggerSide = 0;
   private stunAge = 0;
+  /** Beta 2.3: seconds since the stun ended (the pose eases back into the stance over 0.3 s). */
+  private stunOut = 0;
   private lastHitX = 0;
   private lastHitZ = 1;
   private flair = 0;
   private flairT = 4 + Math.random() * 3;
+  /** Beta 2.3: the lobby gesture playing, its length and which of the style's set came last (FLAIR_SETS). */
+  private flairMove: FlairMove = 'spin';
+  private flairDur = 1.6;
+  private flairI = -1;
   private glowPulse = 0;
   private spinT = -1;
   private flourishDone = false;
@@ -381,8 +395,6 @@ export class FighterAnimator {
   private keyAngle = 0;
   private crankAngle = 0;
   private selfWindT = 6;
-  /** Alpha 1.9.8 (ACE): which lobby flourish comes next (the cuff, GOLDEN ACE spun on the finger). */
-  private aceFlairN = 0;
   /** The key-turn's length now (fight / lobby) and the key's angle when the gesture began. */
   private windDur = CLOCK_WIND_TIME;
   private keyFrom = 0;
@@ -446,6 +458,9 @@ export class FighterAnimator {
     this.koT = -1;
     this.koLanded = 0;
     this.victoryT = -1;
+    this.defeatT = -1;
+    this.stunAge = 0;
+    this.stunOut = 0;
     this.dashT = -1;
     this.spinT = -1;
     this.staggerT = -1;
@@ -802,6 +817,7 @@ export class FighterAnimator {
     this.koT = 0;
     this.staggerT = -1;
     this.victoryT = -1;
+    this.defeatT = -1;
     // Fall backward along the finishing blow.
     const l = Math.hypot(this.lastHitX, this.lastHitZ);
     this.koYaw = l > 0.01 ? Math.atan2(-this.lastHitX / l, -this.lastHitZ / l) : this.yaw;
@@ -825,6 +841,7 @@ export class FighterAnimator {
     lastVictory.set(key, i);
     this.victoryMove = set[i];
     this.victoryT = 0;
+    this.defeatT = -1;
     this.flourishDone = false;
     this.beatN = 0;
     this.spinT = SPIN_START.has(this.victoryMove) ? 0 : -1;
@@ -834,6 +851,47 @@ export class FighterAnimator {
   endVictory(): void {
     this.victoryT = -1;
     this.spinT = -1;
+  }
+
+  /**
+   * Beta 2.3 — the reaction of a fighter who lost WITHOUT a knock-out (he is on his feet: the time ran out) or drew:
+   * one move of his idle style's set (config/animation.ts DEFEAT_SETS), at random and never the previous one again
+   * (`variant` forces one, for previews and tests); a draw has one small neutral move. `toward` — where the winner
+   * stands, as a yaw relative to this fighter's facing (the glance looks there). Ignored for a knocked-out or
+   * celebrating fighter: a knock-out and a victory always win over it. Render only — nothing reads it back.
+   */
+  defeat(kind: 'loss' | 'draw' = 'loss', variant?: number, toward = 0): void {
+    if (this.koT >= 0 || this.victoryT >= 0 || this.defeatT >= 0) return;
+    if (kind === 'draw') this.defeatMove = 'draw';
+    else {
+      const set = DEFEAT_SETS[this.idleStyle];
+      const key = this.rig.look.id;
+      let i: number;
+      if (variant !== undefined && variant >= 0) i = Math.floor(variant) % set.length;
+      else {
+        i = Math.floor(Math.random() * set.length);
+        const last = lastDefeat.get(key);
+        if (set.length > 1 && i === last) i = (i + 1 + Math.floor(Math.random() * (set.length - 1))) % set.length;
+      }
+      lastDefeat.set(key, i);
+      this.defeatMove = set[i];
+    }
+    this.defeatT = 0;
+    this.defeatBeat = false;
+    this.defeatToward = wrapAngle(toward);
+    // whatever the hands were doing ends here
+    this.twirlT = this.pumpT = this.tapT = -1;
+    this.castT = this.cueT = -1;
+  }
+
+  /** Ease out of a defeat reaction back into the idle (previews). */
+  endDefeat(): void {
+    this.defeatT = -1;
+  }
+
+  /** The defeat reaction playing now (null: none). */
+  get defeatRoutine(): DefeatMove | null {
+    return this.defeatT >= 0 ? this.defeatMove : null;
   }
 
   /** The routine playing now (null when not celebrating). */
@@ -1038,6 +1096,22 @@ export class FighterAnimator {
       P.shRX = -0.25 - sinP * A * 0.2;
       P.shRZ = -0.08;
       P.elR = -0.95;
+      // Beta 2.3: the free arm is held, not dangling — a loose fist a little away from the hip, the elbow bent
+      // (standing only: the stride keeps its swing)
+      const rest = 1 - A;
+      P.shLX += -0.1 * rest;
+      P.shLZ += 0.1 * rest;
+      P.elL += -0.42 * rest;
+    } else if (rig.look.weapon === 'twin_blasters') {
+      // Beta 2.3: a gunslinger at ease instead of arms straight down — elbows out, the forearms raised, the right
+      // blaster a little higher than the left (standing; the stride swings the arms as before)
+      const rest = 1 - A;
+      P.shRX += -0.16 * rest;
+      P.shRZ += -0.1 * rest;
+      P.elR += -0.62 * rest;
+      P.shLX += -0.06 * rest;
+      P.shLZ += 0.08 * rest;
+      P.elL += -0.4 * rest;
     } else if (rig.look.weapon === 'ricochet') {
       // the long trick pistol carried muzzle-up at the shoulder, showman style
       P.shRX = -0.45 + sinP * A * 0.12;
@@ -1354,6 +1428,11 @@ export class FighterAnimator {
       P.shLZ += br * 0.015 * idleW;
       P.shRZ -= br * 0.015 * idleW;
       P.bodyY += br * 0.004 * idleW;
+      // (Beta 2.3, Opus: the arms that carry a weapon live with the breath too — the elbows give a little, the grip settles
+      // now and then — instead of a carry pose frozen in place)
+      P.elL += (br * 0.022 + this.wob(t, 0.37, 20) * 0.02) * idleW;
+      P.elR += (br * 0.018 + this.wob(t, 0.29, 21) * 0.018) * idleW;
+      P.shRX += this.wob(t, 0.21, 22) * 0.02 * idleW;
       const sh = this.idleStyle === 'champion' ? this.shift * 0.5 : this.shift;
       P.hipsRZ += sh * 0.045 * idleW;
       P.bodyX += sh * 0.018 * idleW;
@@ -1364,7 +1443,8 @@ export class FighterAnimator {
     }
 
     // ------------------------------------------------------ aim pose
-    const aiming = inp.combat && !inp.ko && !inp.stunned && !inp.knockback && this.victoryT < 0;
+    // (Beta 2.3: a fighter reacting to a defeat on his feet lets the weapon down)
+    const aiming = inp.combat && !inp.ko && !inp.stunned && !inp.knockback && this.victoryT < 0 && this.defeatT < 0;
     this.aimW = damp(this.aimW, aiming ? 1 : 0, 10, dt);
     const aw = this.aimW;
     // Alpha 1.5.5 — brace: some weapons settle into the stance just before the trigger
@@ -2083,32 +2163,43 @@ export class FighterAnimator {
     }
 
     // --------------------------------------------- stunned (dizzy)
-    if (inp.stunned && this.koT < 0) {
+    // Beta 2.3 (Opus): the dizzy pose is blended IN over 0.14 s from whatever the fighter was doing and OUT over 0.3 s back
+    // into the stance — it was assigned outright, so the arms jumped at 15 rad/s on the first and the last stunned frame
+    // (animlab «pops»: almost all of them sat there). The shake of the first 0.35 s (the jolt) is the same.
+    const stunOn = inp.stunned && this.koT < 0;
+    if (stunOn) {
       this.stunAge += dt;
-      const jolt = inp.glitch ? 0.6 : Math.max(0, 1 - this.stunAge / 0.35);
+      this.stunOut = 0;
+    } else if (this.stunAge > 0) this.stunOut += dt;
+    const stunK = this.koT >= 0 ? 0 : smoothstep(0, 0.14, this.stunAge) * (stunOn ? 1 : 1 - smoothstep(0, 0.3, this.stunOut));
+    if (stunK > 0) {
+      const jolt = inp.glitch ? 0.6 : Math.max(0, 1 - this.stunAge / 0.35) * (stunOn ? 1 : 0);
       const wob = Math.sin(t * 4.6);
-      P.spineRX = 0.18 + Math.sin(t * 41) * 0.08 * jolt;
-      P.spineRZ = wob * 0.13 + Math.sin(t * 33) * 0.1 * jolt;
-      P.headRX = 0.22 + Math.cos(t * 4.6) * 0.12;
-      P.headRZ = wob * 0.28;
-      P.shLX = 0.1 + Math.sin(t * 47) * 0.15 * jolt;
-      P.shRX = 0.1 + Math.sin(t * 43) * 0.15 * jolt;
-      P.shLZ = 0.4 + jolt * 0.5;
-      P.shRZ = -0.4 - jolt * 0.5;
-      P.elL = -0.25;
-      P.elR = -0.25;
+      const k = stunK;
+      const set = (key: PoseKey, v: number) => {
+        P[key] += (v - P[key]) * k;
+      };
+      set('spineRX', 0.18 + Math.sin(t * 41) * 0.08 * jolt);
+      set('spineRZ', wob * 0.13 + Math.sin(t * 33) * 0.1 * jolt);
+      set('headRX', 0.22 + Math.cos(t * 4.6) * 0.12);
+      set('headRZ', wob * 0.28);
+      set('shLX', 0.1 + Math.sin(t * 47) * 0.15 * jolt);
+      set('shRX', 0.1 + Math.sin(t * 43) * 0.15 * jolt);
+      set('shLZ', 0.4 + jolt * 0.5);
+      set('shRZ', -0.4 - jolt * 0.5);
+      set('elL', -0.25);
+      set('elR', -0.25);
       // Beta 2.1: a long gun (Kai's trick pistol) dangles from the hand while dizzy — its barrel went into the body
-      if (this.rig.look.weapon === 'ricochet') this.wFlip = -1.2;
-      P.kneeL = 0.32 + Math.max(0, wob) * 0.12;
-      P.kneeR = 0.32 + Math.max(0, -wob) * 0.12;
-      P.legLX = -0.14;
-      P.legRX = -0.14;
-      P.bodyX += wob * 0.05;
-      P.bodyY = -0.05;
-      P.hipsRZ = -wob * 0.06;
-    } else {
-      this.stunAge = 0;
+      if (this.rig.look.weapon === 'ricochet' && k > 0.5) this.wFlip = -1.2;
+      set('kneeL', 0.32 + Math.max(0, wob) * 0.12);
+      set('kneeR', 0.32 + Math.max(0, -wob) * 0.12);
+      set('legLX', -0.14);
+      set('legRX', -0.14);
+      P.bodyX += wob * 0.05 * k;
+      set('bodyY', -0.05);
+      set('hipsRZ', -wob * 0.06);
     }
+    if (!stunOn && this.stunOut >= 0.3) this.stunAge = 0;
     if (inp.glitch && !inp.stunned && this.koT < 0) {
       if (Math.floor(t * 14) % 5 === 0) {
         P.spineRY += 0.3;
@@ -2193,23 +2284,36 @@ export class FighterAnimator {
     // --------------------------------------------------------- victory
     if (this.victoryT >= 0) {
       this.victoryT += dt;
-      this.w = clamp01(this.victoryT / 0.35);
+      // (Beta 2.3, Opus: eased in — a linear ramp started at full speed, a kick on the first frame of the celebration)
+      this.w = smoothstep(0, 0.45, this.victoryT);
       this.victoryPose(this.victoryT);
       this.mouthT = Math.max(this.mouthT, Math.sin(this.victoryT * 2) > 0.6 ? 0.1 : 0);
     }
 
+    // ------------------------------- Beta 2.3: a defeat on his feet / a draw
+    if (this.defeatT >= 0 && !terminal) {
+      this.defeatT += dt;
+      this.w = smoothstep(0, 0.5, this.defeatT);
+      this.defeatPose(this.defeatT);
+    }
+
     // -------------------------------------------- showcase flair (menu)
-    if (!inp.combat && !terminal) {
+    if (!inp.combat && !terminal && this.defeatT < 0) {
       this.flairT -= dt;
       if (this.flairT <= 0 && this.flair <= 0) {
-        this.flair = 1.6;
+        // Beta 2.3: the next gesture of the style's set — never the one just played
+        const set = FLAIR_SETS[this.victoryStyle] as readonly FlairMove[];
+        this.flairI = this.flairI < 0 || set.length < 2 ? Math.floor(Math.random() * set.length) : (this.flairI + 1 + Math.floor(Math.random() * (set.length - 1))) % set.length;
+        this.flairMove = set[this.flairI];
+        this.flairDur = FLAIR_TIME[this.flairMove] ?? 1.6;
+        this.flair = this.flairDur;
         this.flairT = 6 + Math.random() * 4;
-        if (this.victoryStyle === 'headliner') this.aceFlairN++;
       }
       if (this.flair > 0) {
         this.flair -= dt;
-        const fp = clamp01(1 - this.flair / 1.6);
-        this.w = Math.sin(fp * Math.PI);
+        const fp = clamp01(1 - this.flair / this.flairDur);
+        // eased in from the idle, held, eased back out (Beta 2.3: a hold instead of a bare sine — the gesture lands)
+        this.w = smoothstep(0, 0.24, fp) * (1 - smoothstep(0.74, 1, fp));
         this.flairPose(fp);
       }
     }
@@ -2359,12 +2463,14 @@ export class FighterAnimator {
       eyeScale = 0.12;
     }
     if (inp.stunned || this.flash > 0.4 || this.staggerT >= 0) eyeScale = Math.min(eyeScale, 0.35);
+    // Beta 2.3: a beaten fighter's eyes are half closed once the reaction settles (a glance keeps them open while it looks)
+    if (this.defeatT > 0.6 && this.defeatMove !== 'draw' && !(this.defeatMove === 'glance' && this.defeatT < 1.3)) eyeScale = Math.min(eyeScale, 0.6);
     rig.eyes.scale.y = damp(rig.eyes.scale.y, eyeScale, 40, dt);
     if (this.mouthT > 0) this.mouthT -= dt;
     const open = this.mouthT > 0 || inp.stunned || this.koT >= 0 || inp.action === 'windup' || inp.action === 'rush' || inp.action === 'bite' || inp.cutStage === 'prep';
     rig.mouth.visible = !open;
     rig.mouthOpen.visible = open;
-    rig.brows.position.y = damp(rig.brows.position.y, inp.action !== 'none' || this.flash > 0.3 ? -0.025 : this.victoryT >= 0 ? 0.03 : 0, 14, dt);
+    rig.brows.position.y = damp(rig.brows.position.y, inp.action !== 'none' || this.flash > 0.3 ? -0.025 : this.victoryT >= 0 ? 0.03 : this.defeatT >= 0 && this.defeatMove !== 'draw' ? -0.016 : 0, 14, dt);
     if (rig.look.face?.browFlash) {
       // Alpha 1.5.5 (Kai): now and then one brow flashes up — the cocky showman look
       this.browT -= dt;
@@ -2889,6 +2995,297 @@ export class FighterAnimator {
     this.flourishDone = true;
     if (heavy) this.squash.kick(6);
     this.events.onFlourish?.(heavy);
+  }
+
+  // ------------------------------------- Beta 2.3: defeat on his feet / draw
+  /**
+   * The reaction at `vt` seconds (blend weight in this.w). It is laid OVER the standing idle — the breathing, the
+   * weight shifts and the carry pose of the weapon (the aim was released) stay underneath, so the fighter keeps living —
+   * and it only adds body language: nothing here moves the fighter, his feet stay planted by the usual floor levelling.
+   * Each reaction reaches its pose within about a second and then holds quietly: the results screen follows 2.8 s
+   * after the bell (MATCH.outroTime), a reaction never delays it. Beta 2.3 (Opus): every gesture — the head shakes, the
+   * hand back from the forehead, the fist from the chest — is over by ~2.0 s into the reaction (2.35 s after the bell),
+   * so the results screen never cuts one off halfway (npm run char23 checks it for every look).
+   */
+  private defeatPose(vt: number): void {
+    const P = this.tgt;
+    const k = this.w;
+    const sm = smoothstep;
+    /** A pulse: rises over `up` s from `a`, falls over `down` s from `b`. */
+    const pulse = (a: number, b: number, up = 0.3, down = 0.4) => sm(a, a + up, vt) * (1 - sm(b, b + down, vt));
+    /** Pulls a joint toward `to` by `amt` (0…1). */
+    const pull = (key: PoseKey, to: number, amt: number) => {
+      P[key] += (to - P[key]) * amt * k;
+    };
+    /** A slow «no» of the head: `n` half-swings from `from`, eased in and out. */
+    const no = (from: number, dur: number, n = 3) => {
+      const u = clamp01((vt - from) / dur);
+      return Math.sin(u * Math.PI * n) * Math.sin(u * Math.PI);
+    };
+    /** The chest droops by `a`: the arms keep hanging down instead of swinging back with it. */
+    const droop = (a: number) => {
+      P.spineRX += a * k;
+      P.shLX -= a * 0.7 * k;
+      P.shRX -= a * 0.5 * k;
+    };
+    /** The free hand on the hip. */
+    const handOnHip = (amt: number) => {
+      pull('shLZ', 0.5, amt);
+      pull('shLX', 0.22, amt);
+      pull('elL', -1.5, amt);
+    };
+    // where the winner stands (never further than a head turns); straight ahead reads as a look up at the scoreboard
+    const look = clamp(this.defeatToward, -0.75, 0.75);
+    const long = this.rig.look.weapon !== 'twin_blasters' && this.rig.look.weapon !== 'revolver' && this.rig.look.weapon !== 'ricochet';
+    switch (this.defeatMove) {
+      case 'slump': {
+        // head and shoulders drop; after a moment a slow shake of the head
+        const d = sm(0.15, 1.0, vt);
+        droop(0.24 * d);
+        P.headRX += 0.34 * d * k;
+        P.bodyY -= 0.035 * d * k;
+        P.kneeL += 0.14 * d * k;
+        P.kneeR += 0.1 * d * k;
+        pull('elL', -0.2, d * 0.8);
+        pull('elR', long ? P.elR : -0.25, d * 0.6);
+        P.headRY += no(1.05, 1.0) * 0.15 * k;
+        break;
+      }
+      case 'shrug': {
+        // the hands open for a moment («how?»), then fall and the head follows
+        const up = pulse(0.1, 0.95, 0.32, 0.5);
+        const after = sm(1.05, 1.75, vt);
+        pull('shLZ', 0.62, up);
+        pull('shLX', -0.32, up);
+        pull('elL', -1.3, up);
+        P.shRZ -= (long ? 0.12 : 0.34) * up * k;
+        P.elR -= (long ? 0.05 : 0.5) * up * k;
+        P.headRZ += 0.13 * up * k;
+        P.headRX -= 0.1 * up * k;
+        P.spineRX -= 0.06 * up * k;
+        P.bodyY += 0.012 * up * k;
+        droop(0.13 * after);
+        P.headRX += 0.22 * after * k;
+        pull('elL', -0.25, after * 0.7);
+        break;
+      }
+      case 'exhale': {
+        // a deep breath in, a long breath out: the chest sinks, the weapon comes down, the free hand finds the hip
+        const inh = pulse(0.1, 0.6, 0.45, 0.4);
+        const out = sm(0.7, 1.6, vt);
+        P.spineRX += -0.09 * inh * k;
+        droop(0.19 * out);
+        P.bodyY += (0.02 * inh - 0.03 * out) * k;
+        P.headRX += (-0.08 * inh + 0.2 * out) * k;
+        P.shRX += 0.1 * out * k;
+        handOnHip(out);
+        if (vt > 0.75 && vt < 1.35) this.mouthT = Math.max(this.mouthT, 0.08);
+        break;
+      }
+      case 'glance': {
+        // a look at the winner (or up at the scoreboard), then down and away
+        const g = pulse(0.15, 1.25, 0.35, 0.5);
+        const down = sm(1.35, 2.0, vt);
+        P.headRY += (Math.abs(look) > 0.15 ? look : 0.1) * g * k;
+        P.headRX += ((Math.abs(look) > 0.15 ? -0.06 : -0.26) * g + 0.27 * down) * k;
+        P.spineRY += look * 0.22 * g * k;
+        droop(0.15 * down);
+        pull('elL', -0.22, down * 0.7);
+        P.bodyY -= 0.02 * down * k;
+        break;
+      }
+      case 'kick': {
+        // Ray: scuffs the floor with a toe — the leg swings through once — and lets the blasters hang
+        const d = sm(0.15, 0.75, vt);
+        const sw = pulse(0.5, 0.72, 0.16, 0.26);
+        const lift = pulse(0.32, 0.5, 0.16, 0.2);
+        P.kneeR += (0.75 * lift + 0.1 * sw) * k;
+        P.legRX += (0.25 * lift - 0.62 * sw) * k;
+        P.hipsRZ += 0.06 * (lift + sw) * k;
+        droop(0.16 * d);
+        P.headRX += 0.3 * d * k;
+        pull('elL', -0.16, d * 0.85);
+        pull('elR', -0.16, d * 0.85);
+        pull('shLZ', 0.1, d * 0.6);
+        pull('shRZ', -0.1, d * 0.6);
+        P.headRY += no(1.15, 0.85, 2) * 0.1 * k;
+        break;
+      }
+      case 'grumble': {
+        // Bruno / Tank: the free fist comes up, clenched, and is thrown down; a slow heavy shake of the head
+        const up = pulse(0.18, 0.55, 0.26, 0.22);
+        const d = sm(0.55, 1.2, vt);
+        pull('shLX', -0.85, up);
+        pull('elL', -1.6, up);
+        pull('shLZ', 0.3, up);
+        droop(0.12 * d);
+        P.headRX += (0.2 * d - 0.08 * up) * k;
+        P.bodyY -= 0.03 * d * k;
+        P.headRY += no(0.65, 1.3, 4) * 0.22 * k;
+        if (!this.defeatBeat && vt > 0.72) {
+          this.defeatBeat = true;
+          this.squash.kick(2.5);
+        }
+        break;
+      }
+      case 'pout': {
+        // Nika: the head tips aside, the weight drops on one hip, a little stamp of the foot
+        const d = sm(0.12, 0.7, vt);
+        const st = pulse(0.5, 0.64, 0.14, 0.1);
+        P.headRZ += 0.2 * d * k;
+        P.headRX += 0.14 * d * k;
+        P.hipsRZ += 0.1 * d * k;
+        P.spineRZ -= 0.1 * d * k;
+        P.kneeL += 0.75 * st * k;
+        P.legLX -= 0.4 * st * k;
+        pull('elL', -0.12, d * 0.8);
+        pull('shLZ', 0.24, d * 0.7);
+        if (!this.defeatBeat && vt > 0.76) {
+          this.defeatBeat = true;
+          this.squash.kick(1.6);
+        }
+        break;
+      }
+      case 'composed': {
+        // Vega: the weapon lowered, a crisp nod of respect, the chin back up — composed in defeat
+        const d = sm(0.1, 0.6, vt);
+        const nod = pulse(0.55, 0.85, 0.18, 0.3);
+        P.spineRX -= 0.03 * d * k;
+        P.headRX += (0.3 * nod + 0.04 * d) * k;
+        P.headRY += look * 0.5 * d * (1 - sm(1.5, 2.1, vt)) * k;
+        P.shRX += 0.1 * d * k;
+        pull('elL', -0.3, d * 0.5);
+        break;
+      }
+      case 'facepalm': {
+        // Kai: a theatrical hand to the forehead, the head sinking into it
+        const h = pulse(0.15, 1.3, 0.4, 0.45);
+        const after = sm(1.45, 2.0, vt);
+        pull('shLX', -2.05, h);
+        pull('shLZ', -0.42, h);
+        pull('elL', -2.25, h);
+        P.headRX += (0.26 * h + 0.16 * after) * k;
+        P.headRZ += 0.08 * h * k;
+        P.spineRX += (0.08 * h + 0.1 * after) * k;
+        P.headRY += no(0.75, 0.9, 2) * 0.07 * h * k;
+        break;
+      }
+      case 'turnaway': {
+        // Rina: turns half away from the winner, the free hand on the hip, one look back over the shoulder
+        const d = sm(0.15, 0.95, vt);
+        const back = pulse(1.1, 1.7, 0.3, 0.4);
+        const side = look >= 0 ? -1 : 1;
+        this.yawAdd += side * 0.75 * d * k;
+        P.headRY += -side * (0.2 * d + 0.45 * back) * k;
+        P.headRX += 0.12 * d * (1 - back) * k;
+        P.hipsRZ += 0.07 * d * k;
+        handOnHip(d);
+        P.shRX += 0.1 * d * k;
+        break;
+      }
+      case 'stomp': {
+        // Crash: the knee comes up and the boot slams down, fists thrown at the floor, then he seethes
+        const lift = pulse(0.18, 0.4, 0.2, 0.1);
+        const d = sm(0.45, 0.9, vt);
+        P.kneeR += 1.1 * lift * k;
+        P.legRX -= 0.7 * lift * k;
+        P.bodyY += (0.03 * lift - 0.04 * d) * k;
+        pull('shLX', -0.75, lift);
+        pull('elL', -1.5, lift);
+        droop(0.22 * d);
+        P.headRX += 0.2 * d * k;
+        pull('elL', -0.15, d * 0.8);
+        pull('shLZ', 0.3, d * 0.7);
+        P.shRZ -= 0.16 * d * k;
+        P.headRY += no(1.0, 1.0, 4) * 0.16 * k;
+        if (!this.defeatBeat && vt > 0.5) {
+          this.defeatBeat = true;
+          this.squash.kick(5);
+          this.events.onFlourish?.(true);
+        }
+        break;
+      }
+      case 'respect': {
+        // Victor: upright; the fist to the chest and a measured nod to the winner
+        const h = pulse(0.2, 1.35, 0.4, 0.45);
+        const nod = pulse(0.85, 1.15, 0.22, 0.35);
+        pull('shLX', -0.95, h);
+        pull('shLZ', -0.6, h);
+        pull('elL', -1.95, h);
+        P.headRX += 0.26 * nod * k;
+        P.headRY += look * 0.5 * h * k;
+        P.spineRX += 0.05 * nod * k;
+        P.shRX += 0.08 * sm(0.2, 0.8, vt) * k;
+        break;
+      }
+      case 'recheck': {
+        // Zoe: the weapon tipped up for a look («what went wrong?»), a short shake of the head, then down
+        const h = pulse(0.15, 1.35, 0.35, 0.45);
+        const after = sm(1.3, 1.9, vt);
+        P.shRX -= 0.25 * h * k;
+        P.elR -= 0.35 * h * k;
+        P.headRX += (0.3 * h + 0.2 * after) * k;
+        P.headRY -= 0.22 * h * k;
+        P.headRY += no(0.8, 0.7, 2) * 0.09 * h * k;
+        droop(0.12 * after);
+        break;
+      }
+      case 'bowout': {
+        // Lucien: a small formal bow to the winner, the free hand behind the back; he rises with the chin level
+        const bow = pulse(0.25, 1.05, 0.4, 0.5);
+        const h = sm(0.15, 0.6, vt);
+        P.spineRX += (0.3 * bow + 0.04 * sm(1.4, 2, vt)) * k;
+        P.headRX += 0.16 * bow * k;
+        P.shRX -= 0.2 * bow * k;
+        pull('shLX', 0.55, h);
+        pull('shLZ', -0.18, h);
+        pull('elL', -1.25, h);
+        P.headRY += look * 0.35 * h * (1 - bow) * k;
+        break;
+      }
+      case 'winddown': {
+        // CRAX: the spring runs down — head, chest and arms drop in four clockwork steps, with a tick of the head between
+        const steps = Math.min(4, Math.floor(sm(0.2, 1.7, vt) * 4.999)) / 4;
+        droop(0.26 * steps);
+        P.headRX += 0.42 * steps * k;
+        pull('elL', -0.08, steps);
+        pull('shLZ', 0.06, steps);
+        P.kneeL += 0.1 * steps * k;
+        P.kneeR += 0.1 * steps * k;
+        P.bodyY -= 0.03 * steps * k;
+        P.headRZ += (steps > 0 && steps < 1 ? 0.05 * Math.sign(Math.sin(vt * 9)) : 0) * k;
+        break;
+      }
+      case 'cufffix': {
+        // ACE: looks away with a wry tilt of the head while he straightens the cuff, then lets the hands fall
+        const h = pulse(0.15, 1.5, 0.4, 0.45);
+        const after = sm(1.45, 2.0, vt);
+        pull('shLX', -0.78, h);
+        pull('shLZ', -0.5, h);
+        pull('elL', -1.5, h);
+        pull('shRX', -0.36, h);
+        pull('shRZ', 0.26, h);
+        pull('elR', -1.5, h);
+        P.headRZ += 0.14 * h * k;
+        P.headRY -= 0.24 * h * k;
+        P.headRX += (0.1 * h + 0.2 * after) * k;
+        P.elL += Math.sin(vt * 11) * 0.05 * h * k;
+        droop(0.1 * after);
+        break;
+      }
+      case 'draw': {
+        // a draw: nobody won — a small shrug of the free hand, a look at the opponent, the weapon let down
+        const up = pulse(0.2, 0.9, 0.3, 0.45);
+        pull('shLZ', 0.42, up);
+        pull('shLX', -0.2, up);
+        pull('elL', -1.05, up);
+        P.headRZ += 0.08 * up * k;
+        P.headRY += look * 0.6 * pulse(0.2, 1.4, 0.35, 0.5) * k;
+        P.spineRX -= 0.03 * up * k;
+        P.spineRX += 0.05 * sm(1.1, 1.8, vt) * k;
+        break;
+      }
+    }
   }
 
   // ---------------------------------------------------- victory routines
@@ -3658,8 +4055,14 @@ export class FighterAnimator {
   /** Menu showcase gestures (`this.w` rises and falls over the 1.6 s gesture; fp = progress 0..1). */
   private flairPose(fp: number): void {
     const f = this.w;
-    switch (this.victoryStyle) {
-      case 'hype':
+    const P = this.tgt;
+    /** A soft bump centred on `c` (progress), `w` wide. */
+    const bump = (c: number, w: number) => Math.exp(-(((fp - c) / w) ** 2));
+    /** 0 → 1 over the gesture's middle (`a`…`b` of its progress), eased. */
+    const span = (a: number, b: number) => smoothstep(0, 1, clamp01((fp - a) / (b - a)));
+    switch (this.flairMove) {
+      // ------------------------------------------------ the 2.2 gestures (one per style), unchanged
+      case 'spin':
         this.to('shRX', -1.5);
         this.to('shRZ', 0.3);
         this.to('elR', -0.3);
@@ -3678,7 +4081,7 @@ export class FighterAnimator {
         this.to('elR', -1.8);
         this.to('headRZ', 0.2);
         break;
-      case 'precise':
+      case 'sights':
         // a quick look down the sights
         this.to('shRX', -1.7);
         this.to('shRZ', 0.3);
@@ -3688,7 +4091,7 @@ export class FighterAnimator {
         this.to('elL', -0.45);
         this.to('headRX', 0.06);
         break;
-      case 'showman':
+      case 'flip':
         // the pistol flipped twice around the finger
         this.to('shRX', -1.0);
         this.to('shRZ', -0.6);
@@ -3696,7 +4099,7 @@ export class FighterAnimator {
         this.to('headRZ', 0.12);
         this.wFlip = ease.inOutCubic(fp) * TAU * 2;
         break;
-      case 'graceful':
+      case 'hair':
         // a hand through the hair, a hip pop
         this.to('shLX', -2.0);
         this.to('shLZ', 0.35);
@@ -3704,7 +4107,7 @@ export class FighterAnimator {
         this.to('hipsRZ', 0.12);
         this.to('headRZ', -0.16);
         break;
-      case 'brawler':
+      case 'knuckles':
         // cracks the knuckles in front of the chest
         this.to('shLX', -1.3);
         this.to('shLZ', -0.35);
@@ -3715,7 +4118,7 @@ export class FighterAnimator {
         this.to('spineRX', 0.08);
         this.to('headRX', 0.1);
         break;
-      case 'champion':
+      case 'collar':
         // straightens the collar
         this.to('shLX', -2.0);
         this.to('shLZ', -0.1);
@@ -3723,27 +4126,27 @@ export class FighterAnimator {
         this.to('headRZ', 0.08);
         this.to('headRX', -0.08);
         break;
-      case 'clockwork':
+      case 'salute':
         // CRAX: a short salute with the free hand, the head in two ticks
         this.to('shLX', -1.7);
         this.to('shLZ', 0.5);
         this.to('elL', -2.2);
         this.to('headRY', -Math.round(f * 2) / 2 * 0.18);
         break;
-      case 'headliner':
-        // Alpha 1.9.8 — ACE, in turns: the cuff straightened (one tug, a look at it) / GOLDEN ACE spun twice on the finger at
-        // chest height, then a glance and a grin to the camera
-        if (this.aceFlairN % 2 === 1) this.cuffPose(this.tgt, fp, f);
-        else {
-          this.to('shRX', -1.0);
-          this.to('shRZ', 0.15);
-          this.to('elR', -1.2);
-          this.wFlip = ease.inOutCubic(clamp01((fp - 0.1) / 0.6)) * TAU * 2;
-          this.to('headRY', 0.2 * smoothstep(0.6, 0.9, fp));
-          if (fp > 0.7) this.browUp = Math.max(this.browUp, 0.1);
-        }
+      case 'cuff':
+        // ACE: the cuff straightened (one tug, a look at it)
+        this.cuffPose(this.tgt, fp, f);
         break;
-      case 'nightstar':
+      case 'acespin':
+        // ACE: GOLDEN ACE spun twice on the finger at chest height, then a glance and a grin to the camera
+        this.to('shRX', -1.0);
+        this.to('shRZ', 0.15);
+        this.to('elR', -1.2);
+        this.wFlip = ease.inOutCubic(clamp01((fp - 0.1) / 0.6)) * TAU * 2;
+        this.to('headRY', 0.2 * smoothstep(0.6, 0.9, fp));
+        if (fp > 0.7) this.browUp = Math.max(this.browUp, 0.1);
+        break;
+      case 'twirl':
         // Lucien: the cane twirled twice at his side, a glance over the collar
         this.to('shRX', -1.15);
         this.to('shRZ', -0.5);
@@ -3753,6 +4156,141 @@ export class FighterAnimator {
         this.to('headRZ', 0.1);
         this.to('headRY', 0.18);
         break;
+      // ------------------------------------------------ Beta 2.3 (Opus): the new gestures
+      case 'scan': {
+        // a slow look over the arena, left then right, the chest following a little; Ray brings the blasters to the ready
+        const sw = Math.sin(span(0.12, 0.88) * TAU);
+        P.headRY += sw * 0.42 * f;
+        P.spineRY += sw * 0.1 * f;
+        P.headRX -= 0.04 * f;
+        if (this.rig.look.weapon === 'twin_blasters') {
+          this.to('shRX', -0.95);
+          this.to('elR', -1.35);
+          this.to('shLX', -0.95);
+          this.to('elL', -1.35);
+        }
+        break;
+      }
+      case 'pump': {
+        // Ray: the right blaster pumped up twice, a quick grin
+        const up = Math.abs(Math.sin(span(0.15, 0.85) * TAU));
+        this.to('shRX', -1.5 - 0.95 * up);
+        this.to('shRZ', -0.15);
+        this.to('elR', -1.6 + 0.9 * up);
+        P.headRX -= 0.08 * up * f;
+        P.bodyY += 0.012 * up * f;
+        if (fp > 0.3 && fp < 0.8) this.mouthT = Math.max(this.mouthT, 0.06);
+        break;
+      }
+      case 'neck': {
+        // a neck crack: the head pressed to one side, then the other, the shoulders up a touch
+        const a = bump(0.32, 0.11);
+        const b = bump(0.66, 0.11);
+        P.headRZ += (0.27 * a - 0.27 * b) * f;
+        P.headRX += 0.05 * (a + b) * f;
+        P.shLZ += 0.06 * f;
+        P.shRZ -= 0.06 * f;
+        break;
+      }
+      case 'shrugroll': {
+        // the shoulders rolled twice, back and down, the chest opening
+        const ph = span(0.1, 0.9) * TAU * 2;
+        P.shLZ += 0.1 * Math.max(0, Math.sin(ph)) * f;
+        P.shRZ -= 0.1 * Math.max(0, Math.sin(ph)) * f;
+        P.shLX += 0.12 * Math.cos(ph) * f;
+        P.shRX += 0.12 * Math.cos(ph) * f;
+        P.spineRX -= 0.05 * Math.sin(ph) * f;
+        P.headRX -= 0.06 * f;
+        break;
+      }
+      case 'wave': {
+        // the free hand up beside the head, a few easy waves to the camera
+        this.to('shLX', -0.45);
+        this.to('shLZ', 2.15);
+        this.to('elL', -1.05 - 0.42 * Math.sin(span(0.22, 0.8) * TAU * 3));
+        P.headRZ += 0.08 * f;
+        P.headRY -= 0.1 * f;
+        if (fp > 0.25 && fp < 0.8) this.mouthT = Math.max(this.mouthT, 0.05);
+        break;
+      }
+      case 'check': {
+        // Vega: the rifle brought up and looked over, the head bowed to it, then back to the carry
+        this.to('shRX', -1.1);
+        this.to('shRZ', 0.2);
+        this.to('elR', -1.5);
+        this.to('shLX', -1.25);
+        this.to('shLZ', -0.35);
+        this.to('elL', -1.25);
+        P.headRX += 0.22 * f;
+        P.headRY += 0.12 * Math.sin(span(0.25, 0.75) * Math.PI) * f;
+        break;
+      }
+      case 'point': {
+        // Kai: the free hand points at the camera, a raised brow — «you're watching me»
+        this.to('shLX', -1.55);
+        this.to('shLZ', 0.15);
+        this.to('elL', -0.12);
+        P.spineRY += 0.1 * f;
+        P.headRZ += 0.1 * f;
+        if (fp > 0.35 && fp < 0.8) this.browUp = Math.max(this.browUp, 0.12);
+        break;
+      }
+      case 'bow': {
+        // a short bow from the chest, the free hand across the waist (Kai: a showman's; Lucien: a formal one)
+        const b = Math.sin(span(0.18, 0.82) * Math.PI);
+        this.to('shLX', -0.55);
+        this.to('shLZ', -0.45);
+        this.to('elL', -1.7);
+        P.spineRX += 0.32 * b * f;
+        P.headRX += 0.16 * b * f;
+        break;
+      }
+      case 'stretch': {
+        // Rina: the free arm stretched up overhead, a lean to the side, back down
+        this.to('shLX', -2.75);
+        this.to('shLZ', 0.25);
+        this.to('elL', -0.35);
+        P.spineRZ -= 0.07 * f;
+        P.headRZ += 0.08 * f;
+        P.headRX -= 0.05 * f;
+        break;
+      }
+      case 'jab': {
+        // Crash: the free fist up to the guard, two quick jabs at the air, a twist of the chest with each
+        const e = bump(0.36, 0.06) + bump(0.56, 0.06);
+        this.to('shLX', -1.45 - 0.15 * e);
+        this.to('shLZ', -0.2);
+        this.to('elL', -1.9 + 1.6 * e);
+        P.spineRY -= 0.12 * e * f;
+        P.headRX += 0.06 * f;
+        break;
+      }
+      case 'heart': {
+        // Victor: the free hand to the chest, a slow nod — he greets his audience
+        this.to('shLX', -0.95);
+        this.to('shLZ', -0.62);
+        this.to('elL', -2.15);
+        P.headRX += 0.16 * bump(0.55, 0.14) * f;
+        break;
+      }
+      case 'glove': {
+        // Lucien: the glove pulled tight on the free hand, a look at it
+        this.to('shLX', -1.15);
+        this.to('shLZ', -0.35);
+        this.to('elL', -1.8 + 0.15 * Math.sin(span(0.3, 0.75) * TAU * 2));
+        P.headRX += 0.14 * f;
+        P.headRY -= 0.08 * f;
+        break;
+      }
+      case 'tick': {
+        // CRAX: the head turned in clockwork ticks — left, centre, right, centre — the shoulders ticking with it
+        const ph = span(0.1, 0.9) * TAU;
+        P.headRY += (Math.round(Math.sin(ph) * 2) / 2) * 0.24 * f;
+        const sh = (Math.round(Math.sin(ph * 2) * 2) / 2) * 0.03;
+        P.shLZ += sh * f;
+        P.shRZ -= sh * f;
+        break;
+      }
     }
   }
 

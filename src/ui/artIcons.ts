@@ -30,6 +30,8 @@ export const ICON_SIZES = {
   titles: { xs: 96, sm: 192, md: 400 },
   // Beta 2.2 final: WINTER SHOWDOWN's quests and the season's dress of the DAILY gift
   winter: { xs: 96, sm: 192, md: 400 },
+  // Beta 2.3: the main screen's own icons (the DAILY gift, «Пригласить друга», PRIME SHOP, CARDS, settings)
+  ui: { xs: 96, sm: 192 },
 } as const;
 
 export type IconGroup = keyof typeof ICON_SIZES;

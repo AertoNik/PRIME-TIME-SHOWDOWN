@@ -48,6 +48,10 @@ if (!stage || !ui) {
   // Beta 2.2: the foot lab — close-ups of the boots in any pose, before / after (dev builds only, never published)
   document.getElementById('boot')?.remove();
   void import('./dev/footLab').then((m) => m.runFootLab(stage));
+} else if (import.meta.env.DEV && new URLSearchParams(location.search).has('charlab')) {
+  // Beta 2.3: the character lab — every fighter and skin in any state, frame and view, in the game's light (dev only)
+  document.getElementById('boot')?.remove();
+  void import('./dev/charLab').then((m) => m.runCharLab(stage));
 } else {
   const game = new Game(stage, ui);
   document.getElementById('boot')?.remove();

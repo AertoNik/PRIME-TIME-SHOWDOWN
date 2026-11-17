@@ -182,6 +182,19 @@ ICON_SIZES = {
     'titles': {'xs': 96, 'sm': 192, 'md': 400},
     # Beta 2.2 final: WINTER SHOWDOWN's quests (40 CSS px) and the season's gift (menu 30 px, the DAILY window 58–96 px)
     'winter': {'xs': 96, 'sm': 192, 'md': 400},
+    # Beta 2.3: the main screen's own icons (the DAILY gift, «Пригласить друга», PRIME SHOP, CARDS, the settings button)
+    'ui': {'xs': 96, 'sm': 192},
+}
+
+# Beta 2.3 — the bottom bar's button skins (БОЙЦЫ / КАРЬЕРА / КОЛЛЕКЦИЯ): wide pictures (≈3.7 : 1) with the emblem on the
+# left and an empty panel for the label, which stays HTML text. Not squared: trimmed to the picture, the aspect kept,
+# made at these HEIGHTS (px). `l` / `r`: the share of the width that is the emblem (left) and the rounded end (right) —
+# the game draws them unscaled and stretches only the panel between (CSS border-image), so no width distorts the emblem.
+NAV_HEIGHTS = {'sm': 160, 'md': 240}
+NAV_SKINS = {
+    'fighters': ('ui_nav_fighters_button_v3.png', 0.46, 0.14),
+    'career': ('ui_nav_career_button_v3.png', 0.5, 0.16),
+    'collection': ('ui_nav_collection_button_v3.png', 0.36, 0.14),
 }
 
 
@@ -356,6 +369,76 @@ def icons_23(manifest):
     check_mapped(ART23_SRC, specs)
 
 
+# ------------------------------------------------------------------ Beta 2.3 (PRIME_TIME_2_3_UI_MODE_ART_REFINED)
+# 20 PNG: the main screen's icons and the bottom bar's skins, the game modes, three achievements and the winter event's
+# last pictures. Each mapped to an EXISTING game id after looking at the picture (docs/BETA_2_3_DEVELOPMENT_REPORT.md);
+# `--icons-24` adds exactly these entries and files, every earlier entry and WebP stays byte for byte.
+ART24_SRC = os.path.join(ROOT, 'PRIME_TIME_2_3_UI_MODE_ART_REFINED')
+
+
+def icon_specs_24():
+    s = []
+    # the main screen (MenuScreen): the DAILY gift button, «Пригласить друга», PRIME SHOP's and CARDS' icons, the settings
+    # button of the bottom bar (the file says «theme»: the game's fourth button is the settings gear — the same picture)
+    s.append(('ui', 'gift', ART24_SRC, 'ui_home_gift_icon_v3.png'))
+    s.append(('ui', 'invite', ART24_SRC, 'ui_home_invite_friend_icon_v3.png'))
+    s.append(('ui', 'shop', ART24_SRC, 'ui_prime_shop_icon_v3.png'))
+    s.append(('ui', 'cards', ART24_SRC, 'ui_cards_icon_v3.png'))
+    s.append(('ui', 'settings', ART24_SRC, 'ui_nav_theme_button_v3.png'))
+    # the modes: the career's CLASSIC DUEL / SURVIVAL / PRIME CHALLENGE cards (ModesScreen), PRIME LEAGUE's PRIME SQUAD
+    # and PRIME RUSH series (LeagueScreen). The mode icons «Карьера» / «PRIME LEAGUE» (modes/career, modes/league) stay.
+    s.append(('modes', 'classic_duel', ART24_SRC, 'mode_classic_duel_icon_v3.png'))
+    s.append(('modes', 'survival', ART24_SRC, 'mode_survival_icon_v3.png'))
+    s.append(('modes', 'prime_challenge', ART24_SRC, 'mode_prime_challenge_icon_v3.png'))
+    s.append(('modes', 'prime_squad', ART24_SRC, 'mode_prime_squad_icon_v3.png'))
+    s.append(('modes', 'prime_rush', ART24_SRC, 'mode_prime_rush_icon_v3.png'))
+    # the achievements that still wore the game's drawing: «Полный состав» (a signed contract card with the roster),
+    # «Идеальный эфир» (the show-rating gauge at its top), RISING BROADCAST (a TV with a rising chart)
+    s.append(('achievements', 'mastery_roster', ART24_SRC, 'achievement_full_roster.png'))
+    s.append(('achievements', 'mastery_rating', ART24_SRC, 'achievement_perfect_broadcast.png'))
+    s.append(('achievements', 'career_rising', ART24_SRC, 'achievement_career_rising_broadcast.png'))
+    # WINTER SHOWDOWN: the three quests without a picture and the event's emblem
+    s.append(('winter', 'quest_first_snow', ART24_SRC, 'winter_quest_first_snow.png'))  # FIRST SNOW ON AIR
+    s.append(('winter', 'quest_holiday_hat_trick', ART24_SRC, 'winter_quest_holiday_hat_trick.png'))  # HOLIDAY WINS
+    s.append(('winter', 'quest_garland_combo', ART24_SRC, 'winter_quest_garland_combo.png'))  # GARLAND COMBO
+    s.append(('winter', 'event_emblem', ART24_SRC, 'winter_event_emblem.png'))
+    return s
+
+
+def nav_skin(nav_id, wanted, l, r, manifest):
+    """A bottom-bar button skin: trimmed to the picture, the aspect kept, made at NAV_HEIGHTS."""
+    name = find_src(ART24_SRC, wanted)
+    src = os.path.join(ART24_SRC, name)
+    im, alpha = open_clean(src)
+    ys, xs = np.where(alpha > 8)
+    box = (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+    pic = im.crop(box)
+    entry = {'src': os.path.relpath(src, ROOT), 'sha256': sha(src), 'size': list(im.size), 'bbox': list(box), 'aspect': round(pic.size[0] / pic.size[1], 4), 'l': l, 'r': r, 'out': {}}
+    for size, h in NAV_HEIGHTS.items():
+        w = round(h * pic.size[0] / pic.size[1])
+        rel = f'ui/nav/{size}/{nav_id}.webp'
+        path = os.path.join(OUT, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        pic.resize((w, h), Image.LANCZOS).save(path, **WEBP)
+        entry['out'][size] = {'file': rel, 'w': w, 'h': h, 'bytes': os.path.getsize(path), 'sha256': sha(path)}
+    manifest['icons'].setdefault('nav', {})[nav_id] = entry
+
+
+def icons_24(manifest):
+    """Beta 2.3: only the new pictures — earlier entries and files are left exactly as they are."""
+    manifest['icon']['sizes'] = ICON_SIZES
+    manifest['icon']['navHeights'] = NAV_HEIGHTS
+    specs = icon_specs_24()
+    for group, icon_id, _, _ in specs:
+        if icon_id in manifest['icons'].get(group, {}) and not manifest['icons'][group][icon_id]['src'].startswith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/'):
+            sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
+    for spec in specs:
+        icon(*spec, manifest)
+    for nav_id, (wanted, l, r) in NAV_SKINS.items():
+        nav_skin(nav_id, wanted, l, r, manifest)
+    check_mapped(ART24_SRC, specs + [('nav', i, ART24_SRC, w) for i, (w, _, _) in NAV_SKINS.items()])
+
+
 def find_src(folder, wanted):
     """The one file of `folder` whose name, spaces trimmed, is `wanted` (exits on none or several)."""
     nfc = lambda x: unicodedata.normalize('NFC', x.strip())
@@ -435,6 +518,18 @@ def icons(manifest):
 
 def main():
     path = os.path.join(ROOT, 'scripts', 'art', 'manifest.json')
+    if '--icons-24' in sys.argv:
+        with open(path, encoding='utf-8') as fh:
+            manifest = json.load(fh)
+        icons_24(manifest)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(manifest, fh, indent=2, ensure_ascii=False)
+            fh.write('\n')
+        n = len(icon_specs_24()) + len(NAV_SKINS)
+        kb = sum(o['bytes'] for g, i, _, _ in icon_specs_24() for o in manifest['icons'][g][i]['out'].values()) / 1024
+        kb += sum(o['bytes'] for e in manifest['icons']['nav'].values() for o in e['out'].values()) / 1024
+        print(f'Beta 2.3: {n} pictures, {kb:.0f} KB of WebP; earlier entries untouched')
+        return
     if '--icons-23' in sys.argv:
         with open(path, encoding='utf-8') as fh:
             manifest = json.load(fh)

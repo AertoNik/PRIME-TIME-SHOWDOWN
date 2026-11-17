@@ -27,10 +27,17 @@ export function achievementArtId(a: Pick<AchievementView, 'id'>): string | null 
   // Beta 2.2 mini hotfix: «Победитель легенды» (BOSS FIGHT vs Victor «Legend» Vale — its reward is the title PRIME
   // LEGEND) wears the owner's PRIME LEGEND achievement picture; the title itself wears title_prime_legend.png
   if (a.id === 'boss-vale') return 'prime_legend';
-  // Beta 2.2 final (PRIME_TIME_2_3_WINTER_COLLECTION_ART): two of the four MASTERY achievements — «Полный состав» and
-  // «Идеальный эфир» have no picture yet and keep the game's drawing
+  // Beta 2.2 final (PRIME_TIME_2_3_WINTER_COLLECTION_ART): «Комбо-шоу» and «Пять чемпионских эфиров»; Beta 2.3
+  // (PRIME_TIME_2_3_UI_MODE_ART_REFINED): the other two MASTERY achievements — «Полный состав» (achievement_full_roster)
+  // and «Идеальный эфир» (achievement_perfect_broadcast; PRIME LEAGUE's defence style PRIME BALANCE shares that Russian
+  // name but is not an achievement and keeps its own sign)
   if (a.id === 'mastery-combo') return 'mastery_combo';
   if (a.id === 'mastery-champion') return 'mastery_champion';
+  if (a.id === 'mastery-roster') return 'mastery_roster';
+  if (a.id === 'mastery-rating') return 'mastery_rating';
+  // Beta 2.3: the career stage RISING BROADCAST's achievement (achievement_career_rising_broadcast); the stage keeps its
+  // emblem on the career screen, LEGENDARY PRODUCTION keeps its emblem everywhere
+  if (a.id === 'career-rising') return 'career_rising';
   if (a.id.startsWith('boss-')) return ACH_ART.boss;
   if (a.id === 'survival-clear') return ACH_ART.survival;
   if (a.id.startsWith('challenge-')) return ACH_ART[a.id.slice(10)] ?? null;

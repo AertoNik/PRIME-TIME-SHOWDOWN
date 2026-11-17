@@ -15,6 +15,9 @@ function geoPrint(h: any, g: BufferGeometry | null): void {
     return;
   }
   for (const name of Object.keys(g.attributes).sort()) {
+    // (Beta 2.3: `ptMat` / `ptThin` are shading data — the material class and the outline's thinness of a part — not the
+    // shape: the print stays a fingerprint of the model's form; npm run char23 checks those two on their own)
+    if (name === 'ptMat' || name === 'ptThin') continue;
     const a = g.attributes[name].array as ArrayLike<number>;
     h.update(name + ':' + a.length + ':');
     // rounded, so a different float order cannot change the print while any real change does

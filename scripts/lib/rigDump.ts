@@ -1,10 +1,12 @@
-// Beta 2.2 — `npx tsx scripts/lib/rigDump.ts [--legacy21]`: every look's rig geometry as JSON on stdout (the position of
+// Beta 2.2 — `npx tsx scripts/lib/rigDump.ts [--legacy21 | --v22]`: every look's rig geometry as JSON on stdout (the position of
 // each shin vertex, a SHA-256 of every other bone's attributes, the model prints) — for npm run boots22, which compares
 // the Beta 2.1 build with today's in two processes (the geometry cache holds one build per process).
 import { crypto, proc } from './node';
 
 const FM = await import('../../src/render/FighterModel');
 FM.RIG_BUILD.legacy21 = proc.argv.includes('--legacy21');
+// Beta 2.3: `--v22` — the Beta 2.2 shapes (before the 2.3 head and limb work)
+FM.RIG_BUILD.v22 = proc.argv.includes('--v22');
 const { LOOKS } = await import('../../src/config/looks');
 const { rigPrint } = await import('./rigPrint');
 const out: Record<string, unknown> = {};

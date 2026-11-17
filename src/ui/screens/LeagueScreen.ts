@@ -19,13 +19,13 @@ import { cardHTML, countUp, el, esc, portraitHTML, swapToggles } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
 import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
-import { MODE_ICONS } from '../modeArt';
 import { leagueSymbol, modeEmblem, onAir, rankEmblem, seasonEmblem, tacticIcon } from '../leagueArt';
 import { leagueTitleArt } from '../rewardArt';
 import { currencyArt } from '../currencyArt';
 import { effectImg, hasEffectArt } from '../effectArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
 import type { Screen } from '../UI';
+import { modePic } from '../menuArt';
 
 // Alpha 1.9.0 — PRIME LEAGUE screens. Everything shown comes from the server (/api/prime/league/*): the game never
 // invents a rank, an opponent or a result. Honest wording throughout: the opponent may be off air — the AI director
@@ -128,8 +128,7 @@ function skinName(look: string | null | undefined): string {
  * painted the league screen's dark backdrop over the whole switch.)
  */
 
-/** 1.9.1: PRIME SQUAD's sign — three fighters shoulder to shoulder. */
-const SQUAD_ICON = `<svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="16" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M4 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="48" cy="24" r="7" fill="#7cf7d4" opacity=".75"/><path d="M36 50c0-8 5-14 12-14s12 6 12 14z" fill="#7cf7d4" opacity=".75"/><circle cx="32" cy="20" r="9" fill="#fff"/><path d="M17 54c0-10 7-17 15-17s15 7 15 17z" fill="#fff"/></svg>`;
+// (1.9.1: PRIME SQUAD's sign moved to menuArt.ts SQUAD_OLD — Beta 2.3: the fallback of the owner's picture)
 
 /** The PRIME TOKEN (a league currency, never money): Beta 2.0 — the owner's gold T coin (currencyArt.ts). */
 function tokenCoin(size: number): string {
@@ -596,13 +595,13 @@ export class LeagueScreen implements Screen {
       </div>
       <div class="lg-modes">
         <div class="lg-mode squad">
-          <div class="lg-mode-head"><span class="lg-mode-ico" aria-hidden="true">${SQUAD_ICON}</span><div><div class="lg-k">PRIME SQUAD</div><div class="lg-mode-chips"><span>${LEAGUE.squad.size} ${tr('бойца', 'fighters')}</span><span>${LEAGUE.squad.toWin} ${tr('из', 'of')} ${LEAGUE.squad.size}</span><span>RP</span></div></div></div>
+          <div class="lg-mode-head"><span class="lg-mode-ico pic" aria-hidden="true">${modePic('prime_squad', 46)}</span><div><div class="lg-k">PRIME SQUAD</div><div class="lg-mode-chips"><span>${LEAGUE.squad.size} ${tr('бойца', 'fighters')}</span><span>${LEAGUE.squad.toWin} ${tr('из', 'of')} ${LEAGUE.squad.size}</span><span>RP</span></div></div></div>
           <p>${tr('Три ваших бойца против трёх защитников одного соперника. Три дуэли подряд, победа — 2 из 3. Один итог RP за весь отряд.', 'Three of your fighters against one opponent’s three defenders. Three duels in a row, 2 of 3 wins. One RP result for the squad.')}</p>
           ${squadOk ? `<div class="lg-fpicks mini" data-strip="squad">${own.map((id) => `<button class="lg-fpick ${this.squadPick.includes(id) ? 'on' : ''}" data-act="squadpick" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${this.squadPick.includes(id) ? this.squadPick.indexOf(id) + 1 : ''}</span></button>`).join('')}</div>` : `<small class="muted">${tr('Нужно три бойца в ростере.', 'Needs three fighters in the roster.')}</small>`}
           <button class="btn teal wide" data-act="squad" ${squadOk && this.squadPick.length === LEAGUE.squad.size && !me.active && !sq ? '' : 'disabled'}>${tr('Собрать отряд', 'Field the squad')} (${this.squadPick.length}/3)</button>
         </div>
         <div class="lg-mode rush">
-          <div class="lg-mode-head"><span class="lg-mode-ico" aria-hidden="true">${MODE_ICONS.energy_rush}</span><div><div class="lg-k">PRIME RUSH</div><div class="lg-mode-chips"><span>${tr('до', 'up to')} ${LEAGUE.rush.length} ${tr('дуэлей', 'duels')}</span><span>${LEAGUE.rush.lives} ${tr('жизни', 'lives')}</span><span>${tr('без RP', 'no RP')}</span></div></div></div>
+          <div class="lg-mode-head"><span class="lg-mode-ico pic" aria-hidden="true">${modePic('prime_rush', 46)}</span><div><div class="lg-k">PRIME RUSH</div><div class="lg-mode-chips"><span>${tr('до', 'up to')} ${LEAGUE.rush.length} ${tr('дуэлей', 'duels')}</span><span>${LEAGUE.rush.lives} ${tr('жизни', 'lives')}</span><span>${tr('без RP', 'no RP')}</span></div></div></div>
           <p>${tr(`Серия до ${LEAGUE.rush.length} дуэлей подряд выбранным бойцом, ${LEAGUE.rush.lives} поражения заканчивают забег. Свой рекорд и эфирные очки, RP не меняется.`, `A run of up to ${LEAGUE.rush.length} duels with the chosen fighter; ${LEAGUE.rush.lives} losses end it. Your own record and air points; RP stays.`)}</p>
           <button class="btn ghost wide" data-act="rush" ${!me.active && !sq ? '' : 'disabled'}>${tr('Начать серию', 'Start a run')} · ${esc(f.name)}</button>
         </div>

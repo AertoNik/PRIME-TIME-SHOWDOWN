@@ -27,7 +27,7 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LOOKS, type BodyType, type LookDef } from '../config/looks';
-import { makeHoloMaterial, makeToonMaterial, makeUnlitVC, outlineMaterial } from './materials';
+import { MAT, makeHoloMaterial, makeToonMaterial, makeUnlitVC, outlineMaterial } from './materials';
 
 type V3 = [number, number, number];
 interface PartOpts {
@@ -43,11 +43,29 @@ const _p = new Vector3();
 const _s = new Vector3();
 const _c = new Color();
 
+/**
+ * Beta 2.3 — how much thinner than the silhouette's a part's outline is, by the part's own size (m, its largest side):
+ * a buckle or a stripe no longer wears the same heavy line as a torso. [size below, share taken off the line].
+ */
+export const OUTLINE_THIN: readonly [number, number][] = [
+  [0.07, 0.62],
+  [0.13, 0.42],
+  [0.22, 0.22],
+];
+
 /** Collects primitives with baked transforms + vertex colours, merged into one geometry. */
 class PartSet {
   private geos: BufferGeometry[] = [];
+  /**
+   * Beta 2.3 (shaded sets — the toon parts of a bone): the material class of a part (materials.ts MAT) — `classify`
+   * recognises a colour (skin, hair, a glove…), anything else is the bone's `defMat`; an explicit `mat` wins.
+   */
+  defMat: number = MAT.cloth;
+  classify: ((color: number) => number) | null = null;
 
-  add(geo: BufferGeometry, color: number, o: PartOpts = {}, intensity = 1): void {
+  constructor(private readonly shaded = false) {}
+
+  add(geo: BufferGeometry, color: number, o: PartOpts = {}, intensity = 1, mat?: number): void {
     const r = o.r ?? [0, 0, 0];
     const p = o.p ?? [0, 0, 0];
     const s = o.s ?? [1, 1, 1];
@@ -71,6 +89,22 @@ class PartSet {
       arr[i * 3 + 2] = _c.b;
     }
     geo.setAttribute('color', new Float32BufferAttribute(arr, 3));
+    if (this.shaded) {
+      // Beta 2.3: the part's material class and how thin its outline is (both flat over the part)
+      const cls = mat ?? (this.classify ? this.classify(color) : -1);
+      geo.setAttribute('ptMat', new Float32BufferAttribute(new Float32Array(n).fill(cls >= 0 ? cls : this.defMat), 1));
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      const size = Math.max(bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z);
+      let thin = 0;
+      for (const [below, t] of OUTLINE_THIN) {
+        if (size < below) {
+          thin = t;
+          break;
+        }
+      }
+      geo.setAttribute('ptThin', new Float32BufferAttribute(new Float32Array(n).fill(thin), 1));
+    }
     this.geos.push(geo);
   }
 
@@ -353,6 +387,13 @@ function carvedHead(R: number): BufferGeometry {
     v.multiplyScalar(1 + k * front);
     pos.setXYZ(i, v.x, v.y, v.z);
   }
+  weldNormals(g);
+  return g;
+}
+
+/** Normals computed again and WELDED across a UV seam (the duplicated seam vertices share one normal). */
+function weldNormals(g: BufferGeometry): void {
+  const pos = g.getAttribute('position');
   g.computeVertexNormals();
   const nrm = g.getAttribute('normal');
   const keyOf = (i: number) => `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
@@ -369,6 +410,85 @@ function carvedHead(R: number): BufferGeometry {
     const n = sum.get(keyOf(i))!.clone().normalize();
     nrm.setXYZ(i, n.x, n.y, n.z);
   }
+}
+
+/**
+ * Beta 2.3 (Opus) — STUBBLE WITHOUT A HARD EDGE. The 2.2 stubble was a darker half-shell just over the head (the front of
+ * the lower face: θ 2.12…2.87 rad from the crown, the front half), so its upper edge drew a sharp line across the cheeks.
+ * Now the head's own vertex colours take the stubble tone in that same region, fading over ~0.2 rad at the cheek line
+ * and toward the ears. `g` is the head after PartSet.add (in the bone's space); `p`/`s` — the head's place and scale.
+ */
+function stubbleOn(g: BufferGeometry, stubble: number, skin: number, p: V3, s: V3): void {
+  const pos = g.getAttribute('position');
+  const col = g.getAttribute('color');
+  const a = new Color(skin);
+  const b = new Color(stubble);
+  const sm = (e0: number, e1: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+  for (let i = 0; i < pos.count; i++) {
+    const x = (pos.getX(i) - p[0]) / s[0];
+    const y = (pos.getY(i) - p[1]) / s[1];
+    const z = (pos.getZ(i) - p[2]) / s[2];
+    const r = Math.hypot(x, y, z) || 1;
+    const th = Math.acos(Math.max(-1, Math.min(1, y / r)));
+    const w = sm(2.02, 2.24, th) * (1 - sm(2.8, 2.95, th)) * sm(-0.08, 0.16, z / r);
+    if (w <= 0) continue;
+    col.setXYZ(i, a.r + (b.r - a.r) * w, a.g + (b.g - a.g) * w, a.b + (b.b - a.b) * w);
+  }
+  col.needsUpdate = true;
+}
+
+/** An ellipsoid in a part's own space: centre and semi-axes (m). */
+interface Blob {
+  c: V3;
+  a: V3;
+}
+
+/**
+ * Beta 2.3 (Opus) — ONE SURFACE FOR THE HEAD, THE JAW AND THE CHIN. Until 2.2 a heavy fighter's square jaw and the
+ * longer faces' jaw and chin were extra spheres pushed into the head; where their surfaces met the head's — almost
+ * tangent on Bruno, Tank and Crash — the shading showed a crease across the cheeks. Now the head itself takes their shape:
+ * along every direction from the head's centre its radius becomes a smooth maximum of its own and of each blob's surface
+ * on the same ray (`k` — how wide the blend is). The silhouette is the one the parts made, with no seam; the normals
+ * are computed again and welded (weldNormals).
+ */
+function unionHead(g: BufferGeometry, blobs: Blob[], k: number): BufferGeometry {
+  const pos = g.getAttribute('position');
+  const v = new Vector3();
+  const smax = (a: number, b: number) => {
+    const h = Math.max(k - Math.abs(a - b), 0) / k;
+    return Math.max(a, b) + (h * h * k) / 4;
+  };
+  for (let i = 0; i < pos.count; i++) {
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
+    const rh = v.length();
+    if (rh < 1e-6) continue;
+    const ux = v.x / rh;
+    const uy = v.y / rh;
+    const uz = v.z / rh;
+    let r = rh;
+    for (const b of blobs) {
+      // |(t·u − c) / a|² = 1, the far root
+      const px = ux / b.a[0];
+      const py = uy / b.a[1];
+      const pz = uz / b.a[2];
+      const qx = b.c[0] / b.a[0];
+      const qy = b.c[1] / b.a[1];
+      const qz = b.c[2] / b.a[2];
+      const A = px * px + py * py + pz * pz;
+      const Bq = -2 * (px * qx + py * qy + pz * qz);
+      const C = qx * qx + qy * qy + qz * qz - 1;
+      const disc = Bq * Bq - 4 * A * C;
+      if (disc < 0) continue;
+      const t = (-Bq + Math.sqrt(disc)) / (2 * A);
+      if (t > 0) r = smax(r, t);
+    }
+    if (r !== rh) pos.setXYZ(i, ux * r, uy * r, uz * r);
+  }
+  pos.needsUpdate = true;
+  weldNormals(g);
   return g;
 }
 
@@ -475,10 +595,17 @@ const geoCache = new Map<string, RigGeometry>();
 
 class Bones {
   private map = new Map<BoneName, { toon: PartSet; glow: PartSet }>();
+  /** Beta 2.3: the look's material classes — the default of a bone and what a colour on it is (set by getRigGeometry). */
+  material: ((bone: BoneName) => { def: number; classify: (color: number) => number }) | null = null;
   get(n: BoneName) {
     let b = this.map.get(n);
     if (!b) {
-      b = { toon: new PartSet(), glow: new PartSet() };
+      b = { toon: new PartSet(true), glow: new PartSet() };
+      const m = this.material?.(n);
+      if (m) {
+        b.toon.defMat = m.def;
+        b.toon.classify = m.classify;
+      }
       this.map.set(n, b);
     }
     return b;
@@ -521,6 +648,64 @@ class Bones {
 
 const GLOW = 3.4;
 
+/** Hue (0…1, circular), saturation and lightness of a colour. */
+function hslOf(color: number): { h: number; s: number; l: number } {
+  const o = { h: 0, s: 0, l: 0 };
+  _c.set(color).getHSL(o);
+  return o;
+}
+
+/** Is `color` a shade of `ref` (the same hue and saturation within a little, any lightness in the given share)? */
+function shadeOf(color: number, ref: number, lo = 0.55, hi = 1.3): boolean {
+  if (color === ref) return true;
+  const a = hslOf(color);
+  const b = hslOf(ref);
+  const dh = Math.abs(a.h - b.h);
+  // (a grey has no hue of its own: compare its lightness only)
+  const hueOk = b.s < 0.06 ? a.s < 0.1 : Math.min(dh, 1 - dh) <= 0.022 && Math.abs(a.s - b.s) <= 0.16;
+  return hueOk && a.l >= b.l * lo - 0.001 && a.l <= b.l * hi + 0.001;
+}
+
+/**
+ * Beta 2.3 — the material classes of a look (materials.ts MAT), by bone and by colour, so the hundreds of parts need no
+ * marking of their own: weapons (and CRAX's key and crank) are metal, shoes are gloss, the robot's head is metal; on
+ * the head and the arms a shade of the skin colour is skin and a shade of the hair colour is hair; the gloves and a
+ * boot's shaft are gloss; a gold buckle is metal. Everything else is cloth — the cel shading as it was.
+ */
+function lookMaterials(look: LookDef): (bone: BoneName) => { def: number; classify: (color: number) => number } {
+  const skin = look.skin;
+  const isSkin = (c: number) => !look.robot && shadeOf(c, skin, 0.6, 1.25);
+  const isHair = (c: number) => shadeOf(c, look.hair.color, 0.5, 1.6) || shadeOf(c, look.hair.color2, 0.5, 1.6);
+  const isShoe = (c: number) => shadeOf(c, look.shoes.main, 0.5, 1.6) || c === look.shoes.accent || c === look.shoes.sole;
+  const isGold = (c: number) => c === 0xffc23a || c === 0xffd23a;
+  return (bone) => {
+    switch (bone) {
+      case 'weaponR':
+      case 'weaponL':
+      case 'key':
+      case 'crank':
+        return { def: MAT.metal, classify: () => -1 };
+      case 'footL':
+      case 'footR':
+        return { def: MAT.gloss, classify: () => -1 };
+      case 'head':
+        return { def: look.robot ? MAT.metal : MAT.cloth, classify: (c) => (look.robot ? -1 : isSkin(c) ? MAT.skin : isHair(c) ? MAT.hair : isGold(c) ? MAT.metal : -1) };
+      case 'shinL':
+      case 'shinR':
+        // (a tall boot's shaft is built on the shin)
+        return { def: MAT.cloth, classify: (c) => (look.shoes.boots && isShoe(c) ? MAT.gloss : -1) };
+      case 'torso':
+      case 'upperArmL':
+      case 'upperArmR':
+      case 'foreArmL':
+      case 'foreArmR':
+        return { def: MAT.cloth, classify: (c) => (isSkin(c) ? MAT.skin : c === look.gloves && !look.fingerless && !isSkin(c) ? MAT.gloss : isGold(c) ? MAT.metal : -1) };
+      default:
+        return { def: MAT.cloth, classify: (c) => (isGold(c) ? MAT.metal : -1) };
+    }
+  };
+}
+
 export function getRigGeometry(lookId: string): RigGeometry {
   const cached = geoCache.get(lookId);
   if (cached) return cached;
@@ -529,6 +714,7 @@ export function getRigGeometry(lookId: string): RigGeometry {
   const B = new Bones();
   const skin = look.skin;
   const skinDark = shade(skin, 0.86);
+  B.material = lookMaterials(look);
 
   // ---------------------------------------------------------------- pelvis
   {
@@ -1461,18 +1647,33 @@ export function getRigGeometry(lookId: string): RigGeometry {
   if (!look.robot) {
     const H = B.t('head');
     const HG = B.g('head');
-    H.add(look.face?.sharp ? sculptedHead(R) : look.face?.wooden ? carvedHead(R) : sph(R, 30, 22), skin, { p: [0, cy, 0.02], s: [fx, 0.94 * fy, 0.92] });
-    if (look.body === 'heavy') {
-      // square jaw
-      H.add(sph(R * 0.82, 20, 14), skin, { p: [0, cy - R * 0.3, -0.02], s: [1.14, 0.72, 0.9] });
-    }
     const face = look.face;
-    // (1.9.7: CRAX's square jaw replaces the rounded jaw and chin pieces)
+    // Beta 2.3 (Opus): the heavy fighters' square jaw (1.0) and the longer faces' jaw and small rounded chin (Alpha 1.5.5)
+    // are no longer separate spheres in the head — the head's own surface takes their shape (unionHead): the same
+    // silhouette, no crease where two surfaces met. (1.9.7: CRAX's square jaw is its own block, as before.)
+    const headS: V3 = [fx, 0.94 * fy, 0.92];
+    const headP: V3 = [0, cy, 0.02];
+    const blob = (r: number, p: V3, sc: V3): Blob => ({
+      c: [(p[0] - headP[0]) / headS[0], (p[1] - headP[1]) / headS[1], (p[2] - headP[2]) / headS[2]],
+      a: [(r * sc[0]) / headS[0], (r * sc[1]) / headS[1], (r * sc[2]) / headS[2]],
+    });
+    const blobs: Blob[] = [];
+    if (look.body === 'heavy') blobs.push(blob(R * 0.82, [0, cy - R * 0.3, -0.02], [1.14, 0.72, 0.9]));
     if (face && face.jaw > 0 && !face.squareJaw) {
-      // Alpha 1.5.5: a slightly squarer jaw behind the face plane (it shapes the silhouette, no crease
-      // across the cheeks) and a small rounded chin at the bottom of the longer face
-      H.add(sph(R * 0.78, 22, 14), skin, { p: [0, cy - R * 0.36, -0.07], s: [0.93, 0.56, 0.8] });
-      H.add(sph(0.075, 14, 10), skin, { p: [0, cy - hy * 0.74, faceZ(0, -hy * 0.74) - 0.06], s: [1.35, 0.7, 0.8] });
+      blobs.push(blob(R * 0.78, [0, cy - R * 0.36, -0.07], [0.93, 0.56, 0.8]));
+      blobs.push(blob(0.075, [0, cy - hy * 0.74, faceZ(0, -hy * 0.74) - 0.06], [1.35, 0.7, 0.8]));
+    }
+    const headGeo = face?.sharp ? sculptedHead(R) : face?.wooden ? carvedHead(R) : sph(R, 30, 22);
+    const v22 = RIG_BUILD.v22 || RIG_BUILD.legacy21;
+    const headMesh = blobs.length && !v22 ? unionHead(headGeo, blobs, R * 0.08) : headGeo;
+    H.add(headMesh, skin, { p: headP, s: headS });
+    if (v22) {
+      // (the Beta 2.2 build, for the measuring tools: the jaw and the chin as their own spheres, exactly as before)
+      if (look.body === 'heavy') H.add(sph(R * 0.82, 20, 14), skin, { p: [0, cy - R * 0.3, -0.02], s: [1.14, 0.72, 0.9] });
+      if (face && face.jaw > 0 && !face.squareJaw) {
+        H.add(sph(R * 0.78, 22, 14), skin, { p: [0, cy - R * 0.36, -0.07], s: [0.93, 0.56, 0.8] });
+        H.add(sph(0.075, 14, 10), skin, { p: [0, cy - hy * 0.74, faceZ(0, -hy * 0.74) - 0.06], s: [1.35, 0.7, 0.8] });
+      }
     }
     if (face && face.cheekbones > 0) {
       // soft cheekbones: a warm highlight high on each cheek, a gentle shadow crease under it
@@ -1520,8 +1721,10 @@ export function getRigGeometry(lookId: string): RigGeometry {
       }
     }
     if (look.accessories.includes('stubble')) {
-      const st = new SphereGeometry(R * 1.006, 24, 12, 0, Math.PI, 2.12, 0.75);
-      H.add(st, shade(skin, 0.68), { p: [0, cy, 0.02], s: [1, 0.94, 0.92] });
+      // Beta 2.3 (Opus): the stubble is painted on the head's own surface (stubbleOn) — the same cheeks, jaw and chin
+      // as the 2.2 shell, but its edge fades over a few centimetres instead of a hard line across the face
+      if (RIG_BUILD.v22 || RIG_BUILD.legacy21) H.add(new SphereGeometry(R * 1.006, 24, 12, 0, Math.PI, 2.12, 0.75), shade(skin, 0.68), { p: [0, cy, 0.02], s: [1, 0.94, 0.92] });
+      else stubbleOn(headMesh, shade(skin, 0.68), skin, headP, headS);
     }
     if (look.accessories.includes('beard')) {
       const bc = look.hair.color2;
@@ -2500,6 +2703,8 @@ export function getRigGeometry(lookId: string): RigGeometry {
     muzzleL,
     weaponHand: [0, -d.foreArm - d.handR * 0.5, 0.0],
   };
+  // Beta 2.3 (Opus): limbs that taper (see taperLimbs) — before the trouser leg is tucked into the boot
+  if (!RIG_BUILD.legacy21 && !RIG_BUILD.v22) taperLimbs(geo, d);
   // Beta 2.2: the trouser leg tucked into the boot, and the boot's shaft following the shin (see tuckShin, bootMorphs)
   const style = look.pants.style;
   const legR = d.legR * (style === 'cargo' ? 1.18 : style === 'track' ? 1.08 : 0.96);
@@ -2532,8 +2737,69 @@ export const BOOT_BEND = { y0: 0.1, y1: 0.19, zBand: 0.1 } as const;
 /**
  * Beta 2.2: `legacy21` builds the Beta 2.1 legs (no tucked trouser leg, no bending boot) — for the measuring tools only
  * (scripts/anim-lab.ts --legacy21, the dev foot lab &fix=0), set before the first rig is built; the game never sets it.
+ * Beta 2.3: `v22` builds the Beta 2.2 shapes exactly (the jaw and chin spheres, the stubble shell, straight limbs) — for
+ * the measuring tools only (npm run boots22 / geo23, anim-lab --v22); the game never sets it either.
  */
-export const RIG_BUILD = { legacy21: false };
+export const RIG_BUILD = { legacy21: false, v22: false };
+
+/**
+ * Beta 2.3 (Opus) — LIMBS WITH A SHAPE. Until 2.2 every arm and leg segment was a capsule of one thickness, so knees,
+ * elbows and wrists were as thick as thighs and biceps («tubes»). Now each limb bone's WHOLE geometry — the sleeve or
+ * trouser leg and everything on it: stripes, pockets, straps, cuffs, glowing lines — is narrowed around the bone's axis
+ * by a smooth profile along it: the thigh from the hip to a slimmer knee, the shin with a calf and a narrower ankle
+ * (inside the boot), the upper arm with a hint of a biceps to a slimmer elbow, the forearm to the wrist and back to full
+ * width at the cuff and the glove (the hands keep their size). Lengths, joints and pivots are unchanged; a stripe or a
+ * pocket follows the cloth instead of floating off a thinner limb. RIG_BUILD.v22 builds the Beta 2.2 shapes (measuring only).
+ */
+function taperLimbs(geo: RigGeometry, d: Dims): void {
+  const sm = (e0: number, e1: number, x: number) => {
+    const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
+  const bump = (u: number, c: number, w: number) => Math.exp(-(((u - c) / w) ** 2));
+  const profiles: [BoneName[], number, (u: number) => number][] = [
+    // hip → knee: full at the hip, a little fuller at the upper third, 12 % slimmer at the knee
+    [['thighL', 'thighR'], d.thigh, (u) => 1.02 + 0.03 * bump(u, 0.3, 0.2) - 0.14 * sm(0.25, 1.0, u)],
+    // knee → ankle: the calf, then slimmer toward the ankle (the boot hides most of it; the tuck keeps it inside)
+    [['shinL', 'shinR'], d.shin, (u) => 0.95 + 0.06 * bump(u, 0.3, 0.16) - 0.08 * sm(0.45, 0.8, u)],
+    // shoulder → elbow: the shoulder ball untouched, a hint of a biceps, the elbow 9 % slimmer
+    [['upperArmL', 'upperArmR'], d.upperArm, (u) => 1 + 0.035 * bump(u, 0.42, 0.16) - 0.09 * sm(0.5, 1.02, u)],
+    // elbow → wrist: full at the elbow, 11 % slimmer above the wrist, back to full width at the cuff and the glove
+    [['foreArmL', 'foreArmR'], d.foreArm, (u) => 1.02 - 0.13 * sm(0.08, 0.5, u) + 0.11 * sm(0.52, 0.72, u)],
+  ];
+  for (const [bones, len, f] of profiles) {
+    for (const b of bones) {
+      for (const g of [geo.bones[b]?.toon, geo.bones[b]?.glow]) {
+        if (!g) continue;
+        const pos = g.getAttribute('position');
+        const nrm = g.getAttribute('normal');
+        for (let i = 0; i < pos.count; i++) {
+          const u = -pos.getY(i) / len;
+          const k = f(u);
+          if (k === 1) continue;
+          const x = pos.getX(i);
+          const z = pos.getZ(i);
+          pos.setX(i, x * k);
+          pos.setZ(i, z * k);
+          if (nrm) {
+            // normals by the inverse transpose of (x, y, z) → (k·x, y, k·z): n' = (nx/k, ny − (k'/k)(x·nx + z·nz), nz/k)
+            const kdy = -(f(u + 0.01) - f(u - 0.01)) / (0.02 * len); // dk/dy (u grows downward)
+            const nx = nrm.getX(i);
+            const nz = nrm.getZ(i);
+            const mx = nx / k;
+            const mz = nz / k;
+            const my = nrm.getY(i) - (kdy / k) * (x * nx + z * nz);
+            const l = Math.hypot(mx, my, mz) || 1;
+            nrm.setXYZ(i, mx / l, my / l, mz / l);
+          }
+        }
+        pos.needsUpdate = true;
+        if (nrm) nrm.needsUpdate = true;
+        g.computeBoundingSphere();
+      }
+    }
+  }
+}
 
 /**
  * Beta 2.2 — THE TROUSER LEG GOES INTO THE BOOT. The shin's trouser capsule was built to the floor and wider than the

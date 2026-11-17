@@ -1203,7 +1203,15 @@
         "xs": 96,
         "sm": 192,
         "md": 400
+      },
+      "ui": {
+        "xs": 96,
+        "sm": 192
       }
+    },
+    "navHeights": {
+      "sm": 160,
+      "md": 240
     }
   },
   "icons": {
@@ -3130,6 +3138,156 @@
           1235,
           1247
         ]
+      },
+      "classic_duel": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/mode_classic_duel_icon_v3.png",
+        "sha256": "6ad4cc3f3527cef4df2182e8446a75fe99dc2022db8a5ad5a848d94f84fab94f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/classic_duel.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 22880,
+            "sha256": "75d38e55bc6d79850af21e0b4ff768adae98466377eacbdfaab6927450ee1c3e"
+          },
+          "md": {
+            "file": "ui/modes/md/classic_duel.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 64164,
+            "sha256": "6732a5c73e1a6dbb0c0c05bd7089177ba5f0ef6a46b0e4f653b06f851fe98636"
+          }
+        },
+        "bbox": [
+          14,
+          40,
+          1242,
+          1241
+        ]
+      },
+      "survival": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/mode_survival_icon_v3.png",
+        "sha256": "2a9820f7ecfaea0e539d5afa6a7a4fe80aebcf75e4a0ac2887fb70bcf8da9e59",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/survival.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 21434,
+            "sha256": "524a173dd9ec84a60cf669aa7e5c6835681a14c637381a076e2bb71fb6248712"
+          },
+          "md": {
+            "file": "ui/modes/md/survival.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 58616,
+            "sha256": "f1c44c07c99b205ac996f34b7998db0edf67322e79ae4750f62eca80d0ef2cef"
+          }
+        },
+        "bbox": [
+          2,
+          10,
+          1253,
+          1249
+        ]
+      },
+      "prime_challenge": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/mode_prime_challenge_icon_v3.png",
+        "sha256": "1fe2c68ab416a7551b4d84e4bdd4d8f12cc777eb15f8ba8d076b5ccc3dde2674",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/prime_challenge.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17824,
+            "sha256": "b10deec22115644a432c7a25faf7c486dc15fd7f0e3b91a304f7510fc32d34c3"
+          },
+          "md": {
+            "file": "ui/modes/md/prime_challenge.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 46224,
+            "sha256": "3444a791dd7d92c25a4fcd3ba4506f1ecc3aff4bec5ab1692d3cdfe1ce1c7ea5"
+          }
+        },
+        "bbox": [
+          46,
+          46,
+          1207,
+          1237
+        ]
+      },
+      "prime_squad": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/mode_prime_squad_icon_v3.png",
+        "sha256": "8fbe0c4da6c2dc8287b6f6468fc50301fbf929a6e9f623d233dc10bbd1c3d66c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/prime_squad.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 23118,
+            "sha256": "b3975a78ad73e3c3d65645d12620cc7075ccae3846e7ea312d6abcc8eac7be1c"
+          },
+          "md": {
+            "file": "ui/modes/md/prime_squad.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 62756,
+            "sha256": "d746a4b05ae06455f4939981cedeadc28301466c479606b8adeb6d9e48a437d0"
+          }
+        },
+        "bbox": [
+          33,
+          35,
+          1223,
+          1217
+        ]
+      },
+      "prime_rush": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/mode_prime_rush_icon_v3.png",
+        "sha256": "03a80500e886d37bce0c459c4c7dacd3efee075637ecba4eebbec9404f3ba188",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/modes/sm/prime_rush.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 14300,
+            "sha256": "5d6a8dbfd60eefdf99934ac1ff5f5881491c93d3593facc9f1ba3873bc4660db"
+          },
+          "md": {
+            "file": "ui/modes/md/prime_rush.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 36670,
+            "sha256": "bbe00c188a9f8b0bfbe8108c06356349775de23882fcab29825b6206fca29cda"
+          }
+        },
+        "bbox": [
+          33,
+          62,
+          1163,
+          1221
+        ]
       }
     },
     "currency": {
@@ -3855,6 +4013,96 @@
           40,
           1208,
           1223
+        ]
+      },
+      "mastery_roster": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/achievement_full_roster.png",
+        "sha256": "c3581a1ddeacb0f34ecd48b7f7bc8b425d1cc9ad858f1184baea6795b3251591",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/mastery_roster.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16004,
+            "sha256": "be25ec717f51d98d10ab0994db6809b73be5d4fde93562f03f59dfe7b790a64e"
+          },
+          "md": {
+            "file": "ui/achievements/md/mastery_roster.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 43132,
+            "sha256": "73ce92c0516817cafcbfa235bce1391f238251b3a235e653bd6e5223a64d202c"
+          }
+        },
+        "bbox": [
+          24,
+          73,
+          1231,
+          1156
+        ]
+      },
+      "mastery_rating": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/achievement_perfect_broadcast.png",
+        "sha256": "cd27f879c376ab0f62eaa65cfc94b1c893036d8418ff9c2a904bba086fb0fcb2",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/mastery_rating.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13990,
+            "sha256": "e3268289cd2c33b100b5641004c369331daf91797e9daa61b826ace021fe3743"
+          },
+          "md": {
+            "file": "ui/achievements/md/mastery_rating.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 37586,
+            "sha256": "dd37c396821f6c727f9381be06e27d046089b2dc34c2f5ccf3f2871eb7d37483"
+          }
+        },
+        "bbox": [
+          39,
+          31,
+          1215,
+          1227
+        ]
+      },
+      "career_rising": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/achievement_career_rising_broadcast.png",
+        "sha256": "6112bb0131112153603dcd978b59f05ad2051e59571ae88780112a2f29c862bc",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/achievements/sm/career_rising.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 13514,
+            "sha256": "09f1ccfc96cdf67c631f5586f2d7feea58082980f0fb15c255b5d7ab6f394ad4"
+          },
+          "md": {
+            "file": "ui/achievements/md/career_rising.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 35652,
+            "sha256": "4725cc653564648d3be4247a5029f83e27d4434337ad65d222da7bfc5dd5fb56"
+          }
+        },
+        "bbox": [
+          130,
+          9,
+          1124,
+          1244
         ]
       }
     },
@@ -4887,6 +5135,407 @@
           1201,
           1178
         ]
+      },
+      "quest_first_snow": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/winter_quest_first_snow.png",
+        "sha256": "877c378e0d9895648244b423b2367eec31771aef1a78a5564eda7a1ccc69f615",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_first_snow.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6484,
+            "sha256": "ae36d3853d48c85c107ee7517c4cc991b638a4df6e8eb9aba7e96cd8e12075ab"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_first_snow.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 16414,
+            "sha256": "acb018eefbb17721a9fbead7d2abb3dad9831461dc8ef4805463bf78d074d1b1"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_first_snow.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 44256,
+            "sha256": "3b5ee156daceaab0964c21af56a0aea85de01956281483599cfe77cc67fe5573"
+          }
+        },
+        "bbox": [
+          105,
+          32,
+          1140,
+          1241
+        ]
+      },
+      "quest_holiday_hat_trick": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/winter_quest_holiday_hat_trick.png",
+        "sha256": "62497d78b41cf01b7135d243b7040d04cf96f32c46b8d169a633086641dcdd57",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_holiday_hat_trick.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7664,
+            "sha256": "9c1059558cf5f4bc1bb8da44cb72d051e76941dfc0fba682ba46dde5de77fb96"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_holiday_hat_trick.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 19658,
+            "sha256": "d7fadb4830fd5aa2e7cdb82392d0cb83a4f8c9a97d595a5600301840e6a4905f"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_holiday_hat_trick.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 51904,
+            "sha256": "763f5044297cbef5ddc8642f9bca48dcaef7805db43f7d166df47191193ee8c0"
+          }
+        },
+        "bbox": [
+          39,
+          42,
+          1201,
+          1225
+        ]
+      },
+      "quest_garland_combo": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/winter_quest_garland_combo.png",
+        "sha256": "da16966df7d155ac045a6147663a937e0b382b7ab13b437888475b9eb2eac296",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/quest_garland_combo.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7236,
+            "sha256": "131b29af495d2841fd3b34342477ad23cc124043aa72c05f7b90cf5f98a53c3a"
+          },
+          "sm": {
+            "file": "ui/winter/sm/quest_garland_combo.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18106,
+            "sha256": "48389d48ff5bc28cc05fd2259705cf099b1b45d51b41e04391257b794e636a5c"
+          },
+          "md": {
+            "file": "ui/winter/md/quest_garland_combo.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 47252,
+            "sha256": "efb6243d683e2d8a6d6c5f2a5caeb52e00af58564c409df21deedb21c26008fc"
+          }
+        },
+        "bbox": [
+          42,
+          20,
+          1200,
+          1238
+        ]
+      },
+      "event_emblem": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/winter_event_emblem.png",
+        "sha256": "d283825182fe789996303f58a30857dd890cf215cf3e8a618085f980461ae32a",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/winter/xs/event_emblem.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 6418,
+            "sha256": "2bc05b7b3483e7b27b9da96e109c93ad12909b5202a70551e956986d0d596fa6"
+          },
+          "sm": {
+            "file": "ui/winter/sm/event_emblem.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 15626,
+            "sha256": "158138f47d266d9f32e202524a192464b817ecaab79fdbc2b07750720a048cc6"
+          },
+          "md": {
+            "file": "ui/winter/md/event_emblem.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 42116,
+            "sha256": "f921ad2bda31b9aaa73b44ee07118ea189804e799c0c32c210ebe87d5d23e632"
+          }
+        },
+        "bbox": [
+          97,
+          14,
+          1154,
+          1248
+        ]
+      }
+    },
+    "ui": {
+      "gift": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_home_gift_icon_v3.png",
+        "sha256": "2f23c1d8dbf0a775d092f312d4af85fccade4a17285f1a6907b9504fc0ed6f9f",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/gift.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 5318,
+            "sha256": "8c4ac09bb9102f5eaf8c347f5dd1690e349fd4123dbf65b43c08a6b320f087b3"
+          },
+          "sm": {
+            "file": "ui/ui/sm/gift.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 11770,
+            "sha256": "8e51c888e6f12aad99737012aa75c1fc7157941d2d55cbb04ae16f453e95f198"
+          }
+        },
+        "bbox": [
+          144,
+          114,
+          1110,
+          1148
+        ]
+      },
+      "invite": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_home_invite_friend_icon_v3.png",
+        "sha256": "c9b733ea2e586bcf2baf4d03ead16eb75ed491f8c0dd9cb7dd365adc9a095cdc",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/invite.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4138,
+            "sha256": "03d27eabe8fa177da8d205ec501ab31f1f7b773ae58565b11b4f50cab8c1dcf6"
+          },
+          "sm": {
+            "file": "ui/ui/sm/invite.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 9220,
+            "sha256": "37d30792abc8ef91879c0ab2f51796fb3290fba5dfc6770b5bda3dea43a0dbd9"
+          }
+        },
+        "bbox": [
+          92,
+          212,
+          1146,
+          1100
+        ]
+      },
+      "shop": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_prime_shop_icon_v3.png",
+        "sha256": "93a2a3194b91346cdb3355c7248d35fd73d5092bf989622f2e5142de4236357a",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/shop.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7214,
+            "sha256": "73c742cba6fbe40f163478397b080bd1ff67a88f2d8a61784cfae1caa92b30e4"
+          },
+          "sm": {
+            "file": "ui/ui/sm/shop.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 17758,
+            "sha256": "cce37da383446f3088cf424cc55d17a0470f5ad6406af0b97ac770092e36081b"
+          }
+        },
+        "bbox": [
+          113,
+          161,
+          1142,
+          1187
+        ]
+      },
+      "cards": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_cards_icon_v3.png",
+        "sha256": "3e3dbd31644f402d22ae483e754f8377045a1031eade8f11bd8cbe4cd2a16a68",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/cards.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4664,
+            "sha256": "c7e2a8fce69097fa33b0282b35db7d212d1c0deca5ac9a9c104b70ef6811dfcf"
+          },
+          "sm": {
+            "file": "ui/ui/sm/cards.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10762,
+            "sha256": "89174afc225a553af2b85b701b258542c4fbba4aa6bf7758910ce8502d9f5575"
+          }
+        },
+        "bbox": [
+          148,
+          143,
+          1077,
+          1104
+        ]
+      },
+      "settings": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_nav_theme_button_v3.png",
+        "sha256": "db29b7d42bc2bed742c019b76fa6a42dcd73ff3a31f86052ee4b8f581e0a01ac",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/settings.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 4418,
+            "sha256": "ad2f15d19cc7c970ab293c7eba9a9e2d75059a819098a1b0cedc49c0a3956411"
+          },
+          "sm": {
+            "file": "ui/ui/sm/settings.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 10430,
+            "sha256": "2f43c90ca04384fde052a3511c73cf2c4779ae73f51a95359dfddace9ea4dfc0"
+          }
+        },
+        "bbox": [
+          181,
+          195,
+          1062,
+          1095
+        ]
+      }
+    },
+    "nav": {
+      "fighters": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_nav_fighters_button_v3.png",
+        "sha256": "d1f9bce9f0e257b2507a1b5fa99fd7f615f96a5a87196ff74605cd3f29c55f1c",
+        "size": [
+          2172,
+          724
+        ],
+        "bbox": [
+          7,
+          74,
+          2163,
+          657
+        ],
+        "aspect": 3.6981,
+        "l": 0.46,
+        "r": 0.14,
+        "out": {
+          "sm": {
+            "file": "ui/nav/sm/fighters.webp",
+            "w": 592,
+            "h": 160,
+            "bytes": 25802,
+            "sha256": "a7d1a25c957b2318355b4b4ffa457dbd8439fe1afd6b3ba691b37f92bf1dac59"
+          },
+          "md": {
+            "file": "ui/nav/md/fighters.webp",
+            "w": 888,
+            "h": 240,
+            "bytes": 45882,
+            "sha256": "dc48b4642fa5f8e9f9a30b1dd04700432c1a10e5f5cd6bf98854c84cc74f02a2"
+          }
+        }
+      },
+      "career": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_nav_career_button_v3.png",
+        "sha256": "a04d74ba136cf2dd31f097a771b4f1f3c2e02f4097b346ccb64c93c4962d5c78",
+        "size": [
+          2172,
+          724
+        ],
+        "bbox": [
+          15,
+          10,
+          2157,
+          692
+        ],
+        "aspect": 3.1408,
+        "l": 0.5,
+        "r": 0.16,
+        "out": {
+          "sm": {
+            "file": "ui/nav/sm/career.webp",
+            "w": 503,
+            "h": 160,
+            "bytes": 23434,
+            "sha256": "1b2e53f9f0b5f6a804811b9413d2324e900b73cbe98d45a5446093363bb033ff"
+          },
+          "md": {
+            "file": "ui/nav/md/career.webp",
+            "w": 754,
+            "h": 240,
+            "bytes": 40440,
+            "sha256": "c93572b3e38add3b9ef507c9c207bcb87899ee509be0de41e54d9ce8d80ceb57"
+          }
+        }
+      },
+      "collection": {
+        "src": "PRIME_TIME_2_3_UI_MODE_ART_REFINED/ui_nav_collection_button_v3.png",
+        "sha256": "9721a755cedb7fb7a0b41d6c8af0dd70dd7685a3530aae3378e13ec24bbe29e4",
+        "size": [
+          2172,
+          724
+        ],
+        "bbox": [
+          0,
+          75,
+          2172,
+          654
+        ],
+        "aspect": 3.7513,
+        "l": 0.36,
+        "r": 0.14,
+        "out": {
+          "sm": {
+            "file": "ui/nav/sm/collection.webp",
+            "w": 600,
+            "h": 160,
+            "bytes": 26980,
+            "sha256": "ced2a457f192831215010a59b06745c712308d640f8d5110af92216662794105"
+          },
+          "md": {
+            "file": "ui/nav/md/collection.webp",
+            "w": 900,
+            "h": 240,
+            "bytes": 47448,
+            "sha256": "4376998ed038b1808a1d07688e705bf2d015d381c20954b2ddc83ccb6e3fabca"
+          }
+        }
       }
     }
   }

@@ -31,7 +31,7 @@ check('the achievement card shows its reward title\'s own picture beside «На�
 
 // ------------------------------------------------------------- 2. PRIME TIME STAR
 check('the cause: MY COLLECTION drew a career stage\'s emblem even when the achievement had its picture — the own picture now comes first', /const own = achievementArt\(a, 64\);\s*const art = own\s*\? own\s*: stage && CAREER_STAGES\.some/.test(cs));
-check('the career stage PRIME TIME STAR wears achievement_prime_time_star.png (RISING keeps its emblem)', achievementArtId({ id: 'career-star' }) === 'career_star' && achievementArtId({ id: 'career-rising' }) === null && manifest.icons.achievements.career_star.src === 'PRIME_TIME_2_2_ART_ASSETS/achievement_prime_time_star.png');
+check('the career stage PRIME TIME STAR wears achievement_prime_time_star.png (RISING: its stage emblem until Beta 2.3, now achievement_career_rising_broadcast)', achievementArtId({ id: 'career-star' }) === 'career_star' && achievementArtId({ id: 'career-rising' }) === 'career_rising' && manifest.icons.achievements.career_star.src === 'PRIME_TIME_2_2_ART_ASSETS/achievement_prime_time_star.png');
 check('the title PRIME TIME STAR wears the same approved picture in the tile and the big view (not the 1.x star); the two entities stay apart', srcOf(cosmeticPic('title_prime_star', 132)).endsWith('ui/achievements/md/career_star.webp') && srcOf(cosmeticPic('title_prime_star', 56)).endsWith('ui/achievements/sm/career_star.webp') && JSON.stringify(TITLE_PIC_ALIAS) === JSON.stringify({ title_prime_star: ['achievements', 'career_star'] }) && COSMETICS.title_prime_star.source === 'career');
 
 // ------------------------------------------------------------- 3. real previews of frames and card styles
@@ -76,7 +76,7 @@ const walk = (d: string) => {
 };
 walk('public/ui');
 const listed = Object.values(manifest.icons).flatMap((g) => Object.values(g).flatMap((e) => Object.values(e.out).map((o) => `public/${o.file}`)));
-check(`no new picture: ${webp.length} WebP in public/ui = the manifest's (the same 251 as Beta 2.2), each one listed`, webp.length === 251 && listed.length === 251 && listed.every((p) => fs.existsSync(p)));
+check(`every picture listed: ${webp.length} WebP in public/ui = the manifest's (Beta 2.2's 251 + Beta 2.3's 44 — npm run art24 checks the 251 are byte-for-byte the same), each one exists`, webp.length === 295 && listed.length === 295 && listed.every((p) => fs.existsSync(p)));
 
 let failed = 0;
 for (const [name, pass] of checks) {

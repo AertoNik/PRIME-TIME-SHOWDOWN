@@ -66,12 +66,13 @@ check('every WebP copy exists in public/ui with the size of its group (artIcons.
 
 // ------------------------------------------------------------- nothing earlier changed
 // (Beta 2.2 final's batch PRIME_TIME_2_3_WINTER_COLLECTION_ART is checked by npm run art23 — it adds, never replaces)
-const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_WINTER_COLLECTION_ART/'));
+// (Beta 2.3's PRIME_TIME_2_3_UI_MODE_ART_REFINED is checked by npm run art24 — it adds, never replaces)
+const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_WINTER_COLLECTION_ART/') && !e.src.startsWith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/'));
 const groups = [...new Set(older.map(([g]) => g))].sort();
 const canon = JSON.stringify(groups.map((g) => [g, older.filter(([gg]) => gg === g).map(([, i, e]) => [i, e.src, e.sha256, Object.keys(e.out).sort().map((k) => [k, e.out[k].sha256])] as const).sort((a, b) => (a[0] < b[0] ? -1 : 1))]));
 check(`the 87 earlier icon entries are exactly as Beta 2.1 published them (fingerprint 06f9576d…; ${older.length} entries)`, older.length === 87 && crypto.createHash('sha256').update(canon).digest('hex') === '06f9576d0f544523e9df80e75a2dce3458d11048ac5b7b53d9dbfd61dbd1b14c');
 check('the 1.9.9 cards and arena previews are untouched (fingerprint 9d3ab0a8…)', crypto.createHash('sha256').update(JSON.stringify([manifest.cards, manifest.arenas])).digest('hex') === '9d3ab0a82d280c676c8966ca62f77a905e14bab8f7c1f559a66ba5c11ae61d72');
-check('the mode icons «Карьера» and «PRIME LEAGUE» keep their Beta 2.0 pictures', manifest.icons.modes.career.src.endsWith('career_mode_emblem.png') && manifest.icons.modes.league.src.endsWith('league_mode_emblem.png') && Object.keys(manifest.icons.modes).join() === 'career,league');
+check('the mode icons «Карьера» and «PRIME LEAGUE» keep their Beta 2.0 pictures', manifest.icons.modes.career.src.endsWith('career_mode_emblem.png') && manifest.icons.modes.league.src.endsWith('league_mode_emblem.png') && Object.keys(manifest.icons.modes).slice(0, 2).join() === 'career,league' /* Beta 2.3 appends the five modes' own */);
 
 // ------------------------------------------------------------- the mapping (real ids only)
 const at = (g: string, i: string) => manifest.icons[g]?.[i]?.src.slice(DIR.length + 1) ?? '';
@@ -80,7 +81,7 @@ const store = { data: save, save: () => {} } as never;
 const ach = new Collection(store).achievements();
 // (Beta 2.2 mini hotfix: achievement_prime_legend.png is the PRIME LEGEND achievement «Победитель легенды» — id prime_legend;
 // LEGENDARY PRODUCTION keeps its stage emblem)
-check('PRIME TIME STAR: the career stage\'s achievement wears achievement_prime_time_star; «Победитель легенды» (boss-vale) achievement_prime_legend; LEGENDARY PRODUCTION its stage emblem', ach.some((a) => a.id === 'career-star') && ach.some((a) => a.id === 'boss-vale') && at('achievements', 'career_star') === 'achievement_prime_time_star.png' && at('achievements', 'prime_legend') === 'achievement_prime_legend.png' && !('career_legendary' in manifest.icons.achievements) && achievementArtId({ id: 'boss-vale' }) === 'prime_legend' && achievementArtId({ id: 'career-legendary' }) === null && srcOf(achievementArt({ id: 'career-star', art: 'career', title: '' }, 64) ?? '').endsWith('ui/achievements/sm/career_star.webp') && achievementArtId({ id: 'career-rising' }) === null);
+check('PRIME TIME STAR: the career stage\'s achievement wears achievement_prime_time_star; «Победитель легенды» (boss-vale) achievement_prime_legend; LEGENDARY PRODUCTION its stage emblem', ach.some((a) => a.id === 'career-star') && ach.some((a) => a.id === 'boss-vale') && at('achievements', 'career_star') === 'achievement_prime_time_star.png' && at('achievements', 'prime_legend') === 'achievement_prime_legend.png' && !('career_legendary' in manifest.icons.achievements) && achievementArtId({ id: 'boss-vale' }) === 'prime_legend' && achievementArtId({ id: 'career-legendary' }) === null && srcOf(achievementArt({ id: 'career-star', art: 'career', title: '' }, 64) ?? '').endsWith('ui/achievements/sm/career_star.webp') && achievementArtId({ id: 'career-rising' }) === 'career_rising' /* Beta 2.3 */);
 const goalMap: Record<string, [string, string]> = {
   rating_70: ['golden_rating', 'Золотая звезда стремительного роста.png'],
   perfect_3: ['perfect_timing', 'season_goal_perfect_timing.png'],

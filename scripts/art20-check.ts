@@ -62,11 +62,13 @@ for (const [group, ids] of Object.entries(manifest.icons)) {
     for (const [size, o] of Object.entries(e.out)) {
       count++;
       const p = `public/${o.file}`;
-      if (o.file !== `ui/${group}/${size}/${id}.webp` || !fs.existsSync(p) || sha(p) !== o.sha256 || o.w !== o.h || o.w !== manifest.icon.sizes[group]?.[size]) copies = false;
+      // (Beta 2.3: the bottom bar's skins «nav» are wide button faces — sized by height, checked by npm run art24)
+      const sized = group === 'nav' ? o.h === (manifest.icon as { navHeights?: Record<string, number> }).navHeights?.[size] : o.w === o.h && o.w === manifest.icon.sizes[group]?.[size];
+      if (o.file !== `ui/${group}/${size}/${id}.webp` || !fs.existsSync(p) || sha(p) !== o.sha256 || !sized) copies = false;
     }
   }
 }
-check(`every WebP copy exists, square, sized and byte-identical to the manifest (${count} files)`, copies && count > 0);
+check(`every WebP copy exists, square (the nav skins: their height), sized and byte-identical to the manifest (${count} files)`, copies && count > 0);
 check('the module and the script agree on the groups and sizes', JSON.stringify(ICON_SIZES) === JSON.stringify(manifest.icon.sizes));
 const file = (group: IconGroup, id: string, px: number) => fs.existsSync(`public/ui/${group}/${iconVariant(group, px)}/${id}.webp`);
 
@@ -128,7 +130,7 @@ const ach = col.achievements();
 const ACH_IDS = [...Object.values(BOSSES).map((b) => `boss-${b.id}`), 'survival-clear', ...CHALLENGES.map((c) => `challenge-${c.id}`), 'career-rising', 'career-star', 'career-legendary'];
 // (Beta 2.2: PRIME TIME STAR and LEGENDARY PRODUCTION got the owner's pictures; RISING BROADCAST keeps its stage emblem)
 // (Beta 2.2 adds exactly four MASTERY achievements after them — npm run ach22; they have no picture of the owner yet)
-check(`the achievements are the same ${ACH_IDS.length} (+ Beta 2.2's four MASTERY ones: «Комбо-шоу» and «Пять чемпионских эфиров» the final batch's pictures, the other two none); the career stages: rising / legendary their stage emblems, star the Beta 2.2 picture; «Победитель легенды» the PRIME LEGEND achievement picture (mini hotfix)`, ach.map((a) => a.id).join() === [...ACH_IDS, 'mastery-roster', 'mastery-combo', 'mastery-rating', 'mastery-champion'].join() && ['mastery-roster', 'mastery-rating'].every((id) => achievementArtId({ id }) === null) && achievementArtId({ id: 'mastery-combo' }) === 'mastery_combo' && achievementArtId({ id: 'mastery-champion' }) === 'mastery_champion' && achievementArtId({ id: 'career-rising' }) === null && achievementArtId({ id: 'career-star' }) === 'career_star' && achievementArtId({ id: 'career-legendary' }) === null && achievementArtId({ id: 'boss-vale' }) === 'prime_legend');
+check(`the achievements are the same ${ACH_IDS.length} (+ Beta 2.2's four MASTERY ones: «Комбо-шоу» and «Пять чемпионских эфиров» the final batch's pictures, the other two none); the career stages: rising / legendary their stage emblems, star the Beta 2.2 picture; «Победитель легенды» the PRIME LEGEND achievement picture (mini hotfix)`, ach.map((a) => a.id).join() === [...ACH_IDS, 'mastery-roster', 'mastery-combo', 'mastery-rating', 'mastery-champion'].join() && achievementArtId({ id: 'mastery-roster' }) === 'mastery_roster' && achievementArtId({ id: 'mastery-rating' }) === 'mastery_rating' /* Beta 2.3 */ && achievementArtId({ id: 'mastery-combo' }) === 'mastery_combo' && achievementArtId({ id: 'mastery-champion' }) === 'mastery_champion' && achievementArtId({ id: 'career-rising' }) === 'career_rising' /* Beta 2.3 */ && achievementArtId({ id: 'career-star' }) === 'career_star' && achievementArtId({ id: 'career-legendary' }) === null && achievementArtId({ id: 'boss-vale' }) === 'prime_legend');
 const achWant: Record<string, string> = { 'survival-clear': 'survival', 'challenge-energy_rush': 'energy_rush', 'challenge-high_stakes': 'high_stakes', 'challenge-spotlight': 'spotlight' };
 // (Beta 2.2 mini hotfix: Victor Vale's achievement wears the owner's PRIME LEGEND achievement picture, achievement_prime_legend.png)
 for (const b of Object.values(BOSSES)) achWant[`boss-${b.id}`] = b.id === 'vale' ? 'prime_legend' : 'boss';

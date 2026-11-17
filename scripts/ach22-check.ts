@@ -28,7 +28,7 @@ const goalRep = GOALS.map((g) => g.reward.rep);
 check('every reward is on the scale of the «Цели сезона» (money and ★ within their range)', MASTERY.every((m) => m.reward.money >= Math.min(...goalMoney) && m.reward.money <= Math.max(...goalMoney) && m.reward.rep >= Math.min(...goalRep) && m.reward.rep <= Math.max(...goalRep)));
 check('each one names why it cannot be farmed', MASTERY.every((m) => m.antiFarm.length > 10));
 // (Beta 2.2 final: the owner's last batch has «Комбо-шоу» and «Пять чемпионских эфиров»; the other two keep the drawing)
-check('pictures only where the owner made one: mastery-combo / mastery-champion theirs, «Полный состав» / «Идеальный эфир» the game\'s drawing (no borrowed picture)', achievementArtId({ id: 'mastery-combo' }) === 'mastery_combo' && achievementArtId({ id: 'mastery-champion' }) === 'mastery_champion' && achievementArtId({ id: 'mastery-roster' }) === null && achievementArtId({ id: 'mastery-rating' }) === null);
+check('pictures only where the owner made one: mastery-combo / mastery-champion theirs, «Полный состав» / «Идеальный эфир» the game\'s drawing (no borrowed picture)', achievementArtId({ id: 'mastery-combo' }) === 'mastery_combo' && achievementArtId({ id: 'mastery-champion' }) === 'mastery_champion' && achievementArtId({ id: 'mastery-roster' }) === 'mastery_roster' && achievementArtId({ id: 'mastery-rating' }) === 'mastery_rating' /* Beta 2.3: the owner's pictures */);
 
 // ------------------------------------------------------------------ conditions and claims
 const fresh = defaultSave();
