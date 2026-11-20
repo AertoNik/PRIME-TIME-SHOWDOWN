@@ -32,32 +32,7 @@ import type { ArenaTheme } from '../../config/themes.config';
 import { Rng } from '../../core/math';
 import { canvasTexture } from '../textures';
 import { pointOnRing } from './CasinoStage';
-import {
-  colorCones,
-  drawNeon,
-  flatExtrude,
-  floorCanvas,
-  floorMesh,
-  FLOOR_TOP,
-  GROUND_Y,
-  insetPath,
-  landingY,
-  makeSpotCone,
-  merge,
-  neonMaterial,
-  tint,
-  paintTexture,
-  Pieces,
-  ringShape,
-  Stage,
-  surfaceY,
-  swingCones,
-  WALL_TOP,
-  type DebrisShape,
-  type DecorLayout,
-  type SpotCone,
-  type StageShared,
-} from './StageKit';
+import { colorCones, drawNeon, flatExtrude, floorCanvas, floorMesh, FLOOR_TOP, GROUND_Y, insetPath, landingY, makeSpotCone, merge, neonMaterial, tint, paintTexture, Pieces, ringShape, Stage, surfaceY, swingCones, WALL_TOP, type DebrisShape, type DecorLayout, type SpotCone, type StageShared, dropMaterial } from './StageKit';
 
 // Alpha 1.9.7 — HOLIDAY BROADCAST, the New Year set of WINTER SHOWDOWN: a luxury studio a minute before midnight.
 // Deep navy-violet floor with frost-blue light lines and a gold snowflake, a barrier wrapped in a twinkling garland,
@@ -1911,7 +1886,7 @@ export class HolidayStage extends Stage {
       const mm = m as Material & { map?: { dispose(): void } | null; emissiveMap?: { dispose(): void } | null };
       mm.map?.dispose();
       mm.emissiveMap?.dispose();
-      m.dispose();
+      dropMaterial(m);
     }
   }
 }

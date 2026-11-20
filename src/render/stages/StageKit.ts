@@ -863,11 +863,26 @@ export abstract class Stage {
     for (const m of mats) {
       const mm = m as Material & { map?: Texture | null; emissiveMap?: Texture | null; alphaMap?: Texture | null };
       for (const t of [mm.map, mm.emissiveMap, mm.alphaMap]) if (t && !this.sh.owned.has(t)) t.dispose();
-      m.dispose();
+      dropMaterial(m);
     }
     this.group.removeFromParent();
     this.group.clear();
   }
+}
+
+/**
+ * Beta 2.5.5 — a set's material is let go WITHOUT `material.dispose()` (its textures are freed by the caller, its
+ * geometry too). three.js frees a shader program when the last material using it is disposed, so every return to a
+ * set compiled its shaders again: the first frame of the match intro took 0.15–0.75 s on a desktop (perf255 —
+ * docs/beta255/perf255.md), longer on a phone. Kept, a program is reused by the next material with the same shader —
+ * one per distinct shader, a bounded set across the seven sets — and the material object itself is collected (three.js
+ * keeps its GPU-side record in a WeakMap). The exception: a material the shadow pass copies into a depth material of
+ * its own (alpha test, displacement, clipping, alpha to coverage — HAUNTED's bats) is disposed as before, or that copy
+ * would never be released.
+ */
+export function dropMaterial(m: Material): void {
+  const mm = m as Material & { displacementMap?: Texture | null; clipShadows?: boolean };
+  if (m.alphaTest > 0 || mm.displacementMap || m.alphaToCoverage || mm.clipShadows) m.dispose();
 }
 
 /**

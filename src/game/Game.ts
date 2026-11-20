@@ -15,8 +15,7 @@ import { Match, type MatchMods } from '../combat/Match';
 import type { CardFailReason, MatchEvent } from '../combat/types';
 import { Rng } from '../core/math';
 import { arenaAvailable, resolveArena, validArenaPref } from '../meta/ArenaSelection';
-import { CareerSystem, forfeitPart } from '../meta/CareerSystem';
-import { REWARDS } from '../config/career';
+import { CareerSystem } from '../meta/CareerSystem';
 import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { SeasonRuntime } from './SeasonRuntime';
@@ -36,6 +35,7 @@ import type { FighterRig } from '../render/FighterModel';
 import { Vector3, type Object3D } from 'three';
 import { renderPortraits } from '../render/PortraitStudio';
 import { Renderer, type QualitySetting } from '../render/Renderer';
+import { tooEarly } from '../render/framePacing';
 import { Showcase } from '../render/Showcase';
 import { VFX } from '../render/VFX';
 import { BattleHUD } from '../ui/screens/BattleHUD';
@@ -321,6 +321,9 @@ export class Game {
       this.title.setProgress(0.4 + (i / ALL_LOOKS.length) * 0.35);
       await nextFrame();
     }
+    // Beta 2.5.5: and the career's NEXT rival — the first fight against a rival not drawn yet froze the intro's first
+    // frame (≈ 50–60 ms measured, warmed: 7 ms — docs/beta255/perf255.md)
+    this.warmNextRival();
     this.portraits = renderPortraits(this.renderer, this.models, ALL_LOOKS);
     this.title.setProgress(0.85);
     await nextFrame();
@@ -715,6 +718,23 @@ export class Game {
   }
 
   /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
+  /** Rivals already drawn this session (warmed, or fought on stage). */
+  private warmedRivals = new Set<string>();
+
+  /**
+   * Beta 2.5.5 — the career's next rival is drawn once before its fight (at boot behind the loading screen, then on the
+   * results screen when the next rival changes): only the four career rivals, each once a session, and never a rig that
+   * is on stage now. The same memory the fight itself would take a moment later.
+   */
+  private warmNextRival(): void {
+    const id = this.save.data.nextRival;
+    if (!id || id in FIGHTERS || this.warmedRivals.has(id) || !(ALL_LOOKS as readonly string[]).includes(id)) return;
+    const rig = this.models.get(id).rig;
+    if (rig.root.parent) return;
+    this.warmedRivals.add(id);
+    this.warmRig(rig);
+  }
+
   /**
    * Beta 2.5: draws a fighter ONCE, out of sight behind the camera, while the game loads. The GPU sets up a material's
    * pipeline and uploads its buffers on its first real draw — 30–60 ms per fighter (measured; renderer.compile() does not
@@ -1018,7 +1038,7 @@ export class Game {
            ${
              tut
                ? '<button class="btn ghost wide" data-a="skip">Пропустить обучение</button>'
-               : '<button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Сдаться</button>'
+               : '<button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Выйти из боя</button>'
            }
          </div>`,
         (root, close) => {
@@ -1045,25 +1065,20 @@ export class Game {
             } else if (a === 'forfeit') {
               close();
               const kind = this.matchMeta?.mode.kind;
-              // Alpha 1.9.9: the career pays a forfeit by the seconds really fought (REWARDS.forfeit) — say it before
-              const part = forfeitPart(this.match?.time ?? 0);
-              const pay =
-                part <= 0
-                  ? ` Бой идёт меньше ${REWARDS.forfeit.freeS} с — сдача сейчас без гонорара.`
-                  : part < 1
-                    ? ` Гонорар — ${Math.round(REWARDS.forfeit.share * part * 100)}% от поражения (полные ${Math.round(REWARDS.forfeit.share * 100)}% — с ${REWARDS.forfeit.fullS}-й секунды боя).`
-                    : '';
+              // Beta 2.5.5: leaving is allowed at any second; a career fight left is a technical loss with nothing paid
+              // (REWARDS.forfeit) — the rule is said before, simply: finishing a fight always pays more than leaving it
+              const none = ' Без гонорара, фанатов, репутации и прогресса целей — выгоднее довести бой до конца.';
               const text =
                 kind === 'league'
-                  ? 'Бой будет засчитан как поражение. Сервер запишет сдачу в журнал эфира.'
+                  ? 'Бой будет засчитан как поражение. Сервер запишет выход в журнал эфира.'
                   : kind === 'survival'
                   ? 'Марафон закончится. Награда — только за уже пройденные волны.'
                   : kind === 'challenge'
-                    ? 'Испытание не будет пройдено, а гонорар — урезан.' + pay
+                    ? 'Испытание не будет пройдено: технический проигрыш.' + none
                     : kind === 'boss'
-                      ? 'Чемпион сохранит титул: бой засчитан как поражение, гонорар урезан.' + pay
-                      : 'Бой будет засчитан как поражение, а гонорар — урезан.' + pay;
-              this.confirm('Сдаться?', text, 'Сдаться', () => {
+                      ? 'Чемпион сохранит титул: технический проигрыш.' + none
+                      : 'Бой будет засчитан как технический проигрыш.' + none;
+              this.confirm('Выйти из боя?', text, 'Выйти', () => {
                 this.paused = false;
                 if (this.matchMeta?.mode.kind === 'league' && this.match) this.league.forfeitTap(this.match.steps);
                 this.match?.forfeit();
@@ -1154,6 +1169,11 @@ export class Game {
     this.matchEventId = null;
     this.enterResultsView(m.result.outcome);
     this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
+    // Beta 2.5.5: the rival just fought is drawn already; the next one is drawn now, on the still results screen
+    if (meta.rival) this.warmedRivals.add(meta.rival);
+    setTimeout(() => {
+      if (this.screen === 'results') this.warmNextRival();
+    }, 1200);
     // Alpha 1.9.7 (R-22): a secure event's fight goes to the server, which pays it; the results show its answer
     if (eventOutcome?.secure && !eventOutcome.secure.guest)
       void this.season.report(eventOutcome).then((r) => {
@@ -1246,7 +1266,7 @@ export class Game {
          <div class="seg-control" style="grid-template-columns:repeat(4,1fr)">${qBtn('auto', 'Авто')}${qBtn('high', 'Высок.')}${qBtn('medium', 'Средн.')}${qBtn('low', 'Низк.')}</div>
          <div style="padding:12px 0 4px" class="label">Движение камеры</div>
          <div class="seg-control">${camBtn('full', 'Полное')}${camBtn('reduced', 'Сниженное')}${camBtn('off', 'Без тряски')}</div>
-         <div class="muted" style="font-size:11px;margin-top:6px">Сейчас: ${this.renderer.quality === 'high' ? 'высокое' : this.renderer.quality === 'medium' ? 'среднее' : 'низкое'}${this.save.persistent ? '' : ' · ⚠ сохранения недоступны в этом режиме браузера'}</div>
+         <div class="muted" style="font-size:11px;margin-top:6px">Сейчас: ${this.renderer.quality === 'high' ? 'высокое' : this.renderer.quality === 'medium' ? 'среднее' : 'низкое'}${this.renderer.frameInterval > 0 ? ' · ровные 30 кадров/с' : ''}${this.save.persistent ? '' : ' · ⚠ сохранения недоступны в этом режиме браузера'}</div>
          <div class="modal-actions">
            <button class="btn ghost wide" data-a="help">Как играть</button>
            <button class="btn ghost wide" data-a="tutorial">Пройти обучение</button>
@@ -1381,6 +1401,12 @@ export class Game {
   // ------------------------------------------------------------------ loop
   private loop = (): void => {
     const now = performance.now();
+    // Beta 2.5.5: paced to an even 30 fps (the automatic quality on a device that struggles at its lowest — see
+    // src/render/framePacing.ts): a refresh that comes too early is skipped, the frame waits for the next one
+    if (tooEarly((now - this.last) / 1000, this.renderer.frameInterval)) {
+      this.scheduleNext();
+      return;
+    }
     const dtReal = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
     this.last = now;
     this.frame(dtReal, now / 1000);

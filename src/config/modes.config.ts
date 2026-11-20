@@ -67,11 +67,11 @@ export const SURVIVAL = {
   tagline: 'Телемарафон: один боец против пяти соперников подряд. Здоровье не восстанавливается полностью — сколько вы продержитесь?',
   /** Five duels in a row, each a little tougher. Tuned with `npm run modes`. */
   waves: [
-    { difficulty: 'rookie', hpMult: 0.85, dmgMult: 0.9, reward: { money: 150, fans: 130, rep: 8 } },
-    { difficulty: 'rookie', hpMult: 1.0, dmgMult: 1.0, reward: { money: 180, fans: 160, rep: 10 } },
-    { difficulty: 'pro', hpMult: 0.9, dmgMult: 0.95, reward: { money: 260, fans: 200, rep: 13 } },
-    { difficulty: 'pro', hpMult: 1.0, dmgMult: 1.0, reward: { money: 320, fans: 240, rep: 16 } },
-    { difficulty: 'pro', hpMult: 1.1, dmgMult: 1.05, reward: { money: 400, fans: 290, rep: 20 } },
+    { difficulty: 'rookie', hpMult: 0.85, dmgMult: 0.9, reward: { money: 35, fans: 130, rep: 8 } },
+    { difficulty: 'rookie', hpMult: 1.0, dmgMult: 1.0, reward: { money: 40, fans: 160, rep: 10 } },
+    { difficulty: 'pro', hpMult: 0.9, dmgMult: 0.95, reward: { money: 55, fans: 200, rep: 13 } },
+    { difficulty: 'pro', hpMult: 1.0, dmgMult: 1.0, reward: { money: 70, fans: 240, rep: 16 } },
+    { difficulty: 'pro', hpMult: 1.1, dmgMult: 1.05, reward: { money: 85, fans: 290, rep: 20 } },
   ] as SurvivalWave[],
   /** HP restored after every cleared wave (fraction of max HP, never above max). */
   healBetween: 0.2,
@@ -80,11 +80,13 @@ export const SURVIVAL = {
   /** Reputation per show-rating point of each cleared wave. */
   ratingRep: 1 / 16,
   /** All five waves cleared. */
-  completion: { money: 500, fans: 400, rep: 25 } as ModeReward,
+  // (Beta 2.5.5: SURVIVAL's dollars scaled like a career fight's — about a fifth; fans, reputation and the one-time first
+  // clear unchanged. Beta 2.5: waves 150 / 180 / 260 / 320 / 400, completion 500, participation 60)
+  completion: { money: 110, fans: 400, rep: 25 } as ModeReward,
   /** Paid once per career: the first full clear. */
   firstClear: { money: 600, fans: 0, rep: 40 } as ModeReward,
   /** No wave cleared: a small appearance fee (same idea as the classic loss purse). */
-  participation: { money: 60, fans: 40, rep: 2 } as ModeReward,
+  participation: { money: 15, fans: 40, rep: 2 } as ModeReward,
 };
 
 // ----------------------------------------------------------- PRIME CHALLENGE

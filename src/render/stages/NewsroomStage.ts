@@ -26,32 +26,7 @@ import { ARENA, COVER_TUNING } from '../../config/balance';
 import type { ArenaTheme } from '../../config/themes.config';
 import { Rng } from '../../core/math';
 import { canvasTexture } from '../textures';
-import {
-  colorCones,
-  drawNeon,
-  flatExtrude,
-  floorCanvas,
-  floorMesh,
-  FLOOR_TOP,
-  GROUND_Y,
-  insetPath,
-  landingY,
-  makeSpotCone,
-  merge,
-  mergeStatic,
-  neonMaterial,
-  paintTexture,
-  Pieces,
-  ringShape,
-  Stage,
-  surfaceY,
-  swingCones,
-  WALL_TOP,
-  type DebrisShape,
-  type DecorLayout,
-  type SpotCone,
-  type StageShared,
-} from './StageKit';
+import { colorCones, drawNeon, flatExtrude, floorCanvas, floorMesh, FLOOR_TOP, GROUND_Y, insetPath, landingY, makeSpotCone, merge, mergeStatic, neonMaterial, paintTexture, Pieces, ringShape, Stage, surfaceY, swingCones, WALL_TOP, type DebrisShape, type DecorLayout, type SpotCone, type StageShared, dropMaterial } from './StageKit';
 
 // Alpha 1.9.8 — NEON NEWSROOM, a permanent set: a big, expensive retro-futuristic TV newsroom of PRIME TIME turned
 // into a fighting floor. A glossy navy LED floor with a glowing cyan grid and a wireframe news globe in the middle; a
@@ -1868,7 +1843,7 @@ export class NewsroomStage extends Stage {
       const mm = m as Material & { map?: { dispose(): void } | null; emissiveMap?: { dispose(): void } | null };
       if (mm.map && !this.sh.owned.has(mm.map as never)) mm.map.dispose();
       mm.emissiveMap?.dispose();
-      m.dispose();
+      dropMaterial(m);
     }
   }
 }

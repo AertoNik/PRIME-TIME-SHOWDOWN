@@ -77,6 +77,19 @@ export function careerLines(er: MatchEarnings, f: SeasonFight): { label: string;
 }
 
 /** Currency a settled PRIME LEAGUE fight pays before the daily cap. */
+/**
+ * Beta 2.5.5 — what a fight's `amount` of tokens pays when `today` were already paid on this day: in full up to `cap`, and
+ * past it `overRate` of the rest (rounded, at least 1) — so every fight finished to its end earns something. `cap` 0 = no
+ * threshold; `overRate` 0 = the hard daily cap of 1.9.7–2.5 (nothing past it). The server (lib/season.js) pays with this.
+ */
+export function payCapped(amount: number, cap: number, today: number, overRate = 0): number {
+  if (!(amount > 0)) return 0;
+  if (!(cap > 0)) return amount;
+  const full = Math.max(0, Math.min(amount, cap - today));
+  const over = amount - full;
+  return full + (over > 0 && overRate > 0 ? Math.max(1, Math.round(over * overRate)) : 0);
+}
+
 export function leagueCanes(er: MatchEarnings, outcome: 'win' | 'loss' | 'draw'): number {
   const l = er.league;
   if (!l) return 0;

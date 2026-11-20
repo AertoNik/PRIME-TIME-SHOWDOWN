@@ -54,12 +54,15 @@ export const CASE_RARITY_LABEL: Record<CaseRarity, string> = { common: 'Обыч
 
 export const CASES = {
   /** Bumps the server's case rules (a change of any table must be deliberate — npm run cases pins it). */
-  version: 1,
+  // Beta 2.5.5 → 2: the DOLLARS of both cases ×2 (ranges and the big fees; the shares, reputation, tokens and the item
+  // unchanged). A career fight pays about a quarter of Beta 2.5's now: a day's case is worth about one more fight (was
+  // ~0.15), and PRIME INVITE CASE stays above every DAILY sum as in 2.4 (its fee from 850 $, a DAILY sum at most 900 $).
+  version: 2,
   invite: [
-    { id: 'inv_money', kind: 'money', min: 400, max: 700, weight: 4500, rarity: 'common', label: 'Гонорар' },
+    { id: 'inv_money', kind: 'money', min: 850, max: 1400, weight: 4500, rarity: 'common', label: 'Гонорар' },
     { id: 'inv_rep', kind: 'rep', min: 40, max: 80, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
     { id: 'inv_tokens', kind: 'tokens', min: 25, max: 45, weight: 2000, rarity: 'rare', label: 'PRIME TOKENS' },
-    { id: 'inv_jackpot', kind: 'money', min: 1500, max: 1500, weight: 600, rarity: 'epic', label: 'Крупный гонорар' },
+    { id: 'inv_jackpot', kind: 'money', min: 3000, max: 3000, weight: 600, rarity: 'epic', label: 'Крупный гонорар' },
     { id: 'inv_signal', kind: 'item', min: 1, max: 1, weight: 400, rarity: 'legendary', label: 'INVITE SIGNAL', item: 'dash_invite_signal' },
   ] as CaseOutcome[],
   /** DAILY BROADCAST CASE: the table of the tier the streak day falls in (from = the first streak day of the tier). */
@@ -68,30 +71,30 @@ export const CASES = {
       from: 1,
       tier: 1,
       table: [
-        { id: 'day1_money', kind: 'money', min: 80, max: 140, weight: 5500, rarity: 'common', label: 'Гонорар дня' },
+        { id: 'day1_money', kind: 'money', min: 160, max: 280, weight: 5500, rarity: 'common', label: 'Гонорар дня' },
         { id: 'day1_rep', kind: 'rep', min: 10, max: 18, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
         { id: 'day1_tokens', kind: 'tokens', min: 5, max: 8, weight: 1500, rarity: 'rare', label: 'PRIME TOKENS' },
-        { id: 'day1_jackpot', kind: 'money', min: 300, max: 300, weight: 500, rarity: 'epic', label: 'Бонус спонсора' },
+        { id: 'day1_jackpot', kind: 'money', min: 600, max: 600, weight: 500, rarity: 'epic', label: 'Бонус спонсора' },
       ] as CaseOutcome[],
     },
     {
       from: 7,
       tier: 2,
       table: [
-        { id: 'day2_money', kind: 'money', min: 90, max: 160, weight: 5200, rarity: 'common', label: 'Гонорар дня' },
+        { id: 'day2_money', kind: 'money', min: 180, max: 320, weight: 5200, rarity: 'common', label: 'Гонорар дня' },
         { id: 'day2_rep', kind: 'rep', min: 12, max: 22, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
         { id: 'day2_tokens', kind: 'tokens', min: 6, max: 10, weight: 1700, rarity: 'rare', label: 'PRIME TOKENS' },
-        { id: 'day2_jackpot', kind: 'money', min: 350, max: 350, weight: 600, rarity: 'epic', label: 'Бонус спонсора' },
+        { id: 'day2_jackpot', kind: 'money', min: 700, max: 700, weight: 600, rarity: 'epic', label: 'Бонус спонсора' },
       ] as CaseOutcome[],
     },
     {
       from: 30,
       tier: 3,
       table: [
-        { id: 'day3_money', kind: 'money', min: 110, max: 190, weight: 5000, rarity: 'common', label: 'Гонорар дня' },
+        { id: 'day3_money', kind: 'money', min: 220, max: 380, weight: 5000, rarity: 'common', label: 'Гонорар дня' },
         { id: 'day3_rep', kind: 'rep', min: 15, max: 28, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
         { id: 'day3_tokens', kind: 'tokens', min: 8, max: 12, weight: 1800, rarity: 'rare', label: 'PRIME TOKENS' },
-        { id: 'day3_jackpot', kind: 'money', min: 450, max: 450, weight: 700, rarity: 'epic', label: 'Бонус спонсора' },
+        { id: 'day3_jackpot', kind: 'money', min: 900, max: 900, weight: 700, rarity: 'epic', label: 'Бонус спонсора' },
       ] as CaseOutcome[],
     },
   ],

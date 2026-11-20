@@ -17,6 +17,7 @@ import type { CardId, Difficulty, FighterId } from '../../src/config/types';
 import { CareerSystem } from '../../src/meta/CareerSystem';
 import type { SaveSystem } from '../../src/meta/SaveSystem';
 import { MemSave, SESSION_OVERHEAD_S, type FightSample, type Skill } from './economySamples';
+import { dailyTierOf, oddsOf, type CaseOutcome } from '../../src/config/cases.config';
 
 const req = nodeModule.createRequire(path.join(ROOT, 'backend', 'pb_hooks', 'lib', 'x.js'));
 const LIB = './';
@@ -72,12 +73,22 @@ export interface CareerVariant {
   rewards?: Partial<typeof REWARDS>;
   /** Overrides of the price curve (src/config/careerPrices.ts PRICE_TIER) — `{ 2: 1, 3: 1, 4: 1, 5: 1 }` = Alpha 1.9.5. */
   priceTier?: Record<number, number>;
+  /** Overrides of the SURVIVAL dollars (src/config/modes.config.ts): the five waves, the completion, the participation. */
+  survival?: { waves: number[]; completion: number; participation: number };
 }
+
+/**
+ * The career dollars as released up to Beta 2.5 (Alpha 1.9.6 … Beta 2.5): the fight's REWARDS and the SURVIVAL dollars
+ * before Beta 2.5.5 cut them — the model's «before» whatever the config says now (npm run economy:255).
+ */
+export const REWARDS_25: Partial<typeof REWARDS> = { purse: { win: 150, draw: 80, loss: 50 }, koBonus: 40, ratingMoney: 2.2, comboMoney: 25, comboCap: 5, starPowerK: 1.25, starPowerCap: 160 };
+export const SURVIVAL_25 = { waves: [150, 180, 260, 320, 400], completion: 500, participation: 60 };
+export const CAREER_25: CareerVariant = { id: '25', ru: 'Beta 2.5 (до)', rewards: REWARDS_25, survival: SURVIVAL_25 };
 
 /** Alpha 1.9.5: every career item at its base price (no tiers). */
 export const PRICES_195: Record<number, number> = { 2: 1, 3: 1, 4: 1, 5: 1 };
 /** The whole career of Alpha 1.9.5: base prices, fight dollars ×1 / ×1.6 / ×2.4 by difficulty, sponsors up to 240. */
-export const CAREER_195: CareerVariant = { id: '195', ru: 'Alpha 1.9.5 (до)', priceTier: PRICES_195, rewards: { difficultyMoney: { rookie: 1, pro: 1.6, champion: 2.4 }, starPowerCap: 240 } };
+export const CAREER_195: CareerVariant = { id: '195', ru: 'Alpha 1.9.5 (до)', priceTier: PRICES_195, rewards: { ...REWARDS_25, difficultyMoney: { rookie: 1, pro: 1.6, champion: 2.4 }, starPowerCap: 240 }, survival: SURVIVAL_25 };
 
 export interface CareerRun {
   archetype: Archetype['id'];
@@ -145,7 +156,22 @@ function levelOf(rep: number): number {
 
 /** A career of `days` game days for archetype `a` (career fights only; the daily money comes from `daily`). */
 export function runCareer(a: Archetype, samples: Record<Difficulty, Record<Skill, FightSample[]>>, variant: CareerVariant, days: number, daily: (day: number) => number): CareerRun {
-  return withTier(variant.priceTier, () => runCareerNow(a, samples, variant, days, daily));
+  return withTier(variant.priceTier, () => withSurvival(variant.survival, () => runCareerNow(a, samples, variant, days, daily)));
+}
+
+function withSurvival<T>(m: CareerVariant['survival'], fn: () => T): T {
+  if (!m) return fn();
+  const saved = { waves: SURVIVAL.waves.map((w) => w.reward.money), completion: SURVIVAL.completion.money, participation: SURVIVAL.participation.money };
+  SURVIVAL.waves.forEach((w, i) => (w.reward.money = m.waves[i]));
+  SURVIVAL.completion.money = m.completion;
+  SURVIVAL.participation.money = m.participation;
+  try {
+    return fn();
+  } finally {
+    SURVIVAL.waves.forEach((w, i) => (w.reward.money = saved.waves[i]));
+    SURVIVAL.completion.money = saved.completion;
+    SURVIVAL.participation.money = saved.participation;
+  }
 }
 
 function runCareerNow(a: Archetype, samples: Record<Difficulty, Record<Skill, FightSample[]>>, variant: CareerVariant, days: number, daily: (day: number) => number): CareerRun {
@@ -350,7 +376,19 @@ export interface DailyRun {
  * The server's own streak (lib/daily.js apply — with ITS rules: the shipped daily_rules.js or a variant) for a player
  * who claims on the play days of `a.week`. Returns the money of each game day too.
  */
-export function runDaily(a: Archetype, days: number, rules = DAILY_RULES): DailyRun & { byDay: number[] } {
+/**
+ * Beta 2.4 cases: with PRIME_CASES on (production) an ORDINARY day's dollars are replaced by the day's DAILY BROADCAST
+ * CASE (lib/daily.js withDailyCase); the weekly gift and the milestones keep their dollars. The case's DOLLAR value is
+ * its expected money (the server's odds: tokens on, nothing owned; reputation and tokens are counted apart).
+ */
+export function caseMoneyEV(table: CaseOutcome[]): number {
+  return oddsOf(table, { owned: [], tokens: true }).reduce((t, o) => t + (o.outcome.kind === 'money' ? ((o.outcome.min + o.outcome.max) / 2) * (o.share / 10000) : 0), 0);
+}
+export function dailyCaseMoney(streakDay: number): number {
+  return caseMoneyEV(dailyTierOf(streakDay).table);
+}
+
+export function runDaily(a: Archetype, days: number, rules = DAILY_RULES, opts: { cases?: boolean } = {}): DailyRun & { byDay: number[] } {
   let st = DAILY_SERVER.emptyState();
   const byDay: number[] = [0];
   let money = 0;
@@ -363,7 +401,7 @@ export function runDaily(a: Archetype, days: number, rules = DAILY_RULES): Daily
       const r = DAILY_SERVER.apply(st, 20000 + d, rules);
       if (r) {
         st = r.state;
-        got = r.claim.money;
+        got = opts.cases && r.claim.kind === 'daily' ? dailyCaseMoney(r.claim.streakDay) : r.claim.money;
         money += got;
         if (r.claim.reset) resets++;
         if (r.claim.milestone && milestoneDay[r.claim.milestone] === null) milestoneDay[r.claim.milestone] = d;
@@ -424,7 +462,8 @@ export function runLeague(a: Archetype, v: LeagueVariant, days = LEAGUE_RULES.se
       tok += T[o];
       air += A[o];
     }
-    const paid = Math.min(tok, T.attackPerDay);
+    // (as the server's payTokens: a cap of 0 = no daily cap — Beta 2.5.5)
+    const paid = T.attackPerDay > 0 ? Math.min(tok, T.attackPerDay) : tok;
     let airPaid = A.attackPerDay > 0 ? Math.min(air, A.attackPerDay) : air;
     if (A.attackPerWeek > 0) (airPaid = Math.max(0, Math.min(airPaid, A.attackPerWeek - weekGot))), (weekGot += airPaid);
     const def = Math.min(Math.floor(a.defenseWins + (rnd() < a.defenseWins % 1 ? 1 : 0)) * T.defenseWin, T.defensePerDay);
@@ -451,7 +490,7 @@ export function lossFarmPerHour(v: LeagueVariant, lossSeconds: number): { fights
   const T = { ...LEAGUE_RULES.tokens, ...(v.tokens ?? {}) };
   const A = { ...LEAGUE_RULES.air, attackPerDay: 0, ...(v.air ?? {}) };
   const fights = Math.min(LEAGUE_RULES.match.startsPerHour, Math.floor(3600 / (lossSeconds + SESSION_OVERHEAD_S)));
-  return { fights, air: fights * A.loss, tokens: Math.min(fights * T.loss, T.attackPerDay) };
+  return { fights, air: fights * A.loss, tokens: capTokens(fights * T.loss, T.attackPerDay) };
 }
 
 /** An honest hour at 50 % wins (average fight ~70 s + the menus). */
@@ -460,5 +499,10 @@ export function honestPerHour(v: LeagueVariant): { fights: number; air: number; 
   const A = { ...LEAGUE_RULES.air, attackPerDay: 0, ...(v.air ?? {}) };
   const fights = Math.min(LEAGUE_RULES.match.startsPerHour, Math.floor(3600 / (70 + SESSION_OVERHEAD_S)));
   const air = (fights / 2) * (A.win + A.loss);
-  return { fights, air, tokens: Math.min((fights / 2) * (T.win + T.loss), T.attackPerDay) };
+  return { fights, air, tokens: capTokens((fights / 2) * (T.win + T.loss), T.attackPerDay) };
+}
+
+/** As the server's payTokens: a daily cap of 0 means no cap (Beta 2.5.5). */
+function capTokens(tokens: number, perDay: number): number {
+  return perDay > 0 ? Math.min(tokens, perDay) : tokens;
 }

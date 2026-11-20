@@ -122,8 +122,12 @@ check('CLOCKWORK GOLD and FROSTLIGHT LIVE show the game\'s real card / frame dem
 check('CANDY COMET and MIDNIGHT CONFETTI keep their Beta 2.0 previews (not overwritten)', !!EFFECT_ART.dash_candy_comet && !!EFFECT_ART.victory_midnight_confetti && manifest.icons.effects.dash_candy_comet.src.endsWith('/candy_comet.png') && manifest.icons.effects.victory_midnight_confetti.src.endsWith('/midnight_confetti.png'));
 
 // ------------------------------------------------------------- the season's rules are untouched
-const rules = JSON.stringify([winter.start, winter.end, winter.announceDays, winter.currency, winter.earnings, winter.quests.map((q) => [q.id, q.metric, q.target, q.reward]), winter.shop, winter.fighters, winter.grandPrize]);
-check('WINTER SHOWDOWN\'s calendar, 9 quests, earnings and exchange prices are exactly as released in 1.9.7', crypto.createHash('sha256').update(rules).digest('hex').slice(0, 16) === RULES_SHA && winter.quests.length === 9);
+// (Beta 2.5.5 added ONE thing to the earnings: past the day's threshold a fight still pays overRate = ⅒ of its canes,
+// career and league — the 1.9.7 values are hashed without it, the new field is pinned on its own)
+const { overRate: winterOver, league: winterLeague, ...earnings197 } = winter.earnings!;
+const { overRate: leagueOver, ...league197 } = winterLeague!;
+const rules = JSON.stringify([winter.start, winter.end, winter.announceDays, winter.currency, { ...earnings197, league: league197 }, winter.quests.map((q) => [q.id, q.metric, q.target, q.reward]), winter.shop, winter.fighters, winter.grandPrize]);
+check('WINTER SHOWDOWN\'s calendar, 9 quests, earnings and exchange prices are exactly as released in 1.9.7 — plus Beta 2.5.5\'s soft threshold (⅒ past the day\'s 45 / 30, career and league)', crypto.createHash('sha256').update(rules).digest('hex').slice(0, 16) === RULES_SHA && winter.quests.length === 9 && winterOver === 0.1 && leagueOver === 0.1);
 check('«Золотой рейтинг» keeps its Beta 2.2 picture — no new guess without the owner\'s confirmation', CAREER_GOAL_ART.rating_70 === 'golden_rating' && manifest.icons.goals.golden_rating.src.normalize('NFC') === 'PRIME_TIME_2_2_ART_ASSETS/Золотая звезда стремительного роста.png'.normalize('NFC'));
 
 // ------------------------------------------------------------- the menu: the DAILY hint and «Пригласить друга»

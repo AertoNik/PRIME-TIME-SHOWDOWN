@@ -11,7 +11,7 @@ import { EventManager } from '../src/meta/EventManager';
 import { PrimeApi } from '../src/net/PrimeApi';
 import { SeasonRuntime } from '../src/game/SeasonRuntime';
 import { canonicalJSON } from '../src/net/cloudSave';
-import { REPORT_LIMITS } from '../src/season/seasonMath';
+import { REPORT_LIMITS, payCapped } from '../src/season/seasonMath';
 import { SEASON_MATH_FILE, SEASON_RULES_FILE, seasonMathSource, seasonRulesSource } from './backend';
 import { LEGACY_CHECK_ENV, binariesReady, ensurePortsFree, ownServerStarted, registrationExtras, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { crypto, fs, os, path, proc, sleep } from './lib/node';
@@ -170,15 +170,27 @@ async function main(): Promise<void> {
   tick(3600000);
   check('…an hour later (the hourly limit renewed, the bank refilled) the same account reports again', (await report(D)).status === 200);
 
-  section('Дневной лимит и задания (сервер)');
+  section('Дневной порог и задания (сервер)');
+  // Beta 2.5.5: the day's threshold is soft — full canes up to dailyCap, then every fight still pays overRate of its
+  // canes (at least 1). Each report is checked against the shared payCapped (src/season/seasonMath.ts → season_math.js).
+  const CAP = EV.earnings!.dailyCap;
+  const RATE = EV.earnings!.overRate ?? 0;
   let capped = false;
+  let mirror = (await state(A)).dayCareer as number;
+  let paidOk = true;
+  const overPaid: number[] = [];
   for (let i = 0; i < 8; i++) {
     tick(FIGHT_MS);
     const r = await report(A);
+    const amount = (r.j?.lines ?? []).reduce((a: number, l: any) => a + l.value, 0);
+    const want = payCapped(amount, CAP, mirror, RATE);
+    paidOk = paidOk && r.status === 200 && amount > 0 && r.j.paid === want;
+    if (mirror >= CAP) overPaid.push(r.j?.paid);
+    mirror += want;
     capped = capped || r.j?.capped === true;
   }
   const sDay = await state(A);
-  check(`the career's daily cap: never more than ${EV.earnings!.dailyCap} canes of fights in a Moscow day (now ${sDay.dayCareer}, «capped» said)`, sDay.dayCareer === EV.earnings!.dailyCap && capped);
+  check(`the career's daily threshold: full canes up to ${CAP} a Moscow day, then a fight still pays ${Math.round(RATE * 100)} % (≥ 1) — no hard ceiling (now ${sDay.dayCareer}; past the threshold ${overPaid.join(', ')} a fight; «capped» said)`, RATE === 0.1 && paidOk && sDay.dayCareer === mirror && mirror > CAP && overPaid.length >= 3 && overPaid.every((x) => x >= 1 && x <= 2) && capped);
   setClock(START + 86400000 + 3600000);
   const nd = await report(A);
   check('the next Moscow day pays again (the day by the server\'s clock)', nd.j?.paid === 13 && nd.j.state.dayCareer === 13);
@@ -213,16 +225,26 @@ async function main(): Promise<void> {
   const g2 = await call(A, 'POST', '/api/prime/season/grand', { event: EV.id, op: op() });
   check('WINTER CHAMPION: granted once (a repeat is «duplicate»), it costs nothing, the wallet names it', g1.j?.item === 'title_winter_champion' && g2.j?.duplicate === true && g1.j.state.grandClaimed === true && g1.j.state.owned.cosmetics.includes('title_winter_champion') && (await ledger(A, 'grand')).length === 1);
 
-  // two and a half weeks of ordinary play (the daily cap every day) — enough for CRAX and a couple of items
+  // two and a half weeks of ordinary play (past the threshold every day) — enough for CRAX and a couple of items
+  const fights0 = (await state(A)).fights as number;
+  let weeksWant = 0;
+  let weeksOk = true;
   for (let d = 3; d <= 21; d++) {
     setClock(START + d * 86400000 + 3600000);
+    let dayMirror = 0;
     for (let k = 0; k < 4; k++) {
       tick(FIGHT_MS);
-      await report(A);
+      const r = await report(A);
+      if (r.status !== 200) continue;
+      const amount = (r.j.lines ?? []).reduce((a: number, l: any) => a + l.value, 0);
+      const want = payCapped(amount, CAP, dayMirror, RATE);
+      weeksOk = weeksOk && r.j.paid === want;
+      dayMirror += want;
+      weeksWant += want;
     }
   }
   const sWeeks = await state(A);
-  check(`daily caps over the weeks: the wallet grows only by the caps (now ${sWeeks.balance} canes, ${sWeeks.fights} of them from fights)`, sWeeks.balance >= 1300 && sWeeks.fights <= 22 * EV.earnings!.dailyCap);
+  check(`the threshold over the weeks: the wallet grows exactly by the shared rule, day by day (now ${sWeeks.balance} canes; ${sWeeks.fights - fights0} from these 19 days ≤ ${19 * (CAP + 2)})`, sWeeks.balance >= 1300 && weeksOk && sWeeks.fights - fights0 === weeksWant && weeksWant <= 19 * (CAP + 2));
 
   section('Обмен: атомарно, один раз, по цене сервера');
   check('an unknown item is refused (400)', (await call(A, 'POST', '/api/prime/season/exchange', { event: EV.id, op: op(), item: 'frame_spooky' })).status === 400);

@@ -322,7 +322,9 @@ async function serverChecks(): Promise<void> {
   const before = hostAgain.save.data.money;
   const o1 = await hostAgain.sync.openCase('invite');
   const cloud1 = await cloudOf(hostAgain.api);
-  check('a case opens: the server drew «Гонорар» (400–700 $) and wrote it into the cloud save', o1.ok && o1.case.result!.kind === 'money' && o1.case.result!.amount >= 400 && o1.case.result!.amount <= 700 && cloud1.money === before + o1.case.result!.amount);
+  // (Beta 2.5.5, case rules version 2: the invite fee 850–1 400 $, was 400–700 $ — the range is the config's own)
+  const fee = CASES.invite[0];
+  check(`a case opens: the server drew «Гонорар» (${fee.min}–${fee.max} $) and wrote it into the cloud save`, fee.id === 'inv_money' && fee.min === 850 && fee.max === 1400 && o1.ok && o1.case.result!.kind === 'money' && o1.case.result!.amount >= fee.min && o1.case.result!.amount <= fee.max && cloud1.money === before + o1.case.result!.amount);
   check('this device got the same change once: the same money, the case mark 1, the same text as the cloud (synced)', o1.ok && hostAgain.save.data.money === cloud1.money && hostAgain.save.data.cases.n === 1 && hostAgain.sync.status === 'synced');
   const r1 = (await casesOf(hostId, 'status = "opened"'))[0];
   check('the case is marked opened with its result, the request id and the save revision it went into', !!r1 && r1.openOp.startsWith('case_') && r1.result.kind === 'money' && r1.revision === cloud1._rev && (await admin.collection('save_history').getFullList({ filter: `owner = "${hostId}" && reason = "case"` })).length === 1);

@@ -662,6 +662,10 @@ async function serverChecks(): Promise<void> {
   if (fill) await admin.collection('league_ledger').create({ owner: A.id, delta: fill, reason: 'attack', ref: 'check-fill-' + dayNow, balance: pFill.tokens + fill, day: dayNow });
   await admin.collection('league_profiles').update(pFill.id, { tokens: pFill.tokens + fill });
   const tokensBefore = pFill.tokens + fill;
+  // Beta 2.5.5: with no daily cap (attackPerDay 0) the three challenge wins pay their own match tokens too — counted from
+  // the ledger so the +40 is still checked exactly (with a cap, these rows are 0: the day was used up)
+  const attackSum = async () => (await admin.collection('league_ledger').getFullList({ filter: `owner = "${A.id}" && reason = "attack" && day = ${dayNow}` })).reduce((sum: number, l: any) => sum + l.delta, 0);
+  const attackBefore = await attackSum();
   // three wins: promoted (the deciding win is sent four times at once: one settlement, one bonus)
   await admin.collection('league_profiles').update((await prof(A)).id, { rp: 699, challenge: { to: 2, wins: 0, losses: 0, since: clock } });
   let w3 = 0;
@@ -689,7 +693,9 @@ async function serverChecks(): Promise<void> {
   check('3 wins: НОЧНОЙ ЭФИР (700 RP, the floor 700), the ceremony is waiting to be shown once', w3 === 3 && pp.j.rp === 700 && pp.j.floor === 700 && pp.j.ceremony?.kind === 'rank' && pp.j.ceremony?.rank === 2);
   const rows = await chRows();
   const settled = deciding.find((r) => r.status === 200 && !r.j.duplicate && r.j.match?.status === 'done');
-  check(`hotfix: the passed challenge pays +${LEAGUE.tokens.challengeWin} although the day's ${LEAGUE.tokens.attackPerDay} match tokens were used up — one ledger row (season + rank key), the result says so`, rows.length === 1 && rows[0].delta === LEAGUE.tokens.challengeWin && /^s\d+:r2$/.test(rows[0].ref) && pp.j.tokens === tokensBefore + LEAGUE.tokens.challengeWin && settled?.j.match.result?.challengeTokens === LEAGUE.tokens.challengeWin, JSON.stringify({ rows: rows.map((r: any) => [r.delta, r.ref]), tokens: pp.j.tokens, tokensBefore, statuses: deciding.map((r) => `${r.status}${r.j?.code ? ' ' + r.j.code : ''}${r.j?.duplicate ? ' dup' : ''}`) }));
+  const matchTokens = (await attackSum()) - attackBefore;
+  const capOk = LEAGUE.tokens.attackPerDay > 0 ? matchTokens === 0 : matchTokens === 3 * LEAGUE.tokens.win;
+  check(`hotfix: the passed challenge pays +${LEAGUE.tokens.challengeWin} on top of the match tokens (${LEAGUE.tokens.attackPerDay > 0 ? `the day's ${LEAGUE.tokens.attackPerDay} used up: 0` : `no daily cap: 3 wins × ${LEAGUE.tokens.win} = ${matchTokens}`}) — one ledger row (season + rank key), the result says so`, capOk && rows.length === 1 && rows[0].delta === LEAGUE.tokens.challengeWin && /^s\d+:r2$/.test(rows[0].ref) && pp.j.tokens === tokensBefore + matchTokens + LEAGUE.tokens.challengeWin && settled?.j.match.result?.challengeTokens === LEAGUE.tokens.challengeWin, JSON.stringify({ rows: rows.map((r: any) => [r.delta, r.ref]), tokens: pp.j.tokens, tokensBefore, matchTokens, statuses: deciding.map((r) => `${r.status}${r.j?.code ? ' ' + r.j.code : ''}${r.j?.duplicate ? ' dup' : ''}`) }));
   const repeatFinish = await call(A, 'POST', `/api/prime/league/match/${decidingId}/finish`, { inputs: [] });
   check('hotfix: four finishes at once and a later repeat of the deciding match → one settlement, the bonus never twice', deciding.every((r) => r.status === 200 || r.j?.code === 'finishing') && repeatFinish.j.duplicate === true && (await chRows()).length === 1 && (await call(A, 'GET', '/api/prime/league/me')).j.tokens === pp.j.tokens);
   await call(A, 'POST', '/api/prime/league/report/seen', {});

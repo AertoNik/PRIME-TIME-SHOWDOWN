@@ -2,7 +2,9 @@
 //
 // Fails when a later change makes a currency inflate, a reward arrive twice, the season track or the streak too fast or
 // out of reach, the exchange too cheap or unreachable, the fight bundle change, or an earned item collide with a paid one.
-// The thresholds are the design of docs/ALPHA_1_9_6_ECONOMY_IMPLEMENTATION_REPORT.md — change them only with that report.
+// The thresholds are the design of docs/ALPHA_1_9_6_ECONOMY_IMPLEMENTATION_REPORT.md, revised by the owner's Beta 2.5.5
+// brief (docs/BETA_2_5_5_ECONOMY_REPORT.md: every changed threshold, why, and its measured value) — change them only with
+// such a report.
 import { CAREER_START, REWARDS } from '../src/config/career';
 import { PRICE_TIER, cardPrice, contractCost } from '../src/config/careerPrices';
 import { CARDS } from '../src/config/cards';
@@ -14,7 +16,9 @@ import { LEAGUE } from '../src/config/league.config';
 import { SHOP_ITEMS } from '../src/config/shop.config';
 import { seasonOf } from '../src/config/seasonal';
 import { SIM_VERSION } from '../src/league/simVersion';
-import { ARCHETYPES, CAREER_195, DAILY_SERVER, careerSink, LEAGUE_195, type CareerVariant, honestPerHour, lossFarmPerHour, runCareer, runDaily, runLeague } from './lib/economyModel';
+import { ARCHETYPES, CAREER_25, DAILY_SERVER, careerSink, LEAGUE_195, type CareerVariant, honestPerHour, lossFarmPerHour, runCareer, runDaily, runLeague } from './lib/economyModel';
+import { CareerSystem } from '../src/meta/CareerSystem';
+import { defaultSave } from '../src/meta/SaveSystem';
 import { sampleFights } from './lib/economySamples';
 import { proc } from './lib/node';
 
@@ -40,29 +44,50 @@ const sink = careerSink();
 check(`the career's prices: ${sink.contracts} $ contracts + ${sink.cards} $ cards = ${sink.total} $ (Alpha 1.9.5: 12 850 $; 1.9.6: 29 050 $)`, sink.total === 29050 + 5900 + 1900 && sink.contractCount === 6 && sink.cardCount === 18);
 check('a comfortable start: the first contract (500 $) and the five level-2 cards (250–300 $) cost what they did', contractCost('bruno') === 500 && (Object.keys(CARDS) as CardId[]).filter((c) => CARDS[c].shop?.level === 2).every((c) => cardPrice(c) === CARDS[c].shop!.price));
 check('the price curve only rises with the unlock level (×1 → ×1.5 → ×2.2 → ×3.2), so a later item costs more than an earlier one', PRICE_TIER[2] === 1 && PRICE_TIER[2] < PRICE_TIER[3] && PRICE_TIER[3] < PRICE_TIER[4] && PRICE_TIER[4] < PRICE_TIER[5] && contractCost('nika') < contractCost('vega') && contractCost('vega') < contractCost('kai') && contractCost('kai') < contractCost('rina') && contractCost('rina') < contractCost('ace'));
-check('career rewards: purse 150/80/50, KO 40, rating ×2.2, combo 25 ×5, the start 150 $ — unchanged; sponsors up to 160 (was 240); dollars by difficulty ×1 / ×1.3 / ×1.6 (was ×1 / ×1.6 / ×2.4)', REWARDS.purse.win === 150 && REWARDS.purse.draw === 80 && REWARDS.purse.loss === 50 && REWARDS.koBonus === 40 && REWARDS.ratingMoney === 2.2 && REWARDS.comboMoney === 25 && REWARDS.comboCap === 5 && REWARDS.starPowerK === 1.25 && REWARDS.starPowerCap === 160 && CAREER_START.money === 150 && REWARDS.difficultyMoney?.rookie === 1 && REWARDS.difficultyMoney?.pro === 1.3 && REWARDS.difficultyMoney?.champion === 1.6);
+// Beta 2.5.5 (the owner's brief «PROGRESSION, ECONOMY & PERFORMANCE»; docs/BETA_2_5_5_ECONOMY_REPORT.md): a fight pays
+// about a quarter of Beta 2.5's dollars, a win clearly more than a loss; a regular player buys every contract and card in
+// ~120–220 fights (Beta 2.5: 43–58), the first purchase still within a few fights; prices and reputation unchanged.
+check('career rewards (Beta 2.5.5): purse 60/25/10, KO 12, rating ×0.3, combo 4 ×5, sponsors 0.25·√fans up to 35, the start 150 $; dollars by difficulty ×1 / ×1.3 / ×1.6 (1.9.6)', REWARDS.purse.win === 60 && REWARDS.purse.draw === 25 && REWARDS.purse.loss === 10 && REWARDS.koBonus === 12 && REWARDS.ratingMoney === 0.3 && REWARDS.comboMoney === 4 && REWARDS.comboCap === 5 && REWARDS.starPowerK === 0.25 && REWARDS.starPowerCap === 35 && CAREER_START.money === 150 && REWARDS.difficultyMoney?.rookie === 1 && REWARDS.difficultyMoney?.pro === 1.3 && REWARDS.difficultyMoney?.champion === 1.6);
+const REP_25 = { win: 14, draw: 7, loss: 4 };
+const REP_DIV_25 = 8;
+const FANS_25 = { win: 220, draw: 120, loss: 70 };
+check('reputation and fans of a fight are those of Beta 2.5 — only the dollars changed (the producer levels keep their pace)', JSON.stringify(REWARDS.rep) === JSON.stringify(REP_25) && REWARDS.repRatingDiv === REP_DIV_25 && JSON.stringify(REWARDS.fans) === JSON.stringify(FANS_25) && REWARDS.fansRatingBase === 0.35 && REWARDS.fansRatingK === 1.65);
 const careerSamples = sampleFights(24);
-const career = (id: string, v: CareerVariant = { id: '196', ru: '' }) => {
+// (Beta 2.5.5: a 365-day horizon — a career of ~175 fights takes a beginner of 3 short sessions a week ~4–5 months)
+const YEAR = 365;
+const career = (id: string, v: CareerVariant = { id: 'now', ru: '' }) => {
   const a = A(id);
-  const dd = runDaily(a, 120).byDay;
-  return runCareer(a, careerSamples, v, 120, (d) => dd[d] ?? 0);
+  const dd = runDaily(a, YEAR).byDay;
+  return runCareer(a, careerSamples, v, YEAR, (d) => dd[d] ?? 0);
 };
 const nb = career('newbie');
 const rg = career('regular');
 const ac = career('active');
-const nb0 = career('newbie', CAREER_195);
-const rg0 = career('regular', CAREER_195);
-check(`a beginner's first contract and first card come in the first fights as before (fights ${nb.at.firstContract} / ${nb.at.firstCard}; 1.9.5: ${nb0.at.firstContract} / ${nb0.at.firstCard})`, (nb.at.firstContract ?? 99) <= 3 && (nb.at.firstCard ?? 99) <= 3 && nb.at.firstContract === nb0.at.firstContract);
-check(`never weeks of saving for one item: at most ${Math.max(nb.maxGap, rg.maxGap, ac.maxGap)} fights between two purchases (≤ 10; a beginner plays ~9 a week)`, nb.maxGap <= 10 && rg.maxGap <= 10 && ac.maxGap <= 10);
-check(`a skilled regular player no longer buys nearly everything in half an hour: half the prices after ${rg.at.half} fights, everything after ${rg.at.everything} (1.9.5: ${rg0.at.half} / ${rg0.at.everything})`, (rg.at.half ?? 0) >= 12 && (rg.at.everything ?? 0) >= 30 && (rg.at.everything ?? 999) <= 60);
+const gr = career('grinder');
+const nb0 = career('newbie', CAREER_25);
+const rg0 = career('regular', CAREER_25);
+check(`a beginner's first contract and first card come in the first fights as before (fights ${nb.at.firstContract} / ${nb.at.firstCard}; Beta 2.5: ${nb0.at.firstContract} / ${nb0.at.firstCard})`, (nb.at.firstContract ?? 99) <= 3 && (nb.at.firstCard ?? 99) <= 3 && nb.at.firstContract === nb0.at.firstContract);
+check(`the owner's pace: a regular player buys every contract and card in 120–220 fights (${rg.at.everything}; Beta 2.5: ${rg0.at.everything}), and so does everyone else (beginner ${nb.at.everything}, active ${ac.at.everything}, most active ${gr.at.everything})`, [nb, rg, ac, gr].every((r) => (r.at.everything ?? 0) >= 120 && (r.at.everything ?? 999) <= 220));
+// the longest saving: never longer than earning the dearest item with honest «Профи» wins alone (daily, goals and stages
+// shorten it) — Beta 2.5.5 does not change a price, so the dearest contract sets how long the last save can be
+const proWin = new CareerSystem({ data: defaultSave() } as never).computeRewards({ outcome: 'win', method: 'ko', rating: 87, combos: 6, perfects: 2, damageDealt: 0, damageTaken: 0, duration: 60, cardsUsed: 3 } as never, 'ray', 'pro').money;
+const dearest = Math.max(...(Object.keys(FIGHTERS) as FighterId[]).map((f) => contractCost(f)), ...(Object.keys(CARDS) as CardId[]).map((c) => (CARDS[c].shop ? cardPrice(c) : 0)));
+const gapCap = Math.ceil(dearest / proWin);
+check(`a save for one item is never longer than earning the dearest one (${dearest} $) with «Профи» wins alone: at most ${Math.max(nb.maxGap, rg.maxGap, ac.maxGap)} fights between two purchases (≤ ${gapCap})`, nb.maxGap <= gapCap && rg.maxGap <= gapCap && ac.maxGap <= gapCap);
 // (1.9.8: 24 purchases — 6 contracts, 18 cards; «the last 5» are the last five of them)
 const nBuys = rg.buys.length;
-check(`progress is felt all along: the first 10 purchases within ${rg.buys[9]} fights, the last 5 spread over ${rg.buys[nBuys - 1] - rg.buys[nBuys - 6]} fights`, nBuys === 24 && rg.buys[9] <= 8 && rg.buys[nBuys - 1] - rg.buys[nBuys - 6] >= 10);
+check(`progress is felt from the start: the first purchase in fight ${rg.buys[0]}, the first 10 within the first tenth of the career (fight ${rg.buys[9]} of ${rg.at.everything}); the last 5 spread over ${rg.buys[nBuys - 1] - rg.buys[nBuys - 6]} fights`, nBuys === 24 && rg.buys[0] <= 3 && rg.buys[9] <= (rg.at.everything ?? 0) * 0.1 && rg.buys[nBuys - 1] - rg.buys[nBuys - 6] >= 10);
 const slowNb = (nb.at.everything ?? 999) / (nb0.at.everything ?? 1);
 const slowRg = (rg.at.everything ?? 999) / (rg0.at.everything ?? 1);
-check(`a beginner is slowed down no more than a skilled player (×${slowNb.toFixed(2)} vs ×${slowRg.toFixed(2)} fights to everything)`, slowNb <= slowRg);
-check(`a beginner still has everything within ~2 months of 3 short sessions a week (day ${nb.day.everything})`, (nb.day.everything ?? 999) <= 60);
-check(`a beginner's own dollars per fight on «Новичок» are untouched (income by day 7: ${nb.earnedBy[7]} vs ${nb0.earnedBy[7]}; the small gap is «Профи» ×1.3 instead of ×1.6)`, nb.earnedBy[7] >= nb0.earnedBy[7] * 0.85);
+check(`a beginner is slowed down no more than a skilled player against Beta 2.5 (×${slowNb.toFixed(2)} vs ×${slowRg.toFixed(2)} fights to everything)`, slowNb <= slowRg);
+check(`a beginner of 3 short sessions a week still has everything within half a year (day ${nb.day.everything}; Beta 2.5: day ${nb0.day.everything})`, (nb.day.everything ?? 999) <= 183);
+{
+  const cs = new CareerSystem({ data: defaultSave() } as never);
+  const base = { method: 'ko', perfects: 1, damageDealt: 0, damageTaken: 0, duration: 70, cardsUsed: 3 };
+  const w = cs.computeRewards({ ...base, outcome: 'win', rating: 75, combos: 2 } as never, 'ray', 'rookie').money;
+  const l = cs.computeRewards({ ...base, outcome: 'loss', method: 'time', rating: 60, combos: 1 } as never, 'ray', 'rookie').money;
+  check(`a win is clearly better than a loss for a beginner too: «Новичок» $${w} vs $${l} (≥ ×2.5), «Профи» win $${proWin}`, w >= 2.5 * l && l > 0);
+}
 
 // ------------------------------------------------------------------ DAILY STREAK
 console.log('\n— DAILY STREAK');
@@ -89,13 +114,19 @@ console.log('\n— DAILY STREAK');
   }
   check(`every milestone pays once, breaks or not — five days off every other week: ${milestones.join(', ')} (a long absence costs the days since the last checkpoint, never a milestone twice)`, new Set(milestones).size === milestones.length && milestones.length >= 2);
   const samples = careerSamples;
+  // Beta 2.5.5: the streak's dollars (the weekly gift, the milestones) are kept and the day's case pays twice as much,
+  // while a fight pays about a quarter — so daily dollars weigh more than in 1.9.6 (≤ 15 % then). The owner wants the
+  // day's case to advance the next purchase noticeably; the career stays the main income: for a player who plays most
+  // days at most a quarter, for a beginner of 3 short sessions a week at most 40 % (docs/BETA_2_5_5_ECONOMY_REPORT.md).
+  // Counted as production pays it: an ordinary day = the day's DAILY BROADCAST CASE (its expected dollars).
   for (const id of ['newbie', 'regular', 'active', 'grinder']) {
     const a = A(id);
-    const dd = runDaily(a, 120).byDay;
+    const dd = runDaily(a, 120, undefined, { cases: true }).byDay;
     const r = runCareer(a, samples, { id: 'x', ru: '' }, 120, (d) => dd[d] ?? 0);
     const total = r.earned.matches + r.earned.modes + r.earned.goals + r.earned.stages + r.earned.daily;
     const share = r.earned.daily / total;
-    check(`${a.ru}: daily dollars help but never replace play — ${Math.round(share * 100)} % of 120 days' income (≤ 15 %)`, share <= 0.15);
+    const cap = id === 'newbie' ? 0.4 : 0.25;
+    check(`${a.ru}: daily dollars (streak + cases) help but never replace play — ${Math.round(share * 100)} % of 120 days' income (≤ ${Math.round(cap * 100)} %)`, share <= cap);
   }
   const items = DAILY.milestones.filter((m) => m.cosmetic).map((m) => m.cosmetic!);
   check('three exclusive items on milestones 7 / 30 / 100 — own ids, earned (server-proved), never sold', items.join(',') === 'title_daily_regular,frame_daily_live,victory_daily_sunrise' && items.every((i) => COSMETICS[i].source === 'daily' && !COSMETICS[i].paid && isServerEarned(i)));
@@ -119,13 +150,19 @@ console.log('\n— PRIME LEAGUE: эфирные очки, дорожка, жет
   check(`an active player not in under 3 weeks (day ${act.trackDoneDay}), the most active not in under 2½ weeks (day ${gr.trackDoneDay})`, (act.trackDoneDay ?? 99) >= 21 && (gr.trackDoneDay ?? 99) >= 18);
   check(`a newcomer still climbs part of the track (${nb.tiers} of ${LEAGUE.track.length} tiers)`, nb.tiers >= 3);
   check('the track only got easier than 1.9.5: the same tiers and rewards, no threshold raised (a reached tier stays reached)', LEAGUE.track.length === LEAGUE_195.track!.length && LEAGUE.track.every((t, i) => t.at <= LEAGUE_195.track![i].at && (t.tokens ?? 0) === (LEAGUE_195.track![i].tokens ?? 0)));
-  const most = Math.max(reg.tokens.total, act.tokens.total, gr.tokens.total);
-  check(`PRIME TOKENS are bounded by the daily caps — at most ${most} a season for anyone (≤ 3 700)`, most <= 3700);
+  // Beta 2.5.5 (the owner): no daily cap on the tokens of fights played to the end — a fight pays less instead (win 5,
+  // was 6), skill over grind, and the exchange prices hold the most active players back (economy:255)
+  check('no daily cap on the PRIME TOKENS of one\'s own fights (attackPerDay 0); the passive defence income keeps its cap (15 a day)', LEAGUE.tokens.attackPerDay === 0 && LEAGUE.tokens.defensePerDay === 15 && LEAGUE.tokens.defenseWin === 3);
+  check(`skill over grind: a won fight pays ${LEAGUE.tokens.win} tokens, a lost one ${LEAGUE.tokens.loss} (≥ ×4); an hour of thrown fights earns ${f.tokens} tokens against ${h.tokens} of an honest hour (≤ 40 %, as for air points)`, LEAGUE.tokens.win >= 4 * LEAGUE.tokens.loss && f.tokens <= 0.4 * h.tokens && h.tokens > 0);
   const ex = LEAGUE.exchange;
   const cost = ex.reduce((t, x) => t + x.tokens, 0);
+  const allDays = (cost / gr.tokens.total) * days;
+  check(`no instant collection: even 35 fights a day (${gr.tokens.total} tokens a season) needs ${allDays.toFixed(0)} days for the whole exchange (≥ 4 weeks; Beta 2.5 with the cap: 36)`, allDays >= 28);
   check(`the exchange is a real sink: the cheapest item within one season of a regular player (${ex[0].tokens} ≤ ${reg.tokens.total}), all of it about one season of an active one (${cost} vs ${act.tokens.total})`, Math.min(...ex.map((x) => x.tokens)) <= reg.tokens.total && cost >= act.tokens.total * 0.8 && cost <= act.tokens.total * 1.6);
   check('exchange items: league-only ids, earned (server-proved), never paid, never PRIME SHOP goods', ex.every((x) => COSMETICS[x.item].source === 'league' && !COSMETICS[x.item].paid && isServerEarned(x.item) && !SHOP_ITEMS.some((s) => s.cosmetic === x.item)));
   check('the exchange gives looks only (cosmetic slots; no fighter, no card, no level)', ex.every((x) => ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'].includes(COSMETICS[x.item].slot)));
+  // (Beta 2.5.5: the collection's «how to get it» names the exchange price — it must say what the server charges)
+  check(`the collection tells the server's prices: ${ex.map((x) => `${x.item} ${x.tokens}`).join(', ')}`, ex.every((x) => (COSMETICS[x.item].howTo ?? '').replace(/\s/g, '').includes(`${x.tokens}PRIMETOKENS`)));
 }
 
 // ------------------------------------------------------------------ the currencies stay apart

@@ -11,7 +11,7 @@ import { Collection } from './Collection';
 import { inRoster } from './roster';
 import { emptyEventProgress, type EventProgress, type SaveSystem } from './SaveSystem';
 import { serverNow } from './serverClock';
-import { careerLines, mskDay, ultraCount, type SeasonFight } from '../season/seasonMath';
+import { careerLines, mskDay, payCapped, ultraCount, type SeasonFight } from '../season/seasonMath';
 import type { SeasonWallet } from '../net/PrimeApi';
 
 /**
@@ -283,7 +283,8 @@ export class EventManager {
     const sum = lines.reduce((a, l) => a + l.value, 0);
     const p = this.store.data.events[e.id];
     const today = p && p.day === mskDay(this.now()) ? p.dayTokens : 0;
-    const tokens = Math.max(0, Math.min(sum, e.earnings!.dailyCap - today));
+    // Beta 2.5.5: the server's own rule (lib/season.js → payCapped): full up to the day's threshold, then overRate (≥ 1)
+    const tokens = payCapped(sum, e.earnings!.dailyCap, today, e.earnings!.overRate ?? 0);
     return { eventId: e.id, tokens, lines, capped: tokens < sum, completed: [], secure };
   }
 

@@ -20,7 +20,7 @@ import { stateHash } from '../src/league/replay';
 import { EventManager } from '../src/meta/EventManager';
 import { defaultSave, type SaveSystem } from '../src/meta/SaveSystem';
 import type { SeasonWallet } from '../src/net/PrimeApi';
-import { careerLines, clampFight, mskDay, questStep, seasonPhase, type SeasonFight } from '../src/season/seasonMath';
+import { careerLines, clampFight, mskDay, payCapped, questStep, seasonPhase, type SeasonFight } from '../src/season/seasonMath';
 import { comboBot, runMatch, type BotState } from './bots';
 import { fs } from './lib/node';
 
@@ -78,6 +78,21 @@ check('a guest: the fight earns no canes (the results say «sign in to PRIME ID�
 sw.events.secureOnline = true;
 const online = sw.events.applyMatch(EV.id, win, 'pro', 'holiday')!;
 check('a PRIME ID: the expected 13 canes are shown, but nothing is written — the server pays (SeasonRuntime.report)', online.secure?.guest === false && online.tokens === 13 && online.secure.seconds === 70 && sw.store.saves === 0 && (sw.store.data.events[EV.id]?.tokens ?? 0) === 0);
+{
+  // Beta 2.5.5: past the day's threshold the device shows what the server will pay (the same payCapped): a 13-cane win
+  // with 40 of 45 already today → 5 in full + a tenth of the other 8 (at least 1) = 6; with 45 today → 1
+  const sv = sw.store.data.events;
+  const day = mskDay(T(EV.start!) + 3600000);
+  const at = (dayTokens: number) => {
+    sv[EV.id] = { ...(sv[EV.id] ?? {}), day, dayTokens } as any;
+    const o = sw.events.applyMatch(EV.id, win, 'pro', 'holiday')!;
+    delete (sv as any)[EV.id];
+    return o;
+  };
+  const near = at(40);
+  const past = at(45);
+  check(`past the day's threshold the device shows the server's own rule (payCapped): 40 of 45 today → +${near.tokens} (5 + ⅒ of 8), 45 → +${past.tokens}; «capped» said`, near.tokens === 6 && near.capped && past.tokens === 1 && past.capped && near.tokens === payCapped(13, 45, 40, 0.1));
+}
 check('local quests, grand prize, exchange and the star cannot be taken on the device', sw.events.claimQuest('first_snow') === null && sw.events.claimGrand() === null && !sw.events.buy('card_clockwork_gold').ok && !sw.events.buyFighter('crax').ok);
 const wallet: SeasonWallet = { event: EV.id, phase: 'running', now: T(EV.start!) + 3600000, day: mskDay(T(EV.start!) + 3600000), balance: 120, earned: 1200, fights: 800, spent: 1080, dayCareer: 26, dayLeague: 6, caps: { career: 45, league: 30 }, quests: { first_snow: { p: 5, claimed: true }, holiday_hat_trick: { p: 15, claimed: false } }, grandClaimed: true, owned: { cosmetics: ['card_clockwork_gold', 'title_winter_champion'], fighters: ['crax'] } };
 const fresh = sw.events.applyWallet(wallet);

@@ -35,32 +35,7 @@ import type { ArenaTheme } from '../../config/themes.config';
 import { Rng } from '../../core/math';
 import { canvasTexture } from '../textures';
 import { pointOnRing } from './CasinoStage';
-import {
-  colorCones,
-  drawNeon,
-  flatExtrude,
-  floorCanvas,
-  floorMesh,
-  FLOOR_TOP,
-  GROUND_Y,
-  insetPath,
-  landingY,
-  makeSpotCone,
-  merge,
-  neonMaterial,
-  paintTexture,
-  Pieces,
-  ringShape,
-  Stage,
-  surfaceY,
-  swingCones,
-  tint,
-  WALL_TOP,
-  type DebrisShape,
-  type DecorLayout,
-  type SpotCone,
-  type StageShared,
-} from './StageKit';
+import { colorCones, drawNeon, flatExtrude, floorCanvas, floorMesh, FLOOR_TOP, GROUND_Y, insetPath, landingY, makeSpotCone, merge, neonMaterial, paintTexture, Pieces, ringShape, Stage, surfaceY, swingCones, tint, WALL_TOP, type DebrisShape, type DecorLayout, type SpotCone, type StageShared, dropMaterial } from './StageKit';
 
 // GRAVEYARD BROADCAST — CURSED CEMETERY SET (Alpha 1.7.5, Halloween Premiere). The channel's
 // second Halloween set: a stylised studio cemetery — clearly a set: a plywood crypt with its
@@ -1769,12 +1744,12 @@ export class GraveyardStage extends Stage {
       const mm = m as Material & { map?: { dispose(): void } | null; emissiveMap?: { dispose(): void } | null };
       mm.map?.dispose();
       mm.emissiveMap?.dispose();
-      m.dispose();
+      dropMaterial(m);
     }
     for (const m of this.pumpkinMats) {
       m.map?.dispose();
       m.emissiveMap?.dispose();
-      m.dispose();
+      dropMaterial(m);
     }
   }
 }

@@ -260,7 +260,12 @@ export const LEAGUE = {
   /** League fights are of the standard length. */
   fans: FIGHT_FANS,
   /** PRIME TOKENS (PRIME_LEAGUE_TOKENS=on). Never roubles, never PRIME SHOP. */
-  tokens: { win: 6, draw: 2, loss: 1, attackPerDay: 60, defenseWin: 3, defensePerDay: 15, challengeWin: 40 },
+  /**
+   * Beta 2.5.5: no daily cap on the tokens of the player's own fights (attackPerDay 0 — the server pays every verified
+   * fight once), a win 5 (was 6, capped at 60 a day), a loss 1 — a win is worth five losses. Won defences keep their 15 a
+   * day: they come from other players' attacks, not from the player's own fights (an alt account could feed them).
+   */
+  tokens: { win: 5, draw: 2, loss: 1, attackPerDay: 0, defenseWin: 3, defensePerDay: 15, challengeWin: 40 },
   /**
    * Air points (season progress, not a currency). 1.9.6 (scripts/economy-model.ts): a loss 4 → 2 and a draw 6 → 5 — a fight
    * thrown on purpose moves the track little; the fights of a game WEEK (Monday 00:00 Moscow time) give at most
@@ -304,10 +309,15 @@ export const LEAGUE = {
    * cloud save (lib/earned.js). PRIME_LEAGUE_EXCHANGE=off switches it off. Prices from the season model: a regular player
    * (~970 tokens a season) takes the first item in his first season, an active one (~3 100) all three.
    */
+  // Beta 2.5.5: no daily cap on a fight's tokens any more, so the most active players earn far more (≈ 6 000 a season at
+  // 35 fights a day, was ≈ 3 550 under the cap). The first item keeps its price (a regular player, ≈ 890 a season, takes
+  // it in about half a season); the next two cost 1 300 / 2 600 (were 900 / 1 600): all three are about one and a half
+  // seasons of an active player (economy:check keeps 0.8–1.6) and never under a month even at 35 fights a day
+  // (npm run economy:255). Items already taken are kept; prices are never refunded or charged again.
   exchange: [
     { item: 'card_league_ranked', tokens: 500 },
-    { item: 'dash_league_arc', tokens: 900 },
-    { item: 'frame_league_arena', tokens: 1600 },
+    { item: 'dash_league_arc', tokens: 1300 },
+    { item: 'frame_league_arena', tokens: 2600 },
   ] as { item: CosmeticId; tokens: number }[],
   /** Fighter levels for PRIME TOKENS (PRIME_LEAGUE_UPGRADES=on; off = every fighter fights at level 0). */
   upgrades: { maxLevel: 10, hpPerLevel: 0.006, dmgPerLevel: 0.006, costBase: 20, maxGap: 3, capByRank: [2, 3, 4, 5, 6, 8, 10, 10] },

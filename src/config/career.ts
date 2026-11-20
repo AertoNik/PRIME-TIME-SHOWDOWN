@@ -68,21 +68,28 @@ export const REWARDS: {
   repRatingDiv: number;
   /** 1.9.6: the money multiplier of each difficulty (absent: the difficulty's own rewardMult, as before 1.9.6). */
   difficultyMoney?: Partial<Record<Difficulty, number>>;
-  /** Alpha 1.9.9: what a forfeit pays, by the seconds really fought (see below). */
-  forfeit: { share: number; freeS: number; fullS: number };
+  /** Beta 2.5.5: what a voluntary exit (forfeit) gives — nothing (see below). */
+  forfeit: { money: 0; fans: 0; rep: 0 };
 } = {
-  purse: { win: 150, draw: 80, loss: 50 },
-  koBonus: 40,
+  /**
+   * Beta 2.5.5 — PROGRESSION: a fight pays about a fifth of Beta 2.5's dollars, and a win clearly more than a loss
+   * (×3 on «Профи», was ×2): every contract and card took 43–58 fights (1.4–1.7 h), now ~175 for a regular player and
+   * 170–190 for everyone, the first purchase still in 1–2 fights (`npm run economy:255`, docs/BETA_2_5_5_ECONOMY_REPORT.md).
+   * Reputation and fans are unchanged — the producer levels keep their pace. Beta 2.5: purse 150 / 80 / 50, KO 40,
+   * rating 2.2 $ a point, combo 25 $, sponsors 1.25·√fans up to 160.
+   */
+  purse: { win: 60, draw: 25, loss: 10 },
+  koBonus: 12,
   /** Money per point of final show rating. */
-  ratingMoney: 2.2,
-  comboMoney: 25,
+  ratingMoney: 0.3,
+  comboMoney: 4,
   comboCap: 5,
   /**
    * Star power: sponsor money scales with the fighter's fame. 1.9.6: capped at 160 (was 240) — the cap only touches a
    * fighter past ~16 000 fans (a veteran), never a beginner's (scripts/economy-model.ts).
    */
-  starPowerK: 1.25,
-  starPowerCap: 160,
+  starPowerK: 0.25,
+  starPowerCap: 35,
   fans: { win: 220, draw: 120, loss: 70 },
   /** fans multiplier = base + rating/100 * k */
   fansRatingBase: 0.35,
@@ -97,14 +104,13 @@ export const REWARDS: {
    */
   difficultyMoney: { rookie: 1, pro: 1.3, champion: 1.6 },
   /**
-   * Alpha 1.9.9 — the quick-exit farm: a forfeit paid 30 % of a loss (and its reputation) at any second, so starting a
-   * fight and giving up at once, again and again, earned dollars and producer levels without playing. Now a forfeit pays
-   * by how much of the fight was really fought (Match time, the intro not counted): nothing in the first `freeS` s, then
-   * evenly more up to the old `share` of a loss's dollars (and the loss's reputation, −6 as before) at `fullS` s. A fight
-   * fought to the end — won, drawn or lost — pays exactly as before; an interrupted fight that was never finished (the
-   * page closed, the connection lost) is not applied at all, as before — no reward, no penalty.
+   * Beta 2.5.5 — a VOLUNTARY EXIT («Выйти из боя» in the pause) is allowed at any second and gives nothing: no dollars,
+   * fans or reputation, no goal progress (best rating / combos / perfects stay), the season's canes are 0 on the server
+   * as before. It counts as a technical loss (the win streak ends). Until 2.5 a forfeit paid up to 30 % of a loss after
+   * the first 15 s («Бой идёт меньше 15 с…»). A fight that was never finished (the page closed, the connection lost,
+   * Safari reloaded the tab) is not applied at all — no reward and no penalty, as before.
    */
-  forfeit: { share: 0.3, freeS: 15, fullS: 60 },
+  forfeit: { money: 0, fans: 0, rep: 0 },
 };
 
 export type GoalId =

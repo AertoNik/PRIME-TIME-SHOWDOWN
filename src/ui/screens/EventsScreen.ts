@@ -540,7 +540,7 @@ export class EventsScreen implements Screen {
         <div class="label">${esc(cur.name)} за бои во время события</div>
         <div class="ev-how-row"><span>Победа <b>+${earn.win}</b></span>${earn.rating.map(([min, v]) => `<span>Рейтинг ${min}+ <b>+${v}</b></span>`).join('')}<span>Комбо <b>+${earn.perCombo}</b> (до ${earn.comboCap})</span>${earn.arenaWin ? `<span>${esc(earn.arenaWin.label)} <b>+${earn.arenaWin.tokens}</b></span>` : ''}</div>
         ${lg ? `<div class="ev-how-row"><span>PRIME LEAGUE: победа <b>+${lg.win}</b></span><span>ничья <b>+${lg.draw}</b></span><span>поражение <b>+${lg.loss}</b></span></div>` : ''}
-        <div class="muted" style="font-size:11px">Не больше ${earn.dailyCap} ${many} за бои карьеры в день${lg ? ` и ${lg.dailyCap} за бои PRIME LEAGUE` : ''} (по московскому времени). Сдача боя не приносит ${many}.</div>
+        <div class="muted" style="font-size:11px">${earn.overRate ? `В полную силу — до ${earn.dailyCap} ${many} за бои карьеры в день${lg ? ` и до ${lg.dailyCap} за бои PRIME LEAGUE` : ''}; дальше каждый завершённый бой приносит десятую часть (не меньше 1)` : `Не больше ${earn.dailyCap} ${many} за бои карьеры в день${lg ? ` и ${lg.dailyCap} за бои PRIME LEAGUE` : ''}`} (день — по московскому времени). Выход из боя не приносит ${many}.</div>
       </div>`;
     // Alpha 1.7: the season's star, a short teaser (the full card is on the rewards tab)
     const stars = (e.fighters ?? []).map((x) => this.starCard(e, x.fighter, x.cost, true)).join('');

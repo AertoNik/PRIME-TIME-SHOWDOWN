@@ -515,7 +515,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     eventId: 'league',
     source: 'league',
     sourceLabel: 'PRIME LEAGUE',
-    howTo: 'Обмен в PRIME LEAGUE: 900 PRIME TOKENS',
+    howTo: 'Обмен в PRIME LEAGUE: 1 300 PRIME TOKENS',
   },
   frame_league_arena: {
     id: 'frame_league_arena',
@@ -528,7 +528,7 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     eventId: 'league',
     source: 'league',
     sourceLabel: 'PRIME LEAGUE',
-    howTo: 'Обмен в PRIME LEAGUE: 1 600 PRIME TOKENS',
+    howTo: 'Обмен в PRIME LEAGUE: 2 600 PRIME TOKENS',
   },
 };
 

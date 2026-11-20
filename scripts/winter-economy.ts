@@ -3,7 +3,7 @@
 // the event's caps, quests and prices from events.config.ts). A MODEL, not the game: who plays how much comes from
 // scripts/lib/economyModel.ts ARCHETYPES (the same assumptions as the 1.9.6 economy report).
 import { EVENTS, type EventDef } from '../src/config/events.config';
-import { careerLines, leagueCanes, questStep, type SeasonFight } from '../src/season/seasonMath';
+import { payCapped, careerLines, leagueCanes, questStep, type SeasonFight } from '../src/season/seasonMath';
 import { ARCHETYPES, rng, type Archetype } from './lib/economyModel';
 import { sampleFights, type FightSample } from './lib/economySamples';
 import type { Difficulty } from '../src/config/types';
@@ -38,6 +38,9 @@ export interface WinterRun {
   /** In-game days played. */
   played: number;
 }
+
+/** The server's rule (src/season/seasonMath.ts payCapped — what lib/season.js pays with). */
+const capped = payCapped;
 
 export function runWinter(a: Archetype, ev: EventDef = EV, seed = 1): WinterRun {
   const r = rng(seed * 7919 + a.id.length * 31);
@@ -75,7 +78,8 @@ export function runWinter(a: Archetype, ev: EventDef = EV, seed = 1): WinterRun 
         const s = pool[Math.floor(r() * pool.length)];
         const fight: SeasonFight = { source: 'career', outcome: s.outcome, method: s.method, rating: s.rating, combos: s.combos, ultra: 0, perfects: s.perfects, difficulty: diff, arena: r() < HOLIDAY_SHARE ? 'holiday' : 'original' };
         const sum = careerLines(er, fight).reduce((x, l) => x + l.value, 0);
-        const pay = Math.max(0, Math.min(sum, er.dailyCap - dayCareer));
+        // (Beta 2.5.5: a cap of 0 = no daily cap, as the server's lib/season.js)
+        const pay = capped(sum, er.dailyCap, dayCareer, er.overRate ?? 0);
         dayCareer += pay;
         bal += pay;
         fromCareer += pay;
@@ -85,7 +89,7 @@ export function runWinter(a: Archetype, ev: EventDef = EV, seed = 1): WinterRun 
         const u = r();
         const outcome = u < a.leagueWin ? 'win' : u < a.leagueWin + 0.06 ? 'draw' : 'loss';
         const sum = leagueCanes(er, outcome);
-        const pay = Math.max(0, Math.min(sum, (er.league?.dailyCap ?? 0) - dayLeague));
+        const pay = capped(sum, er.league?.dailyCap ?? 0, dayLeague, er.league?.overRate ?? 0);
         dayLeague += pay;
         bal += pay;
         fromLeague += pay;
@@ -126,7 +130,7 @@ if (isMain) {
   const shop = ev().shop.reduce((x, s) => x + s.cost, 0);
   const crax = ev().fighters![0].cost;
   console.log(`# WINTER SHOWDOWN — экономика карамельных тростей (${DAYS} дней, реальные бои: 24 на ячейку)\n`);
-  console.log(`Цены: КРЭКС ${crax}, предметы ${ev().shop.map((s) => s.cost).join(' / ')} = ${shop}; всего ${crax + shop}. Задания: ${ev().quests.length} на ${ev().quests.reduce((x, q) => x + q.reward, 0)}. Потолок события (все лимиты каждый день + задания): ${ceiling()}.\n`);
+  console.log(`Цены: КРЭКС ${crax}, предметы ${ev().shop.map((s) => s.cost).join(' / ')} = ${shop}; всего ${crax + shop}. Задания: ${ev().quests.length} на ${ev().quests.reduce((x, q) => x + q.reward, 0)}. Полная оплата до дневных порогов каждый день + задания: ${ceiling()}${overNote()}.\n`);
   console.log('| игрок | дней в игре | трости: карьера + лига + задания = всего | к 1-му / 7-му дню | заданий | титул (день) | КРЭКС (день) | всё (день) |');
   console.log('|---|---|---|---|---|---|---|---|');
   for (const a of ARCHETYPES) {
@@ -141,7 +145,13 @@ if (isMain) {
   const hd = Math.round((Date.parse(h.end!) - Date.parse(h.start!)) / 86400000);
   const hShop = h.shop.reduce((x, s) => x + s.cost, 0) + (h.fighters ?? []).reduce((x, f) => x + f.cost, 0);
   const hCeil = hd * h.earnings!.dailyCap + h.quests.reduce((x, q) => x + q.reward, 0);
-  console.log(`\nДля сравнения Halloween Premiere 2026: ${hd} дней, обмен ${hShop} при потолке ${hCeil} (${Math.round((hShop / hCeil) * 100)} %); WINTER: ${crax + shop} при потолке ${ceiling()} (${Math.round(((crax + shop) / ceiling()) * 100)} %).`);
+  console.log(`\nДля сравнения Halloween Premiere 2026: ${hd} дней, обмен ${hShop} при потолке ${hCeil} (${Math.round((hShop / hCeil) * 100)} %); WINTER: ${crax + shop} при полной оплате до порогов ${ceiling()} (${Math.round(((crax + shop) / ceiling()) * 100)} %).`);
+}
+
+/** Beta 2.5.5: past the day's threshold a fight still pays a share (earnings.overRate) — no hard ceiling. */
+function overNote(): string {
+  const r = ev().earnings?.overRate ?? 0;
+  return r ? ` (после порога бой платит ${Math.round(r * 100)} %, минимум 1 — жёсткого потолка нет)` : '';
 }
 
 function ev(): EventDef {

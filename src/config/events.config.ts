@@ -93,6 +93,11 @@ export interface MatchEarnings {
   /** Max tokens per local calendar day from matches (quests are not capped). */
   dailyCap: number;
   /**
+   * Beta 2.5.5: past `dailyCap` a fight still pays this share of its tokens (rounded, at least 1) — every fight finished
+   * to its end earns something, the day's threshold only slows a marathon down. 0 / absent = the hard cap of 1.9.7–2.5.
+   */
+  overRate?: number;
+  /**
    * Alpha 1.7.5: a little extra for a real win on the season's own set (Halloween Premiere:
    * GRAVEYARD BROADCAST). It counts toward `dailyCap` like the rest of the match tokens.
    */
@@ -101,7 +106,7 @@ export interface MatchEarnings {
    * Alpha 1.9.7: currency for PRIME LEAGUE fights — paid by the SERVER when it settles the fight (a `secure` event
    * only), within its own daily cap (Moscow day of the server's clock).
    */
-  league?: { win: number; draw: number; loss: number; dailyCap: number };
+  league?: { win: number; draw: number; loss: number; dailyCap: number; overRate?: number };
 }
 
 export interface ShopItem {
@@ -217,8 +222,12 @@ export const EVENTS: EventDef[] = [
       perCombo: 1,
       comboCap: 3,
       dailyCap: 45,
+      // Beta 2.5.5: past 45 (career) / 30 (league) canes a day each finished fight still pays a tenth (at least 1) — the
+      // hard daily wall is gone; removing it outright let a marathon player take everything by day 6 while a regular one
+      // could no longer (npm run economy:255, docs/BETA_2_5_5_ECONOMY_REPORT.md)
+      overRate: 0.1,
       arenaWin: { arena: 'holiday', tokens: 2, label: 'Победа в HOLIDAY BROADCAST' },
-      league: { win: 6, draw: 3, loss: 2, dailyCap: 30 },
+      league: { win: 6, draw: 3, loss: 2, dailyCap: 30, overRate: 0.1 },
     },
     quests: [
       { id: 'first_snow', title: 'FIRST SNOW ON AIR', desc: 'Проведите 5 матчей до конца', metric: { kind: 'matches' }, target: 5, reward: 30, icon: 'snow' },

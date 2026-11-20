@@ -732,7 +732,22 @@ export class LeagueScreen implements Screen {
       </div>
       <ol class="lg-road">${steps}</ol>
       <div class="lg-card lg-wallet"><span class="lg-wallet-coin" aria-hidden="true">${tokenCoin(44)}</span><div><div class="lg-k">PRIME TOKENS</div><div class="lg-air"><b>${me.tokens}</b></div>
-        <small class="muted">${me.flags.tokens ? (me.exchange?.on ? tr(`За победы — до ${LEAGUE.tokens.attackPerDay} в день, +${LEAGUE.tokens.challengeWin} за пройденный PRIME CHALLENGE сверх предела. Тратятся только в обмене ниже; не продаются и не покупаются за рубли.`, `Wins give up to ${LEAGUE.tokens.attackPerDay} a day, +${LEAGUE.tokens.challengeWin} for a passed PRIME CHALLENGE on top. Spent only in the exchange below; never sold or bought for money.`) : tr(`Жетоны пока копятся — тратить их нельзя, обмен и применение появятся в следующих версиях. За победы — до ${LEAGUE.tokens.attackPerDay} в день, +${LEAGUE.tokens.challengeWin} за пройденный PRIME CHALLENGE сверх предела. Не продаются за рубли.`, `Tokens accumulate for now — they cannot be spent yet; exchange and use come in later versions. Wins give up to ${LEAGUE.tokens.attackPerDay} a day, +${LEAGUE.tokens.challengeWin} for a passed PRIME CHALLENGE on top. Never sold for money.`)) : tr('Начисление PRIME TOKENS включится позже.', 'PRIME TOKENS start later.')}</small></div></div>${this.exchangeView(me)}`;
+        <small class="muted">${me.flags.tokens ? (me.exchange?.on ? tr(`${this.tokenRule()} Тратятся только в обмене ниже; не продаются и не покупаются за рубли.`, `${this.tokenRule(true)} Spent only in the exchange below; never sold or bought for money.`) : tr(`Жетоны пока копятся — тратить их нельзя, обмен и применение появятся в следующих версиях. ${this.tokenRule()} Не продаются за рубли.`, `Tokens accumulate for now — they cannot be spent yet; exchange and use come in later versions. ${this.tokenRule(true)} Never sold for money.`)) : tr('Начисление PRIME TOKENS включится позже.', 'PRIME TOKENS start later.')}</small></div></div>${this.exchangeView(me)}`;
+  }
+
+  /**
+   * How a fight pays PRIME TOKENS, from the server's own rules (league.config → league_rules.js). Beta 2.5.5: no daily
+   * cap on one's own fights (attackPerDay 0) — a win pays clearly more than a loss instead.
+   */
+  private tokenRule(en = false): string {
+    const t = LEAGUE.tokens;
+    if (t.attackPerDay > 0)
+      return en
+        ? `Wins give up to ${t.attackPerDay} a day, +${t.challengeWin} for a passed PRIME CHALLENGE on top.`
+        : `За победы — до ${t.attackPerDay} в день, +${t.challengeWin} за пройденный PRIME CHALLENGE сверх предела.`;
+    return en
+      ? `A finished fight pays: a win ${t.win}, a draw ${t.draw}, a loss ${t.loss} — no daily limit; +${t.challengeWin} for a passed PRIME CHALLENGE.`
+      : `Каждый завершённый бой: победа — ${t.win}, ничья — ${t.draw}, поражение — ${t.loss}, без дневного предела; +${t.challengeWin} за пройденный PRIME CHALLENGE.`;
   }
 
   /** 1.9.6: the PRIME TOKENS exchange — league-only collection items, each once; never roubles, no fight strength. */

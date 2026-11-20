@@ -155,10 +155,13 @@ function balanceChecks(): void {
   const contracts = (Object.keys(FIGHTERS) as FighterId[]).reduce((t, f) => t + contractCost(f), 0);
   const cards = NEW_CARDS.reduce((t, c) => t + cardPrice(c), 0);
   console.log(`      typical rookie KO win $${win}; week of visits $${week}; first 30 days $${month}; all contracts $${contracts}; all shop cards $${cards}`);
-  check(`a full week of visits ($${week}) is about two and a half rookie wins — under 3 wins`, week <= 3 * win && week >= 2 * win);
+  // Beta 2.5.5: the streak's table is kept as it is (the owner: keep the milestones) while a fight pays about a quarter of
+  // Beta 2.5's — a week of visits was ~2.5 rookie wins, now ~10. Its weight against play is guarded where the whole
+  // income is modelled: npm run economy:check (daily ≤ 25 % of a regular player's dollars, ≤ 40 % of a beginner's).
+  check(`the daily table is that of 1.9.6, unchanged in Beta 2.5.5: a week ${DAILY.week.join(' / ')} $ ($${week}), milestones ${DAILY.milestones.map((m) => m.money).join(' / ')} $, a jubilee ${DAILY.jubileeMoney} $ — now ${(week / win).toFixed(1)} rookie wins a week (a fight pays ~¼; economy:check keeps the daily share)`, JSON.stringify(DAILY.week) === '[75,100,125,100,150,125,250]' && DAILY.milestones.map((m) => m.money).join() === '400,600,1000,1500,2500' && DAILY.jubileeMoney === 2500 && week === 1075);
   check('a week of visits buys about one contract — never most of the roster or the card collection (< 25% of each)', week < contracts * 0.25 && week < cards * 0.25);
   check(`the first month ($${month}) stays well under half of everything there is to buy (contracts + cards $${contracts + cards})`, month < (contracts + cards) * 0.5);
-  check('an ordinary day pays less than half a rookie win, the weekly gift less than one; milestones from about one win (day 7) to six (day 100)', Array.from({ length: 6 }, (_, i) => dailyReward(i + 1).money).every((x) => x < win / 2) && dailyReward(21).money < win && DAILY.milestones.every((q) => q.money >= win * 0.9 && q.money <= win * 6));
+  check('the reward grows with the streak and never shrinks: an ordinary day below the weekly gift, the weekly gift below the first milestone, each milestone above the one before', Array.from({ length: 6 }, (_, i) => dailyReward(i + 1).money).every((x) => x < dailyReward(21).money) && dailyReward(21).money < DAILY.milestones[0].money && DAILY.milestones.every((q, i) => i === 0 || q.money > DAILY.milestones[i - 1].money));
   // 1.9.6: dollars and three EXCLUSIVE collection items — never a currency, PRIME TOKENS, a PRIME SHOP item or a skin
   check('only dollars and the three earned items: no other currency, no PRIME TOKENS, no PRIME SHOP item, no skin', !/token|sku|skin/i.test(JSON.stringify(RULES)) && RULES.milestones.every((q: any) => !q.cosmetic || (COSMETICS[q.cosmetic as CosmeticId] && COSMETICS[q.cosmetic as CosmeticId].source === 'daily' && !COSMETICS[q.cosmetic as CosmeticId].paid)));
 }

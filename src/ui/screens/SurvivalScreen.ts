@@ -248,7 +248,7 @@ export class SurvivalScreen implements Screen {
       const quests = eo.completed.map((q) => `<div class="evr-quest">${ICONS.check}<span>Задание выполнено: <b>${esc(q.title)}</b> · +${q.reward}</span></div>`).join('');
       eventBlock = `<div class="section panel ev-result" style="animation:lineIn .35s ease .5s both">
           <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+${eo.tokens}<span class="evr-coin">${icon}</span></span></div>
-          <div class="muted evr-lines">Марафон засчитан как один эфир${eo.lines.length ? ': ' + eo.lines.map((l) => `${esc(l.label)} +${l.value}`).join(' · ') : ''}${eo.capped ? ' · дневной лимит жетонов достигнут' : ''}</div>
+          <div class="muted evr-lines">Марафон засчитан как один эфир${eo.lines.length ? ': ' + eo.lines.map((l) => `${esc(l.label)} +${l.value}`).join(' · ') : ''}${eo.capped ? (ev.earnings?.overRate ? ' · после дневного порога — десятая часть' : ' · дневной лимит жетонов достигнут') : ''}</div>
           ${quests}
           ${quests ? '<button class="label evr-link" data-act="events">Забрать награды в «Событиях» ›</button>' : ''}
         </div>`;

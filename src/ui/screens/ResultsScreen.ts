@@ -169,7 +169,7 @@ export class ResultsScreen implements Screen {
         : '';
       eventBlock = `<div class="section panel ev-result" style="animation:lineIn .35s ease ${T0 + 0.15}s both">
           <div class="row between"><span class="h2 evr-title"><span class="evr-ico">${icon}</span>${esc(ev.title)}</span><span class="evr-gain">+<span data-season-paid>${eo.tokens}</span><span class="evr-coin">${icon}</span></span></div>
-          <div class="muted evr-lines">${parts || `Победы, высокий рейтинг и комбо приносят ${ev.secure && ev.currency ? esc(ev.currency.name.toLowerCase()) : 'жетоны'}`}${eo.capped ? ` · дневной лимит ${unit} за бои достигнут` : ''}</div>
+          <div class="muted evr-lines">${parts || `Победы, высокий рейтинг и комбо приносят ${ev.secure && ev.currency ? esc(ev.currency.name.toLowerCase()) : 'жетоны'}`}${eo.capped ? (ev.earnings?.overRate ? ' · после дневного порога бой платит десятую часть' : ` · дневной лимит ${unit} за бои достигнут`) : ''}</div>
           ${status}
           ${quests}
           ${starLine}
@@ -357,7 +357,8 @@ export class ResultsScreen implements Screen {
     }
     if (paid) paid.textContent = String(r.paid);
     st.classList.add('ok');
-    st.textContent = r.capped ? `Зачислено PRIME ID: +${r.paid} · дневной лимит за бои достигнут` : `Зачислено PRIME ID: +${r.paid}`;
+    // (Beta 2.5.5: past the day's threshold a fight still pays — a tenth, at least 1 — so «capped» is no longer a wall)
+    st.textContent = r.capped ? `Зачислено PRIME ID: +${r.paid} · после дневного порога бой платит десятую часть` : `Зачислено PRIME ID: +${r.paid}`;
     for (const q of r.completed) {
       const d = document.createElement('div');
       d.className = 'evr-quest';

@@ -99,15 +99,6 @@ export function fameTier(fans: number): string {
   return label;
 }
 
-/**
- * Alpha 1.9.9 — how much of a forfeit's pay is earned after `seconds` of real fight (REWARDS.forfeit): 0 in the first
- * `freeS` s, then evenly up to 1 at `fullS` s. The pause dialog shows the same number before the producer gives up.
- */
-export function forfeitPart(seconds: number): number {
-  const f = REWARDS.forfeit;
-  return Math.max(0, Math.min(1, (seconds - f.freeS) / (f.fullS - f.freeS)));
-}
-
 export function gradeFor(rating: number): string {
   if (rating >= 90) return 'S';
   if (rating >= 75) return 'A';
@@ -259,6 +250,15 @@ export class CareerSystem {
   }
 
   computeRewards(r: MatchResultData, fighter: FighterId, diff: Difficulty, opts: MatchApplyOptions = {}): MatchRewards {
+    // Beta 2.5.5: a voluntary exit is a technical loss with nothing paid (REWARDS.forfeit) — no quick-exit farm at any second
+    if (r.method === 'forfeit') {
+      return {
+        money: REWARDS.forfeit.money,
+        fans: REWARDS.forfeit.fans,
+        rep: REWARDS.forfeit.rep,
+        lines: [{ label: 'Выход из боя — технический проигрыш', value: 0, kind: 'money', note: 'без гонорара, фанатов и репутации' }],
+      };
+    }
     const dm = DIFFICULTIES[diff].rewardMult;
     // 1.9.6: the DOLLARS of a fight grow with the difficulty by the career's own table (src/config/career.ts
     // REWARDS.difficultyMoney); fans and reputation keep the difficulty's multiplier (fighters.ts — part of the fight)
@@ -289,31 +289,21 @@ export class CareerSystem {
       money += cm;
     }
     const star = Math.round(Math.min(REWARDS.starPowerCap, Math.sqrt(fans) * REWARDS.starPowerK));
-    if (star > 0 && r.method !== 'forfeit') {
+    if (star > 0) {
       lines.push({ label: 'Спонсоры бойца', value: star, kind: 'money', note: `${fans.toLocaleString('ru-RU')} фанатов` });
       money += star;
     }
     const mm = opts.moneyMult ?? 1;
-    if (mm !== 1 && r.method !== 'forfeit') {
+    if (mm !== 1) {
       const extra = Math.round(money * (mm - 1));
       lines.push({ label: opts.moneyLabel ?? 'Бонус режима', value: extra, kind: 'money', note: `×${mm}` });
       money += extra;
     }
-    // Alpha 1.9.9: a forfeit pays by the seconds really fought (REWARDS.forfeit) — the quick-exit farm is gone
-    const part = r.method === 'forfeit' ? forfeitPart(r.duration) : 1;
-    if (r.method === 'forfeit') {
-      money = Math.round(money * REWARDS.forfeit.share * part);
-      lines.push(
-        part > 0
-          ? { label: 'Штраф за сдачу', value: 0, kind: 'money', note: `−${Math.round((1 - REWARDS.forfeit.share * part) * 100)}%` }
-          : { label: `Сдача в первые ${REWARDS.forfeit.freeS} с боя`, value: 0, kind: 'money', note: 'без гонорара' },
-      );
-    }
     const fanBase = REWARDS.fans[key] * dm;
     const fanMult = REWARDS.fansRatingBase + (r.rating / 100) * REWARDS.fansRatingK;
-    const gainedFans = r.method === 'forfeit' ? 0 : Math.round(fanBase * fanMult);
+    const gainedFans = Math.round(fanBase * fanMult);
     lines.push({ label: 'Новые фанаты', value: gainedFans, kind: 'fans', note: `×${fanMult.toFixed(2)} от рейтинга` });
-    const rep = Math.max(0, Math.round((REWARDS.rep[key] * dm + r.rating / REWARDS.repRatingDiv) * part) - (r.method === 'forfeit' ? 6 : 0));
+    const rep = Math.max(0, Math.round(REWARDS.rep[key] * dm + r.rating / REWARDS.repRatingDiv));
     lines.push({ label: 'Репутация продюсера', value: rep, kind: 'rep' });
     return { money, fans: gainedFans, rep, lines };
   }
@@ -360,10 +350,14 @@ export class CareerSystem {
       st.current = 0;
       fp.streak = 0;
     }
-    s.bestRating = Math.max(s.bestRating, r.rating);
-    fp.bestRating = Math.max(fp.bestRating, r.rating);
-    s.bestCombosInMatch = Math.max(s.bestCombosInMatch, r.combos);
-    s.bestPerfectsInMatch = Math.max(s.bestPerfectsInMatch, r.perfects);
+    // (Beta 2.5.5: a voluntary exit advances no record and so no goal — «Золотой рейтинг», «Мастер комбо»… need a fight
+    // played to its end)
+    if (r.method !== 'forfeit') {
+      s.bestRating = Math.max(s.bestRating, r.rating);
+      fp.bestRating = Math.max(fp.bestRating, r.rating);
+      s.bestCombosInMatch = Math.max(s.bestCombosInMatch, r.combos);
+      s.bestPerfectsInMatch = Math.max(s.bestPerfectsInMatch, r.perfects);
+    }
     const newGoals = this.refreshGoals();
     if (opts.rotateRival !== false) {
       s.lastRival = rival;

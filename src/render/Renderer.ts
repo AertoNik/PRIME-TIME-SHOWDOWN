@@ -16,6 +16,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { PACED_INTERVAL_S, PACING_WINDOW, pacingStep } from './framePacing';
 
 export type QualityLevel = 'high' | 'medium' | 'low';
 export type QualitySetting = 'auto' | QualityLevel;
@@ -186,7 +187,14 @@ export class Renderer {
     this.setting = s;
     this.applyQuality(s === 'auto' ? 'high' : s);
     this.frameTimes = [];
+    this.frameInterval = 0;
   }
+
+  /**
+   * Beta 2.5.5 — the paced frame interval in seconds (0: draw on every screen refresh). The automatic quality sets it
+   * to 1/30 s when the device still struggles at the lowest quality (src/render/framePacing.ts); Game.loop keeps to it.
+   */
+  frameInterval = 0;
 
   /** Called after the quality level changes (auto downgrade or settings). */
   onQuality: ((q: QualityLevel) => void) | null = null;
@@ -225,21 +233,25 @@ export class Renderer {
     this.lastAdjust = now;
   }
 
-  /** Feed real frame times; drops quality when the device struggles. */
+  /**
+   * Feed real frame times; drops quality when the device struggles — a slow average or (Beta 2.5.5) frequent long
+   * frames — and, at the lowest quality, paces the game to an even 30 fps (src/render/framePacing.ts).
+   */
   monitor(dtReal: number, now: number): void {
     // Background tabs run on throttled timers: those frame times say nothing about the GPU.
     if (this.setting !== 'auto' || document.hidden) return;
     this.frameTimes.push(dtReal);
-    if (this.frameTimes.length > 90) this.frameTimes.shift();
-    if (now - this.lastAdjust < 3 || this.frameTimes.length < 90) return;
-    const avg = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
-    if (avg > 1 / 42 && this.quality !== 'low') {
+    if (this.frameTimes.length > PACING_WINDOW) this.frameTimes.shift();
+    if (now - this.lastAdjust < 3 || this.frameTimes.length < PACING_WINDOW) return;
+    const step = pacingStep(this.frameTimes, this.quality, this.frameInterval > 0);
+    if (step === 'down') {
       this.applyQuality(this.quality === 'high' ? 'medium' : 'low');
       this.frameTimes = [];
-      this.lastAdjust = now;
-    } else {
-      this.lastAdjust = now;
+    } else if (step === 'pace30') {
+      this.frameInterval = PACED_INTERVAL_S;
+      this.frameTimes = [];
     }
+    this.lastAdjust = now;
   }
 
   /**
