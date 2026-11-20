@@ -164,6 +164,8 @@ export interface ServerConfig {
   daily: boolean;
   /** Beta 2.2: «ПРИГЛАСИТЬ ДРУГА» is switched on here (/api/prime/referral; a server before 2.2: off). */
   referrals: boolean;
+  /** Beta 2.4: REWARD CASES are switched on here (/api/prime/cases; a server before 2.4: off). */
+  cases: boolean;
   /** 1.9.0 PRIME LEAGUE on this server (PRIME_LEAGUE=on), the participation rules version and the fight's SIM_VERSION. */
   league: { on: boolean; rules: number; sim: string | null };
   /** 1.9.0 PRIME PRODUCER AVATARS on this server: the catalogue version (0: a server before 1.9.0). */
@@ -228,6 +230,8 @@ export interface DailyStatus {
   returnTo: number | null;
   lastChanceDay: number;
   history: { day: number; streakDay: number; money: number; kind: string; milestone: number }[];
+  /** Beta 2.4: the server gives a DAILY BROADCAST CASE instead of an ordinary day's dollars (false: an older server). */
+  cases: boolean;
 }
 
 /** 1.8.9: what one claim paid (written into the cloud save by the server). */
@@ -246,6 +250,9 @@ export interface DailyClaim {
   /** 1.9.6: the exclusive item that milestone gave (null: none / an older server); the checkpoint a break went back to. */
   cosmetic: string | null;
   from: number;
+  /** Beta 2.4: the DAILY BROADCAST CASE this claim gave (its tier) and the ordinary day's dollars it replaced. */
+  case: { kind: 'daily'; tier: number } | null;
+  replaced: number;
 }
 
 export interface DailyClaimResult {
@@ -359,7 +366,9 @@ export interface ReferralStatus {
   minCards: number;
   invitedBy: ReferralInvitation | null;
   invited: { total: number; confirmed: number };
-  /** Always false in Beta 2.2 — no reward is given for an invitation yet. */
+  /** Beta 2.4: the invited friends' progress (no names), newest first — at most 50. */
+  friends: { linkedAt: number; seconds: number; qualified: boolean }[];
+  /** Beta 2.2: false (no reward yet); Beta 2.4: true when a confirmed invitation gives PRIME INVITE CASES. */
   rewards: boolean;
   notice: string;
 }
@@ -377,6 +386,12 @@ function referralOf(r: Rec): ReferralStatus {
     minCards: int(r.minCards),
     invitedBy: invitationOf(r.invitedBy),
     invited: { total: int(inv.total), confirmed: int(inv.confirmed) },
+    friends: Array.isArray(r.friends)
+      ? r.friends.slice(0, 50).map((f) => {
+          const x = (f ?? {}) as Rec;
+          return { linkedAt: int(x.linkedAt), seconds: int(x.seconds), qualified: x.qualified === true };
+        })
+      : [],
     rewards: r.rewards === true,
     notice: str(r.notice),
   };
@@ -430,6 +445,88 @@ export function dailyStatusOf(r: Rec): DailyStatus {
           return { day: int(x.day), streakDay: int(x.streakDay), money: int(x.money), kind: str(x.kind), milestone: int(x.milestone) };
         })
       : [],
+    cases: r.cases === true,
+  };
+}
+// ------------------------------------------------------------ Beta 2.4 REWARD CASES
+export type CaseKind = 'invite' | 'daily';
+export type CaseRewardKind = 'money' | 'rep' | 'tokens' | 'item';
+/** One line of a case's odds as the server states them for this player (share: basis points, sums to 10 000). */
+export interface CaseOddsLine {
+  id: string;
+  kind: CaseRewardKind;
+  min: number;
+  max: number;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  label: string;
+  item: string | null;
+  share: number;
+}
+/** What one opened case gave (decided and written by the server). */
+export interface CaseReward {
+  kind: CaseRewardKind;
+  outcome: string;
+  label: string;
+  rarity: CaseOddsLine['rarity'];
+  share: number;
+  amount: number;
+  item: string | null;
+  /** The save's case mark after this reward (money / reputation / item); 0: nothing went into the save (tokens). */
+  mark: number;
+  /** PRIME TOKENS: the league balance after it. */
+  balance: number;
+}
+export interface CaseRecord {
+  id: string;
+  kind: CaseKind;
+  tier: number;
+  openedAt: number;
+  result: CaseReward | null;
+}
+export interface CasesStatus {
+  exclusive: { item: string; owned: boolean };
+  tokens: boolean;
+  invite: { ready: number; opened: number; odds: CaseOddsLine[] };
+  daily: { ready: number; opened: number; tier: number; odds: CaseOddsLine[] };
+  history: CaseRecord[];
+}
+export interface CaseOpenResult {
+  case: CaseRecord;
+  revision: number;
+  hash: string;
+  duplicate: boolean;
+  status: CasesStatus | null;
+}
+const caseKind = (v: unknown): CaseKind => (v === 'invite' ? 'invite' : 'daily');
+const rewardKind = (v: unknown): CaseRewardKind => (v === 'money' || v === 'rep' || v === 'tokens' || v === 'item' ? v : 'money');
+const rarityOf = (v: unknown): CaseOddsLine['rarity'] => (v === 'rare' || v === 'epic' || v === 'legendary' ? v : 'common');
+function oddsLines(v: unknown): CaseOddsLine[] {
+  return Array.isArray(v)
+    ? v.slice(0, 12).map((x) => {
+        const o = (x ?? {}) as Rec;
+        return { id: str(o.id), kind: rewardKind(o.kind), min: int(o.min), max: int(o.max), rarity: rarityOf(o.rarity), label: str(o.label), item: typeof o.item === 'string' ? o.item : null, share: Math.max(0, int(o.share)) };
+      })
+    : [];
+}
+function caseRewardOf(v: unknown): CaseReward | null {
+  if (!v || typeof v !== 'object') return null;
+  const r = v as Rec;
+  return { kind: rewardKind(r.kind), outcome: str(r.outcome), label: str(r.label), rarity: rarityOf(r.rarity), share: int(r.share), amount: Math.max(0, int(r.amount)), item: typeof r.item === 'string' ? r.item : null, mark: int(r.mark), balance: int(r.balance) };
+}
+function caseRecordOf(v: unknown): CaseRecord {
+  const r = (v ?? {}) as Rec;
+  return { id: str(r.id), kind: caseKind(r.kind), tier: int(r.tier), openedAt: int(r.openedAt), result: caseRewardOf(r.result) };
+}
+export function casesStatusOf(r: Rec): CasesStatus {
+  const ex = (r.exclusive ?? {}) as Rec;
+  const inv = (r.invite ?? {}) as Rec;
+  const day = (r.daily ?? {}) as Rec;
+  return {
+    exclusive: { item: str(ex.item), owned: ex.owned === true },
+    tokens: r.tokens === true,
+    invite: { ready: int(inv.ready), opened: int(inv.opened), odds: oddsLines(inv.odds) },
+    daily: { ready: int(day.ready), opened: int(day.opened), tier: int(day.tier) || 1, odds: oddsLines(day.odds) },
+    history: Array.isArray(r.history) ? r.history.slice(0, 20).map(caseRecordOf) : [],
   };
 }
 
@@ -591,6 +688,7 @@ export class PrimeApi {
       })(),
       daily: r.daily === 1,
       referrals: r.referrals === 1,
+      cases: r.cases === 1,
       league: (() => {
         const l = (r.league ?? {}) as Rec;
         return { on: l.on === true, rules: int(l.rules), sim: typeof l.sim === 'string' ? l.sim : null };
@@ -652,7 +750,8 @@ export class PrimeApi {
    * answers with the new revision. The request names nothing else — a repeat with the same op is answered again.
    */
   async dailyClaim(op: string, base: number): Promise<DailyClaimResult> {
-    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/daily/claim', { ...o, method: 'POST', body: { op, base, ...this.sessionBody() } }));
+    // (Beta 2.4: cases: 1 — this game shows a DAILY BROADCAST CASE instead of an ordinary day's dollars)
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/daily/claim', { ...o, method: 'POST', body: { op, base, cases: 1, ...this.sessionBody() } }));
     const c = (r.claim ?? {}) as Rec;
     return {
       claim: {
@@ -668,12 +767,29 @@ export class PrimeApi {
         first: c.first === true,
         cosmetic: typeof c.cosmetic === 'string' ? c.cosmetic : null,
         from: int(c.from),
+        case: c.case && typeof c.case === 'object' ? { kind: 'daily', tier: int((c.case as Rec).tier) || 1 } : null,
+        replaced: Math.max(0, int(c.replaced)),
       },
       revision: int(r.revision),
       hash: str(r.hash),
       duplicate: r.duplicate === true,
       status: r.status && typeof r.status === 'object' ? dailyStatusOf(r.status as Rec) : null,
     };
+  }
+
+  // ------------------------------------------------------------ Beta 2.4 REWARD CASES
+  async casesStatus(): Promise<CasesStatus> {
+    return casesStatusOf(await this.call((o) => this.pb.send<Rec>('/api/prime/cases', { ...o, method: 'GET' })));
+  }
+
+  /**
+   * Opens this account's oldest waiting case of `kind`: the server draws and writes the reward into the cloud save
+   * revision `base` (or the league token ledger) and answers with what it gave. A repeat with the same op is answered
+   * again with the same result.
+   */
+  async caseOpen(op: string, kind: CaseKind, base: number): Promise<CaseOpenResult> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/cases/open', { ...o, method: 'POST', body: { op, kind, base, ...this.sessionBody() } }));
+    return { case: caseRecordOf(r.case), revision: int(r.revision), hash: str(r.hash), duplicate: r.duplicate === true, status: r.status && typeof r.status === 'object' ? casesStatusOf(r.status as Rec) : null };
   }
 
   // ------------------------------------------------------------ PRIME CHECKOUT (1.8.8 stage 3)

@@ -94,7 +94,7 @@ function store(d: SaveData = defaultSave()) {
   const shown = col.cosmetics();
   const sources = new Set(COSMETIC_ORDER.map((id) => COSMETICS[id].source));
   check('every owned game item is visible in the collection', COSMETIC_ORDER.filter((id) => !COSMETICS[id].paid && !COSMETICS[id].personal).every((id) => shown.some((v) => v.def.id === id && v.owned)));
-  check('every item source has its section (shop, season, league, career / boss / daily → awards)', [...sources].every((x) => ['shop', 'season', 'league', 'career', 'boss', 'daily'].includes(x)) && /c\.source === 'shop' \? 'shop' : c\.source === 'season' \? 'season' : c\.source === 'league' \? 'league' : 'rewards'/.test(src));
+  check('every item source has its section (shop, season, league, career / boss / daily / Beta 2.4 referral → awards)', [...sources].every((x) => ['shop', 'season', 'league', 'career', 'boss', 'daily', 'referral'].includes(x)) && src.includes('DAILY PRIME STREAK и PRIME INVITE CASE') && /c\.source === 'shop' \? 'shop' : c\.source === 'season' \? 'season' : c\.source === 'league' \? 'league' : 'rewards'/.test(src));
   check('the screen only shows and equips: no grant / purchase / server call', !/\.grant\(|devGrant|fetch\(|checkout|setEntitlements/i.test(src.replace(/^\s*(\/\/|\*).*$/gm, '')));
   check('the old 1.x tabs still open their place (checkout → purchases, events → seasons)', src.includes("const map: Record<string, Section> = { all: 'overview', cosmetics: 'shop', achievements: 'achievements', seasons: 'seasons' };"));
   // Beta 2.0 final — the tab bar jumped back to its start: every tab rebuilt the whole screen with innerHTML

@@ -247,6 +247,12 @@ export interface SaveData {
    */
   daily: { claims: number; day: number };
   /**
+   * Beta 2.4 REWARD CASES: how many case rewards this save holds (n) — written by the PRIME NETWORK server together with
+   * the dollars / reputation / exclusive, so a reward is never applied twice on this device. Not the cases themselves
+   * (those are the server's: GET /api/prime/cases). No save version bump.
+   */
+  cases: { n: number };
+  /**
    * Beta 2.0 — personal effects: per fighter, the dash / victory effect it wears INSTEAD of the producer's common one;
    * 'off' = this fighter wears none (unlike an absent entry, which inherits the common choice). Never ownership: an
    * item the account does not own (any more) is simply not worn (Collection.equippedFor), one bought item serves every
@@ -369,6 +375,7 @@ export function defaultSave(): SaveData {
     streak: { current: 0, best: 0, since: Date.now() },
     shop: { skins: {}, equip: {} },
     daily: { claims: 0, day: 0 },
+    cases: { n: 0 },
     fx: {},
     leagueRep: { credited: 0 },
   };
@@ -835,6 +842,8 @@ export function sanitize(raw: unknown): SaveData {
     const dl = r.daily as Partial<SaveData['daily']>;
     d.daily = { claims: Math.min(1e6, count(dl.claims)), day: Math.min(1e7, count(dl.day)) };
   }
+  // Beta 2.4: the case rewards the save holds (absent before 2.4 -> none)
+  if (r.cases && typeof r.cases === 'object') d.cases = { n: Math.min(1e8, count((r.cases as Partial<SaveData['cases']>).n)) };
   return d;
 }
 

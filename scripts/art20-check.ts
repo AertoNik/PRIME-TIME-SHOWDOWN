@@ -116,9 +116,10 @@ check('a failed currency picture falls back to the 1.x icon', fallbackHTML('cur|
 
 // -------------------------------------------------------------------------- effects
 const fx = Object.keys(EFFECT_ART) as CosmeticId[];
-// (Beta 2.2 adds exactly one: DAILY PRIME STREAK's «РАССВЕТ ПРАЙМ-ТАЙМА» — npm run art22)
+// (Beta 2.2 adds exactly one: DAILY PRIME STREAK's «РАССВЕТ ПРАЙМ-ТАЙМА» — npm run art22; Beta 2.4 exactly one more:
+// PRIME INVITE CASE's INVITE SIGNAL — npm run rewards24)
 const FX20 = ['dash_prime_phantom', 'dash_glitch', 'dash_comet', 'dash_league_arc', 'dash_candy_comet', 'victory_golden_confetti', 'victory_studio_spotlights', 'victory_neon_fireworks', 'victory_pumpkin', 'victory_midnight_confetti'];
-check('ten effect previews of Beta 2.0 (+ Beta 2.2\'s victory_daily_sunrise, nothing else), each a real dash / victory effect with a file', fx.join() === [...FX20, 'victory_daily_sunrise'].join() && fx.every((id) => COSMETICS[id] && (COSMETICS[id].slot === 'dashFx' || COSMETICS[id].slot === 'victoryFx') && file('effects', id, 160)));
+check('ten effect previews of Beta 2.0 (+ Beta 2.2\'s victory_daily_sunrise and Beta 2.4\'s dash_invite_signal, nothing else), each a real dash / victory effect with a file', fx.join() === [...FX20, 'victory_daily_sunrise', 'dash_invite_signal'].join() && fx.every((id) => COSMETICS[id] && (COSMETICS[id].slot === 'dashFx' || COSMETICS[id].slot === 'victoryFx') && file('effects', id, 160)));
 check('PHANTOM DASH (PRIME SHOP) gets phantom_dash.png; the Halloween PURPLE PHANTOM keeps its drawing', manifest.icons.effects.dash_prime_phantom?.src.endsWith('phantom_dash.png') && !EFFECT_ART.dash_phantom && cosmeticPic('dash_phantom', 74).startsWith('<svg'));
 check('RANKED CARDS, RANKED ARENA, frames and card styles keep their real demonstrations', (['card_league_ranked', 'frame_league_arena', 'card_vhs', 'frame_prime_broadcast'] as CosmeticId[]).every((id) => !EFFECT_ART[id]));
 check('seasonal effects keep their events (PUMPKIN VICTORY, CANDY COMET, MIDNIGHT CONFETTI)', COSMETICS.victory_pumpkin.eventId === 'halloween-2026' && COSMETICS.dash_candy_comet.source === 'season' && COSMETICS.victory_midnight_confetti.source === 'season');

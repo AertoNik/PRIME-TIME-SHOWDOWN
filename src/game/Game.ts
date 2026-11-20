@@ -28,6 +28,7 @@ import { inRoster } from '../meta/roster';
 import { loadReturn, mergeReturn, readReturnQuery, saveReturn, stripReturnQuery } from '../meta/Payments';
 import { checkoutAccount } from '../ui/checkoutUI';
 import { Arena } from '../render/Arena';
+import { caseRendererBusy } from '../render/caseRenderer';
 import { BattleView, type TimeFx } from '../render/BattleView';
 import { CameraRig } from '../render/CameraRig';
 import { ModelCache } from '../render/ModelCache';
@@ -1415,8 +1416,9 @@ export class Game {
     this.vfx.update(dt === 0 && m ? 0 : m ? dt : dtReal, this.renderer.camera);
     this.vfx.setViewport(this.renderer.size.h * this.renderer.renderer.getPixelRatio(), this.renderer.camera.fov);
     this.ui.update(dtReal);
-    // Nothing to see in a background tab: skip the GPU work.
-    if (!document.hidden) this.renderer.render(dtReal);
+    // Nothing to see in a background tab: skip the GPU work. Beta 2.4: nor under a case opening — the show covers the
+    // whole frame with its own (opaque) stage, so one 3D picture is drawn at a time (the game goes on updating)
+    if (!document.hidden && !caseRendererBusy()) this.renderer.render(dtReal);
   }
 
   private handleEvent(e: MatchEvent): void {

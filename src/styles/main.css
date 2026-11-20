@@ -19934,3 +19934,584 @@ button.lg-arena:active {
 .ev-banner.has-emblem .evb-sub {
   max-width: 60%;
 }
+
+/* ===================================================================== Beta 2.4 — REWARDS & REFERRAL EVOLUTION */
+/* Beta 2.4 final — the bottom bar is Beta 2.3's (the owner's decision: БОЙЦЫ | КАРЬЕРА over КОЛЛЕКЦИЯ | НАСТРОЙКИ, the
+   same skins, sizes and look). Two small fixes only:
+   · a «new» number sits on the skin's top-right corner — the rounded end is drawn as the button's right border, so
+     right: -6px alone put the number over the label (seen after INVITE SIGNAL lands in the collection);
+   · on the narrowest phones (≤ 340 px) the labels are 9.5 px instead of 10, so КОЛЛЕКЦИЯ keeps clear of its emblem. */
+.menu-nav .btn.nav-skin .badge-dot {
+  top: -7px;
+  right: calc(2px - var(--nav-h) * var(--rk));
+}
+@container (max-width: 340px) {
+  .menu-nav .btn.nav-skin .nav-label {
+    font-size: 9.5px;
+  }
+}
+/* a number of cases waiting on the gift / the invitation */
+.daily-btn .case-badge,
+.ref-btn .case-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #ffd75a, #f0a020);
+  color: #2a1600;
+  font: 900 11px/18px var(--font-display);
+  text-align: center;
+  box-shadow: 0 0 0 2px #0b1236;
+}
+
+/* ------------------------------------------------------------- the case's picture (a render of its 3D model) */
+.case-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+.case-img-fb {
+  aspect-ratio: 6 / 5;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 45%, rgba(63, 240, 216, 0.5), transparent 60%), linear-gradient(160deg, #1b2d86, #0d1546);
+}
+.case-img-fb.kind-daily {
+  background: radial-gradient(circle at 50% 45%, rgba(127, 246, 255, 0.5), transparent 60%), linear-gradient(160deg, #2f86e8, #1d5cb4);
+}
+
+/* ------------------------------------------------------------- PRIME INVITE CASE screen («Пригласить друга») */
+.modal-root .modal:has(> .ref) {
+  max-height: min(92vh, 860px);
+  overflow-y: auto;
+}
+.ref-cases {
+  background:
+    radial-gradient(120% 90% at 20% 0%, rgba(63, 240, 216, 0.16), transparent 60%),
+    linear-gradient(160deg, rgba(27, 45, 134, 0.85), rgba(10, 16, 56, 0.9));
+  border: 1px solid rgba(242, 194, 74, 0.45);
+}
+.ref-cases .rc-top {
+  display: grid;
+  grid-template-columns: 42% 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.ref-cases .rc-img {
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.45));
+}
+.ref-cases.has .rc-img {
+  animation: rcBob 2.6s ease-in-out infinite;
+}
+@keyframes rcBob {
+  50% {
+    transform: translateY(-4px) rotate(-1.5deg);
+  }
+}
+:root[data-motion='off'] .ref-cases.has .rc-img {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ref-cases.has .rc-img {
+    animation: none;
+  }
+}
+.ref-cases .rc-info {
+  min-width: 0;
+}
+.ref-cases h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: #ffd56a;
+  overflow-wrap: anywhere;
+}
+.ref-cases .rc-count {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.ref-cases .rc-count b {
+  font-size: 18px;
+  color: #3ff0d8;
+}
+.ref-cases .rc-open {
+  width: 100%;
+  margin: 10px 0 0;
+}
+.ref-cases .rc-how {
+  margin: 0;
+  font-size: 12px;
+}
+.rc-odds {
+  margin-top: 10px;
+}
+.rc-odds summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 13px;
+  color: #bfe9ff;
+}
+.rc-rules {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+}
+.case-odds {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.co-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid #3ff0d8;
+}
+.co-row.rar-rare {
+  border-left-color: #5aa2ff;
+}
+.co-row.rar-epic {
+  border-left-color: #c06bff;
+}
+.co-row.rar-legendary {
+  border-left-color: #ffc84a;
+  background: linear-gradient(90deg, rgba(255, 200, 74, 0.14), rgba(255, 255, 255, 0.04));
+}
+.co-name b {
+  display: block;
+  font-size: 13px;
+}
+.co-name small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.co-rar {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.65);
+}
+.co-share {
+  font: 900 14px var(--font-display);
+  color: #fff;
+  min-width: 52px;
+  text-align: right;
+}
+.co-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+}
+.ref-friends .rf-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.rf-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.rf-row.done {
+  grid-template-columns: auto 1fr;
+}
+.rf-name {
+  font-weight: 800;
+}
+.rf-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.rf-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #3ff0d8, #5aa2ff);
+}
+.rf-ok {
+  color: #8dffc8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rf-ok svg {
+  width: 14px;
+  height: 14px;
+}
+/* a guest: a small sheet — create a PRIME ID or sign in */
+.ref.ref-guest .ref-guest-art {
+  width: min(220px, 60%);
+  margin: 0 auto 6px;
+}
+.ref.ref-guest .ref-ico.big svg {
+  width: 72px;
+  height: 72px;
+}
+.ref-guest-lead {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+.ref-guest-lead b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.ref-guest-actions {
+  display: grid;
+  gap: 8px;
+}
+.ref-guest-actions .btn {
+  width: 100%;
+  margin: 0;
+  min-width: 0;
+  white-space: normal;
+}
+
+/* ------------------------------------------------------------- DAILY window: the case of the day */
+.dps-hero .dps-case-img {
+  width: 76px;
+}
+.dps-chip .dps-case {
+  display: block;
+  width: 16px;
+  height: 13px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2bc6d6 0 40%, #2f86e8 40%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+    0 0 6px rgba(127, 246, 255, 0.5);
+}
+.dps-cases-wait {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(63, 240, 216, 0.1);
+  border: 1px solid rgba(63, 240, 216, 0.35);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------- the opening show */
+.case-show {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(var(--safe-top, 0px) + 18px) 16px calc(var(--safe-bottom, 0px) + 16px);
+  background:
+    radial-gradient(90% 60% at 50% 42%, rgba(40, 70, 190, 0.55), transparent 70%),
+    linear-gradient(180deg, #05081e, #080c28);
+  color: #fff;
+  overflow: hidden;
+  touch-action: manipulation;
+  animation: csIn 0.25s ease-out;
+}
+@keyframes csIn {
+  from {
+    opacity: 0;
+  }
+}
+.case-show.kind-daily {
+  background:
+    radial-gradient(90% 60% at 50% 42%, rgba(47, 134, 232, 0.5), transparent 70%),
+    linear-gradient(180deg, #050c22, #08122e);
+}
+.case-show [hidden] {
+  display: none !important;
+}
+.cs-title {
+  text-align: center;
+  z-index: 2;
+}
+.cs-title b {
+  display: block;
+  font: 900 italic 22px var(--font-display);
+  letter-spacing: 0.04em;
+  color: #ffd56a;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+.kind-daily .cs-title b {
+  color: #9ff3ff;
+}
+.cs-title span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.cs-canvas {
+  display: block;
+  margin-top: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+  /* the halo grows at the burst — fade the canvas edges so its light never ends in a hard line */
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 14%, #000 86%, transparent);
+}
+.cs-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 42%, #fff, rgba(255, 255, 255, 0.6) 30%, transparent 70%);
+}
+.cs-flash.go {
+  animation: csFlash 0.6s ease-out;
+}
+@keyframes csFlash {
+  15% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.case-show.calm .cs-flash.go {
+  animation-duration: 0.01s;
+}
+.cs-hint {
+  min-height: 22px;
+  font: 800 15px var(--font-display);
+  letter-spacing: 0.04em;
+  color: #bfe9ff;
+  animation: csPulse 1.4s ease-in-out infinite;
+  cursor: pointer;
+}
+.case-show.calm .cs-hint {
+  animation: none;
+}
+@keyframes csPulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.cs-pips {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.cs-pips i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.cs-pips i.on {
+  background: #3ff0d8;
+  box-shadow: 0 0 10px #3ff0d8;
+}
+.kind-invite .cs-pips i.on {
+  background: #ffc84a;
+  box-shadow: 0 0 10px #ffc84a;
+}
+.case-show.calm .cs-pips {
+  display: none;
+}
+.cs-result {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--safe-bottom, 0px) + 70px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.case-show.has-result .cs-result {
+  pointer-events: auto;
+}
+.case-show.has-result .cs-hint,
+.case-show.has-result .cs-pips {
+  visibility: hidden;
+}
+.case-reward {
+  width: min(360px, 100%);
+  padding: 14px 16px;
+  border-radius: 20px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(20, 32, 96, 0.96), rgba(10, 16, 56, 0.98));
+  border: 2px solid #3ff0d8;
+  box-shadow:
+    0 0 30px rgba(63, 240, 216, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: crRise 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.case-show.calm .case-reward {
+  animation: none;
+}
+@keyframes crRise {
+  from {
+    transform: translateY(40px) scale(0.85);
+    opacity: 0;
+  }
+}
+.case-reward.rar-rare {
+  border-color: #5aa2ff;
+  box-shadow:
+    0 0 30px rgba(90, 162, 255, 0.4),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.case-reward.rar-epic {
+  border-color: #c06bff;
+  box-shadow:
+    0 0 34px rgba(192, 107, 255, 0.45),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.case-reward.rar-legendary {
+  border-color: #ffc84a;
+  background: linear-gradient(180deg, rgba(70, 46, 8, 0.96), rgba(24, 14, 4, 0.98));
+  box-shadow:
+    0 0 44px rgba(255, 200, 74, 0.55),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.case-reward.err {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
+}
+.cr-rarity {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+.rar-legendary .cr-rarity {
+  color: #ffd56a;
+}
+.cr-pic {
+  display: flex;
+  justify-content: center;
+  margin: 6px 0;
+}
+.cr-pic .case-cur,
+.cr-pic svg,
+.cr-pic img {
+  width: 72px;
+  height: 72px;
+}
+.case-item-pic img,
+.case-item-pic svg {
+  width: 110px;
+  height: 110px;
+}
+/* (the owner's effect picture is drawn `.fill` — it fills its box, so the box itself is the 110 px of the drawing) */
+.case-item-pic {
+  display: block;
+  width: 110px;
+  height: 110px;
+}
+.cr-big {
+  font: 900 24px var(--font-display);
+  letter-spacing: 0.02em;
+}
+.cr-small {
+  margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+}
+.cs-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(360px, 100%);
+}
+.cs-next .btn {
+  flex: 1 1 140px;
+  min-width: 0;
+  margin: 0;
+  padding-inline: 10px;
+  font-size: 14px;
+  white-space: normal;
+}
+.case-show.has-result .cs-close {
+  display: none;
+}
+.case-show.has-result .cs-result {
+  bottom: calc(var(--safe-bottom, 0px) + 18px);
+}
+.cs-actions {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--safe-bottom, 0px) + 14px);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.case-show.has-result .cs-skip {
+  display: none;
+}
+
+/* Beta 2.4: the DAILY case's name in the day card — a long name, so smaller than a dollar amount */
+.dps-hero-text b.dps-case-title {
+  font-size: 19px;
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+@container (max-width: 360px) {
+  .dps-hero-text b.dps-case-title {
+    font-size: 16px;
+  }
+}
+/* Beta 2.4: the milestone badges (7 / 30 / 100) stand above their nodes — leave them room under the track's heading */
+.dps-track-head {
+  margin-bottom: 26px;
+}
+/* Beta 2.4: the reward rule sits in «Ваш код» — it is about the friends the player invites */
+.ref-mine .ref-notice {
+  margin-top: 8px;
+  text-align: left;
+  color: #8ff3e4;
+}
+/* Beta 2.4: the show without WebGL — a drawn case in the stage (the taps, the result and the card work the same) */
+.cs-flat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cs-flat .case-img-fb {
+  display: block;
+  width: min(62%, 260px);
+  box-shadow: 0 0 0 3px #ffc84a inset, 0 0 40px rgba(63, 240, 216, 0.35);
+}
+.case-show.has-result .cs-flat .case-img-fb {
+  animation: csFlatOpen 0.5s ease-out both;
+}
+@keyframes csFlatOpen {
+  50% {
+    transform: scale(1.08);
+  }
+  to {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+}

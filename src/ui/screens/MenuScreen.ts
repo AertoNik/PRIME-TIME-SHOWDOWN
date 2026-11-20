@@ -1,3 +1,4 @@
+import { casesOn, casesStatus, onCases, refreshCases } from '../caseUI';
 import { formatMoney } from '../../core/math';
 import type { Game } from '../../game/Game';
 import { countUp, el, esc } from '../dom';
@@ -130,6 +131,29 @@ export class MenuScreen implements Screen {
     });
     // 1.8.9: the gift lights up when today's reward waits, and goes quiet once it is taken
     g.daily.onChange(() => this.paintDaily());
+    // Beta 2.4: the cases waiting — a number on the invite and the gift
+    onCases(() => this.paintCases());
+  }
+
+  /** Beta 2.4: how many PRIME INVITE / DAILY BROADCAST cases wait — a badge on «Пригласить друга» and the gift. */
+  private paintCases(): void {
+    const cs = casesOn(this.g) ? casesStatus() : null;
+    const put = (sel: string, n: number) => {
+      const btn = this.el.querySelector(sel) as HTMLElement | null;
+      if (!btn) return;
+      let b = btn.querySelector('.case-badge') as HTMLElement | null;
+      if (n > 0) {
+        if (!b) {
+          b = document.createElement('span');
+          b.className = 'badge-dot case-badge';
+          b.setAttribute('aria-hidden', 'true');
+          btn.appendChild(b);
+        }
+        b.textContent = n > 9 ? '9+' : String(n);
+      } else b?.remove();
+    };
+    put('[data-act="referral"].ref-btn', cs?.invite.ready ?? 0);
+    put('[data-act="daily"].daily-btn', cs?.daily.ready ?? 0);
   }
 
   /**
@@ -146,7 +170,9 @@ export class MenuScreen implements Screen {
     const btn = this.el.querySelector('[data-act="daily"].daily-btn') as HTMLButtonElement | null;
     if (!btn) return;
     const d = this.g.daily;
-    btn.hidden = !d.supported;
+    // Beta 2.4: the gift is a PRIME ID's — a guest does not see it (the invitation stays for everybody)
+    const gate = d.gate();
+    btn.hidden = !d.supported || gate === 'guest' || gate === 'off';
     const ready = d.giftReady;
     btn.classList.toggle('ready', ready);
     btn.setAttribute('aria-label', `DAILY PRIME STREAK — ежедневный эфир${ready ? ': подарок ждёт' : d.status?.claimedToday ? ': сегодня получено' : ''}`);
@@ -334,6 +360,9 @@ export class MenuScreen implements Screen {
     this.paintCloud(true);
     this.paintDaily();
     this.paintReferral();
+    // Beta 2.4: the cases (read again on every visit to the menu — an invitation may have been confirmed meanwhile)
+    this.paintCases();
+    void refreshCases(this.g);
     void g.daily.refresh();
     this.shownRep = s.reputation;
   }

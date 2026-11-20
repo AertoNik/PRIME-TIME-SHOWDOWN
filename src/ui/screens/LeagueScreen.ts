@@ -15,7 +15,7 @@ import { gradeFor } from '../../meta/CareerSystem';
 import { defenseBase, newOp, type LeagueApi, type LeagueArenaPref, type LeagueBoard, type LeagueFinish, type LeagueHistory, type LeagueMatch, type LeagueMe, type LeagueSeries, type LeagueSlot } from '../../net/LeagueApi';
 import { PrimeApiError } from '../../net/PrimeApi';
 import { ARENA_ART } from '../arenaArt';
-import { cardHTML, countUp, el, esc, portraitHTML, swapToggles } from '../dom';
+import { cardHTML, countUp, el, esc, keepImages, portraitHTML, swapToggles } from '../dom';
 import { UI_ICONS } from '../icons';
 import { ICONS } from '../eventArt';
 import { COSMETICS, RARITY_LABEL, SLOT_LABELS, isCosmeticId } from '../../config/cosmetics.config';
@@ -440,7 +440,10 @@ export class LeagueScreen implements Screen {
     }
     const a = document.activeElement as HTMLElement | null;
     const focusSel = a && a !== this.el && this.el.contains(a) ? FOCUS_KEYS.filter((k) => a.hasAttribute(k)).map((k) => `[${k}="${CSS.escape(a.getAttribute(k) ?? '')}"]`).join('') : '';
-    this.el.innerHTML = `${head}<div class="fill scroll lg-scroll">${body}</div>`;
+    // (Beta 2.4 final: the fighters' portraits and the cards keep their loaded pictures — no blink on a pick)
+    keepImages(this.el, () => {
+      this.el.innerHTML = `${head}<div class="fill scroll lg-scroll">${body}</div>`;
+    });
     this.viewKey = viewKey;
     if (keepY) (this.el.querySelector('.lg-scroll') as HTMLElement).scrollTop = keepY;
     for (const [k, x] of keepX) {

@@ -58,7 +58,9 @@ export type CosmeticId =
   | 'dash_candy_comet'
   | 'frame_frostlight_live'
   | 'victory_midnight_confetti'
-  | 'title_winter_champion';
+  | 'title_winter_champion'
+  // Beta 2.4: PRIME INVITE CASE's exclusive (earned — the server's case record)
+  | 'dash_invite_signal';
 
 /**
  * Where an item comes from — the collection's categories (1.8.8: 'shop' — PRIME SHOP; 1.9.6: 'daily' — a DAILY STREAK
@@ -66,7 +68,7 @@ export type CosmeticId =
  * granted by the game alone: the server names them (DAILY status, league /me) and refuses a cloud save that lists one
  * the account has not earned (lib/earned.js).
  */
-export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop' | 'daily' | 'league';
+export type CosmeticSource = 'season' | 'boss' | 'career' | 'shop' | 'daily' | 'league' | 'referral';
 
 /**
  * Alpha 1.9.5 — the four tiers of rarity, the same for cosmetics and PRIME SHOP skins. Cosmetic only: a tier never
@@ -84,7 +86,7 @@ export interface CosmeticDef {
   /** Where the player will see it (shown on the reward card). */
   where: string;
   /** Preview art key (ui/eventArt.ts). */
-  art: 'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio';
+  art: 'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio' | 'signal';
   rarity: Rarity;
   /** Event (or game mode) that awards it (for the collection's history). */
   eventId: string;
@@ -249,6 +251,20 @@ export const COSMETICS: Record<CosmeticId, CosmeticDef> = {
     sourceLabel: 'Winter Showdown 2026–2027',
     howTo: 'Главный приз: выполните 7 заданий WINTER SHOWDOWN',
     serverSeason: true,
+  },
+  // Beta 2.4: the one exclusive of PRIME INVITE CASE (legendary, once per account; never sold, never in a shop)
+  dash_invite_signal: {
+    id: 'dash_invite_signal',
+    slot: 'dashFx',
+    name: 'INVITE SIGNAL',
+    desc: 'DASH оставляет тёмно-синюю ленту эфира с бирюзовыми волнами сигнала и золотыми искрами. Только внешний вид: дальность и неуязвимость рывка не меняются.',
+    where: 'Рывок DASH в бою',
+    art: 'signal',
+    rarity: 'legendary',
+    eventId: 'referral',
+    source: 'referral',
+    sourceLabel: 'PRIME INVITE CASE',
+    howTo: 'Редкая награда PRIME INVITE CASE — кейса за приглашённого друга',
   },
   // Alpha 1.3.1: awarded once for the first win in BOSS FIGHT (not tied to a season)
   title_prime_legend: {
@@ -560,12 +576,14 @@ export const COSMETIC_ORDER: CosmeticId[] = [
   'frame_frostlight_live',
   'dash_candy_comet',
   'card_clockwork_gold',
+  // Beta 2.4: PRIME INVITE CASE (shown once owned)
+  'dash_invite_signal',
 ];
 
 /** Alpha 1.9.6: items whose ownership the PRIME NETWORK server proves (a DAILY STREAK milestone or a PRIME LEAGUE exchange). */
 export function isServerEarned(id: CosmeticId): boolean {
   const s = COSMETICS[id].source;
-  return s === 'daily' || s === 'league' || COSMETICS[id].serverSeason === true;
+  return s === 'daily' || s === 'league' || s === 'referral' || COSMETICS[id].serverSeason === true;
 }
 
 export const COSMETIC_SLOTS: CosmeticSlot[] = ['cardStyle', 'broadcastFrame', 'dashFx', 'victoryFx', 'title'];

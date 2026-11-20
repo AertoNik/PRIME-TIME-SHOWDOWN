@@ -3742,6 +3742,36 @@
           1215,
           1203
         ]
+      },
+      "dash_invite_signal": {
+        "src": "PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png",
+        "sha256": "fe8a7b1c3606981bf3a1314a8fd04ab305a1a0de9c77cc41d800cf827e641717",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "sm": {
+            "file": "ui/effects/sm/dash_invite_signal.webp",
+            "w": 256,
+            "h": 256,
+            "bytes": 16278,
+            "sha256": "c5e28fbcfaceeb616232000856668bfff05fcc2d5ff04e645e5a98c9c13fa793"
+          },
+          "md": {
+            "file": "ui/effects/md/dash_invite_signal.webp",
+            "w": 512,
+            "h": 512,
+            "bytes": 42330,
+            "sha256": "fdf4f15abf2edf5841e1ac8ea6b32f99b5fd998716300415476aff9fe64c253c"
+          }
+        },
+        "bbox": [
+          45,
+          190,
+          1208,
+          1063
+        ]
       }
     },
     "achievements": {

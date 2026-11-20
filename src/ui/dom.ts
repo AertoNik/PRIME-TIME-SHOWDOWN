@@ -51,13 +51,50 @@ const SCROLLERS = '.scroll';
  */
 export function setScreenHTML(root: HTMLElement, html: string, keep = true): void {
   const saved = keep ? Array.from(root.querySelectorAll<HTMLElement>(SCROLLERS), (e) => e.scrollTop) : [];
-  root.innerHTML = html;
+  keepImages(root, () => {
+    root.innerHTML = html;
+  });
   if (!saved.length) return;
   root.querySelectorAll<HTMLElement>(SCROLLERS).forEach((e, i) => {
     const top = saved[i];
     if (!top) return;
     e.scrollTop = Math.min(top, Math.max(0, e.scrollHeight - e.clientHeight));
   });
+}
+
+/**
+ * Beta 2.4 final — redraws without blinking pictures. A tap that redraws a screen (a card in the deck, another fighter,
+ * a tab) rebuilt every <img> of it, and a NEW image element is painted empty until its picture is decoded again (the
+ * cards are lazy and decoded asynchronously; the portraits are large data URLs) — so every card and portrait blinked on
+ * each tap in КАРЬЕРА and PRIME LEAGUE, as if the screen were reloading. `apply` sets the new markup; then each new
+ * <img> whose markup is EXACTLY an old loaded one's (same src, class, size, every attribute) takes the old element back,
+ * already decoded. Nothing that changes is ever kept: a different picture or class is a different markup and stays
+ * new. Only images move — buttons and containers are still new elements (see swapToggles: Safari repaints those whole).
+ */
+export function keepImages(root: HTMLElement, apply: () => void): void {
+  // (a picture shown twice — a card in the deck AND in the list — goes back to the same kind of place first)
+  const place = (img: Element) => img.closest('[data-act]')?.getAttribute('data-act') ?? '';
+  const old = new Map<string, HTMLImageElement[]>();
+  for (const img of Array.from(root.getElementsByTagName('img'))) {
+    // (a picture still loading, or one that failed, is not worth keeping — the new element loads it as before)
+    if (!img.complete || !img.naturalWidth) continue;
+    const k = img.outerHTML;
+    const list = old.get(k);
+    if (list) list.push(img);
+    else old.set(k, [img]);
+  }
+  apply();
+  if (!old.size) return;
+  let fresh = Array.from(root.getElementsByTagName('img'));
+  for (const samePlace of [true, false]) {
+    fresh = fresh.filter((img) => {
+      const list = old.get(img.outerHTML);
+      const i = list ? list.findIndex((o) => !samePlace || place(o) === place(img)) : -1;
+      if (i < 0) return true;
+      img.replaceWith(list!.splice(i, 1)[0]);
+      return false;
+    });
+  }
 }
 
 /**

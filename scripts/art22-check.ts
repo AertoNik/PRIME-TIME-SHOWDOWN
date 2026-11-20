@@ -49,8 +49,9 @@ const DIR = 'PRIME_TIME_2_2_ART_ASSETS';
 const originals = (fs.readdirSync(DIR) as string[]).filter((f) => f.toLowerCase().endsWith('.png'));
 const all: [string, string, Entry][] = Object.entries(manifest.icons).flatMap(([g, ids]) => Object.entries(ids).map(([i, e]) => [g, i, e] as [string, string, Entry]));
 const mine = all.filter(([, , e]) => e.src.startsWith(`${DIR}/`));
-check(`17 originals in ${DIR}, found ${originals.length}`, originals.length === 17);
-check('every original is mapped exactly once', originals.every((f) => mine.filter(([, , e]) => nfc(path.basename(e.src)) === nfc(f)).length === 1) && mine.length === 17);
+// (Beta 2.4: the owner added dash_invite_signal.png to this folder — the 18th original, INVITE SIGNAL's preview)
+check(`18 originals in ${DIR} (Beta 2.2's 17 + Beta 2.4's INVITE SIGNAL), found ${originals.length}`, originals.length === 18 && originals.includes('dash_invite_signal.png'));
+check('every original is mapped exactly once', originals.every((f) => mine.filter(([, , e]) => nfc(path.basename(e.src)) === nfc(f)).length === 1) && mine.length === 18 && manifest.icons.effects.dash_invite_signal?.src === `${DIR}/dash_invite_signal.png`);
 check('the owner\'s originals are untouched (SHA-256 of each PNG = the manifest)', mine.every(([, , e]) => fs.existsSync(e.src) && sha(e.src) === e.sha256));
 check('every original is a 1254² picture with real transparency (RGBA)', mine.every(([, , e]) => e.size[0] === 1254 && e.size[1] === 1254));
 let copies = true;

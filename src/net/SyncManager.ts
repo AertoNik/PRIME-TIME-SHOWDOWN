@@ -2,7 +2,7 @@ import { VERSION, type ProfileId, type SaveStorage, type SaveSystem } from '../m
 import { randomId } from '../meta/TabLock';
 import { readSync, writeSync, type SyncMeta } from './accountStore';
 import { cloudCopyOf, readCloudText, type CloudCopy } from './cloudSave';
-import { PrimeApiError, dailyStatusOf, type CloudSave, type DailyClaim, type DailyClaimResult, type DailyStatus, type HistoryEntry, type PrimeApi } from './PrimeApi';
+import { PrimeApiError, casesStatusOf, dailyStatusOf, type CaseKind, type CaseOpenResult, type CaseRecord, type CasesStatus, type CloudSave, type DailyClaim, type DailyClaimResult, type DailyStatus, type HistoryEntry, type PrimeApi } from './PrimeApi';
 import type { SessionManager } from './SessionManager';
 
 // Alpha 1.8.1 — SYNC MANAGER: keeps the signed-in account's local copy and its cloud save in step.
@@ -51,6 +51,11 @@ export type DailyOutcome =
   | { ok: true; claim: DailyClaim; status: DailyStatus | null; applied: boolean }
   | { ok: false; code: 'already_claimed' | 'offline' | 'not_ready' | 'conflict' | 'no_cloud_save' | 'session' | 'refused'; status: DailyStatus | null };
 
+/** Beta 2.4: what opening a REWARD CASE came to (the reward was drawn and written by the server). */
+export type CaseOutcome =
+  | { ok: true; case: CaseRecord; status: CasesStatus | null; applied: boolean; duplicate: boolean }
+  | { ok: false; code: 'no_case' | 'offline' | 'not_ready' | 'conflict' | 'no_cloud_save' | 'session' | 'disabled' | 'refused'; status: CasesStatus | null };
+
 /**
  * What to do, given what this device last confirmed (meta), its account copy now (localHash) and
  * the cloud save. Pure — the heart of the conflict rules:
@@ -89,6 +94,8 @@ export interface SyncOptions {
   autoTimers?: boolean;
   /** 1.8.3: the page's game session (a server with sessions) — uploads only while it may write. */
   session?: SessionManager;
+  /** Beta 2.4: a case open whose answer was lost (the show said «Нет связи») was answered later — its reward is in. */
+  onCaseSettled?: (c: Extract<CaseOutcome, { ok: true }>) => void;
 }
 
 const RETRY_MS = [5000, 15000, 30000, 60000];
@@ -141,7 +148,9 @@ export class SyncManager {
   /** Progress on this device the server has not confirmed yet. */
   hasUnsynced(): boolean {
     const m = this.meta;
-    return m.pending !== null || this.local().hash !== m.hash;
+    // Beta 2.4: a case open still unanswered (a lost connection, a reload) counts too — the session settles it at once
+    // (the same request id: the server's result, applied once), instead of waiting for the next change of the progress
+    return m.pending !== null || !!m.caseOpen || this.local().hash !== m.hash;
   }
 
   onChange(fn: () => void): () => void {
@@ -249,6 +258,12 @@ export class SyncManager {
     if (this.meta.daily) {
       const d = await this.settleDaily();
       if (d === 'offline') return this.status;
+    }
+    // Beta 2.4: so does a case open still unanswered (its reward may already be in a newer revision)
+    if (this.meta.caseOpen) {
+      const c = await this.sendCase();
+      if (c === 'offline') return this.status;
+      if (c.ok) this.o.onCaseSettled?.(c);
     }
     let m = this.meta;
     if (m.conflict) return this.set('conflict');
@@ -561,6 +576,135 @@ export class SyncManager {
     }
     const applied = this.applyDaily(r);
     return { ok: true, claim: r.claim, status: r.status, applied };
+  }
+
+  // ------------------------------------------------------------------ Beta 2.4 REWARD CASES
+  /**
+   * Opens the oldest waiting case of `kind`: this device's progress goes up first, then the server draws the reward
+   * and writes it into that revision (or the league token ledger); the same change is made here once. An unanswered
+   * open is asked again with the same op (never a second draw): after a lost connection or a reload the result comes.
+   */
+  async openCase(kind: CaseKind): Promise<CaseOutcome> {
+    while (this.busy) await this.busy.catch(() => undefined);
+    let done!: (s: SyncStatus) => void;
+    this.busy = new Promise<SyncStatus>((r) => (done = r));
+    try {
+      return await this.doOpenCase(kind);
+    } finally {
+      this.busy = null;
+      done(this.status);
+    }
+  }
+
+  /** A case open still unanswered from before (a lost connection, a reload) — its result, or null when none waits. */
+  async settleCase(): Promise<CaseOutcome | null> {
+    if (!this.meta.caseOpen) return null;
+    while (this.busy) await this.busy.catch(() => undefined);
+    if (!this.meta.caseOpen) return null;
+    let done!: (s: SyncStatus) => void;
+    this.busy = new Promise<SyncStatus>((r) => (done = r));
+    try {
+      const r = await this.sendCase();
+      return r === 'offline' ? { ok: false, code: 'offline', status: null } : r;
+    } finally {
+      this.busy = null;
+      done(this.status);
+    }
+  }
+
+  private async doOpenCase(kind: CaseKind): Promise<CaseOutcome> {
+    if (this.stopped || this.blocked) return { ok: false, code: 'not_ready', status: null };
+    if (this.meta.caseOpen) {
+      // the earlier open first — its result is what the player is owed now
+      const s = await this.sendCase();
+      return s === 'offline' ? { ok: false, code: 'offline', status: null } : s;
+    }
+    if (this.meta.daily) {
+      const s = await this.settleDaily();
+      if (s === 'offline') return { ok: false, code: 'offline', status: null };
+    }
+    const st = await this.upload(false);
+    if (st !== 'synced') return { ok: false, code: st === 'offline' ? 'offline' : st === 'superseded' || st === 'outdated' ? 'session' : 'not_ready', status: null };
+    const m = this.meta;
+    m.caseOpen = { op: newOp('case_'), base: m.revision, kind, at: this.now() };
+    this.setMeta(m);
+    const r = await this.sendCase();
+    return r === 'offline' ? { ok: false, code: 'offline', status: null } : r;
+  }
+
+  private async sendCase(): Promise<CaseOutcome | 'offline'> {
+    const p = this.meta.caseOpen!;
+    let r: CaseOpenResult;
+    try {
+      r = await this.o.api.caseOpen(p.op, p.kind, p.base);
+    } catch (e) {
+      const err = e instanceof PrimeApiError ? e : new PrimeApiError('network', 'network', 0);
+      if (err.kind === 'network' || err.kind === 'server' || err.kind === 'rate') {
+        // unanswered: asked again later with the same op — the reward is never lost or drawn twice
+        this.set('offline', err.code);
+        this.retryLater();
+        return 'offline';
+      }
+      const m = this.meta;
+      m.caseOpen = null;
+      this.setMeta(m);
+      const status = err.data && typeof err.data.status === 'object' && err.data.status ? casesStatusOf(err.data.status as Record<string, unknown>) : null;
+      if (err.code === 'no_case') return { ok: false, code: 'no_case', status };
+      if (err.code === 'no_cloud_save') return { ok: false, code: 'no_cloud_save', status };
+      if (err.code === 'cases_disabled') return { ok: false, code: 'disabled', status };
+      if (err.kind === 'conflict') {
+        await this.doCheck();
+        return { ok: false, code: 'conflict', status };
+      }
+      if (err.kind === 'superseded' || err.kind === 'outdated' || err.kind === 'unauthorized' || err.kind === 'unverified') {
+        await this.failed(err);
+        return { ok: false, code: 'session', status };
+      }
+      return { ok: false, code: 'refused', status };
+    }
+    const applied = this.applyCase(r);
+    return { ok: true, case: r.case, status: r.status, applied, duplicate: r.duplicate };
+  }
+
+  /**
+   * The server's change, made to this device's copy too — once (the save's case mark says how many case rewards it
+   * holds). PRIME TOKENS live on the server (no save change). The exclusive goes into MY COLLECTION exactly as the
+   * server put it (owned + history at the case's time), so both copies stay the same text.
+   */
+  private applyCase(r: CaseOpenResult): boolean {
+    const save = this.o.save;
+    const res = r.case.result;
+    const intoSave = !!res && res.mark > 0;
+    const fresh = intoSave && save.data.cases.n < res!.mark;
+    if (fresh && res) {
+      if (res.kind === 'money') save.data.money = Math.max(0, save.data.money) + res.amount;
+      else if (res.kind === 'rep') save.data.reputation = Math.max(0, save.data.reputation) + res.amount;
+      else if (res.kind === 'item' && res.item) {
+        const c = save.data.cosmetics;
+        const id = res.item as (typeof c.owned)[number];
+        if (!c.owned.includes(id)) c.owned.push(id);
+        if (!c.history.some((h) => h.id === id)) c.history.push({ id, event: 'referral', at: r.case.openedAt });
+      }
+      save.data.cases = { n: res.mark };
+      const hook = save.onSaved;
+      save.onSaved = null;
+      save.save();
+      save.onSaved = hook;
+    }
+    const m = this.meta;
+    m.caseOpen = null;
+    if (intoSave && (fresh || m.revision < r.revision)) {
+      m.revision = r.revision;
+      m.hash = r.hash;
+      m.pending = null;
+      m.syncedAt = this.now();
+    }
+    this.setMeta(m);
+    this.failures = 0;
+    const st = this.local().hash === m.hash ? 'synced' : 'pending';
+    this.set(st);
+    if (st === 'pending') this.schedule(this.o.soonMs ?? 3000);
+    return fresh;
   }
 
   /** The server's change, made to this device's copy too — once (the save's daily mark says which claim it holds). */

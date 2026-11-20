@@ -314,7 +314,7 @@ def icons_22(manifest):
             sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
     for spec in specs:
         icon(*spec, manifest)
-    check_mapped(ART22_SRC, specs)
+    check_mapped(ART22_SRC, specs + icon_specs_signal())
 
 
 # ------------------------------------------------------------------ Beta 2.2 FINAL (the owner's last batch)
@@ -403,6 +403,24 @@ def icon_specs_24():
     s.append(('winter', 'quest_garland_combo', ART24_SRC, 'winter_quest_garland_combo.png'))  # GARLAND COMBO
     s.append(('winter', 'event_emblem', ART24_SRC, 'winter_event_emblem.png'))
     return s
+
+
+# ------------------------------------------------------------------ Beta 2.4 (the owner's INVITE SIGNAL preview)
+# PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png (1254² RGBA) — the legendary dash effect of PRIME INVITE CASE, a
+# preview like the other dash effects (EFFECT_ART). `--invite-signal` adds exactly this entry and its two WebP files.
+def icon_specs_signal():
+    return [('effects', 'dash_invite_signal', ART22_SRC, 'dash_invite_signal.png')]
+
+
+def icons_signal(manifest):
+    """Beta 2.4: only INVITE SIGNAL's preview — earlier entries and files are left exactly as they are."""
+    specs = icon_specs_signal()
+    for group, icon_id, _, _ in specs:
+        if icon_id in manifest['icons'].get(group, {}) and manifest['icons'][group][icon_id]['src'] != 'PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png':
+            sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
+    for spec in specs:
+        icon(*spec, manifest)
+    check_mapped(ART22_SRC, icon_specs_22() + specs)
 
 
 def nav_skin(nav_id, wanted, l, r, manifest):
@@ -506,7 +524,7 @@ def icon(group, icon_id, folder, wanted, manifest):
 def icons(manifest):
     manifest['icon'] = {'margin': ICON_MARGIN, 'sizes': ICON_SIZES}
     manifest['icons'] = {}
-    specs = icon_specs() + icon_specs_22() + icon_specs_23()
+    specs = icon_specs() + icon_specs_22() + icon_specs_23() + icon_specs_signal()
     for spec in specs:
         icon(*spec, manifest)
     used = {(folder, find_src(folder, wanted)) for _, _, folder, wanted in specs}
@@ -518,6 +536,16 @@ def icons(manifest):
 
 def main():
     path = os.path.join(ROOT, 'scripts', 'art', 'manifest.json')
+    if '--invite-signal' in sys.argv:
+        with open(path, encoding='utf-8') as fh:
+            manifest = json.load(fh)
+        icons_signal(manifest)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(manifest, fh, indent=2, ensure_ascii=False)
+            fh.write('\n')
+        kb = sum(o['bytes'] for g, i, _, _ in icon_specs_signal() for o in manifest['icons'][g][i]['out'].values()) / 1024
+        print(f'Beta 2.4: INVITE SIGNAL, {kb:.0f} KB of WebP; earlier entries untouched')
+        return
     if '--icons-24' in sys.argv:
         with open(path, encoding='utf-8') as fh:
             manifest = json.load(fh)

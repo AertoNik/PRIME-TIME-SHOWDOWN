@@ -21,6 +21,7 @@ import { UI_ICONS } from '../icons';
 import { rankEmblem, seasonEmblem } from '../leagueArt';
 import { MODE_ICONS } from '../modeArt';
 import { achievementArt, leagueTitleArt, registerSectionFallback, rewardSectionArt, sectionArt, type RewardSection } from '../rewardArt';
+import { uiIcon } from '../menuArt';
 import { shopArt } from '../shopArt';
 import { cosmeticDemo } from '../styleDemo';
 import type { Screen } from '../UI';
@@ -460,7 +461,7 @@ export class CollectionScreen implements Screen {
         : '';
     }
     if (this.section === 'rewards')
-      return `<div class="cl-note cl-rw-note panel"><span class="cl-rw-emb">${sectionArt('rewards', 46)}</span><div class="muted">Награды карьеры, BOSS FIGHT и DAILY PRIME STREAK. Ещё не полученные показаны с условием.</div></div>`;
+      return `<div class="cl-note cl-rw-note panel"><span class="cl-rw-emb">${sectionArt('rewards', 46)}</span><div class="muted">Награды карьеры, BOSS FIGHT, DAILY PRIME STREAK и PRIME INVITE CASE. Ещё не полученные показаны с условием.</div></div>`;
     return '';
   }
 
@@ -525,22 +526,26 @@ export class CollectionScreen implements Screen {
 
   /** Beta 2.0 final: the rewards by their source — career, BOSS FIGHT, DAILY PRIME STREAK — each under its emblem. */
   private rewardGroups(shown: Entry[], list: Entry[]): string {
-    const sources: { id: RewardSection; title: string }[] = [
+    // Beta 2.4: PRIME INVITE CASE's exclusive (source «referral») has its own group — it is not a career reward
+    type RwGroup = RewardSection | 'referral';
+    const sources: { id: RwGroup; title: string }[] = [
       { id: 'career', title: 'Карьера продюсера' },
       { id: 'boss', title: 'BOSS FIGHT' },
       { id: 'daily', title: 'DAILY PRIME STREAK' },
+      { id: 'referral', title: 'PRIME INVITE CASE' },
     ];
-    const srcOf = (e: Entry): RewardSection => {
+    const srcOf = (e: Entry): RwGroup => {
       const s = e.kind === 'cos' ? COSMETICS[e.id as CosmeticId].source : 'career';
-      return s === 'boss' || s === 'daily' ? s : 'career';
+      return s === 'boss' || s === 'daily' || s === 'referral' ? s : 'career';
     };
     return sources
       .map((s) => {
         const items = shown.filter((e) => srcOf(e) === s.id);
         if (!items.length) return '';
         const all = list.filter((e) => srcOf(e) === s.id);
+        // (the invitation's own picture — the owner's «Пригласить друга» icon; the three others keep theirs)
         return `<section class="cl-rw">
-          <div class="cl-rw-head"><span class="cl-rw-emb">${rewardSectionArt(s.id, 40)}</span><div><b>${s.title}</b><small>Получено: ${all.filter((e) => e.owned).length} из ${all.length}</small></div></div>
+          <div class="cl-rw-head"><span class="cl-rw-emb">${s.id === 'referral' ? uiIcon('invite', 40, 'rw-art') : rewardSectionArt(s.id, 40)}</span><div><b>${s.title}</b><small>Получено: ${all.filter((e) => e.owned).length} из ${all.length}</small></div></div>
           <div class="cl-grid">${items.map((e) => this.tile(e)).join('')}</div>
         </section>`;
       })
@@ -823,7 +828,7 @@ export class CollectionScreen implements Screen {
       })
       .join('');
     const overrides = this.roster().filter((f) => col.fighterFx(f, slot) !== null).length;
-    return `<div class="cl-item-k">${FX_SLOT_LABEL[slot]}: один купленный эффект — для всех ваших бойцов</div>
+    return `<div class="cl-item-k">${FX_SLOT_LABEL[slot]}: один эффект — сразу для всех ваших бойцов</div>
       <div class="cl-item-actions">
         <button class="btn ${common && !overrides ? 'ghost' : 'teal'} wide" data-m="all" ${common && !overrides ? 'disabled' : ''}>${common && !overrides ? `${check(11)} У всех бойцов` : 'Применить ко всем'}</button>
         <button class="btn wide" data-m="only" data-f="${sel}">Только ${esc(FIGHTERS[sel].name)}</button>

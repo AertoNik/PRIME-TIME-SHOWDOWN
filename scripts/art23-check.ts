@@ -83,7 +83,8 @@ check('every WebP copy exists in public/ui with its group\'s size (artIcons.ts =
 
 // ------------------------------------------------------------- nothing earlier changed
 // (Beta 2.3's PRIME_TIME_2_3_UI_MODE_ART_REFINED is checked by npm run art24 — it adds, never replaces)
-const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/'));
+// (Beta 2.4 adds exactly one later entry, INVITE SIGNAL's preview — checked by npm run art22 / rewards24)
+const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/') && e.src !== 'PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png');
 const groups = [...new Set(older.map(([g]) => g))].sort();
 // (Beta 2.2 mini hotfix: the 2.2 id career_legendary is now prime_legend — same picture, same bytes; read under its old id)
 const canonId = (i: string) => (i === 'prime_legend' ? 'career_legendary' : i);

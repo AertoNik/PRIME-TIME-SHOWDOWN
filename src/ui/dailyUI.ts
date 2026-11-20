@@ -9,6 +9,7 @@ import { openLogin } from './accountUI';
 import { countUp, esc } from './dom';
 import { UI_ICONS } from './icons';
 import { winterGiftArt } from './rewardArt';
+import { caseImg, casesStatus, onCases, openCaseShow, refreshCases } from './caseUI';
 import type { MenuScreen } from './screens/MenuScreen';
 
 // Alpha 1.8.9 — the DAILY PRIME STREAK window («ЕЖЕДНЕВНЫЙ ЭФИР»): the streak, the record, today's gift, the next
@@ -33,14 +34,18 @@ function trackPos(n: number): number {
   return 100;
 }
 
-function chipHTML(r: DailyRewardInfo, state: 'done' | 'today' | 'next' | 'soon'): string {
+function chipHTML(r: DailyRewardInfo, state: 'done' | 'today' | 'next' | 'soon', cases = false): string {
   const special = r.kind === 'milestone' ? 'milestone' : r.kind === 'weekly' ? 'weekly' : '';
-  const glyph = state === 'done' ? icon(UI_ICONS.check, 12) : r.kind === 'daily' ? '<i class="dps-coin" aria-hidden="true"></i>' : icon(UI_ICONS.gift, 18);
+  // Beta 2.4: with cases an ordinary day is a DAILY BROADCAST CASE (no dollars of its own); day 7 and milestones keep
+  // their dollars and add a case
+  const caseDay = cases && r.kind === 'daily';
+  const glyph = state === 'done' ? icon(UI_ICONS.check, 12) : caseDay ? '<i class="dps-case" aria-hidden="true"></i>' : r.kind === 'daily' ? '<i class="dps-coin" aria-hidden="true"></i>' : icon(UI_ICONS.gift, 18);
   const tag = state === 'today' ? 'Сегодня' : state === 'next' ? 'Завтра' : `День ${r.day}`;
-  return `<li class="dps-chip ${state} ${special}" aria-label="${esc(tag)}: ${money(r.money)}${state === 'done' ? ', получено' : ''}">
+  const what = caseDay ? 'кейс' : money(r.money);
+  return `<li class="dps-chip ${state} ${special} ${caseDay ? 'case' : ''}" aria-label="${esc(tag)}: ${what}${cases && !caseDay ? ' и кейс' : ''}${state === 'done' ? ', получено' : ''}">
       <span class="dps-chip-day">Д.${r.day}</span>
       <span class="dps-chip-ico">${glyph}</span>
-      <b>${money(r.money)}</b>
+      <b>${caseDay ? 'Кейс' : money(r.money)}</b>
     </li>`;
 }
 
@@ -133,8 +138,8 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): 
   // the strip: the last days of this streak already received, then the coming ones
   // (only this streak's own days: the last two claims, at most two game days back)
   const done = s.history.filter((h) => h.day >= s.today - 2 && h.streakDay > 0 && h.streakDay <= s.streak && s.streak - h.streakDay < 2).sort((a, b) => a.streakDay - b.streakDay);
-  const doneChips = done.map((h) => chipHTML({ day: h.streakDay, money: h.money, kind: h.kind === 'milestone' ? 'milestone' : h.kind === 'weekly' ? 'weekly' : 'daily', milestone: h.milestone, label: '' }, 'done'));
-  const nextChips = s.upcoming.slice(0, 7 - doneChips.length).map((r, i) => chipHTML(r, i === 0 ? (ready ? 'today' : 'next') : 'soon'));
+  const doneChips = done.map((h) => chipHTML({ day: h.streakDay, money: h.money, kind: h.kind === 'milestone' ? 'milestone' : h.kind === 'weekly' ? 'weekly' : 'daily', milestone: h.milestone, label: '' }, 'done', s.cases));
+  const nextChips = s.upcoming.slice(0, 7 - doneChips.length).map((r, i) => chipHTML(r, i === 0 ? (ready ? 'today' : 'next') : 'soon', s.cases));
   const hero = s.next;
   const heroKind = hero.kind === 'milestone' ? 'milestone' : hero.kind === 'weekly' ? 'weekly' : '';
   const reached: Record<number, boolean> = {};
@@ -155,13 +160,14 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): 
       <div class="dps-stat today ${claimed ? 'done' : ready ? 'ready' : ''}"><span>Сегодня</span><b>${claimed ? icon(UI_ICONS.check, 22) : ready ? icon(UI_ICONS.gift, 26) : '—'}</b><small>${claimed ? 'получено' : ready ? 'подарок ждёт' : '—'}</small></div>
     </div>
     <section class="dps-hero ${heroKind} ${claimed ? 'done' : ready ? 'ready' : ''}">
-      <div class="dps-hero-gift">${gift}</div>
+      <div class="dps-hero-gift">${s.cases ? caseImg('daily', 'dps-case-img') : gift}</div>
       <div class="dps-hero-text">
         <span class="dps-hero-day">${claimed ? 'Завтра · ' : ready ? 'Сегодня · ' : ''}день ${hero.day}</span>
-        <b>+${money(hero.money)}</b>
-        <small>${esc(hero.label)}</small>
+        ${s.cases && hero.kind === 'daily' ? '<b class="dps-case-title">DAILY BROADCAST CASE</b>' : `<b>+${money(hero.money)}${s.cases ? ' + кейс' : ''}</b>`}
+        <small>${esc(s.cases && hero.kind === 'daily' ? 'Ежедневный кейс: доллары, репутация или PRIME TOKENS' : hero.label)}</small>
       </div>
     </section>
+    ${waitingCasesHTML(s)}
     <ol class="dps-strip" aria-label="Ближайшие награды">${doneChips.join('')}${nextChips.join('')}</ol>
     ${trackHTML(s.streak, reached)}
     <div class="dps-foot">
@@ -170,6 +176,14 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): 
       ${note ? `<div class="dps-note" role="alert">${esc(note)}</div>` : ''}
       ${shieldHTML(s)}
     </div>`;
+}
+
+/** Beta 2.4: DAILY cases received but not opened yet (closed the show, another device) — open them here. */
+function waitingCasesHTML(s: DailyStatus): string {
+  const cs = casesStatus();
+  if (!s.cases || !cs || cs.daily.ready <= 0) return '';
+  const n = cs.daily.ready;
+  return `<div class="dps-cases-wait"><span>${n === 1 ? 'Кейс дня ждёт открытия' : `Кейсов дня ждёт открытия: <b>${n}</b>`}</span><button type="button" class="btn teal" data-dps="cases">Открыть</button></div>`;
 }
 
 const FAIL: Record<string, string> = {
@@ -236,6 +250,7 @@ export function openDaily(g: Game): void {
   let bump = false;
   let revealing = false;
   let off: (() => void) | null = null;
+  let offCases: (() => void) | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && !revealing) g.ui.closeModal();
@@ -243,6 +258,8 @@ export function openDaily(g: Game): void {
   const cleanup = () => {
     off?.();
     off = null;
+    offCases?.();
+    offCases = null;
     if (timer) clearInterval(timer);
     timer = null;
     document.removeEventListener('keydown', onKey);
@@ -279,6 +296,8 @@ export function openDaily(g: Game): void {
     }, 1000);
     document.addEventListener('keydown', onKey);
     off = d.onChange(render);
+    // Beta 2.4: the waiting DAILY cases follow the server (an open answered later, another device)
+    offCases = onCases(render);
     root.addEventListener('click', async (e) => {
       if (e.target === root) return void setTimeout(gone, 0);
       const t = (e.target as HTMLElement).closest('[data-dps]') as HTMLElement | null;
@@ -298,6 +317,9 @@ export function openDaily(g: Game): void {
         g.ui.closeModal();
         cleanup();
         g.goto('profile');
+      } else if (act === 'cases') {
+        g.audio.ui('click');
+        openCaseShow(g, 'daily', () => render());
       } else if (act === 'retry') {
         g.audio.ui('click');
         if (d.gate() === 'wait') void g.account?.retry();
@@ -311,15 +333,27 @@ export function openDaily(g: Game): void {
         const r: DailyOutcome = await d.claim();
         if (!root.isConnected) {
           // the window was closed meanwhile: the reward is in anyway — say so
-          if (r.ok) g.ui.toast(`DAILY PRIME STREAK: +${money(r.claim.money)}`, true);
+          if (r.ok) g.ui.toast(r.claim.money > 0 ? `DAILY PRIME STREAK: +${money(r.claim.money)}${r.claim.case ? ' + кейс' : ''}` : 'DAILY PRIME STREAK: кейс дня ждёт в ежедневном эфире', true);
           return;
         }
         if (r.ok) {
+          // Beta 2.4: the day's DAILY BROADCAST CASE — an ordinary day goes straight to the case's show; day 7 and the
+          // milestones show their dollars first, then the case
+          const withCase = !!r.claim.case;
+          if (withCase) void refreshCases(g);
+          const caseShow = () => openCaseShow(g, 'daily', () => render());
+          if (withCase && r.claim.money === 0) {
+            bump = true;
+            render();
+            caseShow();
+            return;
+          }
           revealing = true;
           reveal(g, host, r.claim, () => {
             revealing = false;
             bump = true;
             render();
+            if (withCase) caseShow();
           });
         } else {
           g.audio.ui('deny');
@@ -330,5 +364,7 @@ export function openDaily(g: Game): void {
     });
     render();
     void d.refresh();
+    // Beta 2.4: DAILY cases waiting from before
+    void refreshCases(g).then(() => render());
   });
 }

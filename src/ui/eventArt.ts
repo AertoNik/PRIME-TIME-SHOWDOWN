@@ -87,7 +87,20 @@ export const ICONS = {
 export type QuestIcon = 'moon' | 'combo' | 'star' | 'ghost' | 'clock' | 'crown' | 'tv' | 'gift' | 'cane' | 'snow' | 'bell';
 
 /** Large preview art for reward cards. */
-export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio', string> = {
+export const REWARD_ART: Record<'card' | 'frame' | 'phantom' | 'victory' | 'crown' | 'belt' | 'star' | 'studio' | 'signal', string> = {
+  // Beta 2.4 — INVITE SIGNAL (PRIME INVITE CASE): a navy broadcast ribbon swept along a dash, turquoise signal waves
+  // spreading from its tip like a tower's broadcast, gold sparks
+  signal: S(
+    `<path d="M4 50 C18 46 24 34 40 32" stroke="#1b2d86" stroke-width="12" stroke-linecap="round" fill="none"/>
+     <path d="M8 47 C20 43 26 34 40 32" stroke="#2a4dff" stroke-width="6" stroke-linecap="round" fill="none"/>
+     <path d="M12 45 C22 41 28 34 40 32" stroke="#6fe9ff" stroke-width="2" stroke-linecap="round" fill="none" opacity=".8"/>
+     <circle cx="44" cy="31" r="5" fill="#3ff0d8"/>
+     <path d="M50 23 A12 12 0 0 1 50 39" stroke="#3ff0d8" stroke-width="3" fill="none" stroke-linecap="round"/>
+     <path d="M54 17 A19 19 0 0 1 54 45" stroke="#3ff0d8" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".7"/>
+     <path d="M58 11 A26 26 0 0 1 58 51" stroke="#3ff0d8" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".4"/>
+     <path d="M22 18 l2 4 4 2 -4 2 -2 4 -2 -4 -4 -2 4 -2 z" fill="#ffc84a"/>
+     <circle cx="30" cy="52" r="2" fill="#ffc84a"/><circle cx="14" cy="30" r="1.6" fill="#ffd56a"/><circle cx="36" cy="44" r="1.4" fill="#ffd56a"/>`,
+  ),
   card: S(
     `<rect x="16" y="6" width="40" height="54" rx="7" fill="#24123c" stroke="#ff8a1f" stroke-width="3" transform="rotate(10 36 33)"/>
      <rect x="8" y="8" width="40" height="54" rx="7" fill="#6a2ab8" stroke="#ffb347" stroke-width="3"/>

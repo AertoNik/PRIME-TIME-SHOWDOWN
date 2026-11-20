@@ -23,6 +23,9 @@ export const EFFECT_ART: Readonly<Partial<Record<CosmeticId, true>>> = {
   victory_midnight_confetti: true,
   // Beta 2.2: DAILY PRIME STREAK's 100-day «РАССВЕТ ПРАЙМ-ТАЙМА» (PRIME_TIME_2_2_ART_ASSETS/reward_prime_dawn.png)
   victory_daily_sunrise: true,
+  // Beta 2.4: PRIME INVITE CASE's legendary INVITE SIGNAL (PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png); its 1.x-style
+  // drawing REWARD_ART.signal stays as the fallback if the picture cannot load
+  dash_invite_signal: true,
 };
 
 /**

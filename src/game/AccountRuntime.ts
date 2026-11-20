@@ -10,7 +10,8 @@ import type { NetworkConfig } from '../net/config';
 import { PrimeApi, PrimeApiError, type CloudSave, type Me, type RegisterInput, type RegisterResult, type ServerConfig } from '../net/PrimeApi';
 import { solvePow } from '../net/pow';
 import { SessionManager, deviceLabel } from '../net/SessionManager';
-import { SyncManager, type SyncStatus } from '../net/SyncManager';
+import { SyncManager, type CaseOutcome, type SyncStatus } from '../net/SyncManager';
+import { caseRewardText, takeCases } from '../ui/caseUI';
 import { accountAction, accountPanelHTML, cloudLabel, explainGate, showKeptDevice, showSessionTaken, showSyncDecision, syncLine } from '../ui/accountUI';
 import { showLegalAccept } from '../ui/legalUI';
 import type { CloudState } from '../ui/cloudPill';
@@ -406,7 +407,7 @@ export class AccountRuntime {
       return;
     }
     this.sync?.stop();
-    this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, onReplaced: () => this.reload() });
+    this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, onReplaced: () => this.reload(), onCaseSettled: (c) => this.caseSettled(c) });
     this.sync.onChange(() => {
       this.emit();
       this.maybePrompt();
@@ -438,7 +439,7 @@ export class AccountRuntime {
     const session = new SessionManager({ api: this.api, device: this.g.save.meta.device, label: deviceLabel(), heartbeatMs: cfg?.heartbeatMs, ttlMs: cfg?.ttlMs, autoTimers: true });
     this.session = session;
     this.ready = false;
-    this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, session, soonMs: 800, debounceMs: 10000, onReplaced: () => this.reload() });
+    this.sync = new SyncManager({ save: this.g.save, api: this.api, storage: this.storage, autoTimers: true, session, soonMs: 800, debounceMs: 10000, onReplaced: () => this.reload(), onCaseSettled: (c) => this.caseSettled(c) });
     this.sync.onChange(() => {
       this.emit();
       this.maybePrompt();
@@ -523,6 +524,19 @@ export class AccountRuntime {
       this.sync?.soon(300);
       this.emit();
     }
+  }
+
+  /**
+   * Beta 2.4: a case whose answer was lost on the way (the show said «Нет связи») — the server's result came with the
+   * next synchronisation and is in the save now (once); tell the player what it was.
+   */
+  private caseSettled(c: Extract<CaseOutcome, { ok: true }>): void {
+    if (c.status) takeCases(c.status);
+    const res = c.case.result;
+    if (res?.kind === 'item') this.g.applyCosmetics();
+    const text = caseRewardText(res);
+    if (text) this.g.ui.toast(`Кейс открыт: ${text}`);
+    this.emit();
   }
 
   /** This page lost the game session (a heartbeat, a refused write, or another tab of this browser). */

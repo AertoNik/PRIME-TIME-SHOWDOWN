@@ -6,7 +6,7 @@ import type { VFX } from './VFX';
 // match and the PRIME SHOP fitting room (Alpha 1.8.8) plays the same effects as a preview. Pure
 // visuals on the shared VFX pools — nothing here touches the simulation.
 
-export type DashFx = 'phantom' | 'prime' | 'glitch' | 'comet' | 'arc' | 'candy';
+export type DashFx = 'phantom' | 'prime' | 'glitch' | 'comet' | 'arc' | 'candy' | 'signal';
 export type VictoryFx = 'pumpkin' | 'gold' | 'spotlights' | 'fireworks' | 'sunrise' | 'midnight';
 
 /** PURPLE PHANTOM (Halloween Premiere). */
@@ -28,11 +28,15 @@ export const ARC_SPARK = new Color(0xe6f2ff);
 /** CANDY COMET (WINTER SHOWDOWN, 1.9.7): a red-and-white candy trail with glittering sparks. */
 export const CANDY_RED = new Color(0xff2a44);
 export const CANDY_WHITE = new Color(0xfff6f0);
+/** INVITE SIGNAL (PRIME INVITE CASE, Beta 2.4): a navy broadcast ribbon, turquoise signal waves, gold sparks. */
+export const SIGNAL_NAVY = new Color(0x2a4dff);
+export const SIGNAL_TEAL = new Color(0x3ff0d8);
+export const SIGNAL_GOLD = new Color(0xffc84a);
 /** MIDNIGHT CONFETTI (WINTER SHOWDOWN, 1.9.7): gold sparks, snowflakes and festive confetti. */
 const MIDNIGHT_CONFETTI = [0xffcc4d, 0xfff2b0, 0xff3a5a, 0x7fe3ff, 0xffffff, 0xd9a21a];
 
 /** Which effect a dash / victory cosmetic plays (ThemeManager and the PRIME SHOP preview). */
-export const DASH_FX: Partial<Record<string, DashFx>> = { dash_phantom: 'phantom', dash_prime_phantom: 'prime', dash_glitch: 'glitch', dash_comet: 'comet', dash_league_arc: 'arc', dash_candy_comet: 'candy' };
+export const DASH_FX: Partial<Record<string, DashFx>> = { dash_phantom: 'phantom', dash_prime_phantom: 'prime', dash_glitch: 'glitch', dash_comet: 'comet', dash_league_arc: 'arc', dash_candy_comet: 'candy', dash_invite_signal: 'signal' };
 export const VICTORY_FX: Partial<Record<string, VictoryFx>> = { victory_pumpkin: 'pumpkin', victory_golden_confetti: 'gold', victory_studio_spotlights: 'spotlights', victory_neon_fireworks: 'fireworks', victory_daily_sunrise: 'sunrise', victory_midnight_confetti: 'midnight' };
 
 export const GOLDEN_CONFETTI = [0xffd23a, 0xffe58a, 0xf2b02a, 0xfff3c4, 0xd9921a, 0xffffff];
@@ -45,12 +49,12 @@ const NEON_SHELLS = [0xff4fd8, 0x3dfcff, 0xa86bff];
 
 /** The trail colour of a dash cosmetic (null: the fighter's own accent). */
 export function dashColor(fx: DashFx | null): Color | null {
-  return fx === 'phantom' ? PHANTOM : fx === 'prime' ? PRIME_DASH : fx === 'glitch' ? GLITCH_A : fx === 'comet' ? COMET_TAIL : fx === 'arc' ? ARC_TRAIL : fx === 'candy' ? CANDY_RED : null;
+  return fx === 'phantom' ? PHANTOM : fx === 'prime' ? PRIME_DASH : fx === 'glitch' ? GLITCH_A : fx === 'comet' ? COMET_TAIL : fx === 'arc' ? ARC_TRAIL : fx === 'candy' ? CANDY_RED : fx === 'signal' ? SIGNAL_NAVY : null;
 }
 
 /** Every third spark of the dash in the cosmetic's second colour. */
 export function dashSpark(fx: DashFx): Color {
-  return fx === 'phantom' ? PHANTOM_SPARK : fx === 'glitch' ? GLITCH_B : fx === 'comet' ? COMET_EMBER : fx === 'arc' ? ARC_SPARK : fx === 'candy' ? CANDY_WHITE : PRIME_DASH_GLOW;
+  return fx === 'phantom' ? PHANTOM_SPARK : fx === 'glitch' ? GLITCH_B : fx === 'comet' ? COMET_EMBER : fx === 'arc' ? ARC_SPARK : fx === 'candy' ? CANDY_WHITE : fx === 'signal' ? SIGNAL_GOLD : PRIME_DASH_GLOW;
 }
 
 /**
@@ -78,6 +82,7 @@ function dashExtras(vfx: VFX, fx: DashFx, fromX: number, fromZ: number, toX: num
   if (fx === 'comet') return cometDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'arc') return arcDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'candy') return candyDash(vfx, fromX, fromZ, toX, toZ);
+  if (fx === 'signal') return signalDash(vfx, fromX, fromZ, toX, toZ);
   if (fx === 'phantom') {
     // PURPLE PHANTOM: fading ghost silhouettes along the dash path
     for (let i = 1; i <= 3; i++) {
@@ -142,6 +147,30 @@ function candyDash(vfx: VFX, fromX: number, fromZ: number, toX: number, toZ: num
   vfx.flash(toX, 1.0, toZ, CANDY_WHITE, 0.9, 1.4, 0.14, 1.8);
   vfx.burst(toX, 1.0, toZ, CANDY_RED, 8, 2.6, 0.1, 0.45, 2.2, 3, 1);
   vfx.burst(fromX + dx * 0.5, 1.1, fromZ + dz * 0.5, _c.set(0xffe9a0), 6, 1.8, 0.07, 0.6, 2.4, 2, 1);
+}
+
+/**
+ * INVITE SIGNAL (Beta 2.4, PRIME INVITE CASE's exclusive): the dash goes out «on air» — a deep-navy ribbon of glows
+ * along the path with a gentle wave, three turquoise signal rings spreading on the floor behind it like a broadcast
+ * from a tower, a line of gold sparks, and a turquoise-and-gold flash where it lands. Short and low (looks only).
+ */
+function signalDash(vfx: VFX, fromX: number, fromZ: number, toX: number, toZ: number): void {
+  const dx = toX - fromX;
+  const dz = toZ - fromZ;
+  for (let i = 1; i <= 5; i++) {
+    const t = i / 6;
+    vfx.glow(fromX + dx * t, 0.8 + Math.sin(t * Math.PI * 2) * 0.12, fromZ + dz * t, SIGNAL_NAVY, 1.1, 0.5, 0.26 + i * 0.04, 1.9);
+  }
+  for (let k = 0; k < 3; k++) {
+    const t = 0.2 + k * 0.3;
+    vfx.ring(fromX + dx * t, fromZ + dz * t, SIGNAL_TEAL, 0.25, 1.1 + k * 0.25, 0.32 + k * 0.05, 1.9);
+  }
+  for (let i = 0; i < 5; i++) {
+    const t = (i + 0.5) / 5;
+    vfx.burst(fromX + dx * t, 1.0 + (i % 2) * 0.25, fromZ + dz * t, SIGNAL_GOLD, 3, 1.8, 0.07, 0.3, 2.4, 1.5, 1);
+  }
+  vfx.flash(toX, 1.0, toZ, SIGNAL_TEAL, 0.7, 1.5, 0.16, 2.2);
+  vfx.burst(toX, 1.05, toZ, SIGNAL_GOLD, 7, 2.4, 0.1, 0.4, 2.3, 2, 1);
 }
 
 /**
