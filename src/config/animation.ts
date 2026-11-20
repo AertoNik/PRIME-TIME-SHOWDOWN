@@ -307,15 +307,15 @@ export const HIT_REACTION = {
  */
 export const VICTORY_SETS = {
   // Ray: jump with a pistol twirl / pumping both blasters to the crowd / a spin into a double point skyward
-  hype: ['hype_jump', 'hype_crowd', 'hype_spin'],
+  hype: ['hype_jump', 'hype_crowd', 'hype_spin', 'hype_crossfire'],
   // Bruno: double biceps with a stomp / cannon hoisted overhead and slammed onto the shoulder / chest thumps and a roar
-  flex: ['flex_double', 'flex_cannon', 'flex_roar'],
+  flex: ['flex_double', 'flex_cannon', 'flex_roar', 'flex_chest'],
   // Nika: spin and a peace sign / a wave with the rifle on the shoulder / happy hops with arms up
   peace: ['peace_sign', 'peace_wave', 'peace_hop'],
   // Vega: present arms and a crisp nod / carbine on the shoulder, calm look around / a last scan down the sights
-  precise: ['precise_present', 'precise_shoulder', 'precise_check'],
+  precise: ['precise_present', 'precise_shoulder', 'precise_check', 'precise_salute'],
   // Kai: revolver spin and a hat-tip / a theatrical bow and a point / blowing the smoke off the barrel
-  showman: ['show_twirl', 'show_bow', 'show_smoke'],
+  showman: ['show_twirl', 'show_bow', 'show_smoke', 'show_holster'],
   // Rina: a pirouette into a pose / dropping to one knee / a two-finger salute
   graceful: ['grace_pirouette', 'grace_kneel', 'grace_salute'],
   // Crash: fists up and a roar / stomp-stomp-stomp / a "come on" taunt
@@ -353,7 +353,7 @@ export const DEFEAT_SETS = {
   // Nika, Zoe (rival): the head tips aside, a little stamp of the foot
   sway: ['pout', 'slump', 'shrug', 'glance'],
   // Vega: the weapon lowered and a crisp nod of respect
-  poise: ['composed', 'exhale', 'glance'],
+  poise: ['composed', 'exhale', 'glance', 'headshake'],
   // Kai: a theatrical hand to the forehead
   showman: ['facepalm', 'shrug', 'exhale', 'glance'],
   // Rina: turns half away, the free hand on the hip
@@ -361,13 +361,13 @@ export const DEFEAT_SETS = {
   // Crash, the training bot: an angry stomp, fists down
   brawler: ['stomp', 'shrug', 'slump', 'glance'],
   // Victor: a measured nod, the fist to the chest — he honours the winner
-  champion: ['respect', 'exhale', 'glance'],
+  champion: ['respect', 'exhale', 'glance', 'applaud'],
   // Zoe: checks the weapon, a short shake of the head
   tactician: ['recheck', 'exhale', 'glance', 'slump'],
   // Lucien: a small formal bow of the head, the cane lowered
-  duelist: ['bowout', 'exhale', 'glance'],
+  duelist: ['bowout', 'exhale', 'glance', 'cloak'],
   // CRAX: the spring runs down — head and arms drop in clockwork steps
-  clockwork: ['winddown', 'slump', 'glance'],
+  clockwork: ['winddown', 'slump', 'glance', 'jam'],
   // ACE: a wry tilt of the head while he straightens the cuff
   headliner: ['cufffix', 'shrug', 'exhale', 'glance'],
 } as const satisfies Record<IdleStyle, readonly string[]>;
@@ -384,30 +384,32 @@ export const DEFEAT_DELAY = 0.35;
  */
 export const FLAIR_SETS = {
   // Ray: a blaster spin / a look around, the blasters at the ready / a quick blaster pump
-  hype: ['spin', 'scan', 'pump'],
+  hype: ['spin', 'scan', 'pump', 'crossdraw'],
   // Bruno: the biceps / a neck crack / the shoulders rolled
-  flex: ['flex', 'neck', 'shrugroll'],
+  flex: ['flex', 'neck', 'shrugroll', 'chestbeat'],
   // Nika, Zoe: the peace sign / a wave to the camera / a look around
-  peace: ['peace', 'wave', 'scan'],
+  peace: ['peace', 'wave', 'scan', 'bounce'],
   // Vega: a look down the sights / the rifle checked / a look around
-  precise: ['sights', 'check', 'scan'],
+  precise: ['sights', 'check', 'scan', 'radio'],
   // Kai, the training bot: the pistol flipped / a finger pointed at the camera / a showman's bow
-  showman: ['flip', 'point', 'bow'],
+  showman: ['flip', 'point', 'bow', 'holster'],
   // Rina: a hand through the hair / a stretch of the free arm / a wave
-  graceful: ['hair', 'stretch', 'wave'],
+  graceful: ['hair', 'stretch', 'wave', 'releve'],
   // Crash: the knuckles / a jab-jab / a neck crack
-  brawler: ['knuckles', 'jab', 'neck'],
+  brawler: ['knuckles', 'jab', 'neck', 'beckon'],
   // Victor: the collar / the hand to the chest and a nod / a look over the arena
-  champion: ['collar', 'heart', 'scan'],
+  champion: ['collar', 'heart', 'scan', 'watch'],
   // Lucien: the cane twirled / the glove pulled tight / a short formal bow
-  nightstar: ['twirl', 'glove', 'bow'],
+  nightstar: ['twirl', 'glove', 'bow', 'hiss'],
   // CRAX: the salute / the head in clockwork ticks
-  clockwork: ['salute', 'tick'],
+  clockwork: ['salute', 'tick', 'clockbow'],
   // ACE: the cuff / GOLDEN ACE spun on the finger (as in 1.9.8)
-  headliner: ['cuff', 'acespin'],
+  headliner: ['cuff', 'acespin', 'crowd'],
 } as const satisfies Record<VictoryStyle, readonly string[]>;
 
 export type FlairMove = (typeof FLAIR_SETS)[VictoryStyle][number];
 
 /** How long a lobby gesture lasts (s): ease-in, hold, ease-out; 1.6 s unless listed. */
-export const FLAIR_TIME: Partial<Record<FlairMove, number>> = { scan: 2.4, wave: 2.0, check: 2.0, bow: 2.0, heart: 2.1, glove: 1.9, neck: 1.8, shrugroll: 1.9, jab: 1.7, stretch: 2.0, tick: 1.9, pump: 1.4, point: 1.7 };
+export const FLAIR_TIME: Partial<Record<FlairMove, number>> = { scan: 2.4, wave: 2.0, check: 2.0, bow: 2.0, heart: 2.1, glove: 1.9, neck: 1.8, shrugroll: 1.9, jab: 1.7, stretch: 2.0, tick: 1.9, pump: 1.4, point: 1.7,
+  // Beta 2.5: the new gesture of each style
+  crossdraw: 1.9, chestbeat: 1.8, bounce: 1.7, radio: 2.2, holster: 1.9, releve: 2.2, beckon: 1.8, watch: 2.2, hiss: 1.8, clockbow: 2.1, crowd: 2.3 };

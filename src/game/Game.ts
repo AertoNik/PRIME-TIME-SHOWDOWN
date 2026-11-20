@@ -32,6 +32,8 @@ import { caseRendererBusy } from '../render/caseRenderer';
 import { BattleView, type TimeFx } from '../render/BattleView';
 import { CameraRig } from '../render/CameraRig';
 import { ModelCache } from '../render/ModelCache';
+import type { FighterRig } from '../render/FighterModel';
+import { Vector3, type Object3D } from 'three';
 import { renderPortraits } from '../render/PortraitStudio';
 import { Renderer, type QualitySetting } from '../render/Renderer';
 import { Showcase } from '../render/Showcase';
@@ -307,7 +309,15 @@ export class Game {
     this.applyCosmetics();
     this.renderer.onQuality = (q) => this.themes?.setLowQuality(q === 'low');
     for (let i = 0; i < ALL_LOOKS.length; i++) {
-      this.models.get(ALL_LOOKS[i]);
+      const rig = this.models.get(ALL_LOOKS[i]).rig;
+      // Beta 2.5: the fighters this player OWNS are drawn once now, in the look they wear (see warmRig) — the ones the
+      // fighter picks of the career and PRIME LEAGUE switch between. Not every fighter: a drawn fighter keeps ≈ 9.5 MB of
+      // memory (measured: 14 drawn → +134 MB), which a phone should spend only on what the player really uses.
+      const id = ALL_LOOKS[i] as FighterId;
+      if (id in FIGHTERS && inRoster(this.save.data, id)) {
+        const look = this.fighterLook(id);
+        this.warmRig(look === ALL_LOOKS[i] ? rig : this.models.get(look).rig);
+      }
       this.title.setProgress(0.4 + (i / ALL_LOOKS.length) * 0.35);
       await nextFrame();
     }
@@ -705,6 +715,42 @@ export class Game {
   }
 
   /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
+  /**
+   * Beta 2.5: draws a fighter ONCE, out of sight behind the camera, while the game loads. The GPU sets up a material's
+   * pipeline and uploads its buffers on its first real draw — 30–60 ms per fighter (measured; renderer.compile() does not
+   * reach that part) — which until 2.4 froze the menu on the first switch to each fighter. After this draw the first
+   * frame on stage costs what any frame costs (2–8 ms measured). Nothing is visible: the rig stands 30 m behind the camera.
+   */
+  private warmRig(rig: FighterRig): void {
+    // (dev only: ?nowarm loads without it — the A/B of the Beta 2.5 measurements)
+    if (import.meta.env.DEV && new URLSearchParams(location.search).has('nowarm')) return;
+    const r = this.renderer;
+    const root = rig.root;
+    const culled: [Object3D, boolean][] = [];
+    root.traverse((o) => {
+      culled.push([o, o.frustumCulled]);
+      o.frustumCulled = false;
+    });
+    const parent = root.parent;
+    const pos = root.position.clone();
+    const visible = root.visible;
+    r.camera.updateMatrixWorld();
+    root.position.copy(r.camera.position).addScaledVector(r.camera.getWorldDirection(new Vector3()), -30);
+    root.visible = true;
+    r.scene.add(root);
+    try {
+      r.render(0);
+    } catch {
+      /* no warm-up — the first frame on stage sets the fighter up, as in 2.4 */
+    } finally {
+      r.scene.remove(root);
+      if (parent) parent.add(root);
+      root.position.copy(pos);
+      root.visible = visible;
+      for (const [o, f] of culled) o.frustumCulled = f;
+    }
+  }
+
   startMatch(): void {
     if (this.accountHolds(() => this.startMatch())) return;
     const s = this.save.data;

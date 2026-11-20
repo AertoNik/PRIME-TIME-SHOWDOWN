@@ -123,8 +123,11 @@ check(`transitions are smooth: the biggest joint step in one frame is ${worstJum
 }
 
 // victory routines
+// (Beta 2.5 adds a fourth routine to exactly four styles: hype, flex, precise, showman — npm run anim25 checks them)
+const FOUR = ['hype', 'flex', 'precise', 'showman'];
 for (const [style, set] of Object.entries(VICTORY_SETS)) {
-  check(`victory style ${style}: three routines`, set.length === 3);
+  const n = FOUR.includes(style) ? 4 : 3;
+  check(`victory style ${style}: ${n === 4 ? 'four' : 'three'} routines`, set.length === n);
 }
 {
   let repeats = 0;
@@ -142,7 +145,8 @@ for (const [style, set] of Object.entries(VICTORY_SETS)) {
     }
   }
   check(`victories: never the same routine twice in a row (repeats: ${repeats})`, repeats === 0);
-  check(`victories: all 27 routines of the nine characters come up (${seen.size})`, seen.size === 27);
+  // nine characters: 27 routines of 2.4 + the Beta 2.5 fourth of Ray (hype), Bruno (flex), Vega (precise), Kai (showman)
+  check(`victories: all 31 routines of the nine characters come up (${seen.size})`, seen.size === 31);
 }
 
 // weapon fire styles
