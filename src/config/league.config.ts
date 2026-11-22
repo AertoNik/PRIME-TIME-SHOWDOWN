@@ -125,6 +125,24 @@ export const TACTICS: Record<TacticId, TacticDef> = {
 
 export const TACTIC_ORDER: TacticId[] = ['balance', 'assault', 'fortress', 'counter', 'combo', 'adapt'];
 
+/**
+ * Beta 2.6 — SMART DEFENSE (src/league/autoDefense.ts): the tactics that suit each fighter's own style, preferred when a
+ * new participant's defence is built for them (all tactics of a line-up still differ; a fighter whose choices are taken
+ * gets another). From the fighters' styles: Ray mobility, Bruno power and survival, Nika control, Vega precision and
+ * timing, Kai angles and ricochets, Rina feints and counters, ACE duel precision, Lucien cane duel, CRAX the wind-up rifle.
+ */
+export const TACTIC_AFFINITY: Record<FighterId, TacticId[]> = {
+  ray: ['balance', 'counter', 'adapt'],
+  bruno: ['fortress', 'assault', 'balance'],
+  nika: ['counter', 'combo', 'adapt'],
+  vega: ['counter', 'assault', 'combo'],
+  kai: ['combo', 'assault', 'adapt'],
+  rina: ['counter', 'combo', 'balance'],
+  ace: ['adapt', 'counter', 'assault'],
+  lucien: ['assault', 'counter', 'adapt'],
+  crax: ['assault', 'fortress', 'combo'],
+};
+
 /** PRIME ADAPT: the weights for the moment (only what both sides can see: HP and the clock). */
 export function adaptWeights(ownHp: number, foeHp: number, time: number): Record<CardKind, number> {
   if (ownHp < 0.4 && ownHp < foeHp) return TACTICS.fortress.weights;

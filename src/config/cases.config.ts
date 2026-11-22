@@ -16,7 +16,7 @@
 
 import type { CosmeticId } from './cosmetics.config';
 
-export type CaseKind = 'invite' | 'daily';
+export type CaseKind = 'invite' | 'daily' | 'mission';
 export type CaseRewardKind = 'money' | 'rep' | 'tokens' | 'item';
 /** Rarity of a case outcome — how the game names and colours it (the odds are the real numbers next to it). */
 export type CaseRarity = 'common' | 'rare' | 'epic' | 'legendary';
@@ -48,6 +48,7 @@ export const INVITE_EXCLUSIVE: CosmeticId = 'dash_invite_signal';
 export const CASE_DEFS: Record<CaseKind, CaseDef> = {
   invite: { kind: 'invite', name: 'PRIME INVITE CASE', tagline: 'За друга, который провёл час в эфире PRIME LEAGUE' },
   daily: { kind: 'daily', name: 'DAILY BROADCAST CASE', tagline: 'Подарок за каждый день ежедневного эфира' },
+  mission: { kind: 'mission', name: 'DAILY MISSION MINI CASE', tagline: 'За каждое выполненное ежедневное задание' },
 };
 
 export const CASE_RARITY_LABEL: Record<CaseRarity, string> = { common: 'Обычная', rare: 'Редкая', epic: 'Эпическая', legendary: 'Легендарная' };
@@ -57,7 +58,8 @@ export const CASES = {
   // Beta 2.5.5 → 2: the DOLLARS of both cases ×2 (ranges and the big fees; the shares, reputation, tokens and the item
   // unchanged). A career fight pays about a quarter of Beta 2.5's now: a day's case is worth about one more fight (was
   // ~0.15), and PRIME INVITE CASE stays above every DAILY sum as in 2.4 (its fee from 850 $, a DAILY sum at most 900 $).
-  version: 2,
+  // Beta 2.6 → 3: the DAILY MISSION MINI CASE table (invite and daily unchanged)
+  version: 3,
   invite: [
     { id: 'inv_money', kind: 'money', min: 850, max: 1400, weight: 4500, rarity: 'common', label: 'Гонорар' },
     { id: 'inv_rep', kind: 'rep', min: 40, max: 80, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
@@ -98,6 +100,18 @@ export const CASES = {
       ] as CaseOutcome[],
     },
   ],
+  /**
+   * Beta 2.6 — DAILY MISSION MINI CASE (one per done daily mission, up to five a day): small dollars, a little producer
+   * reputation, a few PRIME TOKENS for a league player — no item, no skin, no fighter, no INVITE SIGNAL. Its expected
+   * dollars ≈ 32 $ (≈ 37 $ without PRIME TOKENS — their share spreads over the rest), about a fifth of a DAILY BROADCAST
+   * CASE (151–213 $); all five ≈ one «Профи» win a day (npm run missions — the economy section).
+   */
+  mission: [
+    { id: 'm_money', kind: 'money', min: 30, max: 60, weight: 5800, rarity: 'common', label: 'Гонорар за задание' },
+    { id: 'm_rep', kind: 'rep', min: 4, max: 8, weight: 2500, rarity: 'common', label: 'Репутация продюсера' },
+    { id: 'm_tokens', kind: 'tokens', min: 2, max: 4, weight: 1200, rarity: 'rare', label: 'PRIME TOKENS' },
+    { id: 'm_bonus', kind: 'money', min: 120, max: 120, weight: 500, rarity: 'rare', label: 'Бонус спонсора' },
+  ] as CaseOutcome[],
 };
 
 /** The DAILY tier of a streak day (1, 2 or 3). */

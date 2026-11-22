@@ -10,6 +10,7 @@ import { countUp, esc } from './dom';
 import { UI_ICONS } from './icons';
 import { winterGiftArt } from './rewardArt';
 import { caseImg, casesStatus, onCases, openCaseShow, refreshCases } from './caseUI';
+import { missionsEntryHTML, openMissions } from './missionsUI';
 import type { MenuScreen } from './screens/MenuScreen';
 
 // Alpha 1.8.9 — the DAILY PRIME STREAK window («ЕЖЕДНЕВНЫЙ ЭФИР»): the streak, the record, today's gift, the next
@@ -132,7 +133,7 @@ function clockText(ms: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): string {
+function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string, missions = ''): string {
   const claimed = s.claimedToday;
   const ready = s.canClaim;
   // the strip: the last days of this streak already received, then the coming ones
@@ -168,6 +169,7 @@ function statusHTML(s: DailyStatus, note: string, bump: boolean, gift: string): 
       </div>
     </section>
     ${waitingCasesHTML(s)}
+    ${missions}
     <ol class="dps-strip" aria-label="Ближайшие награды">${doneChips.join('')}${nextChips.join('')}</ol>
     ${trackHTML(s.streak, reached)}
     <div class="dps-foot">
@@ -251,6 +253,7 @@ export function openDaily(g: Game): void {
   let revealing = false;
   let off: (() => void) | null = null;
   let offCases: (() => void) | null = null;
+  let offMissions: (() => void) | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && !revealing) g.ui.closeModal();
@@ -260,6 +263,8 @@ export function openDaily(g: Game): void {
     off = null;
     offCases?.();
     offCases = null;
+    offMissions?.();
+    offMissions = null;
     if (timer) clearInterval(timer);
     timer = null;
     document.removeEventListener('keydown', onKey);
@@ -281,7 +286,7 @@ export function openDaily(g: Game): void {
       const s = d.status;
       if (d.gate() !== 'ok') host.innerHTML = gateHTML(g);
       else if (!s) host.innerHTML = `${headHTML()}<div class="dps-gate">${d.error ? `<p><b>Нет связи с PRIME NETWORK</b><span>Не удалось загрузить ежедневный эфир.</span></p><button type="button" class="btn wide ghost" data-dps="retry">Повторить</button>` : '<p class="dps-loading"><span class="dps-spin"></span>Загружаем ежедневный эфир…</p>'}</div>`;
-      else host.innerHTML = statusHTML(s, note, bump, winterGiftArt(g, 58) ?? icon(UI_ICONS.gift, 58));
+      else host.innerHTML = statusHTML(s, note, bump, winterGiftArt(g, 58) ?? icon(UI_ICONS.gift, 58), missionsEntryHTML(g));
       bump = false;
       tickTimer();
     };
@@ -298,6 +303,8 @@ export function openDaily(g: Game): void {
     off = d.onChange(render);
     // Beta 2.4: the waiting DAILY cases follow the server (an open answered later, another device)
     offCases = onCases(render);
+    // Beta 2.6: the DAILY MISSIONS entry follows the server's missions
+    offMissions = g.missions.onChange(render);
     root.addEventListener('click', async (e) => {
       if (e.target === root) return void setTimeout(gone, 0);
       const t = (e.target as HTMLElement).closest('[data-dps]') as HTMLElement | null;
@@ -320,6 +327,12 @@ export function openDaily(g: Game): void {
       } else if (act === 'cases') {
         g.audio.ui('click');
         openCaseShow(g, 'daily', () => render());
+      } else if (act === 'missions') {
+        // Beta 2.6: the missions window (its «Назад» comes back here)
+        g.audio.ui('click');
+        g.ui.closeModal();
+        cleanup();
+        openMissions(g, () => openDaily(g));
       } else if (act === 'retry') {
         g.audio.ui('click');
         if (d.gate() === 'wait') void g.account?.retry();
@@ -366,5 +379,6 @@ export function openDaily(g: Game): void {
     void d.refresh();
     // Beta 2.4: DAILY cases waiting from before
     void refreshCases(g).then(() => render());
+    void g.missions.refresh();
   });
 }

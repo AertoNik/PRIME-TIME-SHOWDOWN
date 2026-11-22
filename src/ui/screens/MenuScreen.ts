@@ -153,7 +153,8 @@ export class MenuScreen implements Screen {
       } else b?.remove();
     };
     put('[data-act="referral"].ref-btn', cs?.invite.ready ?? 0);
-    put('[data-act="daily"].daily-btn', cs?.daily.ready ?? 0);
+    // (Beta 2.6: and the DAILY MISSION MINI CASES waiting — they open in the daily window's missions)
+    put('[data-act="daily"].daily-btn', (cs?.daily.ready ?? 0) + (cs?.mission.ready ?? 0));
   }
 
   /**

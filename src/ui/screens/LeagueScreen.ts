@@ -24,6 +24,7 @@ import { leagueTitleArt } from '../rewardArt';
 import { currencyArt } from '../currencyArt';
 import { effectImg, hasEffectArt } from '../effectArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
+import { openPlayerCard } from '../playerCard';
 import type { Screen } from '../UI';
 import { modePic } from '../menuArt';
 
@@ -288,6 +289,14 @@ export class LeagueScreen implements Screen {
     this.el = el('div', 'league');
     this.pick = readLeaguePick(g.account?.playing ?? null) ?? g.save.data.selected;
     this.el.addEventListener('click', (e) => this.onClick(e));
+    // Beta 2.6: a leaderboard row (an <li role="button">, focusable) opens the mini profile from the keyboard too
+    this.el.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement;
+      if ((e.key === 'Enter' || e.key === ' ') && t.matches?.('li[role="button"][data-act]')) {
+        e.preventDefault();
+        this.onClick(e);
+      }
+    });
     g.league.onChange(() => {
       if (this.g.ui.current === 'league') this.renderSoon();
     });
@@ -618,7 +627,7 @@ export class LeagueScreen implements Screen {
     if (!b) return `<div class="lg-state">${tr('Загружаем таблицу сезона…', 'Loading the season table…')}</div>`;
     if (!b.rows.length) return this.empty(UI_ICONS.trophy, tr('Таблица сезона ждёт первого', 'The season table awaits its first'), tr('Ещё никто не сыграл рейтинговый бой в этом сезоне. Одна победа — и первая строка ваша.', 'Nobody has played a ranked fight this season yet. One win — and the first line is yours.'), { tab: 'play', label: tr('В эфир', 'Go on air') });
     const rows = b.rows
-      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''}" style="--rk:${r.rank.color}"><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 22)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
+      .map((r) => `<li class="lg-row ${r.me ? 'me' : ''} ${r.id ? 'open' : ''}" style="--rk:${r.rank.color}" ${r.id ? `data-act="player" data-id="${esc(r.id)}" data-name="${esc(r.name)}" role="button" tabindex="0" aria-label="${esc(r.name)}: ${tr('открыть профиль', 'open the profile')}"` : ''}><span class="lg-place">${r.place}</span>${producerSVG(r.me ? this.g.producer.shown() : r.look ?? { avatar: 'portrait_01', frame: 'studio', backdrop: 'violet' }, 40, 'lg-row-ava')}<span class="lg-who"><b class="lg-nick">${esc(r.name)}</b><span class="lg-rk">${rankEmblem(r.rank.index, r.rank.division, 22)}${esc(lang() === 'en' ? r.rank.en : r.rank.ru)} ${r.rank.division ?? ''}</span></span><span class="lg-rp">${r.rp}<small>RP</small></span><span class="lg-gw">${r.wins}/${r.games}</span></li>`)
       .join('');
     return `<div class="lg-k">${tr('СЕЗОН', 'SEASON')} ${b.season.number} · ${tr('реальные игроки', 'real players')} · ${b.total}</div><ol class="lg-board">${rows}</ol>${me.place && !b.rows.some((r) => r.me) ? `<div class="lg-note">${tr('Ваше место', 'Your place')}: ${me.place}</div>` : ''}<small class="muted">${tr('Участники PRIME NETWORK в таблице не участвуют.', 'PRIME NETWORK participants are never in the table.')}</small>`;
   }
@@ -675,6 +684,7 @@ export class LeagueScreen implements Screen {
     return `${report}
       <div class="lg-card lg-defhead"><div><b>${tr('Защита в эфире', 'Defence on air')}</b><small>${tr('Выключите — и ваши составы не попадут в новые матчи. Начатые бои доиграются по своим снимкам.', 'Switch off — your line-ups join no new match. Started fights finish by their snapshots.')}</small></div><button class="switch lg-defswitch ${me.defenseOn ? 'on' : ''}" data-act="def-global" role="switch" aria-checked="${me.defenseOn}" aria-label="${tr('Защита в эфире', 'Defence on air')}" ${this.busy ? 'disabled aria-busy="true"' : ''}></button></div>
       <p class="muted lg-defnote">${tr(`От 1 до 5 разных бойцов. Каждый со своей колодой и тактикой ИИ-режиссёра. Поражение защиты не отнимает RP; за победы защиты — немного PRIME TOKENS, эфирных очков и репутации продюсера: +${LEAGUE.defenseRep.win} ★ за победу, до ${LEAGUE.defenseRep.perDay} ★ в день, один раз за каждого соперника (с общим дневным пределом: пять слотов не дают пятикратного дохода).`, '1 to 5 different fighters, each with its own deck and AI director tactic. A lost defence never costs RP; won defences give a few PRIME TOKENS and air points (with one daily limit: five slots never mean five times the income).')}</p>
+      ${me.defenseAuto && me.defense.length ? `<div class="lg-autonote" role="note"><b>${tr('СОБРАНО АВТОМАТИЧЕСКИ', 'BUILT FOR YOU')}</b><span>${tr('Ваши бойцы, разные тактики ИИ-режиссёра и колоды из ваших карт. Меняйте бойцов, карты, тактики и порядок — после сохранения состав будет только вашим.', 'Your fighters, different AI director tactics and decks of your cards. Change fighters, cards, tactics and order — once you save, the line-up is yours alone.')}</span></div>` : ''}
       ${cards || this.empty(UI_ICONS.shieldMini, tr('Защита пуста', 'No defence yet'), tr('Выберите бойца ниже — он будет защищать ваш рейтинг, пока вас нет в эфире.', 'Pick a fighter below — they will guard your rating while you are off air.'))}
       ${preview}
       ${slots.length < LEAGUE.defense.slots && free.length ? `<div class="lg-k">${tr('ДОБАВИТЬ БОЙЦА', 'ADD A FIGHTER')}</div><div class="lg-add" role="list" data-strip="add">${free.map((id) => `<button class="lg-fpick" data-act="slot-add" data-f="${id}">${portraitHTML(g.portraitOf(id), FIGHTERS[id].theme.main, FIGHTERS[id].theme.dark)}<span>${esc(FIGHTERS[id].name)}</span></button>`).join('')}${lockedPicks(g)}</div>` : ''}
@@ -951,7 +961,11 @@ export class LeagueScreen implements Screen {
           g.league.setMe(await api.join(LEAGUE_RULES_VERSION));
           g.audio.ui('confirm');
           this.tab = 'defense';
-          this.notice = tr('Добро пожаловать в эфир! Выставьте первого защитника — пока вас нет, он будет защищать ваше шоу.', 'Welcome on air! Field your first defender — it defends your show while you are away.');
+          // Beta 2.6 SMART DEFENSE: the server built the defence — the player can fight at once and change it any time
+          const built = g.league.me!.defense.length && g.league.me!.defenseAuto;
+          this.notice = built
+            ? tr(`Добро пожаловать в эфир! Защита собрана автоматически — ${g.league.me!.defense.length} ${plural(g.league.me!.defense.length, ['боец', 'бойца', 'бойцов'])} с разными тактиками и колодами. Можно сразу играть, а состав изменить в любой момент.`, `Welcome on air! Your defence was built for you — ${g.league.me!.defense.length} ${g.league.me!.defense.length === 1 ? 'fighter' : 'fighters'} with different tactics and decks. Play right away and change it any time.`)
+            : tr('Добро пожаловать в эфир! Выставьте первого защитника — пока вас нет, он будет защищать ваше шоу.', 'Welcome on air! Field your first defender — it defends your show while you are away.');
           if (!g.league.me!.defense.length) {
             this.draft = [{ slot: 1, fighter: g.save.data.selected, deck: deckOf(g, g.save.data.selected), tactic: 'balance', look: wornSkinOf(g, g.save.data.selected), enabled: true }];
             this.draftKey = '[]';
@@ -1154,6 +1168,13 @@ export class LeagueScreen implements Screen {
       }
       case 'board-retry':
         void this.loadBoard();
+        return;
+      case 'player':
+        // Beta 2.6: a leaderboard row opens the participant's public mini profile (its public key)
+        if (b.dataset.id) {
+          g.audio.ui('click');
+          openPlayerCard(g, b.dataset.id, b.dataset.name ?? 'PRIME');
+        }
         return;
       case 'history-retry':
         void this.loadHistory();

@@ -68,7 +68,8 @@ check('every WebP copy exists in public/ui with the size of its group (artIcons.
 // ------------------------------------------------------------- nothing earlier changed
 // (Beta 2.2 final's batch PRIME_TIME_2_3_WINTER_COLLECTION_ART is checked by npm run art23 — it adds, never replaces)
 // (Beta 2.3's PRIME_TIME_2_3_UI_MODE_ART_REFINED is checked by npm run art24 — it adds, never replaces)
-const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_WINTER_COLLECTION_ART/') && !e.src.startsWith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/'));
+// (Beta 2.6's PRIME_TIME_2_6_UI_ART — the DAILY MISSIONS picture — is checked by npm run missions; it adds, never replaces)
+const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && !e.src.startsWith('PRIME_TIME_2_3_WINTER_COLLECTION_ART/') && !e.src.startsWith('PRIME_TIME_2_3_UI_MODE_ART_REFINED/') && !e.src.startsWith('PRIME_TIME_2_6_UI_ART/'));
 const groups = [...new Set(older.map(([g]) => g))].sort();
 const canon = JSON.stringify(groups.map((g) => [g, older.filter(([gg]) => gg === g).map(([, i, e]) => [i, e.src, e.sha256, Object.keys(e.out).sort().map((k) => [k, e.out[k].sha256])] as const).sort((a, b) => (a[0] < b[0] ? -1 : 1))]));
 check(`the 87 earlier icon entries are exactly as Beta 2.1 published them (fingerprint 06f9576d…; ${older.length} entries)`, older.length === 87 && crypto.createHash('sha256').update(canon).digest('hex') === '06f9576d0f544523e9df80e75a2dce3458d11048ac5b7b53d9dbfd61dbd1b14c');

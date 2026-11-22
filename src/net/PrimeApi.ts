@@ -166,6 +166,8 @@ export interface ServerConfig {
   referrals: boolean;
   /** Beta 2.4: REWARD CASES are switched on here (/api/prime/cases; a server before 2.4: off). */
   cases: boolean;
+  /** Beta 2.6: DAILY MISSIONS are switched on here (/api/prime/missions; a server before 2.6: off). */
+  missions: boolean;
   /** 1.9.0 PRIME LEAGUE on this server (PRIME_LEAGUE=on), the participation rules version and the fight's SIM_VERSION. */
   league: { on: boolean; rules: number; sim: string | null };
   /** 1.9.0 PRIME PRODUCER AVATARS on this server: the catalogue version (0: a server before 1.9.0). */
@@ -449,7 +451,7 @@ export function dailyStatusOf(r: Rec): DailyStatus {
   };
 }
 // ------------------------------------------------------------ Beta 2.4 REWARD CASES
-export type CaseKind = 'invite' | 'daily';
+export type CaseKind = 'invite' | 'daily' | 'mission';
 export type CaseRewardKind = 'money' | 'rep' | 'tokens' | 'item';
 /** One line of a case's odds as the server states them for this player (share: basis points, sums to 10 000). */
 export interface CaseOddsLine {
@@ -488,6 +490,8 @@ export interface CasesStatus {
   tokens: boolean;
   invite: { ready: number; opened: number; odds: CaseOddsLine[] };
   daily: { ready: number; opened: number; tier: number; odds: CaseOddsLine[] };
+  /** Beta 2.6: DAILY MISSION MINI CASE (a server without it: zero ready, no odds). */
+  mission: { ready: number; opened: number; odds: CaseOddsLine[] };
   history: CaseRecord[];
 }
 export interface CaseOpenResult {
@@ -497,7 +501,7 @@ export interface CaseOpenResult {
   duplicate: boolean;
   status: CasesStatus | null;
 }
-const caseKind = (v: unknown): CaseKind => (v === 'invite' ? 'invite' : 'daily');
+const caseKind = (v: unknown): CaseKind => (v === 'invite' ? 'invite' : v === 'mission' ? 'mission' : 'daily');
 const rewardKind = (v: unknown): CaseRewardKind => (v === 'money' || v === 'rep' || v === 'tokens' || v === 'item' ? v : 'money');
 const rarityOf = (v: unknown): CaseOddsLine['rarity'] => (v === 'rare' || v === 'epic' || v === 'legendary' ? v : 'common');
 function oddsLines(v: unknown): CaseOddsLine[] {
@@ -521,12 +525,70 @@ export function casesStatusOf(r: Rec): CasesStatus {
   const ex = (r.exclusive ?? {}) as Rec;
   const inv = (r.invite ?? {}) as Rec;
   const day = (r.daily ?? {}) as Rec;
+  const mis = (r.mission ?? {}) as Rec;
   return {
     exclusive: { item: str(ex.item), owned: ex.owned === true },
     tokens: r.tokens === true,
     invite: { ready: int(inv.ready), opened: int(inv.opened), odds: oddsLines(inv.odds) },
     daily: { ready: int(day.ready), opened: int(day.opened), tier: int(day.tier) || 1, odds: oddsLines(day.odds) },
+    mission: { ready: int(mis.ready), opened: int(mis.opened), odds: oddsLines(mis.odds) },
     history: Array.isArray(r.history) ? r.history.slice(0, 20).map(caseRecordOf) : [],
+  };
+}
+
+// ------------------------------------------------------------ Beta 2.6 DAILY MISSIONS
+export interface MissionView {
+  i: number;
+  id: string;
+  title: string;
+  tier: 'easy' | 'medium' | 'hard';
+  league: boolean;
+  target: number;
+  progress: number;
+  done: boolean;
+  /** Its mini case was granted (it waits in the cases until opened). */
+  rewarded: boolean;
+}
+export interface MissionsStatus {
+  day: number;
+  now: number;
+  /** When the next set comes (00:00 Moscow time, the server's clock). */
+  resetsAt: number;
+  missions: MissionView[];
+  cases: { ready: number };
+}
+/** What the game reports of a finished career fight (the server clamps and checks it). */
+export interface MissionFightReport {
+  outcome: 'win' | 'loss' | 'draw';
+  method: 'ko' | 'time' | 'forfeit';
+  rating: number;
+  combos: number;
+  perfects: number;
+  difficulty: 'rookie' | 'pro' | 'champion';
+  mode: 'classic' | 'challenge' | 'boss';
+  fighter: string;
+  rival: string;
+  seconds: number;
+}
+export interface MissionReportResult {
+  counted: boolean;
+  duplicate: boolean;
+  /** Ids of missions this fight completed (each gave its mini case). */
+  completed: string[];
+  state: MissionsStatus | null;
+}
+const tierOf = (v: unknown): MissionView['tier'] => (v === 'medium' || v === 'hard' ? v : 'easy');
+export function missionsStatusOf(r: Rec): MissionsStatus {
+  const list = Array.isArray(r.missions) ? r.missions.slice(0, 5) : [];
+  return {
+    day: int(r.day),
+    now: int(r.now),
+    resetsAt: int(r.resetsAt),
+    missions: list.map((x, k) => {
+      const m = (x ?? {}) as Rec;
+      return { i: typeof m.i === 'number' ? int(m.i) : k, id: str(m.id), title: str(m.title), tier: tierOf(m.tier), league: m.league === true, target: Math.max(1, int(m.target)), progress: Math.max(0, int(m.progress)), done: m.done === true, rewarded: m.rewarded === true };
+    }),
+    cases: { ready: Math.max(0, int(((r.cases ?? {}) as Rec).ready)) },
   };
 }
 
@@ -689,6 +751,7 @@ export class PrimeApi {
       daily: r.daily === 1,
       referrals: r.referrals === 1,
       cases: r.cases === 1,
+      missions: r.missions === 1,
       league: (() => {
         const l = (r.league ?? {}) as Rec;
         return { on: l.on === true, rules: int(l.rules), sim: typeof l.sim === 'string' ? l.sim : null };
@@ -790,6 +853,21 @@ export class PrimeApi {
   async caseOpen(op: string, kind: CaseKind, base: number): Promise<CaseOpenResult> {
     const r = await this.call((o) => this.pb.send<Rec>('/api/prime/cases/open', { ...o, method: 'POST', body: { op, kind, base, ...this.sessionBody() } }));
     return { case: caseRecordOf(r.case), revision: int(r.revision), hash: str(r.hash), duplicate: r.duplicate === true, status: r.status && typeof r.status === 'object' ? casesStatusOf(r.status as Rec) : null };
+  }
+
+  // ------------------------------------------------------------ Beta 2.6 DAILY MISSIONS
+  /** Today's five missions (the server picks them once a game day and keeps them). */
+  async missionsStatus(): Promise<MissionsStatus> {
+    return missionsStatusOf(await this.call((o) => this.pb.send<Rec>('/api/prime/missions', { ...o, method: 'GET' })));
+  }
+
+  /**
+   * A finished career fight for today's missions. The server clamps the figures, checks the time bank and the session,
+   * and counts each op once (a repeat answers «duplicate»); an exit from the fight counts nothing.
+   */
+  async missionReport(op: string, fight: MissionFightReport): Promise<MissionReportResult> {
+    const r = await this.call((o) => this.pb.send<Rec>('/api/prime/missions/report', { ...o, method: 'POST', body: { op, fight, ...this.sessionBody() } }));
+    return { counted: r.counted === true, duplicate: r.duplicate === true, completed: Array.isArray(r.completed) ? r.completed.filter((x): x is string => typeof x === 'string').slice(0, 5) : [], state: r.state && typeof r.state === 'object' ? missionsStatusOf(r.state as Rec) : null };
   }
 
   // ------------------------------------------------------------ PRIME CHECKOUT (1.8.8 stage 3)

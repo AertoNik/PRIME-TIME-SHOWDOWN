@@ -266,7 +266,7 @@ const setClock = (t: number) => {
 const tick = (ms: number) => setClock(clock + ms);
 
 async function startPb(extra: Record<string, string> = {}): Promise<void> {
-  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], args: proc.env.LEAGUE_DEV ? ['--dev'] : [], env: { PRIME_REGISTRATION: 'public', PRIME_SERVER_ROLE: 'dev', PRIME_LEAGUE: 'on', PRIME_LEAGUE_TOKENS: 'on', PRIME_LEAGUE_CLOCK_FILE: clockFile, PRIME_SEASON_CLOCK_FILE: seasonClockFile, PRIME_LEAGUE_SEASON_START: '2026-11-02', PRIME_LEAGUE_BUDGET_SCALE: '1000', ...LEGACY_CHECK_ENV, ...extra } });
+  pb = spawnPocketBase({ dir: dataDir, ports: PORTS, origins: ['http://localhost:5173'], args: proc.env.LEAGUE_DEV ? ['--dev'] : [], env: { PRIME_REGISTRATION: 'public', PRIME_SERVER_ROLE: 'dev', PRIME_LEAGUE: 'on', PRIME_LEAGUE_TOKENS: 'on', PRIME_LEAGUE_CLOCK_FILE: clockFile, PRIME_SEASON_CLOCK_FILE: seasonClockFile, PRIME_LEAGUE_SEASON_START: '2026-11-02', PRIME_LEAGUE_BUDGET_SCALE: '1000', PRIME_LEAGUE_AUTO_DEFENSE: 'off', ...LEGACY_CHECK_ENV, ...extra } });
   const keep = (b: unknown) => {
     for (const l of String(b).split('\n')) if (l.trim()) pbLog.push(l);
     if (pbLog.length > 300) pbLog.splice(0, pbLog.length - 300);
@@ -1153,7 +1153,8 @@ function migrationChecks(): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prime-league-mig-'));
   const old = path.join(dir, 'migrations-1895');
   fs.mkdirSync(old);
-  for (const f of fs.readdirSync(MIGRATIONS)) if (f.endsWith('.js') && f !== '1793100000_prime_league.js' && f !== '1793200000_prime_producer.js' && f !== '1793300000_prime_league_limits.js') fs.copyFileSync(path.join(MIGRATIONS, f), path.join(old, f));
+  // (Beta 2.6's 1793700000_prime_missions extends the league's profiles — it belongs after the league, never in a 1.8.9.5 base)
+  for (const f of fs.readdirSync(MIGRATIONS)) if (f.endsWith('.js') && f !== '1793100000_prime_league.js' && f !== '1793200000_prime_producer.js' && f !== '1793300000_prime_league_limits.js' && f !== '1793700000_prime_missions.js') fs.copyFileSync(path.join(MIGRATIONS, f), path.join(old, f));
   const hooks = path.join(dir, 'nohooks');
   fs.mkdirSync(hooks);
   const data = path.join(dir, 'pb_data');

@@ -135,7 +135,7 @@ export interface SyncMeta {
    * Beta 2.4: a REWARD CASE open sent but not answered: asked again with the SAME op before anything else goes up (the
    * server answers a repeat with the result it already drew and wrote — never a second draw, never lost).
    */
-  caseOpen: { op: string; base: number; kind: 'invite' | 'daily'; at: number } | null;
+  caseOpen: { op: string; base: number; kind: 'invite' | 'daily' | 'mission'; at: number } | null;
 }
 
 export function emptySyncMeta(): SyncMeta {
@@ -158,7 +158,7 @@ export function readSync(st: SaveStorage | null, p: ProfileId): SyncMeta {
   const dl = r.daily as SyncMeta['daily'];
   if (dl && typeof dl.op === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(dl.op)) m.daily = { op: dl.op, base: n(dl.base), at: n(dl.at) };
   const co = r.caseOpen as SyncMeta['caseOpen'];
-  if (co && typeof co.op === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(co.op) && (co.kind === 'invite' || co.kind === 'daily')) m.caseOpen = { op: co.op, base: n(co.base), kind: co.kind, at: n(co.at) };
+  if (co && typeof co.op === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(co.op) && (co.kind === 'invite' || co.kind === 'daily' || co.kind === 'mission')) m.caseOpen = { op: co.op, base: n(co.base), kind: co.kind, at: n(co.at) };
   const no = r.notice as SyncMeta['notice'];
   if (no && no.kind === 'kept-device') m.notice = { kind: 'kept-device', at: n(no.at) };
   return m;

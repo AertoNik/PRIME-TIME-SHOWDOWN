@@ -152,6 +152,10 @@ export interface LeagueMe {
   series: { id: string; kind: 'rush' | 'squad' | 'challenge'; state: Record<string, unknown> }[];
   calibration: number;
   defense: LeagueSlot[];
+  /** Beta 2.6 SMART DEFENSE: the defence was built automatically and the player has not saved their own yet. */
+  defenseAuto?: boolean;
+  /** Beta 2.6: how many defenders the server built in THIS answer (0 when nothing was built now). */
+  defenseAutoNew?: number;
   /** The attacker's league decks per fighter (the career's decks stay in the save). */
   decks?: Partial<Record<FighterId, CardId[]>>;
 }
@@ -160,7 +164,40 @@ export interface LeagueBoard {
   season: { number: number; start: number; end: number | null };
   page: number;
   total: number;
-  rows: { place: number; name: string; rp: number; rank: { ru: string; en: string; division: string | null; color: string; index: number }; games: number; wins: number; me: boolean; look?: ProducerLook | null }[];
+  /** Beta 2.6: `id` — the participant's public key (opens the mini profile); never an account id. */
+  rows: { place: number; id?: string | null; name: string; rp: number; rank: { ru: string; en: string; division: string | null; color: string; index: number }; games: number; wins: number; me: boolean; look?: ProducerLook | null }[];
+}
+
+/** Beta 2.6 PLAYER MINI PROFILE: a participant's public league card (only public league facts). */
+export interface LeaguePlayerRank {
+  index: number;
+  ru: string;
+  en: string;
+  color: string;
+  division: string | null;
+}
+export interface LeaguePlayer {
+  id: string;
+  me: boolean;
+  name: string;
+  look: ProducerLook | null;
+  season: number;
+  /** false: no fight this season yet (the season's figures are zero). */
+  current: boolean;
+  rank: LeaguePlayerRank;
+  rp: number;
+  place: number | null;
+  games: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  winRate: number | null;
+  peak: LeaguePlayerRank | null;
+  best: LeaguePlayerRank | null;
+  defense: { wins: number; losses: number };
+  titles: string[];
+  emblem: boolean;
+  seasons: { season: number; rank: LeaguePlayerRank; games: number; wins: number }[];
 }
 
 export interface LeagueHistory {
@@ -237,6 +274,10 @@ export class LeagueApi {
   }
   board(page = 0): Promise<LeagueBoard> {
     return this.api.league('GET', `/board?page=${page}`);
+  }
+  /** Beta 2.6: the public card of a participant from the leaderboard (its public key). */
+  player(id: string): Promise<LeaguePlayer> {
+    return this.api.league('GET', `/player?id=${encodeURIComponent(id)}`);
   }
   history(): Promise<LeagueHistory> {
     return this.api.league('GET', '/history');

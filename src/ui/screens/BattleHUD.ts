@@ -45,6 +45,8 @@ interface Banner {
   /** Combo explanation: which cards and what bonus. */
   detail?: string;
   tier: number;
+  /** Beta 2.6: the same message merged (shown as «×N» instead of queued again). */
+  count?: number;
 }
 
 interface RatingPop {
@@ -147,6 +149,9 @@ export class BattleHUD implements Screen {
   private bannerQueue: Banner[] = [];
   private bannerT = 0;
   private bannerTier = 0;
+  /** Beta 2.6: the banner on screen now (a repeat merges into it as «×N»), and K.O.'s own moment (minor banners wait). */
+  private bannerNow: { b: Banner; el: HTMLElement } | null = null;
+  private koT = 0;
   private displayRating = 0;
   private lastSecond = -1;
   private flash = 0;
@@ -367,6 +372,8 @@ export class BattleHUD implements Screen {
     this.lastSecond = -1;
     this.bannerQueue = [];
     this.bannerT = 0;
+    this.bannerNow = null;
+    this.koT = 0;
     this.bannerZone.innerHTML = '';
     this.bigCenter.innerHTML = '';
     this.pops.innerHTML = '';
@@ -948,9 +955,10 @@ export class BattleHUD implements Screen {
         this.ratingPops.splice(i, 1);
       }
     }
-    // banners
+    // banners (Beta 2.6: none over K.O.'s own moment — it is the one message then)
+    if (this.koT > 0) this.koT -= dt;
     if (this.bannerT > 0) this.bannerT -= dt;
-    if (this.bannerT <= 0 && this.bannerQueue.length) {
+    if (this.bannerT <= 0 && this.bannerQueue.length && this.koT <= 0) {
       const b = this.bannerQueue.shift()!;
       this.showBanner(b);
     }
@@ -987,40 +995,81 @@ export class BattleHUD implements Screen {
     return f;
   }
 
-  /** Text above a fighter. At most two per fighter, stacked instead of overlapping. */
+  /**
+   * Text above a fighter. At most two per fighter, stacked instead of overlapping. Beta 2.6: the same text again while
+   * the first one still shows is merged into it («ПРОМАХ! ×2») — frequent events stay one short line.
+   */
   callout(side: Side, text: string, color = '#fff'): void {
     const m = this.m;
     if (!m) return;
     const f = m.fighters[side];
+    const same = this.floaters.find((q) => q.active && q.callSide === side && q.t < q.life * 0.7 && (q.el.dataset.text ?? '') === text);
+    if (same) {
+      same.sum = (same.sum || 1) + 1;
+      same.el.textContent = `${text} ×${same.sum}`;
+      same.t = Math.min(same.t, 0.15);
+      return;
+    }
     const mine = this.floaters.filter((q) => q.active && q.callSide === side).sort((a, b) => b.t - a.t);
     if (mine.length >= 2) {
       mine[0].active = false;
       mine[0].el.style.display = 'none';
       mine.shift();
     }
-    const c = this.spawnFloater(text, 'callout', f.x, 2.9, f.z, 1.1, 0.6);
+    const c = this.spawnFloater(text, 'callout', f.x, 2.9, f.z, 0.95, 0.6);
     c.el.style.color = color;
+    c.el.dataset.text = text;
+    c.sum = 1;
     c.callSide = side;
     c.ox = 0;
     c.lift = mine.length ? Math.max(...mine.map((q) => q.lift)) + 22 : 0;
   }
 
+  /**
+   * Beta 2.6 — the broadcast's banners, compact: one at a time in the strip under the top bar (above the fighters' heads),
+   * a frequent minor one shorter than a big moment, a repeat merged as «×N». Never over K.O. (see onKo).
+   */
   private showBanner(b: Banner): void {
     const ultra = b.text === 'ELECTRO BLAST' || b.text === 'SUPERSTAR MOVE';
     const e = el(
       'div',
       `banner t${b.tier}${b.text.length > 12 ? ' long' : ''}${ultra ? ' ultra' : ''}${b.detail ? ' has-detail' : ''}`,
-      `<span class="bt">${esc(b.text)}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}${b.detail ? `<span class="bd">${esc(b.detail)}</span>` : ''}`,
+      `<span class="bt">${esc(b.text)}${(b.count ?? 1) > 1 ? `<i class="bc">×${b.count}</i>` : ''}</span>${b.sub ? `<span class="bs">${esc(b.sub)}</span>` : ''}${b.detail ? `<span class="bd">${esc(b.detail)}</span>` : ''}`,
     );
     this.bannerZone.innerHTML = '';
     this.bannerZone.appendChild(e);
-    this.bannerT = b.tier >= 3 ? 1.3 : 0.9;
+    // how long it holds the strip: a minor one is brief, a big moment longer (its own CSS animation follows the tier)
+    this.bannerT = b.tier >= 3 ? 1.2 : b.tier === 2 ? 0.85 : 0.65;
     this.bannerTier = b.tier;
-    setTimeout(() => e.remove(), b.detail ? 2300 : 1750);
+    this.bannerNow = { b, el: e };
+    setTimeout(() => {
+      e.remove();
+      if (this.bannerNow?.el === e) this.bannerNow = null;
+    }, b.detail ? 2000 : b.tier >= 3 ? 1700 : b.tier === 2 ? 1450 : 1200);
     this.g.audio.reaction(b.tier);
   }
 
   private queueBanner(b: Banner): void {
+    // K.O.'s moment: a finishing line («WHAT A FINISH!») joins the K.O. itself, anything else is dropped
+    if (this.koT > 0) {
+      if (b.tier >= 3) this.koLine(b.text);
+      return;
+    }
+    // the same message again: merged into the one on screen or the one waiting («×2»), never shown twice in a row
+    const now = this.bannerNow;
+    if (now && this.bannerT > 0 && now.b.text === b.text) {
+      now.b.count = (now.b.count ?? 1) + 1;
+      const bt = now.el.querySelector('.bt');
+      if (bt) bt.innerHTML = `${esc(b.text)}<i class="bc">×${now.b.count}</i>`;
+      this.bannerT = Math.min(this.bannerT + 0.25, 1.3);
+      return;
+    }
+    const waiting = this.bannerQueue.find((x) => x.text === b.text);
+    if (waiting) {
+      waiting.count = (waiting.count ?? 1) + 1;
+      waiting.tier = Math.max(waiting.tier, b.tier);
+      return;
+    }
     if (b.tier >= 3) {
       this.bannerQueue = this.bannerQueue.filter((x) => x.tier >= 3);
       this.bannerQueue.push(b);
@@ -1029,6 +1078,22 @@ export class BattleHUD implements Screen {
     } else if (this.bannerQueue.length < 2) {
       this.bannerQueue.push(b);
     }
+  }
+
+  /** Beta 2.6: K.O. is the one message of its moment — the strip is cleared, minor banners never wait to follow it. */
+  private onKo(): void {
+    this.bannerQueue = [];
+    this.bannerZone.innerHTML = '';
+    this.bannerNow = null;
+    this.bannerT = 0;
+    this.koT = 1.8;
+  }
+
+  /** A line under the big K.O. (the finish that made it). */
+  private koLine(text: string): void {
+    const host = this.bigCenter;
+    if (!host.querySelector('.txt.ko') || host.querySelector('.ko-line')) return;
+    host.insertAdjacentHTML('beforeend', `<span class="ko-line">${esc(text)}</span>`);
   }
 
   big(text: string, cls = ''): void {
@@ -1188,6 +1253,7 @@ export class BattleHUD implements Screen {
       }
       case 'ko':
         this.big('K.O.!', 'fight ko');
+        this.onKo();
         this.screenFlash(0.8);
         vibrate([40, 40, 80]);
         break;

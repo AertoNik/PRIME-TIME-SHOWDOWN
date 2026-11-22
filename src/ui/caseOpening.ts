@@ -236,7 +236,7 @@ export function playCaseShow(o: CaseShowOptions): void {
   const st = stageOf();
   const { scene, camera, halo, haloMat, pgeo, pos, vel, life, col } = st;
   const model: CaseModel = modelOf(st, o.kind);
-  haloMat.color.set(o.kind === 'invite' ? 0x3ff0d8 : 0x7ff6ff);
+  haloMat.color.set(o.kind === 'invite' ? 0x3ff0d8 : o.kind === 'mission' ? 0xa77bff : 0x7ff6ff);
   // sparks: none left from the show before; the calm show makes none
   const N = calm ? 0 : SPARKS;
   life.fill(0);
@@ -322,8 +322,10 @@ export function playCaseShow(o: CaseShowOptions): void {
       start();
       if (calm) {
         taps = TAPS;
-        phase = 'charge';
-        pt = 0;
+        if (phase !== 'charge') {
+          phase = 'charge';
+          pt = 0;
+        }
         return;
       }
       if (taps < TAPS) {
@@ -332,11 +334,13 @@ export function playCaseShow(o: CaseShowOptions): void {
         jumpV = 2.6 + taps * 0.5;
         shake = 0.5 + taps * 0.25;
         charge = taps / TAPS;
-        spawn(8 + taps * 6, 1.3 + taps * 0.4, o.kind === 'invite' ? 0x3ff0d8 : 0x7ff6ff);
+        spawn(8 + taps * 6, 1.3 + taps * 0.4, o.kind === 'invite' ? 0x3ff0d8 : o.kind === 'mission' ? 0x5ff3ff : 0x7ff6ff);
         if (navigator.vibrate) navigator.vibrate(12 + taps * 8);
         hint.textContent = taps < TAPS ? `Ещё ${TAPS - taps}…` : 'Открываем…';
       }
-      if (taps >= TAPS) {
+      // (Beta 2.6: only ENTERING the charge starts its clock — more taps while it charges no longer restart it, so
+      // tapping on and on never holds the case shut)
+      if (taps >= TAPS && phase !== 'charge') {
         phase = 'charge';
         pt = 0;
       }
@@ -408,7 +412,7 @@ export function playCaseShow(o: CaseShowOptions): void {
     pending = null;
     outcome = null;
     setPips();
-    haloMat.color.set(o.kind === 'invite' ? 0x3ff0d8 : 0x7ff6ff);
+    haloMat.color.set(o.kind === 'invite' ? 0x3ff0d8 : o.kind === 'mission' ? 0xa77bff : 0x7ff6ff);
     hint.textContent = calm ? 'Коснитесь, чтобы открыть' : 'Коснитесь кейса';
     skipBtn.hidden = calm;
   };

@@ -19,6 +19,7 @@ import { CareerSystem } from '../meta/CareerSystem';
 import type { Collection } from '../meta/Collection';
 import { EventManager, type MatchEventOutcome } from '../meta/EventManager';
 import { SeasonRuntime } from './SeasonRuntime';
+import { MissionRuntime } from './MissionRuntime';
 import { GameModes, type SurvivalSummary, type WaveSetup } from '../meta/GameModes';
 import { SaveSystem, type CameraMotion } from '../meta/SaveSystem';
 import { devShopGrant, Shop } from '../meta/Shop';
@@ -28,6 +29,7 @@ import { loadReturn, mergeReturn, readReturnQuery, saveReturn, stripReturnQuery 
 import { checkoutAccount } from '../ui/checkoutUI';
 import { Arena } from '../render/Arena';
 import { caseRendererBusy } from '../render/caseRenderer';
+import { refreshCases } from '../ui/caseUI';
 import { BattleView, type TimeFx } from '../render/BattleView';
 import { CameraRig } from '../render/CameraRig';
 import { ModelCache } from '../render/ModelCache';
@@ -148,6 +150,8 @@ export class Game {
   readonly league: LeagueRuntime;
   /** Alpha 1.9.7 — WINTER SHOWDOWN (R-22): the server's CANDY CANES wallet for this page. */
   readonly season: SeasonRuntime;
+  /** Beta 2.6: DAILY MISSIONS — today's five as the server states them, and the career fights reported to it. */
+  readonly missions: MissionRuntime;
   /** Alpha 1.9.0 PRIME PRODUCER AVATARS: this page's producer look (the server's). */
   readonly producer: ProducerRuntime;
   readonly career: CareerSystem;
@@ -235,6 +239,7 @@ export class Game {
     this.daily = new DailyRuntime(this);
     this.league = new LeagueRuntime(this);
     this.season = new SeasonRuntime(this);
+    this.missions = new MissionRuntime(this);
     this.producer = new ProducerRuntime(this);
     this.title = new TitleScreen(() => this.onTitleTap());
     this.ui.register('title', this.title);
@@ -1169,6 +1174,15 @@ export class Game {
     this.matchEventId = null;
     this.enterResultsView(m.result.outcome);
     this.ui.show('results', { result: m.result, outcome, event: eventOutcome, challenge, boss, ...meta });
+    // Beta 2.6 DAILY MISSIONS: the finished career fight goes to the server, which counts it for today's missions (an
+    // exit counts nothing there; offline it waits in a small queue). A mission it completed is announced — its mini
+    // case waits in the daily window.
+    if (mode.kind === 'classic' || mode.kind === 'challenge' || mode.kind === 'boss') {
+      void this.missions.report(m.result, { fighter: meta.fighter, rival: meta.rival, difficulty: meta.difficulty, mode: mode.kind }, (titles) => {
+        this.ui.toast(titles.length === 1 ? `Задание выполнено: ${titles[0]} — мини-кейс ждёт` : `Выполнено заданий: ${titles.length} — мини-кейсы ждут`);
+        void refreshCases(this);
+      });
+    }
     // Beta 2.5.5: the rival just fought is drawn already; the next one is drawn now, on the still results screen
     if (meta.rival) this.warmedRivals.add(meta.rival);
     setTimeout(() => {

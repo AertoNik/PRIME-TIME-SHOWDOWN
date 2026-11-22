@@ -32,6 +32,8 @@ export const ICON_SIZES = {
   winter: { xs: 96, sm: 192, md: 400 },
   // Beta 2.3: the main screen's own icons (the DAILY gift, «Пригласить друга», PRIME SHOP, CARDS, settings)
   ui: { xs: 96, sm: 192 },
+  // Beta 2.6: DAILY MISSIONS' own picture (the daily window's entry 44–52 px, the missions window's header 64–84 px)
+  missions: { xs: 96, sm: 192, md: 400 },
 } as const;
 
 export type IconGroup = keyof typeof ICON_SIZES;

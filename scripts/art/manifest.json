@@ -1207,6 +1207,11 @@
       "ui": {
         "xs": 96,
         "sm": 192
+      },
+      "missions": {
+        "xs": 96,
+        "sm": 192,
+        "md": 400
       }
     },
     "navHeights": {
@@ -5566,6 +5571,45 @@
             "sha256": "4376998ed038b1808a1d07688e705bf2d015d381c20954b2ddc83ccb6e3fabca"
           }
         }
+      }
+    },
+    "missions": {
+      "daily_missions": {
+        "src": "PRIME_TIME_2_6_UI_ART/ui_daily_missions.png",
+        "sha256": "d21a33ecbd5b73e7071f4bb7540b1fda83a2a63175bd3a0af8e592ed0ab3bb8c",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/missions/xs/daily_missions.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7174,
+            "sha256": "0b2758b6cd8beb018c0dd83cf1a8202c9c02e616b6f01c6710f5dcbd699d9a70"
+          },
+          "sm": {
+            "file": "ui/missions/sm/daily_missions.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 18568,
+            "sha256": "10d53f80d0ec9f4c5c3859916914f12b310273ca7006ea2b59505c572a9937b0"
+          },
+          "md": {
+            "file": "ui/missions/md/daily_missions.webp",
+            "w": 400,
+            "h": 400,
+            "bytes": 49930,
+            "sha256": "c1b9426fb80011f3c048b00ca57ddcc1392cec292d60fe5dc678d670d2c9419a"
+          }
+        },
+        "bbox": [
+          80,
+          78,
+          1190,
+          1198
+        ]
       }
     }
   }

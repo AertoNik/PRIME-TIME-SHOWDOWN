@@ -171,14 +171,15 @@ export function openCaseShow(g: Game, kind: CaseKind, onClose?: () => void): voi
     g.ui.toast('Кейсы откроются, когда PRIME CLOUD подключится');
     return;
   }
-  let left = kind === 'invite' ? (status?.invite.ready ?? 1) : (status?.daily.ready ?? 1);
+  const readyOf = (st: CasesStatus | null | undefined): number | undefined => (st ? st[kind].ready : undefined);
+  let left = readyOf(status) ?? 1;
   g.audio.ui('confirm');
   playCaseShow({
     kind,
     open: async () => {
       const r = await sync.openCase(kind);
       if (r.status) takeCases(r.status);
-      left = r.status ? (kind === 'invite' ? r.status.invite.ready : r.status.daily.ready) : Math.max(0, left - (r.ok ? 1 : 0));
+      left = r.status ? r.status[kind].ready : Math.max(0, left - (r.ok ? 1 : 0));
       if (r.ok) {
         const res = r.case.result;
         // the reward is in the save already (SyncManager) — the menu shows the new balance, the exclusive is wearable

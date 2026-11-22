@@ -184,6 +184,8 @@ ICON_SIZES = {
     'winter': {'xs': 96, 'sm': 192, 'md': 400},
     # Beta 2.3: the main screen's own icons (the DAILY gift, «Пригласить друга», PRIME SHOP, CARDS, the settings button)
     'ui': {'xs': 96, 'sm': 192},
+    # Beta 2.6: DAILY MISSIONS' own picture (the daily window's entry 44–56 CSS px, the missions header 72–96 px → md)
+    'missions': {'xs': 96, 'sm': 192, 'md': 400},
 }
 
 # Beta 2.3 — the bottom bar's button skins (БОЙЦЫ / КАРЬЕРА / КОЛЛЕКЦИЯ): wide pictures (≈3.7 : 1) with the emblem on the
@@ -374,6 +376,8 @@ def icons_23(manifest):
 # last pictures. Each mapped to an EXISTING game id after looking at the picture (docs/BETA_2_3_DEVELOPMENT_REPORT.md);
 # `--icons-24` adds exactly these entries and files, every earlier entry and WebP stays byte for byte.
 ART24_SRC = os.path.join(ROOT, 'PRIME_TIME_2_3_UI_MODE_ART_REFINED')
+# Beta 2.6: the owner's DAILY MISSIONS picture (1254² RGBA: a neon checklist, a gift box and gold coins)
+ART26_SRC = os.path.join(ROOT, 'PRIME_TIME_2_6_UI_ART')
 
 
 def icon_specs_24():
@@ -421,6 +425,27 @@ def icons_signal(manifest):
     for spec in specs:
         icon(*spec, manifest)
     check_mapped(ART22_SRC, icon_specs_22() + specs)
+
+
+# ------------------------------------------------------------------ Beta 2.6 (the owner's DAILY MISSIONS picture)
+# `--daily-missions` adds exactly this entry and its three WebP files (trimmed to the picture, scaled whole into the
+# square with the alpha kept — never cropped or stretched).
+def icon_specs_26():
+    return [('missions', 'daily_missions', ART26_SRC, 'ui_daily_missions.png')]
+
+
+def icons_26(manifest):
+    """Beta 2.6: only the DAILY MISSIONS picture — earlier entries and files are left exactly as they are."""
+    manifest['icon']['sizes'] = ICON_SIZES
+    specs = icon_specs_26()
+    for group, icon_id, _, _ in specs:
+        if icon_id in manifest['icons'].get(group, {}) and not manifest['icons'][group][icon_id]['src'].startswith('PRIME_TIME_2_6_UI_ART/'):
+            sys.exit(f'{group}/{icon_id} already has an earlier picture — not replaced')
+    for spec in specs:
+        icon(*spec, manifest)
+    for f in os.listdir(ART26_SRC):
+        if f.lower().endswith('.png') and f not in [w for _, _, _, w in specs]:
+            sys.exit(f'PRIME_TIME_2_6_UI_ART/{f!r} is not mapped to a game id')
 
 
 def nav_skin(nav_id, wanted, l, r, manifest):
@@ -536,6 +561,16 @@ def icons(manifest):
 
 def main():
     path = os.path.join(ROOT, 'scripts', 'art', 'manifest.json')
+    if '--daily-missions' in sys.argv:
+        with open(path, encoding='utf-8') as fh:
+            manifest = json.load(fh)
+        icons_26(manifest)
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(manifest, fh, indent=2, ensure_ascii=False)
+            fh.write('\n')
+        kb = sum(o['bytes'] for g, i, _, _ in icon_specs_26() for o in manifest['icons'][g][i]['out'].values()) / 1024
+        print(f'Beta 2.6: DAILY MISSIONS, {kb:.0f} KB of WebP; earlier entries untouched')
+        return
     if '--invite-signal' in sys.argv:
         with open(path, encoding='utf-8') as fh:
             manifest = json.load(fh)

@@ -11,12 +11,15 @@ import { MAT, makeToonMaterial, outlineMaterial } from './materials';
 //                         turquoise light line round the lid seam, a gold-framed «TV» badge with a turquoise screen
 //   DAILY BROADCAST CASE  smaller and friendlier: sky-blue body, turquoise lid, an orange gift ribbon with a bow, a
 //                         little studio TV with a red ON AIR light on the front, gold hinges
+//   DAILY MISSION MINI CASE  (Beta 2.6) the smallest: violet-blue lacquer with cyan neon strips on the sides, gold trim,
+//                         a gold-framed checklist badge with three neon checks (the daily missions picture's motif), a
+//                         gold star coin with a cyan ring on the lid
 //
 // The lid is its own group hinged at the back edge (`lid.rotation.x` opens it); `glow` lists the materials whose
 // strength the opening scene raises; `inner` is the light inside (hidden until the lid opens). Kept light (a few
 // thousand triangles) so it plays smoothly on a phone.
 
-export type CaseModelKind = 'invite' | 'daily';
+export type CaseModelKind = 'invite' | 'daily' | 'mission';
 
 export interface CaseModel {
   root: Group;
@@ -94,14 +97,16 @@ interface Palette {
 
 const INVITE: Palette = { body: 0x16246b, bodyDark: 0x0d1546, lid: 0x1b2d86, gold: 0xf2c24a, goldDark: 0xb8862a, glow: 0x3ff0d8, accent: 0x3ff0d8, rim: 0x6fe9ff };
 const DAILY: Palette = { body: 0x2f86e8, bodyDark: 0x1d5cb4, lid: 0x2bc6d6, gold: 0xf4c35a, goldDark: 0xc18c2c, glow: 0x7ff6ff, accent: 0xff8a2a, rim: 0x9ff3ff };
+const MISSION: Palette = { body: 0x3a2fa8, bodyDark: 0x221a6e, lid: 0x2f56d8, gold: 0xf4c35a, goldDark: 0xb8862a, glow: 0x5ff3ff, accent: 0xa77bff, rim: 0x8fd8ff };
 
 export function buildCase(kind: CaseModelKind): CaseModel {
-  const P = kind === 'invite' ? INVITE : DAILY;
+  const P = kind === 'invite' ? INVITE : kind === 'mission' ? MISSION : DAILY;
   const big = kind === 'invite';
-  const W = big ? 1.36 : 1.08;
-  const H = big ? 0.74 : 0.62;
-  const Dp = big ? 0.92 : 0.78;
-  const LH = big ? 0.3 : 0.26;
+  const mini = kind === 'mission';
+  const W = big ? 1.36 : mini ? 0.94 : 1.08;
+  const H = big ? 0.74 : mini ? 0.54 : 0.62;
+  const Dp = big ? 0.92 : mini ? 0.7 : 0.78;
+  const LH = big ? 0.3 : mini ? 0.22 : 0.26;
   const body = new Parts();
   const lid = new Parts();
   const glow = new Parts();
@@ -117,6 +122,9 @@ export function buildCase(kind: CaseModelKind): CaseModel {
     for (const sx of [1, -1])
       for (const sz of [1, -1]) body.add(rbox(0.13, H - 0.06, 0.13, 0.05), P.gold, { p: [sx * (W / 2 - 0.035), H / 2, sz * (Dp / 2 - 0.035)] }, MAT.metal);
     body.add(rbox(W + 0.02, 0.035, Dp + 0.02, 0.015), P.goldDark, { p: [0, 0.16, 0] }, MAT.metal);
+  } else if (mini) {
+    // MISSION: cyan neon strips on the sides
+    for (const sx of [1, -1]) glow.add(rbox(0.02, H * 0.46, Dp * 0.6, 0.008), P.glow, { p: [sx * (W / 2 + 0.008), H * 0.47, 0] });
   } else {
     // DAILY: rounded bumpers on the sides (friendly), hinges in gold
     for (const sx of [1, -1]) body.add(rbox(0.07, H * 0.6, Dp * 0.55, 0.03), P.bodyDark, { p: [sx * (W / 2 + 0.01), H * 0.45, 0] }, MAT.gloss);
@@ -141,6 +149,16 @@ export function buildCase(kind: CaseModelKind): CaseModel {
     }
     // a gold «play» triangle on the screen
     glow.add(cyl(0.05, 0.05, 0.012, 3), 0xfff3c4, { p: [0.01, by, Dp / 2 + 0.065], r: [Math.PI / 2, 0, -Math.PI / 2] });
+  } else if (mini) {
+    // a gold-framed checklist: three neon check boxes and their lines
+    const by = H * 0.45;
+    body.add(rbox(0.34, 0.3, 0.05, 0.05), P.gold, { p: [0, by, Dp / 2 + 0.01] }, MAT.metal);
+    body.add(rbox(0.28, 0.24, 0.04, 0.04), 0x17124a, { p: [0, by, Dp / 2 + 0.03] }, MAT.gloss);
+    for (let k = 0; k < 3; k++) {
+      const y = by + 0.07 - k * 0.07;
+      glow.add(rbox(0.05, 0.045, 0.02, 0.01), P.glow, { p: [-0.075, y, Dp / 2 + 0.05] });
+      glow.add(rbox(0.11, 0.018, 0.02, 0.008), 0x9fb4ff, { p: [0.04, y, Dp / 2 + 0.05] });
+    }
   } else {
     // a little studio TV with a red ON AIR light
     const by = H * 0.44;
@@ -167,6 +185,13 @@ export function buildCase(kind: CaseModelKind): CaseModel {
       for (const sz of [1, -1]) lid.add(sph(0.06, 12, 8), P.gold, { p: [sx * (W / 2 - 0.02), LH * 0.55, lz + sz * (Dp / 2 - 0.02)], s: [1, 0.9, 1] }, MAT.metal);
     // the turquoise light line round the lid seam
     lidGlow.add(rbox(W + 0.05, 0.016, Dp + 0.05, 0.008), P.glow, { p: [0, 0.055, lz] });
+  } else if (mini) {
+    // a gold star coin with a cyan ring on top, gold hinges, the light line round the seam
+    lid.add(cyl(0.12, 0.12, 0.03, 24), P.gold, { p: [0, LH + 0.015, lz] }, MAT.metal);
+    lidGlow.add(cyl(0.075, 0.075, 0.012, 5), 0xfff3c4, { p: [0, LH + 0.034, lz] });
+    lidGlow.add(tor(0.15, 0.01, 26), P.glow, { p: [0, LH + 0.012, lz], r: [Math.PI / 2, 0, 0] });
+    for (const sx of [1, -1]) lid.add(cyl(0.028, 0.028, 0.1, 10), P.gold, { p: [sx * W * 0.28, 0.02, 0.0], r: [0, 0, Math.PI / 2] }, MAT.metal);
+    lidGlow.add(rbox(W + 0.04, 0.012, Dp + 0.04, 0.006), P.glow, { p: [0, 0.05, lz] });
   } else {
     // the gift ribbon: an orange band each way over the lid and a bow on top
     lid.add(rbox(0.13, LH + 0.012, Dp + 0.035, 0.03), P.accent, { p: [0, LH / 2 + 0.004, lz] }, MAT.gloss);
@@ -179,8 +204,8 @@ export function buildCase(kind: CaseModelKind): CaseModel {
   }
 
   // the lid's lining: a dark satin panel under it with a light ring (hidden inside the body while closed, seen open)
-  lid.add(rbox(W * 0.86, 0.024, Dp * 0.84, 0.01), big ? 0x0b1440 : 0x15407a, { p: [0, -0.008, lz] }, MAT.cloth);
-  lidGlow.add(tor(big ? 0.17 : 0.13, 0.012, 26), P.glow, { p: [0, -0.024, lz], r: [Math.PI / 2, 0, 0] });
+  lid.add(rbox(W * 0.86, 0.024, Dp * 0.84, 0.01), big ? 0x0b1440 : mini ? 0x1c1458 : 0x15407a, { p: [0, -0.008, lz] }, MAT.cloth);
+  lidGlow.add(tor(big ? 0.17 : mini ? 0.11 : 0.13, 0.012, 26), P.glow, { p: [0, -0.024, lz], r: [Math.PI / 2, 0, 0] });
   lidGlow.add(sph(0.035, 10, 8), big ? P.gold : P.accent, { p: [0, -0.024, lz], s: [1, 0.3, 1] });
 
   // ---------------------------------------------------------------- meshes

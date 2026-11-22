@@ -2244,7 +2244,7 @@ input {
   top: 0;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.04em;
   padding: 3px 7px;
   border-radius: 7px;
@@ -2317,7 +2317,8 @@ input {
   position: absolute;
   left: 0;
   right: 0;
-  top: 27%;
+  /* Beta 2.6: the strip just under the top bar — above the fighters' heads (27 % covered the near fighter's head) */
+  top: 18%;
   display: flex;
   justify-content: center;
   pointer-events: none !important;
@@ -2333,8 +2334,9 @@ input {
   font-family: var(--font-display);
   font-weight: 900;
   font-style: italic;
-  font-size: 35px;
-  font-size: clamp(24px, 9cqw, 38px);
+  /* Beta 2.6: a big moment ≈ 10 % smaller, minor ones ≈ 18 % (t2 / t1 below) — K.O. keeps its size */
+  font-size: 32px;
+  font-size: clamp(22px, 8.2cqw, 34px);
   line-height: 1;
   letter-spacing: -0.01em;
   background: linear-gradient(180deg, #fffbe0 0%, #ffd23a 45%, #ff7a1a 100%);
@@ -2345,8 +2347,8 @@ input {
   white-space: nowrap;
 }
 .banner.long .bt {
-  font-size: 25px;
-  font-size: clamp(18px, 6.4cqw, 28px);
+  font-size: 22px;
+  font-size: clamp(16px, 5.7cqw, 25px);
 }
 .banner.ultra .bt {
   background: linear-gradient(180deg, #ffffff 0%, #ffb8f0 35%, #ff4fd8 60%, #ffd23a 100%);
@@ -2360,34 +2362,52 @@ input {
   box-shadow: 0 3px 0 #6a0a50, 0 0 16px rgba(255, 79, 216, 0.7);
 }
 .banner.t2 .bt {
-  font-size: 29px;
-  font-size: clamp(20px, 7.5cqw, 30px);
+  font-size: 24px;
+  font-size: clamp(17px, 6.2cqw, 25px);
   background: linear-gradient(180deg, #ffffff 0%, #9af6ff 50%, #2ad8ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
   filter: drop-shadow(0 3px 0 #04305a) drop-shadow(0 0 14px rgba(42, 216, 255, 0.7));
 }
 .banner.t1 .bt {
-  font-size: 22px;
-  font-size: clamp(16px, 6cqw, 22px);
+  font-size: 18px;
+  font-size: clamp(14px, 5cqw, 18px);
   background: linear-gradient(180deg, #ffffff, #c8d4ff);
   -webkit-background-clip: text;
   background-clip: text;
   filter: drop-shadow(0 2px 0 #10183a);
 }
 .banner.has-detail {
-  animation-duration: 2.25s;
+  animation-duration: 2s;
+}
+/* Beta 2.6: frequent minor banners are brief */
+.banner.t1 {
+  animation-duration: 1.2s;
+}
+.banner.t2:not(.has-detail) {
+  animation-duration: 1.45s;
+}
+/* a repeat merged into the banner on screen */
+.banner .bc {
+  display: inline-block;
+  margin-left: 0.3em;
+  font-size: 0.62em;
+  font-style: normal;
+  vertical-align: 0.25em;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+  background: none;
 }
 .banner .bd {
   display: block;
   width: max-content;
   max-width: 88cqw;
-  margin: 8px auto 0;
-  padding: 4px 10px;
+  margin: 5px auto 0;
+  padding: 3px 9px;
   border-radius: 8px;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.25;
   letter-spacing: 0.03em;
   color: #fff3c4;
@@ -2396,12 +2416,12 @@ input {
 }
 .banner .bs {
   display: inline-block;
-  margin-top: 6px;
-  padding: 3px 10px;
+  margin-top: 4px;
+  padding: 2px 8px;
   border-radius: 6px;
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: 12px;
+  font-size: 10.5px;
   letter-spacing: 0.12em;
   color: #fff;
   background: linear-gradient(90deg, #ff3a6a, #ff7a1a);
@@ -2463,6 +2483,20 @@ input {
 .big-center .txt.ko {
   font-size: 109px;
   font-size: clamp(64px, 28cqw, 120px);
+}
+/* Beta 2.6: the finish that made the K.O. — one line under it instead of a banner on top of it */
+.big-center .ko-line {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  font-size: 15px;
+  font-size: clamp(12px, 4.4cqw, 17px);
+  letter-spacing: 0.04em;
+  color: #fff3c4;
+  text-shadow: 0 2px 0 #6a1a00, 0 0 14px rgba(255, 140, 40, 0.7);
+  animation: countIn 0.6s cubic-bezier(0.2, 1.4, 0.3, 1) 0.15s both;
 }
 @keyframes countIn {
   0% {
@@ -14442,6 +14476,24 @@ button.pid-mini:active {
   font-size: 12px;
   line-height: 1.45;
 }
+/* Beta 2.6 SMART DEFENSE: «built for you» until the player saves their own studio */
+.lg-autonote {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(34, 240, 224, 0.12), rgba(124, 92, 255, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(34, 240, 224, 0.35);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.lg-autonote b {
+  font-family: Unbounded, 'Arial Black', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #7ff6ec;
+}
 .lg-slot {
   padding: 10px;
   border-radius: 16px;
@@ -19984,6 +20036,9 @@ button.lg-arena:active {
 .case-img-fb.kind-daily {
   background: radial-gradient(circle at 50% 45%, rgba(127, 246, 255, 0.5), transparent 60%), linear-gradient(160deg, #2f86e8, #1d5cb4);
 }
+.case-img-fb.kind-mission {
+  background: radial-gradient(circle at 50% 45%, rgba(95, 243, 255, 0.5), transparent 60%), linear-gradient(160deg, #3a2fa8, #221a6e);
+}
 
 /* ------------------------------------------------------------- PRIME INVITE CASE screen («Пригласить друга») */
 .modal-root .modal:has(> .ref) {
@@ -20513,5 +20568,526 @@ button.lg-arena:active {
   to {
     transform: scale(0.92);
     opacity: 0.55;
+  }
+}
+
+/* =============================================================
+   Beta 2.6 — DAILY MISSIONS: the entry card in the daily window and the missions window.
+   The owner's picture (ui_daily_missions) is always «contain» at a fixed modest size — never a background, never
+   cropped, never under text; it shrinks on narrow phones.
+   ============================================================= */
+.mis-art {
+  display: block;
+  object-fit: contain;
+  flex: none;
+  pointer-events: none;
+  user-select: none;
+}
+.dps-missions {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px 6px 6px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(95, 243, 255, 0.12), rgba(167, 123, 255, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(95, 243, 255, 0.35);
+  -webkit-tap-highlight-color: transparent;
+}
+.dps-missions.ready {
+  box-shadow: inset 0 0 0 1px rgba(var(--ps-gold-rgb), 0.7), 0 0 16px rgba(var(--ps-gold-rgb), 0.25);
+}
+.dps-missions:active {
+  transform: scale(0.985);
+}
+.dps-mis-art .mis-art {
+  width: 52px;
+  height: 52px;
+}
+.dps-mis-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.dps-mis-text b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+.dps-mis-text small {
+  font-size: 12px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.78);
+}
+.dps-mis-go svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.8;
+}
+.dps-missions .badge-dot {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+}
+
+.modal.mis-modal {
+  position: relative;
+  max-width: 420px;
+  padding: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(110% 50% at 100% 0%, rgba(167, 123, 255, 0.18), transparent 55%),
+    radial-gradient(90% 60% at 0% 100%, rgba(95, 243, 255, 0.08), transparent 60%),
+    linear-gradient(180deg, #1d1456 0%, #120c38 50%, #0a0822 100%);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(95, 243, 255, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.mis {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 16px;
+  color: #fff;
+}
+.mis-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mis-head-art {
+  width: 84px;
+  height: 84px;
+  margin: -4px 0;
+}
+.mis-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.mis-head-text h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+}
+.mis-head-text p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.78);
+}
+.mis-x {
+  align-self: flex-start;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+.mis-sum {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+}
+.mis-sum b {
+  color: #7ff6ec;
+  font-variant-numeric: tabular-nums;
+}
+.mis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mis-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.mis-row.done {
+  background: rgba(95, 243, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(95, 243, 255, 0.35);
+}
+.mis-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1.5px rgba(95, 243, 255, 0.45);
+}
+.mis-row.done .mis-check {
+  background: linear-gradient(180deg, #5ff3ff, #2bb6d6);
+  box-shadow: 0 0 10px rgba(95, 243, 255, 0.5);
+}
+.mis-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.mis-meta {
+  display: flex;
+  gap: 5px;
+}
+.mis-tier,
+.mis-tag {
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.75);
+}
+.tier-medium .mis-tier {
+  color: #b9a4ff;
+}
+.tier-hard .mis-tier {
+  color: rgb(var(--ps-gold-rgb));
+}
+.mis-tag {
+  color: #7ff6ec;
+}
+.mis-title {
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+.mis-bar {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.mis-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #5ff3ff, #a77bff);
+  transition: transform 0.4s ease;
+}
+.mis-state {
+  flex: none;
+  max-width: 34%;
+  text-align: right;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.82);
+}
+.mis-row.done .mis-state {
+  color: #7ff6ec;
+}
+.mis-cases {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(167, 123, 255, 0.35);
+}
+.mis-cases.ready {
+  box-shadow: inset 0 0 0 1px rgba(var(--ps-gold-rgb), 0.7), 0 0 14px rgba(var(--ps-gold-rgb), 0.2);
+}
+.mis-case-img .case-img {
+  display: block;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+}
+.mis-case-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.mis-case-text b {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+.mis-case-text small {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.78);
+}
+.mis-odds summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #7ff6ec;
+}
+.mis-foot {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mis-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+/* the narrowest phones: a smaller picture, the text keeps its size */
+@media (max-width: 360px) {
+  .mis-head-art {
+    width: 64px;
+    height: 64px;
+  }
+  .dps-mis-art .mis-art {
+    width: 44px;
+    height: 44px;
+  }
+  .mis {
+    padding: 10px 10px 14px;
+  }
+  .mis-state {
+    max-width: 30%;
+  }
+}
+
+/* =============================================================
+   Beta 2.6 — PLAYER MINI PROFILE (the PRIME LEAGUE leaderboard's rows open it)
+   ============================================================= */
+.lg-row.open {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lg-row.open:active {
+  transform: scale(0.99);
+}
+.modal.pc-modal {
+  position: relative;
+  max-width: 380px;
+  padding: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(110% 55% at 100% 0%, rgba(var(--ps-violet-rgb), 0.22), transparent 55%),
+    linear-gradient(180deg, #1a1048 0%, #100a2e 60%, #0a0820 100%);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(var(--ps-cyan-rgb), 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.pc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 16px;
+  color: #fff;
+}
+.pc-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.pc-ava {
+  flex: none;
+}
+.pc-id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.pc-id h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.pc-me {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  vertical-align: 2px;
+  color: #0a1a2a;
+  background: rgb(var(--ps-cyan-rgb));
+}
+.pc-id small {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.pc-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--rk, #fff);
+}
+.pc-rank b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+.pc-x {
+  align-self: flex-start;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+.pc-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 7px;
+}
+.pc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.pc-stat b {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.pc-stat span {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.7);
+}
+.pc-stat.w b {
+  color: #7ff6a0;
+}
+.pc-stat.l b {
+  color: #ff8a9a;
+}
+.pc-stat.r b {
+  color: rgb(var(--ps-gold-rgb));
+}
+.pc-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pc-ranks {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+.pc-k {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 3px;
+}
+.pc-def {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.pc-titles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pc-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 999px;
+  background: rgba(var(--ps-gold-rgb), 0.12);
+  box-shadow: inset 0 0 0 1px rgba(var(--ps-gold-rgb), 0.45);
+}
+.pc-title i {
+  font-style: normal;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: rgb(var(--ps-gold-rgb));
+}
+.pc-title.em {
+  padding-left: 8px;
+}
+.pc-seasons {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pc-seasons li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.pc-seasons small {
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.pc-none {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.8);
+}
+@media (max-width: 360px) {
+  .pc {
+    padding: 12px 10px 14px;
+  }
+  .pc-stat b {
+    font-size: 16px;
   }
 }
