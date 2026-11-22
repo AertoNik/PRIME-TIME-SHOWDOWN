@@ -82,8 +82,13 @@ export class UIManager {
     setTimeout(() => t.remove(), 2700);
   }
 
-  modal(html: string, bind: (root: HTMLElement, close: () => void) => void, dismissable = true): void {
+  /**
+   * `onClose` (Beta 2.6.1): called once when this window goes away by any path — its own button, a tap outside,
+   * Escape, or another window replacing it — so a window holding memory (PRIME SHARE's picture) always frees it.
+   */
+  modal(html: string, bind: (root: HTMLElement, close: () => void) => void, dismissable = true, onClose?: () => void): void {
     this.closeModal();
+    this.modalClose = onClose ?? null;
     const r = el('div', 'modal-root');
     r.innerHTML = `<div class="modal panel">${html}</div>`;
     const close = () => this.closeModal();
@@ -100,7 +105,11 @@ export class UIManager {
   closeModal(): void {
     this.modalEl?.remove();
     this.modalEl = null;
+    const done = this.modalClose;
+    this.modalClose = null;
+    done?.();
   }
+  private modalClose: (() => void) | null = null;
 
   get modalOpen(): boolean {
     return this.modalEl !== null;

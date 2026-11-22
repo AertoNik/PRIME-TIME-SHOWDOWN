@@ -4,7 +4,7 @@
 # Suites that start a throwaway PocketBase use their own ports and delete their temporary database.
 cd "$(dirname "$0")/.." || exit 1
 LOG="${1:-/tmp/prime-regress.log}"
-SUITES=(typecheck saves events modes arenas collection anims anim21 boots22 cards music tutorial lucien graveyard primeid accounts shop checkout payments bundles seasonal backend:test beta:test cloud:test public:test upgrade:test daily referral cases league economy:check winter winter:server metrika studio expansion newsroom cardsmenu cardart art20 art22 art23 art24 rewards24 anim25 char23 geo23 hotfix22 ach22 career20 collection20 defense20 combofresh forfeit arenapolish viewport perf255 smartdefense missions profiles hud26)
+SUITES=(typecheck saves events modes arenas collection anims anim21 boots22 cards music tutorial lucien graveyard primeid accounts shop checkout payments bundles seasonal backend:test beta:test cloud:test public:test upgrade:test daily referral cases league economy:check winter winter:server metrika studio expansion newsroom cardsmenu cardart art20 art22 art23 art24 rewards24 anim25 char23 geo23 hotfix22 ach22 career20 collection20 defense20 combofresh forfeit arenapolish viewport perf255 smartdefense missions profiles hud26 acecard primeshare)
 : > "$LOG"
 pass=0; fail=0
 for s in $SUITES; do

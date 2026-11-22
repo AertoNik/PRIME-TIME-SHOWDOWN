@@ -1,7 +1,8 @@
 import { ARENAS, isArenaId, type ArenaId } from '../../config/arenas.config';
-import { CARDS, UNIVERSAL_CARDS } from '../../config/cards';
+import { CARDS } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
 import { LEAGUE, LEAGUE_FIGHTERS, LEAGUE_RULES_VERSION, RANKS, TACTICS, TACTIC_ORDER, type TacticId } from '../../config/league.config';
+import { isLeagueCard, leagueCards, leagueDeckFrom } from '../../config/leagueDeck';
 import { plural } from '../../config/events.config';
 import { SKINS } from '../../config/shop.config';
 import type { CardId, FighterId } from '../../config/types';
@@ -25,6 +26,7 @@ import { currencyArt } from '../currencyArt';
 import { effectImg, hasEffectArt } from '../effectArt';
 import { producerSVG, systemProducerSVG } from '../producerArt';
 import { openPlayerCard } from '../playerCard';
+import { openPosterPreview, posterButton, posterFacts, type PosterFacts } from '../primeShare';
 import type { Screen } from '../UI';
 import { modePic } from '../menuArt';
 
@@ -46,7 +48,8 @@ const TAB_ICON: Record<Tab, string> = { play: UI_ICONS.bolt, board: TROPHY_GOLD,
 
 const ERR: Record<string, [string, string]> = {
   fighter_not_owned: ['Этот боец ещё не подписан в вашей карьере (или PRIME CLOUD не успел синхронизироваться).', 'This fighter is not signed in your career yet (or PRIME CLOUD has not synced).'],
-  card_not_allowed: ['В колоде есть карта, которой нет в вашей коллекции.', 'The deck holds a card your collection does not have.'],
+  // Beta 2.6.1: the honest reason — a card not opened yet OR one PRIME LEAGUE does not admit (was: «not in your collection»)
+  card_not_allowed: ['В колоде есть карта, которую нельзя взять в PRIME LEAGUE: она ещё не открыта или не допускается в лиге. Соберите колоду заново.', 'The deck holds a card PRIME LEAGUE does not take: not opened yet or not admitted in the league. Build the deck again.'],
   deck_size: ['В колоде должно быть ровно 4 карты.', 'A deck holds exactly 4 cards.'],
   deck_duplicate: ['Одна карта дважды в колоде.', 'The same card twice in a deck.'],
   defense_duplicate: ['Один боец может стоять в защите только один раз.', 'A fighter may defend only once.'],
@@ -90,19 +93,31 @@ function lockedFighters(g: Game): { id: FighterId; why: string }[] {
     why: FIGHTERS[id].seasonal ? tr('Событие или PRIME SHOP', 'Event or PRIME SHOP') : tr('Открывается в карьере', 'Opens in the career'),
   }));
 }
-/** The deck a fighter attacks with in the league: its league deck (server), else the career deck (the save is never changed). */
+/**
+ * The deck a fighter attacks with in the league: its league deck (server), else the career deck (the save is never
+ * changed). Beta 2.6.1: the career deck is first cleaned of cards the league does not take (leagueDeckFrom) — before, a
+ * career deck with such a card was sent as it was and the server refused the fight.
+ */
 function deckOf(g: Game, id: FighterId): CardId[] {
   const d = g.league.me?.decks?.[id];
-  return d && d.length === 4 ? d.slice() : (g.save.data.fighters[id]?.deck?.slice(0, 4) ?? FIGHTERS[id].defaultDeck.slice());
+  if (d && d.length === 4) return d.slice();
+  return leagueDeckFrom(id, g.save.data.fighters[id]?.deck ?? FIGHTERS[id].defaultDeck, ownedCards(g));
 }
+const ownedCards = (g: Game): CardId[] => g.save.data.cards.owned.filter((c) => c in CARDS);
 function lockedPicks(g: Game): string {
   return lockedFighters(g)
     .map((l) => `<span class="lg-fpick locked" title="${esc(l.why)}" aria-disabled="true">${portraitHTML(g.portraitOf(l.id), FIGHTERS[l.id].theme.main, FIGHTERS[l.id].theme.dark)}<span>${esc(FIGHTERS[l.id].name)}</span><em>${esc(l.why)}</em></span>`)
     .join('');
 }
-/** Cards this fighter may take into a league deck (the same rule the server applies). */
+/** Cards this fighter may take into a league deck (the same rule the server applies — src/config/leagueDeck.ts). */
 function allowedCards(g: Game, id: FighterId): CardId[] {
-  return [...UNIVERSAL_CARDS, FIGHTERS[id].signature, ...g.save.data.cards.owned.filter((c) => c in CARDS)];
+  return leagueCards(id, ownedCards(g));
+}
+/** Beta 2.6.1: bought cards PRIME LEAGUE does not admit (SHOWTIME, MAGNET PULL, SAFE CUT) — named under the editor. */
+function offLeagueNote(g: Game): string {
+  const off = ownedCards(g).filter((c) => !isLeagueCard(c));
+  if (!off.length) return '';
+  return `<small class="muted lg-offnote">${esc(off.map((c) => CARDS[c].name).join(', '))} — ${tr('в PRIME LEAGUE пока не используются.', 'not used in PRIME LEAGUE yet.')}</small>`;
 }
 /** A bought PRIME SHOP skin of this fighter (rendering only), or null. */
 function skinOf(id: FighterId): string | null {
@@ -593,7 +608,7 @@ export class LeagueScreen implements Screen {
     const deckEditor = this.deckDraft
       ? `<div class="lg-editor ${this.deckDraft.length >= 4 ? 'full' : ''}"><div class="lg-k">${tr('КОЛОДА ДЛЯ ЛИГИ', 'LEAGUE DECK')} · <span data-deckn>${this.deckDraft.length}</span>/4</div><div class="lg-cardgrid">${allowedCards(g, this.pick)
           .map((c) => pickCard(c, this.deckDraft!.includes(c), 'deck-card'))
-          .join('')}</div><small class="muted">${tr('Карьерная колода бойца не меняется — это отдельная колода только для PRIME LEAGUE, она хранится в PRIME ID.', 'The fighter\u2019s career deck stays as it is — this deck is for PRIME LEAGUE only and is kept in your PRIME ID.')}</small><div class="lg-editor-act"><button class="btn ghost" data-act="deck-cancel">${tr('Отмена', 'Cancel')}</button><button class="btn teal" data-act="deck-save" ${this.deckDraft.length === 4 && !this.busy ? '' : 'disabled'}>${tr('Сохранить колоду', 'Save the deck')}</button></div></div>`
+          .join('')}</div>${offLeagueNote(g)}<small class="muted">${tr('Карьерная колода бойца не меняется — это отдельная колода только для PRIME LEAGUE, она хранится в PRIME ID.', 'The fighter\u2019s career deck stays as it is — this deck is for PRIME LEAGUE only and is kept in your PRIME ID.')}</small><div class="lg-editor-act"><button class="btn ghost" data-act="deck-cancel">${tr('Отмена', 'Cancel')}</button><button class="btn teal" data-act="deck-save" ${this.deckDraft.length === 4 && !this.busy ? '' : 'disabled'}>${tr('Сохранить колоду', 'Save the deck')}</button></div></div>`
       : '';
     const sq = me.series.find((x) => x.kind === 'squad' || x.kind === 'rush');
     const squadOk = own.length >= LEAGUE.squad.size;
@@ -697,7 +712,7 @@ export class LeagueScreen implements Screen {
     const tactics = TACTIC_ORDER.map((t) => `<button class="lg-tacpick ${s.tactic === t ? 'on' : ''}" data-act="slot-tactic" data-i="${i}" data-t="${t}" aria-pressed="${s.tactic === t}">${tacticIcon(t)}<b>${esc(TACTICS[t].name)}</b><span>${esc(lang() === 'en' ? TACTICS[t].en : TACTICS[t].ru)}</span><small>${esc(lang() === 'en' ? TACTICS[t].descEn : TACTICS[t].descRu)}</small></button>`).join('');
     const skin = s.look && skinName(s.look) ? s.look : (wornSkinOf(this.g, s.fighter) ?? skinOf(s.fighter));
     return `<div class="lg-editor">
-        <div class="lg-k">${tr('КОЛОДА', 'DECK')} · ${s.deck.length}/4</div><div class="lg-cardgrid">${cards}</div>
+        <div class="lg-k">${tr('КОЛОДА', 'DECK')} · ${s.deck.length}/4</div><div class="lg-cardgrid">${cards}</div>${offLeagueNote(this.g)}
         <div class="lg-k">${tr('ТАКТИКА ИИ-РЕЖИССЁРА', 'AI DIRECTOR TACTIC')}</div><div class="lg-tacgrid">${tactics}</div>
         <small class="muted">${tr('Тактика меняет только выбор карт. Движение, меткость, урон и скорость бойца — те же, что у всех.', 'A tactic changes only the choice of cards. Movement, aim, damage and speed stay the same for everyone.')}</small>
         ${skin ? `<label class="lg-agree"><input type="checkbox" data-act="slot-look" data-i="${i}" ${s.look ? 'checked' : ''}/> <span>${tr('Облик', 'Look')}: ${esc(SKINS[skin as keyof typeof SKINS].name)} <small>(${tr('только внешний вид', 'looks only')})</small></span></label>` : ''}
@@ -1490,6 +1505,9 @@ export class LeagueResultScreen implements Screen {
   private busy = false;
   /** 1.9.4: the RP counter runs once, when the server's result first appears. */
   private counted = false;
+  /** Beta 2.6.1: the look the fighter fought in, and the PRIME SHARE facts frozen when the server confirmed a poster win. */
+  private look = '';
+  private poster: PosterFacts | null = null;
 
   constructor(private readonly g: Game) {
     this.el = el('div', 'league-result');
@@ -1500,6 +1518,10 @@ export class LeagueResultScreen implements Screen {
       const api = g.league.api();
       if (act === 'lobby') g.goto('league');
       else if (act === 'retry') void this.confirm();
+      else if (act === 'poster' && this.poster) {
+        g.audio.ui('click');
+        openPosterPreview(g, this.poster);
+      }
       else if (act === 'again' && api && this.view) {
         // 1.9.3: the same pre-start window as in the lobby (the set, a way back) — nothing is made before «В эфир!»
         const v = this.view;
@@ -1512,9 +1534,11 @@ export class LeagueResultScreen implements Screen {
     });
   }
 
-  onShow(p?: { view: LeagueMatch; local: MatchResultData }): void {
+  onShow(p?: { view: LeagueMatch; local: MatchResultData; look?: string }): void {
     this.view = p?.view ?? null;
     this.local = p?.local ?? null;
+    this.look = p?.look ?? (this.view ? this.g.fighterLook(this.view.attacker.fighter) : '');
+    this.poster = null;
     this.res = null;
     this.err = '';
     this.wait = 0;
@@ -1538,6 +1562,9 @@ export class LeagueResultScreen implements Screen {
         this.render();
       });
       if (this.local && this.res.match.result && this.res.match.outcome !== this.local.outcome) console.warn('PRIME LEAGUE: the server’s replay differs from the fight on screen — the server’s result counts');
+      // Beta 2.6.1 PRIME SHARE: the poster's facts, once, from the server's answer (null — no poster for this fight)
+      const av = this.g.account?.view();
+      if (this.view) this.poster = posterFacts(this.view, this.res, this.local, this.look, av && av.kind === 'account' ? av.nickname : null, Date.now());
     } catch (e) {
       this.err = errText(e);
     }
@@ -1631,7 +1658,7 @@ export class LeagueResultScreen implements Screen {
       // the PRIME CHALLENGE milestone (paid by the server outside the daily match cap) — shown apart from the match's own tokens
       const bonus = m.result?.challengeTokens ?? 0;
       const why = v.mode === 'rush' ? tr('PRIME RUSH не меняет RP: свой рекорд, эфирные очки и жетоны за серию.', 'PRIME RUSH never moves RP: your record, air points and tokens for the run.') : v.mode === 'squad' ? (serDone ? tr('Отряд завершён — его итог ниже.', 'The squad is over — its result below.') : tr('RP отряда начисляется один раз, когда отряд закончится.', 'Squad RP is settled once, when the squad ends.')) : atFloor ? tr('Ниже пола вашего ранга RP не опускается.', 'RP never drops below your rank\u2019s floor.') : !m.ranked ? tr('Тренировочный бой — без RP.', 'A training fight — no RP.') : v.mode === 'challenge' ? tr('В квалификации RP не меняется — считаются победы и поражения.', 'A qualifier moves no RP — wins and losses count.') : v.opponent.kind === 'system' ? tr('Соперник PRIME NETWORK: RP вдвое меньше.', 'A PRIME NETWORK opponent: half the RP.') : m.outcome === 'draw' ? tr('Ничья: с более сильным соперником RP немного растут, с более слабым — немного снижаются.', 'A draw: against a stronger opponent RP rise a little, against a weaker one they dip a little.') : rp >= 0 ? tr('Чем сильнее соперник, тем больше RP за победу.', 'The stronger the opponent, the more RP a win brings.') : tr('Проигрыш сильному сопернику стоит меньше RP.', 'Losing to a stronger opponent costs less RP.');
-      body = `${this.statTiles(m)}
+      body = `${this.statTiles(m)}${this.poster && this.poster.match === m.id ? posterButton() : ''}
         <div class="lg-res-rp ${rp > 0 ? 'up' : rp < 0 ? 'down' : ''}"><b data-rp="${rp}">${rp > 0 ? '+' : ''}${rp}</b> RP</div>
         <div class="lg-res-why">${why}</div>
         ${me ? `<div class="lg-res-rank">${rankEmblem(me.rank.index, me.rank.division, 48)}<span>${esc(rankName(me.rank.index))} ${me.rank.division ?? ''} · <b>${me.rp}</b> RP</span></div>` : ''}

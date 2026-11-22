@@ -1137,7 +1137,8 @@ export class Game {
       this.league.localHash = this.leagueOverHash ?? stateHash(m);
       // no victory / defeat sting yet: the result screen plays it once the SERVER confirmed the outcome
       this.enterResultsView(m.result.outcome, true);
-      this.ui.show('leagueResult', { view: mode.view, local: m.result });
+      // Beta 2.6.1: the look the fighter fought in (PRIME SHARE's poster)
+      this.ui.show('leagueResult', { view: mode.view, local: m.result, look: this.fighterLook(mode.view.attacker.fighter) });
       return;
     }
     let challenge = null;

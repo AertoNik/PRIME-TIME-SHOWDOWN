@@ -7,7 +7,9 @@
 //      owned, the same checks as a player's own save; the generated league_auto.js is this file's bundle.
 import PocketBase from 'pocketbase';
 import { autoDefense, deckFor, poolOf, type AutoDefenseInput, type Kind } from '../src/league/autoDefense';
-import { CARD_KIND, LEAGUE, LEAGUE_FIGHTERS, TACTICS, TACTIC_AFFINITY, TACTIC_ORDER } from '../src/config/league.config';
+import { LEAGUE, LEAGUE_FIGHTERS, TACTICS, TACTIC_AFFINITY, TACTIC_ORDER } from '../src/config/league.config';
+// Beta 2.6.1: the server builds with league_rules.cardKind = LEAGUE_DECK_KIND (CARD_KIND + ACE's MAIN EVENT)
+import { LEAGUE_DECK_KIND as CARD_KIND } from '../src/config/leagueDeck';
 import { COMBOS, UNIVERSAL_CARDS, NEW_CARDS } from '../src/config/cards';
 import { FIGHTERS } from '../src/config/fighters';
 import type { CardId, FighterId } from '../src/config/types';
@@ -92,8 +94,8 @@ function builderChecks(): void {
   check('every deck is legal by the server\'s rule: 4 different cards, basics + signature + bought only, each with a league kind', decks.every((x) => deckOk(x.fighter, x.deck, x.owned)));
   check('without bought cards a deck uses only the six basics and the fighter\'s signature', decks.filter((x) => !x.owned.length).every((x) => x.deck.every((c) => (UNIVERSAL_CARDS as string[]).includes(c) || c === SIG[x.fighter])));
   check('with bought cards they do appear in decks', decks.filter((x) => x.owned.length).some((x) => x.deck.some((c) => allBought.includes(c))));
-  // (ACE's MAIN EVENT has no league card kind — the league never allows it in a deck, so it is never there)
-  check('the fighter\'s own signature card is in its deck whenever the league allows it (ACE\'s MAIN EVENT never — no league kind)', decks.every((x) => ((CARD_KIND as any)[SIG[x.fighter]] ? x.deck.includes(SIG[x.fighter]) : !x.deck.includes(SIG[x.fighter]))) && !(CARD_KIND as any).main_event);
+  // Beta 2.6.1: the league takes every fighter's signature now — ACE's MAIN EVENT included (was: «never, no league kind»)
+  check('the fighter\'s own signature card is in its deck, every fighter (ACE\'s MAIN EVENT too since 2.6.1)', decks.every((x) => x.deck.includes(SIG[x.fighter])) && (CARD_KIND as any).main_event === 'attack' && decks.some((x) => x.fighter === 'ace'));
   const by = (t: string) => decks.filter((x) => x.tactic === t);
   check('ASSAULT: at least 2 attack cards', by('assault').length > 0 && by('assault').every((x) => count(x.deck, 'attack') >= 2));
   check('FORTRESS: at least 2 defence cards (SHIELD, DASH…) and an attack', by('fortress').length > 0 && by('fortress').every((x) => count(x.deck, 'defense') >= 2 && count(x.deck, 'attack') >= 1));
