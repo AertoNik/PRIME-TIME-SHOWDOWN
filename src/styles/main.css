@@ -2899,6 +2899,12 @@ input {
 .deck-slots .slot .card {
   position: absolute;
   inset: -2px;
+  /* Beta 2.6.2 hotfix: the slot's own size, stated outright. With only the four insets, Safari (WebKit) sized this
+     absolutely placed card by its aspect-ratio (.card / .card.pc) instead of stretching it — the deck's four cards sat
+     small in the corner of their slots on iPhone. The slot keeps the 0.7 proportion. */
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  aspect-ratio: auto;
 }
 .collection {
   display: grid;
