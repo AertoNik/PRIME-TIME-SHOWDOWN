@@ -99,6 +99,21 @@ function setStyle(el: HTMLElement, prop: 'transform' | 'opacity', v: string): vo
   el.style[prop] = v;
 }
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
+/**
+ * Beta 2.6.2 — restarts a one-shot CSS animation (the ready pulse, a shake) WITHOUT a forced layout: the class and its
+ * twin (`-b`, the same keyframes under another name — main.css) take turns, and a new animation name starts it over.
+ * The old remove-class / read offsetWidth / add-class made the browser lay out the page in the middle of a frame.
+ */
+function restart(el: HTMLElement, cls: string): void {
+  const twin = cls + '-b';
+  if (el.classList.contains(cls)) {
+    el.classList.remove(cls);
+    el.classList.add(twin);
+  } else {
+    el.classList.remove(twin);
+    el.classList.add(cls);
+  }
+}
 
 export class BattleHUD implements Screen {
   readonly el: HTMLElement;
@@ -600,11 +615,7 @@ export class BattleHUD implements Screen {
     // Alpha 1.6.5 — FIRST BROADCAST: only the card the tutorial points at plays
     if (this.tut && (!this.tutTarget || m.hands[0].hand[i] !== this.tutTarget)) {
       const card = this.slots[i].querySelector('.hand-card:not(.played)') as HTMLElement | null;
-      if (card) {
-        card.classList.remove('shake');
-        void card.offsetWidth;
-        card.classList.add('shake');
-      }
+      if (card) restart(card, 'shake');
       return;
     }
     // Real-time double-tap guard: the card that slides into this slot must not
@@ -620,21 +631,19 @@ export class BattleHUD implements Screen {
       vibrate(12);
       if (cardEl) {
         const ghost = cardEl.cloneNode(true) as HTMLElement;
-        ghost.classList.remove('enter', 'combo-ready', 'disabled');
+        // (Beta 2.6.2: the one-shot animations are not replayed on the flying copy — only its own fly-off runs)
+        ghost.classList.remove('enter', 'combo-ready', 'disabled', 'ready', 'ready-b', 'shake', 'shake-b');
         ghost.classList.add('played');
         ghost.style.position = 'absolute';
         ghost.style.inset = '0';
         ghost.style.pointerEvents = 'none';
-        slot.style.position = 'relative';
         slot.appendChild(ghost);
         setTimeout(() => ghost.remove(), 350);
       }
       this.syncHand(false);
     } else if (cardEl && res !== 'phase' && res !== 'cooldown') {
       // 'cooldown' is the short guard after a play: it only swallows accidental double taps.
-      cardEl.classList.remove('shake');
-      void cardEl.offsetWidth;
-      cardEl.classList.add('shake');
+      restart(cardEl, 'shake');
       if (res === 'energy') this.flashEnergyNeed(CARDS[card].cost);
       const need = Math.ceil(CARDS[card].cost - m.hands[0].energy);
       const me = m.fighters[0];
@@ -672,9 +681,7 @@ export class BattleHUD implements Screen {
     const have = Math.floor(m.hands[0].energy);
     const segs = this.energyBar.querySelectorAll('i');
     segs.forEach((seg, i) => seg.classList.toggle('need', i >= have && i < cost));
-    this.energyBar.classList.remove('deny');
-    void this.energyBar.offsetWidth;
-    this.energyBar.classList.add('deny');
+    restart(this.energyBar, 'deny');
     this.energyNeedT = 0.6;
   }
 
@@ -713,6 +720,8 @@ export class BattleHUD implements Screen {
   /** Beta 2.1: what the HP numbers and the viewers counter show now (formatted only on a change). */
   private hpShown: number[] = [NaN, NaN];
   private viewersShown = NaN;
+  /** Beta 2.6.2: this frame's combo hint of each hand card (one array, reused every frame). */
+  private comboHints: (ReturnType<Match['comboHint']> | null)[] = [null, null, null];
   /** Beta 2.1: each hand slot's live card and its parts, looked up once per card instead of four queries a frame. */
   private slotParts: ({ el: HTMLElement; drain: HTMLElement; rib: HTMLElement; lock: HTMLElement } | null)[] = [null, null, null];
 
@@ -837,7 +846,11 @@ export class BattleHUD implements Screen {
     this.energyBar.classList.toggle('full', energy >= MATCH.maxEnergy - 0.01);
     let comboPrimed: string | null = null;
     // Alpha 1.6: a combo is hinted only when it is really playable (setup still there, rules, energy in the window)
-    const primedNow = m.phase === 'fight' && hand.hand.some((c) => !!c && !!m.comboHint(0, c));
+    // (Beta 2.6.2: each card's hint once a frame — it was asked twice, for «primed» and for the card)
+    const fight = m.phase === 'fight';
+    const hints = this.comboHints;
+    for (let i = 0; i < 3; i++) hints[i] = fight && hand.hand[i] ? m.comboHint(0, hand.hand[i]) : null;
+    const primedNow = !!(hints[0] || hints[1] || hints[2]);
     let openers = 0;
     for (let i = 0; i < 3; i++) {
       const c = hand.hand[i];
@@ -846,15 +859,11 @@ export class BattleHUD implements Screen {
       if (!c || !cardEl || !parts) continue;
       const cost = CARDS[c].cost;
       const can = energy >= cost;
-      if (can && !this.affordable[i]) {
-        cardEl.classList.remove('ready');
-        void cardEl.offsetWidth;
-        cardEl.classList.add('ready');
-      }
+      if (can && !this.affordable[i]) restart(cardEl, 'ready');
       this.affordable[i] = can;
       cardEl.classList.toggle('disabled', !can);
       setStyle(parts.drain, 'transform', `scaleY(${can ? 0 : r3(1 - energy / cost)})`);
-      const combo = m.phase === 'fight' ? m.comboHint(0, c) : null;
+      const combo = hints[i];
       cardEl.classList.toggle('combo-ready', !!combo);
       // Chain badge: this card opens a combo with another card already in hand
       // (same rules as ComboSystem). Hidden while a combo is primed.
@@ -1122,9 +1131,8 @@ export class BattleHUD implements Screen {
       same.amount += amount;
       same.t = 0;
       same.el.textContent = `${same.amount > 0 ? '+' : ''}${same.amount} ${label}`;
-      same.el.style.animation = 'none';
-      void same.el.offsetWidth;
-      same.el.style.animation = '';
+      // (Beta 2.6.2: restarted through its twin animation — no forced layout in the middle of the frame)
+      same.el.classList.toggle('again-b');
       return;
     }
     if (this.ratingPops.length >= 2) this.ratingPops.shift()!.el.remove();
@@ -1235,9 +1243,9 @@ export class BattleHUD implements Screen {
       case 'combo':
         if (e.side === 0) {
           const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
-          this.edgeGlow.className = 'edge-glow';
-          void this.edgeGlow.offsetWidth;
-          this.edgeGlow.className = 'edge-glow on' + (ultra ? ' ultra' : '');
+          // (Beta 2.6.2: the pulse restarts through its twin — no forced layout at the combo's own moment)
+          restart(this.edgeGlow, 'on');
+          this.edgeGlow.classList.toggle('ultra', ultra);
           vibrate(ultra ? [20, 40, 30] : 18);
         }
         break;

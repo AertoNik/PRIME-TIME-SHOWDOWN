@@ -296,7 +296,12 @@ export class BattleView {
       rightColor: '#ff5a4a',
       headline: '',
     });
+    // Beta 2.6.2: every effect's shader compiled now, behind the VS intro — not on its first show mid-fight
+    // (dev only: ?nofxwarm fights without it — the A/B of the 2.6.2 measurements)
+    if (!(import.meta.env.DEV && new URLSearchParams(location.search).has('nofxwarm'))) this.lastWarm = this.r.warmPrograms();
   }
+  /** Beta 2.6.2: what the last warm-up compiled (dev measurements). */
+  lastWarm: { programs: number; textures: number; drawn: number; ms: number } | null = null;
 
   teardown(): void {
     for (const s of this.slots) {

@@ -1,7 +1,7 @@
 {
   "name": "prime-time-showdown",
   "private": true,
-  "version": "2.6.1-beta",
+  "version": "2.6.2-beta",
   "description": "PRIME TIME: SHOWDOWN — stylized 3D tactical card duel browser game (Alpha 1.8.2 Stage 1: PRIME Cloud closed beta — pre-deployment foundation)",
   "type": "module",
   "scripts": {
@@ -95,6 +95,7 @@
     "smartdefense": "tsx scripts/smartdefense-check.ts",
     "acecard": "tsx scripts/acecard-check.ts",
     "primeshare": "tsx scripts/primeshare-check.ts",
+    "cardperf": "tsx scripts/cardperf-check.ts",
     "missions": "tsx scripts/missions-check.ts",
     "profiles": "tsx scripts/profiles-check.ts",
     "hud26": "tsx scripts/hud26-check.ts"

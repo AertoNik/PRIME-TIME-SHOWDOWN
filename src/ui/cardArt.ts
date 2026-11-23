@@ -75,6 +75,9 @@ export function cardArtUrl(id: CardId, size: CardArtSize = 'sm'): string | null 
 }
 
 const warmed = new Set<string>();
+/** Beta 2.6.2: the last decks' decoded pictures, kept (a deck is 4 cards — the newest 12 at most). */
+const kept: HTMLImageElement[] = [];
+const KEEP = 12;
 
 /**
  * Fetch and decode the pictures of `ids` ahead of time (the deck before a fight), so the hand never shows an empty card
@@ -89,5 +92,10 @@ export function preloadCardArt(ids: readonly CardId[], size: CardArtSize): void 
     const img = new Image();
     img.decoding = 'async';
     img.src = url;
+    // Beta 2.6.2: decoded now, off the main thread, and the picture kept — a card dealt into the hand mid-fight shows
+    // at once instead of decoding on its first frame (a blank card or a hitch on a phone)
+    void img.decode?.().catch(() => undefined);
+    kept.push(img);
+    if (kept.length > KEEP) kept.shift();
   }
 }

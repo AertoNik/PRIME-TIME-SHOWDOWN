@@ -329,6 +329,9 @@ export class Game {
     // Beta 2.5.5: and the career's NEXT rival — the first fight against a rival not drawn yet froze the intro's first
     // frame (≈ 50–60 ms measured, warmed: 7 ms — docs/beta255/perf255.md)
     this.warmNextRival();
+    // Beta 2.6.2: and every effect the fights will show (effect pools, card props) — compiled and drawn once here, behind
+    // the loading screen: their first show in a fight froze it for 0.2–1 s (docs/BETA_2_6_2_DEVELOPMENT_REPORT.md)
+    if (!(import.meta.env.DEV && new URLSearchParams(location.search).has('nofxwarm'))) this.bootWarm = await this.renderer.warmProgramsAsync(nextFrame);
     this.portraits = renderPortraits(this.renderer, this.models, ALL_LOOKS);
     this.title.setProgress(0.85);
     await nextFrame();
@@ -723,6 +726,9 @@ export class Game {
   }
 
   /** Classic Duel: the selected fighter against the career's next opponent (unchanged since Alpha 1.0). */
+  /** Beta 2.6.2: what the boot's effects warm-up did (dev measurements). */
+  bootWarm: { programs: number; steps: number; ms: number } | null = null;
+
   /** Rivals already drawn this session (warmed, or fought on stage). */
   private warmedRivals = new Set<string>();
 
@@ -752,9 +758,16 @@ export class Game {
     const r = this.renderer;
     const root = rig.root;
     const culled: [Object3D, boolean][] = [];
+    // Beta 2.6.2: its hidden parts too (the KO eyes, an open mouth, a card's weapon glow …) — each set up on its first
+    // show mid-fight until now
+    const shown: Object3D[] = [];
     root.traverse((o) => {
       culled.push([o, o.frustumCulled]);
       o.frustumCulled = false;
+      if (o !== root && !o.visible) {
+        o.visible = true;
+        shown.push(o);
+      }
     });
     const parent = root.parent;
     const pos = root.position.clone();
@@ -765,9 +778,11 @@ export class Game {
     r.scene.add(root);
     try {
       r.render(0);
+      r.markWarmed(root);
     } catch {
       /* no warm-up — the first frame on stage sets the fighter up, as in 2.4 */
     } finally {
+      for (const o of shown) o.visible = false;
       r.scene.remove(root);
       if (parent) parent.add(root);
       root.position.copy(pos);

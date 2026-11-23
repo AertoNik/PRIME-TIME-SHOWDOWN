@@ -4,11 +4,14 @@ import {
   DirectionalLight,
   Fog,
   HemisphereLight,
+  type Material,
   NeutralToneMapping,
+  type Object3D,
   PCFSoftShadowMap,
   PerspectiveCamera,
   Scene,
   SRGBColorSpace,
+  type Texture,
   Vector2,
   WebGLRenderer,
 } from 'three';
@@ -19,6 +22,18 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { PACED_INTERVAL_S, PACING_WINDOW, pacingStep } from './framePacing';
 
 export type QualityLevel = 'high' | 'medium' | 'low';
+/** Beta 2.6.2: a stepped warm-up (Renderer.warmStep): the objects, how far compiled (i) and drawn (j), for which target. */
+interface WarmJob {
+  objs: Object3D[];
+  i: number;
+  j: number;
+  bloom: boolean;
+  shadows: boolean;
+  /** Draw every object (a new target: nothing has been drawn there) — or only the hidden ones (the frame draws the rest). */
+  drawAll: boolean;
+  /** Materials this job has drawn already (a step draws at most six new ones: their driver setup is the cost). */
+  drawn?: Set<Material>;
+}
 export type QualitySetting = 'auto' | QualityLevel;
 
 interface QualityProfile {
@@ -184,6 +199,8 @@ export class Renderer {
   }
 
   setQualitySetting(s: QualitySetting): void {
+    // (Beta 2.6.2: the player's own choice wins over an automatic drop still being prepared)
+    this.downTo = null;
     this.setting = s;
     this.applyQuality(s === 'auto' ? 'high' : s);
     this.frameTimes = [];
@@ -245,13 +262,136 @@ export class Renderer {
     if (now - this.lastAdjust < 3 || this.frameTimes.length < PACING_WINDOW) return;
     const step = pacingStep(this.frameTimes, this.quality, this.frameInterval > 0);
     if (step === 'down') {
-      this.applyQuality(this.quality === 'high' ? 'medium' : 'low');
+      this.stepDown(this.quality === 'high' ? 'medium' : 'low');
       this.frameTimes = [];
     } else if (step === 'pace30') {
       this.frameInterval = PACED_INTERVAL_S;
       this.frameTimes = [];
     }
     this.lastAdjust = now;
+  }
+
+  /**
+   * Beta 2.6.2 — the automatic drop to a quality WITHOUT bloom (medium → low) changes where the frame is drawn (the bloom
+   * buffer → the screen), and every shader then compiled again for the screen in the first frame after the switch — a
+   * 0.2–0.7 s freeze (measured) mid-fight, on exactly the phone that was already struggling; each effect's first show
+   * after it compiled again too. Now the shaders for the screen are compiled first, two new programs a frame at most
+   * (prepareDown, from render), while the frame is still drawn as before; the switch itself then compiles nothing, and the hidden
+   * effects get their one draw for the screen at once. A drop that keeps bloom (high → medium) switches at once, as before.
+   */
+  private stepDown(q: QualityLevel): void {
+    if (this.downTo) return;
+    if (PROFILES[q].bloom === !!this.composer) {
+      this.applyQuality(q);
+      return;
+    }
+    const objs: Object3D[] = [];
+    this.scene.traverse((o) => {
+      if ((o as { material?: unknown }).material) objs.push(o);
+    });
+    this.downTo = { q, objs, i: 0, j: 0, bloom: PROFILES[q].bloom, shadows: PROFILES[q].shadows, drawAll: true };
+  }
+  private downTo: (WarmJob & { q: QualityLevel }) | null = null;
+
+  /** One step of the prepared drop, before the frame is drawn (render); the last one switches the quality. */
+  private prepareDown(): void {
+    const d = this.downTo!;
+    this.warmStep(d);
+    if (d.i < d.objs.length || d.j < d.objs.length) return;
+    this.downTo = null;
+    this.applyQuality(d.q);
+    // everything has been drawn once for the screen: the match warm-up need not draw it again
+    this.warmed = new WeakSet<Material>();
+    this.markWarmed(this.scene);
+  }
+
+  /**
+   * One step of a stepped warm-up for a target (`bloom`: the bloom pass's buffer, else the screen) and shadows: first the
+   * new programs (two a step at most — each is ~20–30 ms of driver work the next frame waits for; programs that exist are
+   * only looked up), then every object drawn once (six new materials a step — the driver's per-draw setup for that
+   * target — and any number of objects whose materials are drawn already, 64 at most) on a layer of
+   * its own so nothing else is drawn, hidden ones shown and off-view ones not culled for that draw. The bloom buffer is
+   * redrawn by the frame that follows; a draw into the screen is covered by that frame too (or by the caller). Returns
+   * whether it drew.
+   */
+  private warmStep(d: WarmJob): boolean {
+    const gl = this.renderer;
+    const prev = gl.getRenderTarget();
+    const shadows = gl.shadowMap.enabled;
+    const cast = this.key.castShadow;
+    const LAYER = 31;
+    const lights = [this.hemi, this.key, this.rim, this.fillA, this.fillB, this.flash];
+    const camMask = this.camera.layers.mask;
+    const shown: Object3D[] = [];
+    const culled: Object3D[] = [];
+    const tagged: Object3D[] = [];
+    let drew = false;
+    try {
+      gl.setRenderTarget(d.bloom && this.composer ? this.composer.readBuffer : null);
+      gl.shadowMap.enabled = d.shadows;
+      this.key.castShadow = d.shadows;
+      if (d.i < d.objs.length) {
+        const p0 = gl.info.programs?.length ?? 0;
+        for (let k = 0; d.i < d.objs.length && k < 48 && (gl.info.programs?.length ?? 0) - p0 < 2; d.i++, k++) {
+          if (d.objs[d.i].parent) gl.compile(d.objs[d.i], this.camera, this.scene);
+        }
+        // finish THIS step's programs now (a status query waits for them): otherwise the queued ones all landed on the
+        // first draw step at once — one long frame instead of short ones (measured 0.4–0.8 s at boot)
+        const progs = (gl.info.programs ?? []) as unknown as { program: WebGLProgram }[];
+        const ctx = gl.getContext();
+        for (let k = p0; k < progs.length; k++) ctx.getProgramParameter(progs[k].program, ctx.LINK_STATUS);
+      } else {
+        const drawn = (d.drawn ??= new Set<Material>());
+        let fresh = 0;
+        for (let n = 0; d.j < d.objs.length && n < 64 && fresh < 6; d.j++) {
+          const o = d.objs[d.j];
+          if (!o.parent) continue;
+          if (!d.drawAll) {
+            let seen = true;
+            for (let p: Object3D | null = o; p && p !== this.scene; p = p.parent) if (!p.visible) seen = false;
+            if (seen) continue;
+          }
+          n++;
+          const m = (o as { material?: Material | Material[] }).material;
+          for (const x of m ? (Array.isArray(m) ? m : [m]) : []) {
+            if (!drawn.has(x)) {
+              drawn.add(x);
+              fresh++;
+            }
+          }
+          o.layers.enable(LAYER);
+          tagged.push(o);
+          for (let p: Object3D | null = o; p && p !== this.scene; p = p.parent) {
+            if (!p.visible) {
+              p.visible = true;
+              shown.push(p);
+            }
+          }
+          if (o.frustumCulled) {
+            o.frustumCulled = false;
+            culled.push(o);
+          }
+        }
+        for (const l of lights) l.layers.enable(LAYER);
+        this.camera.layers.set(LAYER);
+        if (tagged.length) {
+          gl.render(this.scene, this.camera);
+          drew = true;
+        }
+      }
+    } catch {
+      d.i = d.j = d.objs.length;
+    } finally {
+      this.camera.layers.mask = camMask;
+      for (const l of lights) l.layers.disable(LAYER);
+      for (const o of tagged) o.layers.disable(LAYER);
+      for (const o of shown) o.visible = false;
+      for (const o of culled) o.frustumCulled = true;
+      gl.setRenderTarget(prev);
+      gl.shadowMap.enabled = shadows;
+      this.key.castShadow = cast;
+    }
+    return drew;
   }
 
   /**
@@ -288,7 +428,125 @@ export class Renderer {
     this.flashIntensity = Math.max(this.flashIntensity, intensity);
   }
 
+  /**
+   * Beta 2.6.2 — compiles, ahead of the fight, the shaders of everything the scene holds (the effect pools, card props,
+   * fighter FX hidden until their first show) and uploads their textures. Until 2.6.1 each compiled on its first show:
+   * the first SHIELD, SHOCK, FALSE START, PRESSURE MINE … of a session froze the fight for 0.2–1 s (docs/BETA_2_6_2_*).
+   * A program depends on where the frame is drawn — the bloom pass's buffer at high / medium quality, the screen at
+   * low — so it compiles for the target the frame really uses now. A compiled program is not all: the GPU driver builds
+   * the rest of its pipeline on the first DRAW (as for the fighters in 2.5 — Game.warmRig), so the hidden objects are
+   * also drawn once, into that same target: the bloom buffer is redrawn by the next frame before anything is shown; at
+   * low quality (the screen) the true frame is drawn over it at once. Programs already compiled are only looked up — a
+   * later fight costs a few ms.
+   */
+  warmPrograms(): { programs: number; textures: number; drawn: number; ms: number } {
+    const gl = this.renderer;
+    const t = performance.now();
+    const before = gl.info.programs?.length ?? 0;
+    const tex0 = gl.info.memory.textures;
+    // only what has not been warmed yet (at boot: all of it; a later fight: its few new objects, or nothing)
+    const fresh: Object3D[] = [];
+    const mats = new Set<Material>();
+    this.scene.traverse((o) => {
+      const m = (o as { material?: Material | Material[] }).material;
+      if (!m) return;
+      let any = false;
+      for (const x of Array.isArray(m) ? m : [m]) {
+        if (this.warmed.has(x)) continue;
+        mats.add(x);
+        any = true;
+      }
+      if (any) fresh.push(o);
+    });
+    if (!fresh.length) return { programs: 0, textures: 0, drawn: 0, ms: Math.round(performance.now() - t) };
+    const prev = gl.getRenderTarget();
+    const target = this.composer ? this.composer.readBuffer : null;
+    const shown: Object3D[] = [];
+    const culled: Object3D[] = [];
+    try {
+      gl.setRenderTarget(target);
+      if (fresh.length > 48) gl.compile(this.scene, this.camera);
+      else for (const o of fresh) gl.compile(o, this.camera, this.scene);
+      // their pictures too: a texture uploads on its first draw (a few ms each, mid-fight) — now here
+      for (const m of mats) {
+        for (const v of Object.values(m as unknown as Record<string, unknown>)) if (v && (v as Texture).isTexture) gl.initTexture(v as Texture);
+        const u = (m as { uniforms?: Record<string, { value?: unknown }> }).uniforms;
+        if (u) for (const k of Object.keys(u)) if (u[k]?.value && (u[k].value as Texture).isTexture) gl.initTexture(u[k].value as Texture);
+      }
+      // one draw of what is hidden among them, wherever it stands (off the view too), into the frame's own target
+      for (const o of fresh) {
+        let hidden = false;
+        for (let p: Object3D | null = o; p && p !== this.scene; p = p.parent) {
+          if (!p.visible) {
+            p.visible = true;
+            shown.push(p);
+            hidden = true;
+          }
+        }
+        if (hidden && o.frustumCulled) {
+          o.frustumCulled = false;
+          culled.push(o);
+        }
+      }
+      if (shown.length) gl.render(this.scene, this.camera);
+      for (const m of mats) this.warmed.add(m);
+    } catch {
+      /* no warm-up: each effect is set up on its first show, as before */
+    } finally {
+      for (const o of shown) o.visible = false;
+      for (const o of culled) o.frustumCulled = true;
+      gl.setRenderTarget(prev);
+    }
+    // the screen held that draw (low quality): the true frame over it before the browser shows anything
+    if (!target && shown.length) {
+      try {
+        this.render(0);
+      } catch {
+        /* the next frame draws it anyway */
+      }
+    }
+    return { programs: (gl.info.programs?.length ?? 0) - before, textures: gl.info.memory.textures - tex0, drawn: shown.length, ms: Math.round(performance.now() - t) };
+  }
+  /**
+   * The boot's warm-up (behind the loading screen), in steps (warmStep) one frame apart — `next` is the boot's own
+   * «wait a frame»: two new programs a frame at most, then every object drawn once, two dozen a frame. In one piece it
+   * held the loading screen still for ~0.9 s (measured: the first status query waits for all the queued compiles).
+   */
+  async warmProgramsAsync(next: () => Promise<void>): Promise<{ programs: number; steps: number; ms: number }> {
+    const t = performance.now();
+    const p0 = this.renderer.info.programs?.length ?? 0;
+    const objs: Object3D[] = [];
+    this.scene.traverse((o) => {
+      const m = (o as { material?: Material | Material[] }).material;
+      if (m && (Array.isArray(m) ? m : [m]).some((x) => !this.warmed.has(x))) objs.push(o);
+    });
+    const job = { objs, i: 0, j: 0, bloom: !!this.composer, shadows: PROFILES[this.quality].shadows, drawAll: false };
+    let steps = 0;
+    while (job.i < objs.length || job.j < objs.length) {
+      if (this.warmStep(job)) {
+        // the screen held that draw (no bloom): the true frame over it before the browser shows anything
+        if (!job.bloom) this.render(0);
+      }
+      steps++;
+      // (a hidden page has nobody to freeze for — and its timers run once a second: the steps go on at once)
+      if (!document.hidden) await next();
+    }
+    this.markWarmed(this.scene);
+    return { programs: (this.renderer.info.programs?.length ?? 0) - p0, steps, ms: Math.round(performance.now() - t) };
+  }
+
+  /** Materials already compiled and drawn once by warmPrograms (a later fight only looks them up). */
+  private warmed = new WeakSet<Material>();
+  /** Beta 2.6.2: what Game.warmRig drew (a fighter, its hidden parts too) needs no second warm-up in a fight. */
+  markWarmed(root: Object3D): void {
+    root.traverse((o) => {
+      const m = (o as { material?: Material | Material[] }).material;
+      if (m) for (const x of Array.isArray(m) ? m : [m]) this.warmed.add(x);
+    });
+  }
+
   render(dt: number): void {
+    if (this.downTo) this.prepareDown();
     this.flashIntensity = Math.max(0, this.flashIntensity - dt * this.flashIntensity * 9 - dt * 2);
     this.flash.intensity = this.flashIntensity;
     if (this.composer) this.composer.render(dt);
