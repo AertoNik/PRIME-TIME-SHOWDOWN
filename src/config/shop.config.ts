@@ -48,6 +48,9 @@ export type ShopSku =
   // universal offer № 6 (no item list: the priced catalogue) — no new revision; the server holds the price.
   | 'skin_kai_cue_master'
   | 'skin_rina_dune_mirage'
+  // Beta 2.7.5 — VFX & LEGENDARY STYLE: the legendary skin of ACE, 189 ₽ (the owner's brief of 27.11.2026, section 2: «Цена
+  // окончательно утверждена владельцем: 189 ₽»). Sold under the offer in force (no item list: the priced catalogue).
+  | 'skin_ace_black_tie'
   // Beta 2.0 — bundles (their own skus; prices proposed, not approved)
   | BundleSku;
 
@@ -64,7 +67,7 @@ export type ShopCategory = 'skins' | 'effects' | 'fighters' | 'bundles';
 export type BundleSku = 'bundle_ray_glitch' | 'bundle_bruno_spotlights' | 'bundle_nika_fireworks' | 'bundle_vega_comet' | 'bundle_kai_phantom' | 'bundle_broadcast_trio';
 
 /** Alpha 1.8.8: alternate looks of existing fighters. */
-export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot' | 'kai_cue_master' | 'rina_dune_mirage';
+export type SkinId = 'ray_neon_runner' | 'bruno_casino_boss' | 'nika_stage_idol' | 'vega_star_pilot' | 'kai_cue_master' | 'rina_dune_mirage' | 'ace_black_tie';
 
 export interface SkinDef {
   id: SkinId;
@@ -81,6 +84,7 @@ export const SKINS: Record<SkinId, SkinDef> = {
   vega_star_pilot: { id: 'vega_star_pilot', fighter: 'vega', look: 'vega_star_pilot', name: 'STAR PILOT' },
   // Alpha 1.9.8
   kai_cue_master: { id: 'kai_cue_master', fighter: 'kai', look: 'kai_cue_master', name: 'CUE MASTER' },
+  ace_black_tie: { id: 'ace_black_tie', fighter: 'ace', look: 'ace_black_tie', name: 'BLACK TIE' },
   rina_dune_mirage: { id: 'rina_dune_mirage', fighter: 'rina', look: 'rina_dune_mirage', name: 'DUNE MIRAGE' },
 };
 
@@ -229,6 +233,26 @@ export const SHOP_ITEMS: ShopItemDef[] = [
     preview: 'model',
     isNew: true,
   },
+  // Beta 2.7.5 — the LEGENDARY skin of ACE, 189 ₽
+  {
+    sku: 'skin_ace_black_tie',
+    category: 'skins',
+    name: 'ACE: BLACK TIE',
+    kind: '3D-скин · Айз «Туз»',
+    desc: 'Вечер большого финала: чёрный смокинг с атласными шалевыми лацканами, белый шёлковый шарф, бабочка и GOLDEN ACE в чёрном лаке с платиновой гравировкой.',
+    highlights: [
+      'Чёрный смокинг с атласными шалевыми лацканами и платиновым кантом, белая сорочка со складками и ониксовыми запонками',
+      'Чёрная атласная бабочка, белый шёлковый шарф поверх лацканов, платок в три пика и платиновый значок с пиковым тузом',
+      'Новая стрижка: гладкий зачёс назад с косым пробором; золотые часы, лаковые туфли-лодочки с бантами',
+      'GOLDEN ACE в вечернем исполнении: чёрный лак, платиновая гравировка, перламутровые накладки и золотые кольца; лицо, рост, оружие и анимации — как у Айза',
+    ],
+    rarity: 'legendary',
+    skin: 'ace_black_tie',
+    fighter: 'ace',
+    preview: 'model',
+    featured: true,
+    isNew: true,
+  },
   {
     sku: 'fx_prime_broadcast',
     category: 'effects',
@@ -310,11 +334,12 @@ export const SHOP_ITEMS: ShopItemDef[] = [
     category: 'effects',
     name: 'NEON FIREWORKS',
     kind: 'Эффект победы',
-    desc: 'Три неоновых залпа над ареной: ракеты взлетают и раскрываются розовыми, бирюзовыми и фиолетовыми шарами.',
+    // (Beta 2.7.5: the effect reworked — five rockets, each its own burst shape; the text says what it shows now)
+    desc: 'Неоновый салют над победителем: ракеты взлетают по очереди и раскрываются разными фигурами — розовым пионом, бирюзовым кольцом, фиолетовой ивой, звездой и золотым треском.',
     highlights: [
-      'Три ракеты со следом взлетают над победителем',
-      'Розовый, бирюзовый и фиолетовый шары с белой серединой',
-      'Мягкое кольцо света на полу — без вспышек на весь экран',
+      'Пять ракет со следом, у каждой своя фигура разрыва (на низком качестве графики — три)',
+      'Розовый, бирюзовый, фиолетовый, белый и золотой цвета',
+      'Салют над головами, а не над картами — без вспышек на весь экран',
     ],
     rarity: 'epic',
     cosmetic: 'victory_neon_fireworks',
@@ -650,6 +675,8 @@ export const SHOP_PRICE_STATUS: Record<ShopSku, PriceStatus> = {
   // 1.9.8: APPROVED in the owner's brief of 13.11.2026 (section 5: «Цена каждого: 149 ₽»)
   skin_kai_cue_master: 'approved',
   skin_rina_dune_mirage: 'approved',
+  // Beta 2.7.5: APPROVED in the owner's brief of 27.11.2026 (section 2: «Цена окончательно утверждена владельцем: 189 ₽»)
+  skin_ace_black_tie: 'approved',
   // Beta 2.0 bundles: APPROVED by the owner on 14.11.2026 (the release brief, section 4 — the six at the proposed prices and
   // the composition of docs/BETA_2_0_DEVELOPMENT_REPORT.md). Sold only under a revision in force with `bundles` (offer № 7)
   bundle_ray_glitch: 'approved',
@@ -686,6 +713,8 @@ export const SHOP_PRICES_APPROVED_LATER: Partial<Record<ShopSku, string>> = {
   // 1.9.8: the two epic skins, approved in the brief of 13.11.2026
   skin_kai_cue_master: '2026-11-13',
   skin_rina_dune_mirage: '2026-11-13',
+  // Beta 2.7.5: the legendary ACE skin, approved in the brief of 27.11.2026
+  skin_ace_black_tie: '2026-11-27',
   // Beta 2.0: the six bundles, approved in the release brief of 14.11.2026
   bundle_ray_glitch: '2026-11-14',
   bundle_bruno_spotlights: '2026-11-14',
@@ -729,6 +758,8 @@ export const SHOP_PRICES_RUB: Record<ShopSku, number | null> = {
   // 1.9.8 — CONTENT EXPANSION, approved 13.11.2026
   skin_kai_cue_master: 149,
   skin_rina_dune_mirage: 149,
+  // Beta 2.7.5 — the legendary ACE: BLACK TIE, approved 27.11.2026
+  skin_ace_black_tie: 189,
   // Beta 2.0 bundles — APPROVED 14.11.2026 (−18…−20 % against the items' approved prices)
   bundle_ray_glitch: 129, // 99 + 59 = 158
   bundle_bruno_spotlights: 179, // 149 + 69 = 218
@@ -805,6 +836,7 @@ export const SHOP_TEST_PRICES_RUB: Record<ShopSku, number> = {
   fighter_crax: 10,
   skin_kai_cue_master: 10,
   skin_rina_dune_mirage: 10,
+  skin_ace_black_tie: 10,
   // Beta 2.0 bundles (staging test mode only): below the sum of their items' test amounts
   bundle_ray_glitch: 15,
   bundle_bruno_spotlights: 15,

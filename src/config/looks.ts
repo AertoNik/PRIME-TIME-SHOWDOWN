@@ -1,9 +1,13 @@
 import type { WeaponType } from './types';
 
-export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour' | 'shako' | 'wave';
+export type HairStyle = 'spiky' | 'buzz' | 'buns' | 'cap' | 'beanie' | 'mohawk' | 'ponytail' | 'quiff' | 'slick' | 'curtain' | 'bob' | 'swept' | 'crest' | 'pompadour' | 'shako' | 'wave'
+  // Beta 2.7.5: ACE — BLACK TIE
+  | 'sidepart';
 export type TopStyle = 'bomber' | 'vest' | 'tech' | 'windbreaker' | 'puffer' | 'racer' | 'pads' | 'coat' | 'track' | 'moto' | 'tailcoat' | 'runner' | 'suit' | 'idol' | 'pilot' | 'tunic' | 'tux'
   // Alpha 1.9.8: PRIME SHOP skins of KAI (CUE MASTER) and RINA (DUNE MIRAGE)
-  | 'hustler' | 'nomad';
+  | 'hustler' | 'nomad'
+  // Beta 2.7.5: ACE — BLACK TIE (a black dinner jacket with shawl lapels, a white silk opera scarf)
+  | 'blacktie';
 export type PantsStyle = 'track' | 'cargo' | 'jogger' | 'tailored';
 export type BodyType = 'lean' | 'heavy' | 'slim' | 'athletic' | 'svelte';
 export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristbands' | 'stubble' | 'beard' | 'earring' | 'blush' | 'visor' | 'belt' | 'shades' | 'choker'
@@ -12,7 +16,9 @@ export type Accessory = 'headphones' | 'chain' | 'headset' | 'goggles' | 'wristb
   // Alpha 1.9.7: CRAX — the wind-up key on his back, brass gears on the uniform, a painted moustache
   | 'windkey' | 'gears' | 'moustache'
   // Alpha 1.9.8: CUE MASTER — a green dealer's eyeshade, sleeve garters; DUNE MIRAGE — an indigo desert scarf
-  | 'eyeshade' | 'armbands' | 'scarf';
+  | 'eyeshade' | 'armbands' | 'scarf'
+  // Beta 2.7.5: BLACK TIE — a gold dress watch on the left wrist
+  | 'watch';
 
 /** Visual recipe for a procedurally built fighter. */
 export interface LookDef {
@@ -23,7 +29,7 @@ export interface LookDef {
    */
   base?: string;
   /** Alpha 1.8.8: skin decoration on the weapon (never moves the muzzle). */
-  weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot' | 'billiard' | 'dune';
+  weaponDeco?: 'neon' | 'gold' | 'idol' | 'pilot' | 'billiard' | 'dune' | 'blacktie';
   /**
    * Alpha 1.9.7: another MODEL of the same weapon class (CRAX's CLOCKWORK RIFLE is a tech_carbine for the fight): the
    * muzzle point stays the class's, so shots leave exactly where the simulation and the effects expect them.
@@ -382,6 +388,38 @@ export const LOOKS: Record<string, LookDef> = {
     weaponDark: 0x1b1e27,
     glow: 0x3fe0d0,
     rim: 0xffe2a0,
+    headScale: 0.92,
+    headShape: { w: 0.93, h: 1.07 },
+  },
+  // ------------------------------------------------ Beta 2.7.5: the LEGENDARY skin of ACE
+  // ACE — BLACK TIE: the evening of the grand final. Same face, body, revolver class and animations as ACE; a black dinner
+  // jacket with satin SHAWL lapels (the cream jacket of ACE has peaked ones) and a platinum edge, a white dress shirt with
+  // pleats and onyx studs, a black satin bow tie, a white silk opera scarf over the lapels, a three-peak white pocket
+  // square, a platinum ace-of-spades pin, white cuffs with platinum links, a gold dress watch, black trousers with a satin
+  // stripe, patent opera pumps with grosgrain bows, a sleek side-parted comb-back; GOLDEN ACE in
+  // black lacquer with platinum engraving, mother-of-pearl grips and a champagne glow.
+  ace_black_tie: {
+    id: 'ace_black_tie',
+    base: 'ace',
+    body: 'athletic',
+    skin: 0xe9bf9b,
+    hair: { style: 'sidepart', color: 0x15100c, color2: 0xb9b6b0 },
+    top: { style: 'blacktie', main: 0x0e0f14, accent: 0xd8dce4, trim: 0x3a3d4a, inner: 0xf6f4ef },
+    pants: { style: 'tailored', main: 0x0e0f14, accent: 0x262833 },
+    shoes: { main: 0x08090c, accent: 0x1b1c22, sole: 0x111216 },
+    gloves: 0xe9bf9b,
+    fingerless: false,
+    eyes: 0x6a3f1e,
+    brow: 'cocky',
+    mouth: 'smile',
+    accessories: ['watch'],
+    face: { cheekbones: 0.6, jaw: 0.55, eyeHeight: 0.95, archedBrows: true, grin: true, browFlash: true, sharp: true },
+    weapon: 'revolver',
+    weaponColor: 0x121318,
+    weaponDark: 0x2c2e36,
+    weaponDeco: 'blacktie',
+    glow: 0xf0b23c,
+    rim: 0xfff0d0,
     headScale: 0.92,
     headShape: { w: 0.93, h: 1.07 },
   },

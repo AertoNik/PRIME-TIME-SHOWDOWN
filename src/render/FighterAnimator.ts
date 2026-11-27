@@ -429,6 +429,15 @@ export class FighterAnimator {
    */
   private wRoll = 0;
   private wFlip = 0;
+  /**
+   * Beta 2.7.5 — MAIN EVENT: when ACE was last seen in its wind-up (the shot that follows within a moment is the MAIN
+   * EVENT shot), whether the wind-up's own revolver spin holds the weapon now, and the showman's twirl after the shot.
+   */
+  private mainWindAt = -10;
+  private mainSpin = false;
+  private mainTwirlIn = -1;
+  /** Beta 2.7.5: the last shot was MAIN EVENT's (BattleView adds its gold accent at the muzzle). */
+  lastFireMain = false;
   private yawAdd = 0;
   private sx = 1;
   private sy = 1;
@@ -533,6 +542,9 @@ export class FighterAnimator {
   fire(muzzle: number, heavy: boolean): void {
     // a knocked-out or celebrating fighter does not shoot (late events are ignored)
     if (this.koT >= 0 || this.victoryT >= 0) return;
+    // (Beta 2.7.5: ACE's MAIN EVENT — the shot right at the end of its wind-up: the gold accent, the after-shot twirl)
+    this.lastFireMain = this.t - this.mainWindAt < 0.2;
+    if (this.lastFireMain) this.mainTwirlIn = 0.34;
     const r = this.recoil;
     const k = heavy ? 2.4 : 1;
     // Alpha 1.5.5 — fire style: a committed opening shot, then a lighter cadence for the series
@@ -1588,6 +1600,19 @@ export class FighterAnimator {
         const s = Math.sin(p * Math.PI);
         P.elL += 0.55 * s * aw;
         P.shLX += 0.22 * s * aw;
+      }
+    }
+    // Beta 2.7.5 — MAIN EVENT: the revolver's spin belongs to the wind-up only (an interrupted wind-up never leaves it
+    // turned); a beat after the shot, one showman's twirl as he comes back to his stance
+    if (this.mainSpin && !(inp.action === 'windup' && inp.actionCard === 'main_event')) {
+      this.mainSpin = false;
+      if (this.twirlT < 0) this.wFlip = 0;
+    }
+    if (this.mainTwirlIn >= 0) {
+      this.mainTwirlIn -= dt;
+      if (this.mainTwirlIn < 0 && this.koT < 0 && this.victoryT < 0) {
+        this.twirlT = 0;
+        this.twirlTurns = 1;
       }
     }
     if (this.twirlT >= 0) {
@@ -4203,27 +4228,57 @@ export class FighterAnimator {
   }
 
   /**
-   * Alpha 1.9.8 — MAIN EVENT, driven by the wind-up's own progress (the player's short wind-up and a rival's longer one
-   * alike): a tall stance → the cuff → the presentation (the gun hand sweeps out wide, the body turns into the line) →
-   * the arm locked on the target. The golden spotlight and the shot are the effects' and the simulation's.
+   * MAIN EVENT, driven by the wind-up's own progress (the player's short wind-up and a rival's longer one alike — the
+   * fight's timing is never touched; the shot itself is the simulation's, at the end).
+   * Beta 2.7.5 — a duelist's ritual instead of the old cuff tug (it read as grabbing his own arm):
+   *   1. the stance: tall, chest up, the body turning side-on to the target, the free hand going behind the back;
+   *   2. GOLDEN ACE low at the hip turns once round the trigger finger — the showman's spin;
+   *   3. the draw: the arm rises from the hip onto the line in one clean arc (swinging out a little on the way), the
+   *      head turns to look down the sight;
+   *   4. the held breath: locked on the line, a slight settle of the knees, stillness — then the shot (its recoil, the
+   *      gold accent at the muzzle and, a beat later, a twirl back into the stance).
    */
   private mainEventPose(P: Pose, p: number): void {
-    const st = smoothstep(0, 0.16, p);
-    P.spineRX -= 0.06 * st;
-    P.headRX -= 0.06 * st;
-    P.hipsRZ += 0.04 * st;
-    if (p < 0.64) this.cuffPose(P, clamp01((p - 0.08) / 0.52));
-    const sweep = smoothstep(0.5, 0.7, p) * (1 - smoothstep(0.76, 0.9, p));
-    const aim = smoothstep(0.72, 0.9, p);
-    P.shRX = mix(mix(P.shRX, -1.05, sweep), -1.46, aim);
-    P.shRZ = mix(mix(P.shRZ, -0.6, sweep), 0.08, aim);
-    P.elR = mix(mix(P.elR, -0.22, sweep), -0.05, aim);
-    const back = smoothstep(0.56, 0.74, p);
-    P.shLX = mix(P.shLX, 0.42, back);
-    P.shLZ = mix(P.shLZ, 0.22, back);
-    P.elL = mix(P.elL, -1.72, back);
-    P.spineRY += -0.3 * aim + 0.16 * sweep;
-    P.headRY += 0.16 * aim;
+    this.mainWindAt = this.t;
+    const set = smoothstep(0, 0.2, p);
+    P.spineRX -= 0.05 * set;
+    P.headRX -= 0.04 * set;
+    P.hipsRZ += 0.03 * set;
+    P.spineRY -= 0.2 * set;
+    // the free hand drops away from the body, a little back and out — the one-handed duelist's stance (the rig's
+    // shoulder has no twist, so a hand «behind the back» would come out in front of the belly)
+    const free = smoothstep(0.04, 0.3, p);
+    P.shLX = mix(P.shLX, 0.34, free);
+    P.shLZ = mix(P.shLZ, 0.32, free);
+    P.elL = mix(P.elL, -0.32, free);
+    // the gun hand low at the hip, the revolver spinning once round the trigger finger
+    const low = smoothstep(0.02, 0.18, p) * (1 - smoothstep(0.44, 0.62, p));
+    P.shRX = mix(P.shRX, -0.25, low);
+    P.shRZ = mix(P.shRZ, 0.3, low);
+    P.elR = mix(P.elR, -0.55, low);
+    const spin = clamp01((p - 0.13) / 0.32);
+    if (spin > 0 && spin < 1) {
+      this.wFlip = ease.inOutCubic(spin) * TAU;
+      this.mainSpin = true;
+    } else if (this.mainSpin) {
+      this.wFlip = 0;
+      this.mainSpin = false;
+    }
+    // the draw: up from the hip onto the line, one arc
+    const draw = smoothstep(0.44, 0.74, p);
+    const arc = Math.sin(draw * Math.PI) * 0.32;
+    P.shRX = mix(P.shRX, -1.46, draw);
+    P.shRZ = mix(P.shRZ, 0.08, draw) - arc;
+    P.elR = mix(P.elR, -0.05, draw);
+    P.spineRY -= 0.12 * draw;
+    P.headRY += 0.18 * draw;
+    P.headRX += 0.05 * draw;
+    // the held breath before the shot
+    const hold = smoothstep(0.74, 0.88, p);
+    P.bodyY -= 0.012 * hold;
+    P.kneeL += 0.06 * hold;
+    P.kneeR += 0.06 * hold;
+    if (p > 0.7) this.browUp = Math.max(this.browUp, 0.05);
   }
 
   /** Menu showcase gestures (`this.w` rises and falls over the 1.6 s gesture; fp = progress 0..1). */

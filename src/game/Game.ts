@@ -1685,6 +1685,8 @@ export class Game {
       }
     }
     this.arena.update(dtReal, !!m && dt === 0);
+    // (Beta 2.7.5: the cosmetic effects follow the quality the renderer runs at — AUTO's own steps included)
+    this.vfx.detail = this.renderer.quality === 'high' ? 2 : this.renderer.quality === 'medium' ? 1 : 0;
     this.vfx.update(dt === 0 && m ? 0 : m ? dt : dtReal, this.renderer.camera);
     this.vfx.setViewport(this.renderer.size.h * this.renderer.renderer.getPixelRatio(), this.renderer.camera.fov);
     this.ui.update(dtReal);

@@ -16,6 +16,7 @@ import { SIM_VERSION } from '../src/league/simVersion';
 import { stateHash } from '../src/league/replay';
 import { defaultSave } from '../src/meta/SaveSystem';
 import { canonicalJSON } from '../src/net/cloudSave';
+import { leagueLook } from '../src/game/LeagueRuntime';
 import type { FighterId, CardId } from '../src/config/types';
 import { LIVE_RULES_FILE, leagueSim, liveRulesSource } from './backend';
 import { LEGACY_CHECK_ENV, binariesReady, ensurePortsFree, ownServerStarted, registrationExtras, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
@@ -387,6 +388,92 @@ async function serverChecks(): Promise<void> {
   await sa.leave();
   await sb.dispose();
   check('leaving the room during a match: the match is settled (forfeit) and the room closed', (await admin.collection('live_matches').getOne(mId)).status === 'done' && (await admin.collection('live_rooms').getOne(sa.room?.id ?? r2.id)).status === 'closed');
+  // ---------------------------------------------------------------- Beta 2.7.5: BLACK TIE and MAIN EVENT, two clients
+  section('2.7.5: ACE в BLACK TIE и MAIN EVENT в LIVE — оба клиента видят одно и то же');
+  {
+    const P = await user(['ray', 'ace']);
+    const Q = await user(['ray', 'nika']);
+    const deckP: CardId[] = ['main_event', 'dash', 'shield', 'power_shot'];
+    const sp = new LiveSession(new LiveApi(P.api), rtOf(P), timers);
+    const sq = new LiveSession(new LiveApi(Q.api), rtOf(Q), timers);
+    const rp = (await call(P, 'POST', '/api/prime/live/room', { sim: SIM_VERSION })).j.room as LiveRoom;
+    await sp.enter(rp);
+    const jq = await sq.api.join(rp.code);
+    await sq.enter(jq.room);
+    const noRight = await call(P, 'POST', `/api/prime/live/room/${rp.id}/pick`, { fighter: 'ace', deck: deckP, look: 'ace_black_tie' });
+    check('ACE in BLACK TIE without the right → look_not_owned (a look is never put on from the browser)', noRight.status === 400 && noRight.j.code === 'look_not_owned');
+    // the right, as a paid order writes it (a test-environment right)
+    await admin.collection('shop_entitlements').create({ user: P.id, sku: 'skin_ace_black_tie', item: 'ace_black_tie', kind: 'skin', source: 'support', env: 'test', status: 'active', grantedAt: new Date().toISOString().replace('T', ' ') });
+    const onRay = await call(P, 'POST', `/api/prime/live/room/${rp.id}/pick`, { fighter: 'ray', deck: ['dash', 'power_shot', 'shield', 'adrenaline'], look: 'ace_black_tie' });
+    check('BLACK TIE on another fighter (RAY) → look_not_owned, even with the right', onRay.status === 400 && onRay.j.code === 'look_not_owned');
+    await sp.api.pick(rp.id, 'ace', deckP, 'ace_black_tie');
+    await sq.api.pick(rp.id, 'nika', ['dash', 'power_shot', 'shield', 'system_overload'], null);
+    const seenByQ = (await call(Q, 'POST', `/api/prime/live/room/${rp.id}/pulse`, {})).j.room;
+    check('with the right: ACE in BLACK TIE is picked; the friend\'s room shows the look (not the deck)', seenByQ.host?.look === 'ace_black_tie' && seenByQ.host?.deck === undefined);
+    await sp.ready(true);
+    await sq.ready(true);
+    await sleep(500);
+    const aceSide = sp.match?.side ?? 0;
+    const snapP = sp.match?.snapshot;
+    const snapQ = sq.match?.snapshot;
+    check('the match carries ACE in BLACK TIE in both clients\' snapshots — both games draw that look (leagueLook)', !!snapP && !!snapQ && snapP.sides[aceSide].fighter === 'ace' && snapP.sides[aceSide].look === 'ace_black_tie' && snapQ.sides[aceSide].look === 'ace_black_tie' && leagueLook('ace', snapQ.sides[aceSide].look) === 'ace_black_tie');
+    // both clients run the fight step by step: what the MAIN EVENT animation is drawn from — ACE's wind-up of the card and
+    // its progress at every step, and the MAIN EVENT shot (a heavy «power» shot right after it) — recorded on each side
+    const wind = new Map<LiveSession, Map<number, number>>([
+      [sp, new Map()],
+      [sq, new Map()],
+    ]);
+    const shots = new Map<LiveSession, Set<number>>([
+      [sp, new Set()],
+      [sq, new Set()],
+    ]);
+    let lastTap = 0;
+    const TAPS = [0, 3, 0, 1, 0, 2];
+    let tapI = 0;
+    // (the fight runs to its own end — a surrender would end it on the server's word, not by the replay checked below)
+    const t0 = Date.now();
+    while (Date.now() - t0 < 120000) {
+      for (const s of [sp, sq]) {
+        const d = s.driver;
+        if (!d || !s.match) continue;
+        if (d.late) d.rebuild();
+        for (let k = 0; k < 20; k++) {
+          if (d.advance(1) === 0) break;
+          const m = d.match;
+          const a = m.fighters[aceSide].action as unknown as { kind: string; card?: string; t: number; total: number };
+          const inWind = a.kind === 'windup' && a.card === 'main_event';
+          if (inWind) wind.get(s)!.set(m.steps, Math.round((a.t / Math.max(0.05, a.total)) * 1000));
+          else wind.get(s)!.delete(m.steps);
+          for (const e of m.drainEvents()) if (e.type === 'shot' && e.side === aceSide && e.kind === 'power') shots.get(s)!.add(m.steps);
+        }
+        // (the played card goes to the back of the queue: MAIN EVENT comes back to the hand only after other cards are
+        // played — so ACE's player taps MAIN EVENT and the others in turn, like a person cycling the deck)
+        if (s === sp && d.match.phase === 'fight' && Date.now() - lastTap > 400) {
+          if (s.play(TAPS[tapI % TAPS.length])) {
+            lastTap = Date.now();
+            tapI++;
+          }
+        }
+        if (d.match.phase === 'over') void s.finish();
+      }
+      if (sp.last && sq.last && sp.last.id === sq.last.id && !sp.match && !sq.match) break;
+      await sleep(16);
+    }
+    const wp = wind.get(sp)!;
+    const wq = wind.get(sq)!;
+    const common = [...wp.keys()].filter((st) => wq.has(st));
+    const agree = common.every((st) => wp.get(st) === wq.get(st)) && wp.size === wq.size;
+    const shp = [...shots.get(sp)!].sort((a, b) => a - b);
+    const shq = [...shots.get(sq)!].sort((a, b) => a - b);
+    check(`ACE played MAIN EVENT in LIVE: both clients saw the same wind-up at every step (${common.length} steps, ${wp.size}/${wq.size}) and the shot at the same steps (${shp.join(', ')})`, common.length >= 30 && agree && shp.length >= 2 && shp.join() === shq.join(), `${wp.size}/${wq.size} ${shp.join()} | ${shq.join()}`);
+    const rr = sp.last?.result;
+    const jj = sp.last ? ((await admin.collection('live_matches').getOne(sp.last.id)).inputs as LiveInput[]) : [];
+    check(`the fight itself is the server's: the same result for both (${rr?.method}), the server's result = the replay of its journal (${jj.length} entries)`, !!rr && JSON.stringify(rr) === JSON.stringify(sq.last?.result) && replayLive(sp.last!.snapshot, jj).hash === rr.hash);
+    check('looks only: the same journal replayed WITHOUT the look gives the same fight (hash)', !!sp.last && replayLive({ ...sp.last.snapshot, sides: sp.last.snapshot.sides.map((x) => ({ ...x, look: undefined })) as typeof sp.last.snapshot.sides }, jj).hash === rr?.hash);
+    await sp.leave();
+    await sq.dispose();
+  }
+
   const warn = pbLog.filter((l) => /prime live: .*differ/.test(l));
   check(`the server logged no difference between the games (${warn.length})`, warn.length === 0, warn.slice(0, 3).join(' | '));
   const errs = pbLog.filter((l) => /ERROR|panic|TypeError|ReferenceError/.test(l));

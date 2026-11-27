@@ -96,11 +96,19 @@ const PAID: CosmeticId[] = ['frame_prime_broadcast', 'dash_prime_phantom', 'vict
 // … and Alpha 1.9.8 — CONTENT EXPANSION: two epic skins (KAI, RINA), 149 ₽ each, right after the 1.9.5 skins
 const SKINS_198: ShopSku[] = ['skin_kai_cue_master', 'skin_rina_dune_mirage'];
 const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...CATALOG_ORDER.slice(4), ...WINTER_197];
+// … and Beta 2.7.5: ACE — BLACK TIE, the second legendary skin (189 ₽, the owner's approval of 27.11.2026), after the skins
+const SKINS_275: ShopSku[] = ['skin_ace_black_tie'];
+const CATALOG_275: ShopSku[] = [...CATALOG_198.slice(0, 6), ...SKINS_275, ...CATALOG_198.slice(6)];
 
 // ------------------------------------------------------------------ the catalog
 {
-  check('catalog: the seven approved items, the eleven of 1.9.5 Part 1, the two skins of 1.9.8 (after the other skins) and the five of WINTER SHOWDOWN (1.9.7), in catalog order', SHOP_ITEMS.length === 25 && SHOP_ITEMS.map((i) => i.sku).join() === CATALOG_198.join());
-  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 25);
+  check('catalog: the seven approved items, the eleven of 1.9.5 Part 1, the two skins of 1.9.8 and BLACK TIE of 2.7.5 (after the other skins) and the five of WINTER SHOWDOWN (1.9.7), in catalog order', SHOP_ITEMS.length === 26 && SHOP_ITEMS.map((i) => i.sku).join() === CATALOG_275.join());
+  check('catalog: sku ids are unique', new Set(SHOP_ITEMS.map((i) => i.sku)).size === 26);
+  // Beta 2.7.5 — the owner's brief «BETA 2.7.5 VFX REWORK & LEGENDARY ACE»: one LEGENDARY skin of ACE for 189 ₽ (final)
+  const bt = SHOP_ITEMS.find((i) => i.sku === 'skin_ace_black_tie');
+  check('2.7.5 BLACK TIE: one new skin of ACE — LEGENDARY, 189 ₽, APPROVED (27.11.2026), a new arrival on the shop\'s front, a 3D look (fitting room «model»), the test price 10 ₽', !!bt && bt.rarity === 'legendary' && bt.category === 'skins' && bt.skin === 'ace_black_tie' && bt.fighter === 'ace' && bt.preview === 'model' && bt.isNew === true && bt.featured === true && SHOP_PRICES_RUB.skin_ace_black_tie === 189 && SHOP_PRICE_STATUS.skin_ace_black_tie === 'approved' && approvedPriceRub('skin_ace_black_tie') === 189 && SHOP_PRICES_APPROVED_LATER.skin_ace_black_tie === '2026-11-27' && SKINS.ace_black_tie.fighter === 'ace' && SKINS.ace_black_tie.look === 'ace_black_tie');
+  check('2.7.5 BLACK TIE: sold under the universal offer in force (№ 7, no list) like every priced item — in no list of revisions 1–5; a buyer of 14–17 may buy it (189 ≤ 299 ₽ an item); its receipt name is a look\'s', SHOP_OFFERS.filter((o) => o.revision <= 5).every((o) => !offerSells(o, 'skin_ace_black_tie')) && offerSells(SHOP_OFFERS.find((o) => o.revision === 7)!, 'skin_ace_black_tie') && 189 <= MINOR_PURCHASES.itemMaxRub && receiptNameOf(bt!) === 'Цифровой облик бойца ACE: BLACK TIE для игры PRIME TIME: SHOWDOWN');
+  check('2.7.5 BLACK TIE: its own look built on ACE (base), the same revolver — never a recolour: its own jacket (blacktie), hair (sidepart), shoes, accessory (watch) and the revolver\'s decoration', LOOKS.ace_black_tie.base === 'ace' && LOOKS.ace_black_tie.weapon === LOOKS.ace.weapon && LOOKS.ace_black_tie.top.style === 'blacktie' && LOOKS.ace.top.style !== 'blacktie' && LOOKS.ace_black_tie.hair.style === 'sidepart' && LOOKS.ace.hair.style !== 'sidepart' && LOOKS.ace_black_tie.weaponDeco === 'blacktie' && LOOKS.ace_black_tie.accessories.includes('watch') && Object.values(LOOKS).filter((l) => l.top.style === 'blacktie').length === 1);
   // 1.9.8 — the owner's brief of 13.11.2026, section 5
   const k198 = SHOP_ITEMS.filter((i) => SKINS_198.includes(i.sku));
   check('1.9.8 skins: exactly two — KAI: CUE MASTER and RINA: DUNE MIRAGE, epic, 149 ₽ each, APPROVED (13.11.2026), new arrivals, a 3D look of an existing fighter (fitting room «model»)', k198.length === 2 && k198.every((i) => i.rarity === 'epic' && i.category === 'skins' && i.preview === 'model' && i.isNew === true && SHOP_PRICES_RUB[i.sku] === 149 && SHOP_PRICE_STATUS[i.sku] === 'approved' && approvedPriceRub(i.sku) === 149 && SHOP_PRICES_APPROVED_LATER[i.sku] === '2026-11-13') && SKINS.kai_cue_master.fighter === 'kai' && SKINS.rina_dune_mirage.fighter === 'rina');
@@ -118,7 +126,7 @@ const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...C
   check(
     'catalog: the names',
     SHOP_ITEMS.map((i) => i.name).join('|') ===
-      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|KAI: CUE MASTER|RINA: DUNE MIRAGE|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR|CLOCKWORK GOLD|CANDY COMET|FROSTLIGHT LIVE|MIDNIGHT CONFETTI|CRAX: THE MIDNIGHT GUARD',
+      'RAY: NEON RUNNER|BRUNO: CASINO BOSS|NIKA: STAGE IDOL|VEGA: STAR PILOT|KAI: CUE MASTER|RINA: DUNE MIRAGE|ACE: BLACK TIE|PRIME BROADCAST|PHANTOM DASH|GOLDEN CONFETTI|VHS CARD FRAME|STUDIO SPOTLIGHTS|NEON FIREWORKS|GLITCH DASH|COMET TRAIL|ARCADE CABINET|HOLO FOIL|HALLOWEEN CARD STYLE|SPOOKY BROADCAST|PUMPKIN VICTORY|LUCIEN: THE NIGHT STAR|CLOCKWORK GOLD|CANDY COMET|FROSTLIGHT LIVE|MIDNIGHT CONFETTI|CRAX: THE MIDNIGHT GUARD',
   );
   // 1.9.5: one item, one id — the Halloween items sold after the season are the exchange's own cosmetics
   const exch = new Set(EVENTS.flatMap((e) => e.shop.map((x) => x.cosmetic)));
@@ -191,7 +199,7 @@ const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...C
   check('PRIME BROADCAST: the frame never takes taps and sits on the screen edges', /:root\[data-frame='prime'\] \.bc-frame,[\s\S]{0,80}\{[\s\S]{0,200}pointer-events: none !important;/.test(css));
   const fx = read('src/render/cosmeticFx.ts');
   const bv = read('src/render/BattleView.ts');
-  check('effects: pure visuals — the cosmetic effects touch only the VFX pools, not the match', !/Match|FighterSim|combat\//.test(fx.replace(/^\/\/.*$/gm, '')) && /dashBurst\(this\.vfx, rng, s\.dashFx, dc, e\.fromX, e\.fromZ, e\.toX, e\.toZ\)/.test(bv));
+  check('effects: pure visuals — the cosmetic effects touch only the VFX pools, not the match', !/Match|FighterSim|combat\//.test(fx.replace(/^\/\/.*$/gm, '')) && /dashBurst\(this\.vfx, rng, s\.dashFx, dc, e\.fromX, e\.fromZ, e\.toX, e\.toZ(, e\.side === this\.me \? this\.after : undefined)?\)/.test(bv));
 }
 
 // ------------------------------------------------------------------ ownership vs try-on vs the save
@@ -412,8 +420,10 @@ const CATALOG_198: ShopSku[] = [...CATALOG_ORDER.slice(0, 4), ...SKINS_198, ...C
     // 1.9.8: the owner's brief (13.11.2026, section 5) — both new skins EPIC
     skin_kai_cue_master: 'epic',
     skin_rina_dune_mirage: 'epic',
+    // 2.7.5: the owner's brief — BLACK TIE LEGENDARY (the second legendary skin after BRUNO)
+    skin_ace_black_tie: 'legendary',
   };
-  check('rarity: the approved honest classification of every item — BRUNO the one legendary skin; RAY, NIKA, VEGA (1.9.8: KAI, RINA) epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
+  check('rarity: the approved honest classification of every item — BRUNO (2.7.5: and ACE — BLACK TIE) the legendary skins; RAY, NIKA, VEGA (1.9.8: KAI, RINA) epic; PRIME BROADCAST, PHANTOM DASH, GOLDEN CONFETTI, SPOOKY BROADCAST rare', Object.keys(want).every((k) => tiers[k] === want[k]) && Object.keys(tiers).length === Object.keys(want).length, JSON.stringify(tiers));
   check('rarity: not everything paid is epic or legendary — all four tiers are used', RARITY_ORDER.every((r) => SHOP_ITEMS.some((i) => i.rarity === r)));
   check('rarity: PURPLE PHANTOM rare (an exclusive Halloween reward, not sold), LEGENDARY PRODUCTION rare (the same build as SPOOKY BROADCAST); the titles keep theirs (a title and its own victory screen)', COSMETICS.dash_phantom.rarity === 'rare' && COSMETICS.frame_legendary.rarity === 'rare' && COSMETICS.frame_spooky.rarity === 'rare' && COSMETICS.title_halloween_champion.rarity === 'legendary' && COSMETICS.title_prime_legend.rarity === 'legendary' && COSMETICS.title_prime_star.rarity === 'epic');
   check('rarity: the prices did not move with the tiers (the seven of № 4 and the eleven of 1.9.5)', ALL_SKUS.map((k) => SHOP_PRICES_RUB[k]).join() === '99,149,49,49,49,49,249' && NEW_195.map((k) => SHOP_PRICES_RUB[k]).join() === '149,149,69,69,59,59,49,49,49,49,59');

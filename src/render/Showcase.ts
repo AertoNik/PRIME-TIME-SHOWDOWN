@@ -13,6 +13,8 @@ import { damp } from '../core/math';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache } from './ModelCache';
 import { glowTexture } from './textures';
+import { AfterImages } from './afterimages';
+import type { GhostHost } from './cosmeticFx';
 
 /** Menu presentation: the selected fighter on a glowing stage pedestal. */
 export class Showcase {
@@ -32,6 +34,8 @@ export class Showcase {
   private slideT = -1;
   private slideFrom = 0;
   private slideTo = 0;
+  /** Beta 2.7.5: PHANTOM DASH's hologram afterimages in the fitting room (the same as in a fight). */
+  private after: AfterImages;
 
   constructor(models: ModelCache) {
     this.models = models;
@@ -50,6 +54,17 @@ export class Showcase {
     glow.position.y = 0.02;
     this.group.add(glow);
     this.input.combat = false;
+    this.after = new AfterImages(models, this.group);
+  }
+
+  /** Who draws the fitting room's dash afterimages (cosmeticFx.dashBurst). */
+  get ghosts(): GhostHost {
+    return this.after;
+  }
+
+  /** Builds the afterimages of the fighter on the pedestal now (PHANTOM DASH's page opened): no hitch on the first dash. */
+  warmGhosts(): void {
+    this.after.warm();
   }
 
   show(look: string, accent?: string): void {
@@ -63,6 +78,7 @@ export class Showcase {
     this.look = look;
     this.current = this.models.get(look);
     const rig = this.current.rig;
+    this.after.bind(look, 0, rig);
     rig.root.visible = true;
     this.group.add(rig.root);
     this.current.anim.reset(this.yaw);
@@ -73,6 +89,7 @@ export class Showcase {
 
   hide(): void {
     this.group.visible = false;
+    this.after.clear();
   }
 
   setDragging(d: boolean): void {
@@ -110,6 +127,7 @@ export class Showcase {
   update(dt: number): void {
     if (!this.group.visible || !this.current) return;
     this.t += dt;
+    this.after.update(dt);
     if (!this.dragging) {
       this.yaw += this.yawVel * dt * 0.02;
       this.yawVel = damp(this.yawVel, 0, 4, dt);

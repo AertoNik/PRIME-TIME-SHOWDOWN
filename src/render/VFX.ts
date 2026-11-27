@@ -31,6 +31,7 @@ import { clamp01, ease, Rng } from '../core/math';
 import { canvasTexture, flareTexture, glowTexture, hexTexture, laneTexture, makeCanvas, pumpkinSpriteTexture, puffTexture, raysTexture, ringTexture, scorchTexture, starTexture } from './textures';
 import { ARENA } from '../config/balance';
 import type { WeaponType } from '../config/types';
+import { FxKit } from './fxKit';
 
 const _v = new Vector3();
 const _v2 = new Vector3();
@@ -1283,6 +1284,13 @@ export class VFX {
   readonly glitch: GlitchField[] = [];
   /** DIRECTOR'S CUT warning line (only the boss uses it, one at a time). */
   readonly cutLane: CutLane;
+  /** Beta 2.7.5: the cosmetic effects' own pieces (fxKit.ts) — made now, drawn only while an effect plays. */
+  readonly kit: FxKit;
+  /**
+   * Beta 2.7.5: how much the cosmetic effects may draw — 2 HIGH, 1 MEDIUM, 0 LOW (the game sets it from the quality the
+   * renderer runs at, AUTO included): LOW plays lighter versions of the same effects.
+   */
+  detail: 0 | 1 | 2 = 2;
   private t = 0;
 
   constructor(scene: Scene) {
@@ -1299,6 +1307,7 @@ export class VFX {
     this.raysPool = new FlashPool(this.group, 6, raysTexture());
     for (let i = 0; i < 2; i++) this.glitch.push(new GlitchField(this.group));
     this.cutLane = new CutLane(this.group);
+    this.kit = new FxKit(this.group);
     scene.add(this.group);
   }
 
@@ -1657,6 +1666,7 @@ export class VFX {
     this.scorches.update(dt);
     this.raysPool.update(dt);
     this.pumpkinRain?.update(dt);
+    this.kit.update(dt, cam);
   }
 
   get time(): number {

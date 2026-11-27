@@ -29,7 +29,8 @@ const after = dump(false);
 const looks = Object.keys(after);
 const base = JSON.parse(read('scripts/lib/look-baseline.json')) as { looks: Record<string, string>; looks23?: Record<string, string> };
 
-check(`all ${looks.length} looks built both ways (15 fighters, the rivals, the 6 skins)`, looks.length === 21 && looks.every((l) => !!before[l]));
+// (Beta 2.7.5: + ACE — BLACK TIE, the seventh skin)
+check(`all ${looks.length} looks built both ways (15 fighters, the rivals, the 7 skins)`, looks.length === 22 && looks.every((l) => !!before[l]));
 check('the Beta 2.2 build (RIG_BUILD.v22) gives exactly the published Beta 2.2 prints (look-baseline.json looks)', Object.keys(base.looks).length === 13 && Object.entries(base.looks).every(([id, p]) => before[id]?.print === p));
 check('today\'s build gives the Beta 2.3 prints, pinned on purpose (look-baseline.json looks23) — and every one of them differs from 2.2', !!base.looks23 && Object.keys(base.looks23).length === 13 && Object.entries(base.looks23).every(([id, p]) => after[id]?.print === p && p !== base.looks[id]));
 

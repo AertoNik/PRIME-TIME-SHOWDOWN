@@ -62,7 +62,17 @@ check('the exclusive is a real collection item: INVITE SIGNAL, a legendary dash 
 // the effect in a fight: a dash with INVITE SIGNAL worn, run headless against a recording stand-in for the VFX layer
 {
   const calls: string[] = [];
-  const rec: any = new Proxy({}, { get: (_t, k) => (k === 'sparks' ? rec : (..._a: unknown[]) => void calls.push(String(k))) });
+  // Beta 2.7.5: the effects also spawn into their pools (vfx.soft.spawn, vfx.kit.<pool>.spawn), read the detail level
+  // (vfx.detail) and draw their canvas textures once — so every member is a recording call that has members of its own,
+  // and the canvas is a stand-in (no DOM in the checks)
+  const node = (name: string): any =>
+    new Proxy(() => {}, {
+      apply: () => void calls.push(name),
+      get: (_t, k) => (k === 'detail' ? 2 : node(name + '.' + String(k))),
+    });
+  const rec: any = node('vfx');
+  const ctx: any = new Proxy({}, { get: (_t, k) => (k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 10 }) : () => {}), set: () => true });
+  (globalThis as any).document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => ctx }) };
   const rng: any = { range: (a: number, b: number) => (a + b) / 2 };
   const run = (fx: any) => {
     calls.length = 0;

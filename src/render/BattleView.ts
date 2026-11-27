@@ -25,7 +25,8 @@ import { clamp01, clampRoundedRect, damp, lerp, Rng, type ClampResult } from '..
 import type { Arena } from './Arena';
 import type { CameraRig } from './CameraRig';
 import { CardVisuals } from './CardVisuals';
-import { dashBurst, dashColor, victoryCelebration, type DashFx, type VictoryFx } from './cosmeticFx';
+import { dashBurst, dashColor, dashTrailWidth, victoryCelebration, type DashFx, type VictoryFx } from './cosmeticFx';
+import { AfterImages } from './afterimages';
 import { defaultInput, type AnimInput } from './FighterAnimator';
 import type { CachedFighter, ModelCache, RigCopy } from './ModelCache';
 import { LOOKS } from '../config/looks';
@@ -141,6 +142,8 @@ export class BattleView {
   private cards: CardVisuals;
   /** Alpha 1.7: LUCIEN's bats, cane slashes and the vampire mark. */
   private night: NightFX;
+  /** Beta 2.7.5: PHANTOM DASH's hologram afterimages of this player's own fighter. */
+  private after: AfterImages;
   /** Alpha 1.9.7: CRAX's TWELFTH STRIKE dial and his victory gears. */
   private clock: ClockFX;
   /** Alpha 1.7: the variant of each side's cane strike in progress (for its slash arc). */
@@ -156,6 +159,7 @@ export class BattleView {
     r.scene.add(this.root);
     this.cards = new CardVisuals(this.root);
     this.night = new NightFX(this.root);
+    this.after = new AfterImages(this.models, this.root);
     this.clock = new ClockFX(this.root);
     const coreGeo = new SphereGeometry(1, 12, 8);
     const streakGeo = new PlaneGeometry(1, 1);
@@ -294,6 +298,11 @@ export class BattleView {
     this.vfx.glitch[1].setColor(new Color(0xff4fd8));
     const rivalAccent = this.slots[1].accent;
     if (match.rival.archetype === 'nika') this.vfx.glitch[0].setColor(rivalAccent);
+    // Beta 2.7.5: PHANTOM DASH's afterimages copy this player's own fighter — built now (hidden) when it is worn, so the
+    // warm-up below compiles them behind the VS intro instead of on the first dash
+    this.after.bind(this.looks[this.me], this.copies[this.me], this.slots[this.me].model.rig);
+    if (this.style.dashFx === 'prime') this.after.warm();
+    else if (this.style.dashFx === 'glitch') this.after.warm(2);
     this.cam.snapBattle(this.slots[0].pos, this.slots[1].pos);
     this.arena.setScreen({
       mode: 'fight',
@@ -327,6 +336,7 @@ export class BattleView {
     }
     for (const d of this.decoys.values()) this.root.remove(d.rig.root);
     this.decoys.clear();
+    this.after.clear();
     if (this.ghost) {
       this.root.remove(this.ghost.model.rig.root);
       this.ghost = null;
@@ -478,6 +488,7 @@ export class BattleView {
       }
     }
 
+    this.after.update(dt);
     // FALSE START afterimage: stands where Rina feinted and fades out
     const gh = this.ghost;
     if (gh) {
@@ -660,7 +671,7 @@ export class BattleView {
       tr.width = 1.0;
       tr.color.set(0xc4123a);
     } else if (s.trailT > 0) {
-      tr.width = s.dashColor !== s.accent ? 1.05 : 0.9;
+      tr.width = dashTrailWidth(s.dashFx);
       tr.color.copy(s.dashColor);
     } else if (f.overdrive > 0) {
       tr.width = 0.5;
@@ -943,6 +954,14 @@ export class BattleView {
         const mz = s.model.rig.muzzles[e.muzzle] ?? s.model.rig.muzzles[0];
         mz.getWorldPosition(_v);
         this.vfx.muzzleFor(e.weapon, _v, e.dx, e.dz, s.accent, heavy);
+        // Beta 2.7.5: ACE's MAIN EVENT — a gold flare and a spray of gold glints at the muzzle (looks only; the shot, its
+        // moment and its damage are the simulation's)
+        if (s.model.anim.lastFireMain) {
+          this.vfx.flash(_v.x, _v.y, _v.z, _c.set(0xffe08a), 0.5, 1.7, 0.2, 2.3);
+          for (let i = 0; i < 7; i++) {
+            this.vfx.kit.stars.spawn({ x: _v.x, y: _v.y, z: _v.z, vx: e.dx * rng.range(1.5, 3.5) + rng.range(-1, 1), vy: rng.range(0.2, 1.6), vz: e.dz * rng.range(1.5, 3.5) + rng.range(-1, 1), drag: 3, life: rng.range(0.3, 0.45), w: 0.2, w1: 0.05, rot: rng.range(0, 6), spin: 6, color: 0xffd36a, intensity: 2.6 });
+          }
+        }
         const rp = RECOIL[e.weapon];
         if (heavy) {
           this.cam.kick(0.4);
@@ -1188,8 +1207,9 @@ export class BattleView {
         const dc = s.dashColor;
         const phantom = s.dashFx !== null;
         s.trailT = phantom ? 0.42 : 0.32;
-        // dust, ring and sparks, plus the dash cosmetic (PURPLE PHANTOM / PHANTOM DASH) — cosmeticFx.ts
-        dashBurst(this.vfx, rng, s.dashFx, dc, e.fromX, e.fromZ, e.toX, e.toZ);
+        // dust, ring and sparks — or the dash cosmetic worn by this player's fighter (cosmeticFx.ts; Beta 2.7.5: PHANTOM
+        // DASH's hologram copies of the fighter come from this view's afterimages)
+        dashBurst(this.vfx, rng, s.dashFx, dc, e.fromX, e.fromZ, e.toX, e.toZ, e.side === this.me ? this.after : undefined);
         if (e.style === 'blink') {
           this.vfx.burst(e.fromX, 1.1, e.fromZ, dc, 20, 4, 0.2, 0.35, 2.6);
           this.vfx.burst(e.toX, 1.1, e.toZ, dc, 20, 4, 0.2, 0.35, 2.6);
@@ -1415,7 +1435,9 @@ export class BattleView {
             l.defeatDelay = DEFEAT_DELAY;
           }
           this.cam.finishFocus.copy(w.pos);
-          if (m.winner === 0) {
+          // (Beta 2.7.5: the winner is THIS player — in LIVE DUELS that may be side 1; before, a side-1 winner had no
+          // celebration and a side-0 friend's win played this player's own victory effect on the friend)
+          if (m.winner === this.me) {
             const fx = this.style.victoryFx;
             setTimeout(() => {
               if (this.match !== m) return;

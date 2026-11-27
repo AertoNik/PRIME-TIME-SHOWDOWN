@@ -607,6 +607,8 @@ export class ShopScreen implements Screen {
       return;
     }
     g.showcase.show(look, accent);
+    // (Beta 2.7.5: PHANTOM DASH's hologram copies of the fighter and GLITCH DASH's doubles — built now, not on the first preview)
+    if (it.cosmetic && (DASH_FX[it.cosmetic] === 'prime' || DASH_FX[it.cosmetic] === 'glitch')) g.showcase.warmGhosts();
     g.showcaseZoom = ZOOMS[this.zoomI];
     g.frameShowcase();
   }
@@ -640,7 +642,7 @@ export class ShopScreen implements Screen {
       const to = 0.95 * this.dashDir;
       g.audio.ui('swipe');
       g.showcase.demoDash(from, to);
-      dashBurst(g.vfx, this.rng, fx, color, from, 0.3, to, 0.3);
+      dashBurst(g.vfx, this.rng, fx, color, from, 0.3, to, 0.3, g.showcase.ghosts);
     } else if (it.preview === 'confetti') {
       const fx = this.compare ? null : (VICTORY_FX[id] ?? null);
       const token = this.alive;

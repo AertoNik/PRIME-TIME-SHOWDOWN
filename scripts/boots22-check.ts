@@ -25,7 +25,8 @@ const before: Dump = dump(true);
 const after: Dump = dump(false);
 const looks = Object.keys(after);
 
-check(`all ${looks.length} looks built both ways (15 fighters, the rivals, the 6 skins)`, looks.length === 21 && looks.every((l) => !!before[l]));
+// (Beta 2.7.5: + ACE — BLACK TIE, the seventh skin)
+check(`all ${looks.length} looks built both ways (15 fighters, the rivals, the 7 skins)`, looks.length === 22 && looks.every((l) => !!before[l]));
 const other = looks.every((l) => Object.keys(after[l].bones).join() === Object.keys(before[l].bones).join() && Object.keys(after[l].bones).every((b) => after[l].bones[b] === before[l].bones[b]));
 check('every bone except the shins\' positions is byte for byte the Beta 2.1 one (the shoes, the faces, the weapons, the shins\' colours and normals)', other);
 let moved = 0;

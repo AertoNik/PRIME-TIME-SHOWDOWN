@@ -68,4 +68,6 @@ if (!stage || !ui) {
   if (import.meta.env.DEV) void import('./dev/occlusionProbe').then((m) => m.installOcclusionProbe(game));
   // 1.9.8: __tapAudit() / __tapAuditAll() — controls covered by something on top (dead taps on a phone; dev only)
   if (import.meta.env.DEV) void import('./dev/tapAudit').then((m) => m.installTapAudit(game));
+  // Beta 2.7.5: __fx.shot(sku, ms) — a cosmetic effect in the PRIME SHOP fitting room, frozen at a moment (dev only)
+  if (import.meta.env.DEV) void import('./dev/fxLab').then((m) => m.installFxLab(game));
 }

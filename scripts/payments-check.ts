@@ -145,7 +145,7 @@ function protocolChecks(): void {
   const rules = realRules();
   const sold = Object.keys(rules.catalog).filter((k: string) => rules.prices[k] !== null);
   // (1.9.5: the eleven approved on 06.11.2026 carry a price too — 18 in all; what is SOLD is still the offer's Appendix 1)
-  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items; 1.9.8: 25 with KAI and RINA (149); Beta 2.0: + the six bundles approved 14.11.2026 (one line each, at the bundle\'s price)', sold.length === 25 + 6 && sold.filter((k: string) => rules.catalog[k].kind === 'bundle').length === 6 && rules.prices.bundle_ray_glitch === 129 && rules.prices.bundle_broadcast_trio === 119 && /^Комплект цифровых предметов NEON GLITCH \(2 шт\.\) для игры PRIME TIME: SHOWDOWN$/.test(PAYJS.receiptName('bundle_ray_glitch')) && sold.includes('fighter_lucien') && sold.includes('skin_kai_cue_master') && sold.includes('skin_rina_dune_mirage') && rules.prices.skin_kai_cue_master === 149 && rules.prices.skin_rina_dune_mirage === 149 && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
+  check('nomenclature: every item with an approved price gets its own receipt name (≤ 128, unchanged by the character rule), its approved price as the sum — 1.9.4: LUCIEN too («Открытие игрового персонажа…», 249); 1.9.5: 18 items; 1.9.7: 23 with CRAX (249) and the four winter items; 1.9.8: 25 with KAI and RINA (149); Beta 2.0: + the six bundles approved 14.11.2026 (one line each, at the bundle\'s price); Beta 2.7.5: 26 with ACE — BLACK TIE (189)', sold.length === 26 + 6 && rules.prices.skin_ace_black_tie === 189 && PAYJS.receiptName('skin_ace_black_tie') === 'Цифровой облик бойца ACE: BLACK TIE для игры PRIME TIME: SHOWDOWN' && sold.filter((k: string) => rules.catalog[k].kind === 'bundle').length === 6 && rules.prices.bundle_ray_glitch === 129 && rules.prices.bundle_broadcast_trio === 119 && /^Комплект цифровых предметов NEON GLITCH \(2 шт\.\) для игры PRIME TIME: SHOWDOWN$/.test(PAYJS.receiptName('bundle_ray_glitch')) && sold.includes('fighter_lucien') && sold.includes('skin_kai_cue_master') && sold.includes('skin_rina_dune_mirage') && rules.prices.skin_kai_cue_master === 149 && rules.prices.skin_rina_dune_mirage === 149 && sold.includes('fighter_crax') && rules.prices.fighter_crax === 249 && rules.prices.fighter_lucien === 249 && /^Открытие игрового персонажа LUCIEN: THE NIGHT STAR/.test(PAYJS.receiptName('fighter_lucien')) && sold.every((k: string) => {
     const n = PAYJS.receiptName(k);
     const j2 = JSON.parse(decodeURIComponent(RK.receipt(n, Math.round(rules.prices[k] * 100))));
     // (a bundle's title is «Комплект NAME»; its receipt line says «Комплект цифровых предметов NAME (N шт.) …»)
@@ -266,8 +266,9 @@ function protocolChecks(): void {
   const sha = (t: string) => crypto.createHash('sha256').update(t, 'utf8').digest('hex');
   check('the stand-in terms are hashed from their own text (staging: revision 9001, the demonstration: 9002) — neither is an offer (no page)', sha(OFFERS.TEST_OFFER_TEXT) === OFFERS.TEST_OFFER.sha256 && sha(OFFERS.DEMO_OFFER_TEXT) === OFFERS.DEMO_OFFER.sha256 && OFFERS.DEMO_OFFER.revision === 9002 && OFFERS.DEMO_OFFER.url === '' && realRules().demo.offer.sha256 === OFFERS.DEMO_OFFER.sha256);
   const rnames = Object.keys(realRules().catalog).map((k: string) => PAYJS.receiptName(k));
-  // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced; 1.9.8: 25)
-  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 25 + 6 /* Beta 2.0: + the six bundles */ && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
+  // (1.9.7: 23 catalog items — the five of WINTER SHOWDOWN have their names ready, they are sold only once priced; 1.9.8: 25;
+  // Beta 2.7.5: 26 with ACE — BLACK TIE)
+  check('every receipt name (server rules) survives Robokassa\'s Description rule unchanged and fits 100 characters (what the buyer sees = what the receipt says)', rnames.length === 26 + 6 /* Beta 2.0: + the six bundles */ && rnames.every((n: string) => RK.description(n) === n && n.length <= 100 && /PRIME TIME: SHOWDOWN$/.test(n)), rnames.join(' | '));
 }
 
 // ======================================================================== safety
@@ -622,6 +623,34 @@ async function serverChecks(): Promise<void> {
     check('1.9.8 RINA: DUNE MIRAGE is sold on its own (a separate item, its own receipt name)', rc.status === 200 && rc.j.order.title === PAYJS.receiptName('skin_rina_dune_mirage') && /RINA: DUNE MIRAGE/.test(rc.j.order.title));
     const live = read('backend/pb_hooks/lib/shop_rules.js');
     check('1.9.8 the live price the server charges is 149 ₽ for each, approved (the generated rules — never the game\'s number)', /"prices": \{[^}]*"skin_kai_cue_master": 149,[^}]*"skin_rina_dune_mirage": 149,/.test(live) && /"skin_kai_cue_master": "approved"/.test(live) && /"skin_rina_dune_mirage": "approved"/.test(live));
+  }
+
+  // ---------------------------------------------------------------- Beta 2.7.5: ACE — BLACK TIE (LEGENDARY, 189 ₽)
+  section('2.7.5: легендарный скин ACE — BLACK TIE — цена сервера, подделки, право, повтор уведомления, без повторной покупки');
+  {
+    const A = await mk('blacktie@payments.test');
+    const N = await mk('blacktie-other@payments.test');
+    await http('POST', '/api/prime/shop/offer/accept', A.tok, { revision: TERMS.revision, sha256: TERMS.sha256 });
+    const ac = await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'skin_ace_black_tie', priceRub: 1, amountKop: 100 });
+    const ao = ac.j.order;
+    check('2.7.5 BLACK TIE — the order at the SERVER price (test environment 10 ₽; the 1 ₽ the game sent is ignored), the receipt name of a look', ac.status === 200 && ao.amountKop === 1000 && ao.title === 'Цифровой облик бойца ACE: BLACK TIE для игры PRIME TIME: SHOWDOWN' && ac.j.payment?.fields?.Description === ao.title, JSON.stringify(ac.j).slice(0, 200));
+    const aId = sqlite(`select id from shop_orders where invId=${ao.inv};`);
+    const fakeSum = await notify({ ...signedNote(ao.inv, '10.000000', aId), OutSum: '1.000000' });
+    const fakeSig = await notify({ ...signedNote(ao.inv, '10.000000', aId), SignatureValue: 'F'.repeat(64) });
+    check('2.7.5 a forged payment notice (another sum, a bad signature) → 400, no right, the order still unpaid', fakeSum.status === 400 && fakeSig.status === 400 && sqlite(`select count(*) from shop_entitlements where user='${A.id}' and sku='skin_ace_black_tie';`) === '0' && sqlite(`select status from shop_orders where id='${aId}';`) === 'pending_payment');
+    const aOk = await notify(signedNote(ao.inv, '10.000000', aId));
+    const again = await Promise.all([notify(signedNote(ao.inv, '10.000000', aId)), notify(signedNote(ao.inv, '10.000000', aId), 'GET'), notify(signedNote(ao.inv, '10.00', aId))]);
+    const owned = (await http('GET', '/api/prime/shop/purchases', A.tok)).j.owned;
+    check('2.7.5 paid → the buyer\'s PRIME ID owns BLACK TIE; the repeated notices (POST, GET, the other sum format) answer «OK» and change nothing — one right, one fulfilled order', aOk.text === `OK${ao.inv}` && again.every((r) => r.text === `OK${ao.inv}`) && owned.includes('skin_ace_black_tie') && sqlite(`select count(*) from shop_entitlements where user='${A.id}' and sku='skin_ace_black_tie';`) === '1' && sqlite(`select status from shop_orders where id='${aId}';`) === 'fulfilled');
+    check('2.7.5 a second purchase of BLACK TIE → 409 owned, no new order', (await http('POST', '/api/prime/shop/checkout', A.tok, { sku: 'skin_ace_black_tie' })).j.code === 'owned' && sqlite(`select count(*) from shop_orders where user='${A.id}';`) === '1');
+    check('2.7.5 the right belongs to that PRIME ID only — another account owns nothing by it', !(await http('GET', '/api/prime/shop/purchases', N.tok)).j.owned.includes('skin_ace_black_tie') && sqlite(`select count(*) from shop_entitlements where user='${N.id}';`) === '0');
+    const wear = JSON.parse(JSON.stringify(def));
+    wear.shop = { skins: { ace: 'ace_black_tie' } };
+    const wrong = JSON.parse(JSON.stringify(def));
+    wrong.shop = { skins: { kai: 'ace_black_tie' } };
+    check('2.7.5 the wardrobe choice ACE → BLACK TIE is a valid cloud-save field (a choice only — ownership is never in the save); BLACK TIE on another fighter is refused', (await putSave(A, wear, 0)).status === 200 && (await putSave(N, wrong, 0)).status === 400);
+    const live = read('backend/pb_hooks/lib/shop_rules.js');
+    check('2.7.5 the live price the server charges is 189 ₽, approved, a skin of ACE (the generated rules — never the game\'s number)', /"skin_ace_black_tie": 189,/.test(live) && /"skin_ace_black_tie": "approved"/.test(live) && /"skin_ace_black_tie": \{\s*"kind": "skin",\s*"item": "ace_black_tie",\s*"fighter": "ace"/.test(live));
   }
 
   // ---------------------------------------------------------------- 1.9.5: seasonal effects after their season
