@@ -129,11 +129,27 @@ export class MenuScreen implements Screen {
       this.paintCloud();
       this.paintDaily();
       this.paintReferral();
+      this.paintLive();
     });
     // 1.8.9: the gift lights up when today's reward waits, and goes quiet once it is taken
     g.daily.onChange(() => this.paintDaily());
     // Beta 2.4: the cases waiting — a number on the invite and the gift
     onCases(() => this.paintCases());
+  }
+
+  /**
+   * Beta 2.7.1: LIVE DUELS follow the account too. The server's config (the button) and the sign-in (the way back into a
+   * room or a running fight after a reload) can arrive after the menu was drawn — a player who tapped the title early
+   * on a slow connection had no button and was not taken back into the fight until the menu was opened again.
+   */
+  private paintLive(): void {
+    const g = this.g;
+    if (g.currentScreen !== 'menu') return;
+    const liveOn = !!g.account?.serverConfig?.live;
+    const shown = this.el.querySelector('.live-entry');
+    if (liveOn && !shown) this.el.querySelector('.menu-play .menu-shops')?.insertAdjacentHTML('beforebegin', liveEntryHTML());
+    else if (!liveOn && shown) shown.remove();
+    if (liveOn && g.save.data.tutorial !== 'pending') queueMicrotask(() => g.live.autoOpen());
   }
 
   /** Beta 2.4: how many PRIME INVITE / DAILY BROADCAST cases wait — a badge on «Пригласить друга» and the gift. */
@@ -313,13 +329,7 @@ export class MenuScreen implements Screen {
       </button>`;
     // Beta 2.7 LIVE DUELS: online duels with friends — shown while this server runs them (a guest is shown the way in)
     const liveOn = !!g.account?.serverConfig?.live;
-    const liveEntry = liveOn
-      ? `<button class="live-entry" data-act="live" aria-label="LIVE DUELS — онлайн-дуэли с друзьями">
-        <span class="le-emb pic" aria-hidden="true">${uiIcon('live_duels', 56)}</span>
-        <span class="le-text"><b>LIVE <em>DUELS</em></b><small>Онлайн-дуэли с друзьями</small></span>
-        <span class="le-live" aria-hidden="true"><i></i>LIVE</span>
-      </button>`
-      : '';
+    const liveEntry = liveOn ? liveEntryHTML() : '';
     // 1.8.8: the PRIME ID hint (not signed in, not during the first-run choice, not retired)
     const signedIn = !!g.account?.api?.sessionRecord;
     const showHint = !signedIn && s.tutorial !== 'pending' && hintLeft();
@@ -381,4 +391,13 @@ export class MenuScreen implements Screen {
     // (after this screen finished showing — switching screens from inside onShow would leave both on screen)
     if (liveOn && s.tutorial !== 'pending') queueMicrotask(() => g.live.autoOpen());
   }
+}
+
+/** The LIVE DUELS button of the menu (Beta 2.7; 2.7.1: also put in later, when the server's config comes after the menu). */
+function liveEntryHTML(): string {
+  return `<button class="live-entry" data-act="live" aria-label="LIVE DUELS — онлайн-дуэли с друзьями">
+        <span class="le-emb pic" aria-hidden="true">${uiIcon('live_duels', 56)}</span>
+        <span class="le-text"><b>LIVE <em>DUELS</em></b><small>Онлайн-дуэли с друзьями</small></span>
+        <span class="le-live" aria-hidden="true"><i></i>LIVE</span>
+      </button>`;
 }

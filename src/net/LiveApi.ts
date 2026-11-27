@@ -1,3 +1,4 @@
+import type { ArenaId, ArenaPref } from '../config/arenas.config';
 import type { FighterId, CardId } from '../config/types';
 import type { LiveInput, LiveSnapshot } from '../live/sim';
 import { SIM_VERSION } from '../league/simVersion';
@@ -14,6 +15,8 @@ export interface LivePlayer {
   connected: boolean;
   /** Only in the player's own entry. */
   deck?: CardId[];
+  /** Beta 2.7.1: the set this player wants (a set open now or 'random'); null before the first pick, absent on a 2.7 server. */
+  arena?: ArenaPref | null;
 }
 
 export interface LiveRoom {
@@ -29,6 +32,16 @@ export interface LiveRoom {
   rematch: { host: boolean; guest: boolean };
   expires: number;
   closedWhy: string | null;
+  /** Beta 2.7.1: the sets a player may choose now (absent: a 2.7 server — the set is always drawn). */
+  arenas?: ArenaId[];
+  /** Seasonal sets opening within two weeks (locked, with their start). */
+  soon?: { id: ArenaId; from: number }[];
+}
+
+/** Beta 2.7.1: how the server chose a match's set (snapshot.arenaPick; prefs by side 0 / 1). */
+export interface LiveArenaPick {
+  how: 'same' | 'coin' | 'one' | 'random';
+  prefs: [ArenaPref, ArenaPref];
 }
 
 export interface LiveResult {
@@ -55,7 +68,8 @@ export interface LiveMatchView {
   room: string;
   game: number;
   side: 0 | 1;
-  snapshot: LiveSnapshot;
+  /** (arenaPick — 2.7.1 servers: how the set was chosen; the fight never reads it) */
+  snapshot: LiveSnapshot & { arenaPick?: LiveArenaPick };
   startAt: number;
   status: 'active' | 'done' | 'void';
   sim: string;
@@ -117,8 +131,13 @@ export class LiveApi {
   attach(room: string, clientId: string): Promise<{ room: LiveRoom; t: number }> {
     return this.call('POST', `/room/${room}/attach`, { clientId });
   }
-  pick(room: string, fighter: FighterId, deck: CardId[], look: string | null): Promise<{ room: LiveRoom; t: number }> {
-    return this.call('POST', `/room/${room}/pick`, { fighter, deck, look: look ?? '' });
+  /** (arena — 2.7.1: the set preference with the room's first pick; absent = the server keeps the stored one) */
+  pick(room: string, fighter: FighterId, deck: CardId[], look: string | null, arena?: ArenaPref): Promise<{ room: LiveRoom; t: number }> {
+    return this.call('POST', `/room/${room}/pick`, { fighter, deck, look: look ?? '', ...(arena ? { arena } : {}) });
+  }
+  /** Beta 2.7.1: this player's set preference for the next match (a set open now or 'random'). */
+  arena(room: string, arena: ArenaPref): Promise<{ room: LiveRoom; t: number }> {
+    return this.call('POST', `/room/${room}/arena`, { arena });
   }
   ready(room: string, ready: boolean): Promise<{ room: LiveRoom; match?: LiveMatchView; t: number }> {
     return this.call('POST', `/room/${room}/ready`, { ready });

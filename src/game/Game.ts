@@ -1055,7 +1055,7 @@ export class Game {
     if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult' || this.screen === 'liveResult') this.endBattleView();
     this.audio.stopCelebration(0.6);
     const stage = view.snapshot.arena;
-    const switched = this.arena.setStage(stage);
+    this.arena.setStage(stage);
     this.setChampionStage(false);
     if (d.lag() > 0) {
       d.advance(d.lag(), 0);
@@ -1076,7 +1076,8 @@ export class Game {
     this.timeFx.slowScale = 1;
     this.showcase.hide();
     this.battleView.setup(match, [leagueLook(sides[0].fighter, sides[0].look), leagueLook(sides[1].fighter, sides[1].look)], view.side);
-    this.hud.setup(match, mode, { stage: switched || stage !== 'original', halloween: false });
+    // (Beta 2.7.1: a live duel always names its set in the intro — the players chose it, the server decided)
+    this.hud.setup(match, mode, { stage: true, halloween: false });
     this.cam.setMode('battle', 1.9);
     this.cam.finishShift = 0.04;
     this.cam.finishDist = 7.5;

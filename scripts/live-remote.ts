@@ -127,10 +127,17 @@ async function main(): Promise<void> {
     check(`a room on STAGING (code ${r.code.length} letters), the friend joined by code`, j.room.status === 'open');
     await sa.api.pick(r.id, 'kai', ['dash', 'power_shot', 'shield', 'bank_shot'], null);
     await sb.api.pick(r.id, 'nika', ['dash', 'power_shot', 'shield', 'system_overload'], null);
+    // Beta 2.7.1: both choose the same studio set → the first match is on it
+    const open = (await sa.api.pulse(r.id, 0, null)).room.arenas ?? [];
+    const setA = open.includes('casino') ? 'casino' : open[0];
+    await sa.api.arena(r.id, setA);
+    const seen = await sb.api.arena(r.id, setA);
+    check(`the studio set: both players see both choices (${setA} / ${setA}; open now: ${open.join(', ')})`, seen.room.host?.arena === setA && seen.room.guest?.arena === setA);
     await sa.ready(true);
     await sb.ready(true);
     await sleep(1500);
     check('both ready → the match started for both through realtime over HTTPS', !!sa.match && !!sb.match && sa.match.id === sb.match.id);
+    check(`the match is on the set both chose («${sa.match?.snapshot.arena}», ${sa.match?.snapshot.arenaPick?.how})`, sa.match?.snapshot.arena === setA && sa.match?.snapshot.arenaPick?.how === 'same' && sb.match?.snapshot.arena === setA);
     console.log(`  clock: offset ${sa.clock.offset} / ${sb.clock.offset} ms, best round trip ${sa.clock.rtt} / ${sb.clock.rtt} ms`);
     const f1 = await fight({ pTap: 0.025 });
     const res = f1.a?.result;
@@ -145,12 +152,17 @@ async function main(): Promise<void> {
     check(`no action lost: every card sent by a client is in the server journal (${sa.stats.actsSent + sb.stats.actsSent} sent)`, sa.stats.actsFailed + sb.stats.actsFailed === 0, JSON.stringify([sa.stats.failCodes, sb.stats.failCodes]));
 
     section('Реванш и сдача через интернет');
+    // the friend changes the set before the rematch → two different sets: the server's 50/50 draw between them
+    const setB = open.find((x) => x !== setA) ?? setA;
+    await sb.api.arena(r.id, setB);
     await sa.rematch(true);
     await sb.rematch(true);
     await sleep(1500);
     const f2 = await fight({ pTap: 0.025, surrender: { who: sb, step: 1500 } });
     const r2 = f2.a?.result;
     check(`rematch in the same room, sides swapped, a surrender mid-fight: «${r2?.method}», the one who gave up lost, both see it`, !!r2 && r2.method === 'forfeit' && r2.winner === 1 - (r2.left as number) && same(f2.a?.result, f2.b?.result) && f2.a?.game === 2);
+    const s2 = f2.a?.snapshot;
+    check(`the rematch after the friend changed the set: «${s2?.arena}» by a 50/50 draw of ${setA} / ${setB}`, !!s2 && (s2.arena === setA || s2.arena === setB) && s2.arenaPick?.how === (setA === setB ? 'same' : 'coin'));
     await sa.leave();
     await sb.dispose();
   } finally {

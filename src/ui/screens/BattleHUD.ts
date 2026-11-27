@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { arenaById } from '../../config/arenas.config';
+import { arenaWhy } from '../liveArena';
 import { CARD_TUNING, MATCH } from '../../config/balance';
 import { CARDS, COMBOS, comboFor } from '../../config/cards';
 import { FIGHTERS } from '../../config/fighters';
@@ -623,7 +624,8 @@ export class BattleHUD implements Screen {
       this.modeStrip.innerHTML = `<span class="ms-tag lv">LIVE DUEL</span><span class="ms-main"><i>VS</i>${esc(foe.name ?? '')}</span><span class="ms-live on" data-ms-net>● ONLINE</span>`;
       this.modeLive = null;
       this.liveNet = this.modeStrip.querySelector('[data-ms-net]');
-      return `<div class="mi-cap lv">LIVE DUEL · ${mode.view.game > 1 ? `РЕВАНШ ${mode.view.game - 1}` : 'PRIME TIME'}</div>`;
+      // Beta 2.7.1: under the set's caption — how the server chose it (both chose it, a 50/50 draw, whose choice, random)
+      return `<div class="mi-cap lv">LIVE DUEL · ${mode.view.game > 1 ? `РЕВАНШ ${mode.view.game - 1}` : 'PRIME TIME'}</div><div class="mi-why lv">АРЕНА: ${esc(arenaWhy(mode.view.snapshot.arenaPick, mode.side).toUpperCase())}</div>`;
     }
     if (mode.kind === 'challenge') {
       const def = challengeById(mode.id);

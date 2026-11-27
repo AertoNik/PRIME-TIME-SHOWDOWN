@@ -221,6 +221,9 @@ async function serverChecks(): Promise<void> {
   await call(A, 'POST', `/api/prime/live/room/${room.id}/leave`, {});
   check('leaving closes the room for both', (await call(B, 'POST', `/api/prime/live/room/${room.id}/pulse`, {})).j.room?.status === 'closed');
 
+  // (two fresh accounts: the series below plays hundreds of matches — A and B keep clean stats for the fights after)
+  await arenaChecks(await user(['ray', 'kai']), await user(['ray', 'nika']), C, call);
+
   if (QUICK) return;
 
   // ---------------------------------------------------------------- real fights, two clients
@@ -241,7 +244,13 @@ async function serverChecks(): Promise<void> {
         const d = s.driver;
         if (!d || !s.match) continue;
         if (o.silent && o.silent.who === s && d.match.steps >= o.silent.fromStep) continue;
-        if (d.late) d.rebuild();
+        if (d.late) {
+          // an entry came for a step already shown: the checkpoint recorded within the last 300 steps was taken on the
+          // provisional timeline — forgotten, as the game forgets its unsent fingerprints (LiveDriver.rebuild); the
+          // checkpoints compared are those of the timeline both games end on
+          for (const st of [...seen.get(s)!.keys()]) if (st > d.match.steps - LIVE.checkEvery) seen.get(s)!.delete(st);
+          d.rebuild();
+        }
         d.advance(20);
         if (d.match.steps % 300 === 0 && d.match.phase === 'fight') seen.get(s)!.set(d.match.steps, stateHash(d.match));
         if (d.match.phase === 'fight' && Math.random() < o.pTap) s.play(Math.floor(Math.random() * 4));
@@ -382,6 +391,111 @@ async function serverChecks(): Promise<void> {
   check(`the server logged no difference between the games (${warn.length})`, warn.length === 0, warn.slice(0, 3).join(' | '));
   const errs = pbLog.filter((l) => /ERROR|panic|TypeError|ReferenceError/.test(l));
   check(`no errors in the server log (${errs.length})`, errs.length === 0, errs.slice(0, 4).join(' | '));
+}
+
+/**
+ * Beta 2.7.1 — the studio set chosen by both players: the room shows both preferences and the sets open now, a set
+ * travels with the pick and has its own request, a closed seasonal set is refused, a change takes «ready» back, a
+ * running match cannot be changed; the server's rule over SERIES of real match starts (ready / rematch, the loser
+ * gives up at once): the same set → always it; a set + RANDOM → always the set; both RANDOM → only open sets, every one
+ * of them drawn; two different sets → only those two, about 50/50.
+ */
+async function arenaChecks(A: User, B: User, C: User, call: (u: User | null, method: string, url: string, body?: any) => Promise<{ status: number; j: any }>): Promise<void> {
+  section('Выбор арены двумя игроками (2.7.1)');
+  const LR = nodeModule.createRequire(import.meta.url)(path.resolve('backend/pb_hooks/lib/league_rules.js'));
+  const now = Date.now();
+  const openNow: string[] = (LR.arenaCatalog as { id: string; windows?: { from: string; until: string }[] }[]).filter((a) => !a.windows || a.windows.some((w) => now >= Date.parse(w.from) && now < Date.parse(w.until))).map((a) => a.id);
+  const closedSeasonal = (LR.arenaCatalog as { id: string; windows?: unknown[] }[]).filter((a) => a.windows && !openNow.includes(a.id)).map((a) => a.id);
+  const c1 = await call(A, 'POST', '/api/prime/live/room', { sim: SIM_VERSION });
+  const room: LiveRoom = c1.j.room;
+  check(`the room lists the sets open now (${room.arenas?.join(', ')}) — the league's catalogue and calendar`, same(room.arenas, openNow));
+  check(`seasonal sets opening soon come apart, with their date (${(room.soon ?? []).map((x) => `${x.id} ${new Date(x.from).toISOString().slice(0, 10)}`).join(', ') || 'none now'})`, (room.soon ?? []).every((x) => closedSeasonal.includes(x.id) && x.from > now));
+  const R = `/api/prime/live/room/${room.id}`;
+  check('a set before any pick: «pick first»', (await call(A, 'POST', `${R}/arena`, { arena: 'casino' })).j.code === 'pick_first');
+  await call(B, 'POST', '/api/prime/live/join', { code: room.code, sim: SIM_VERSION });
+  const deckA = ['dash', 'power_shot', 'shield', 'smoke'];
+  const deckB = ['dash', 'power_shot', 'shield', 'shock'];
+  const pa = await call(A, 'POST', `${R}/pick`, { fighter: 'kai', deck: deckA, arena: 'casino' });
+  const pb0 = await call(B, 'POST', `${R}/pick`, { fighter: 'nika', deck: deckB });
+  check('a set sent with the pick is kept; a pick without one (a 2.7 game) is RANDOM', pa.j.room?.host?.arena === 'casino' && pb0.j.room?.guest?.arena === 'random');
+  const pa2 = await call(A, 'POST', `${R}/pick`, { fighter: 'ray', deck: deckA });
+  check('a new pick without a set keeps the set already chosen', pa2.j.room?.host?.arena === 'casino' && pa2.j.room?.host?.fighter === 'ray');
+  const sb = await call(B, 'POST', `${R}/arena`, { arena: 'newsroom' });
+  const seenByA = (await call(A, 'POST', `${R}/pulse`, {})).j.room;
+  check('a player\'s set: both players see both preferences', sb.status === 200 && sb.j.room.guest.arena === 'newsroom' && sb.j.room.host.arena === 'casino' && seenByA.guest.arena === 'newsroom' && seenByA.host.arena === 'casino');
+  if (closedSeasonal.length) {
+    const bad = await call(B, 'POST', `${R}/arena`, { arena: closedSeasonal[0] });
+    check(`a seasonal set out of its event (${closedSeasonal[0]}): 409 arena_unavailable with the open sets, the choice unchanged`, bad.status === 409 && bad.j.code === 'arena_unavailable' && same(bad.j.data?.arenas ?? bad.j.arenas, openNow) && (await call(B, 'POST', `${R}/pulse`, {})).j.room.guest.arena === 'newsroom');
+  }
+  const forged = await call(B, 'POST', `${R}/arena`, { arena: 'moon_base' });
+  check('an unknown set counts as RANDOM (the server decides among its own list)', forged.status === 200 && forged.j.room.guest.arena === 'random');
+  check('an outsider cannot set anything in the room (404)', (await call(C, 'POST', `${R}/arena`, { arena: 'casino' })).status === 404);
+  await call(B, 'POST', `${R}/ready`, { ready: true });
+  const un = await call(B, 'POST', `${R}/arena`, { arena: 'backlot' });
+  const again = await call(B, 'POST', `${R}/arena`, { arena: 'backlot' });
+  check('changing the set takes this player\'s «ready» back; the same set again changes nothing', un.j.room?.guest?.ready === false && un.j.room?.guest?.arena === 'backlot' && again.status === 200 && again.j.room.guest.arena === 'backlot');
+
+  // ------------------------------------------------------------ series of real match starts
+  let games = 0;
+  /** Starts the next match (ready for the first, rematch after), the loser gives up at once; the match's snapshot. */
+  const next = async (): Promise<{ arena: string; how: string; prefs: string[]; sideA: number }> => {
+    const first = games === 0;
+    if (first) {
+      await call(A, 'POST', `${R}/ready`, { ready: true });
+      await call(B, 'POST', `${R}/ready`, { ready: true });
+    } else {
+      await call(A, 'POST', `${R}/rematch`, { want: true });
+      await call(B, 'POST', `${R}/rematch`, { want: true });
+    }
+    const st = (await call(A, 'POST', `${R}/pulse`, {})).j;
+    if (!st.match || st.match.status !== 'active') throw new Error('no match started: ' + JSON.stringify(st).slice(0, 300));
+    games++;
+    const snap = st.match.snapshot;
+    const out = { arena: snap.arena, how: snap.arenaPick?.how, prefs: snap.arenaPick?.prefs ?? [], sideA: st.match.side };
+    await call(A, 'POST', `/api/prime/live/match/${st.match.id}/leave`, {});
+    return out;
+  };
+  const setPrefs = async (a: string, b: string) => {
+    await call(A, 'POST', `${R}/arena`, { arena: a });
+    await call(B, 'POST', `${R}/arena`, { arena: b });
+  };
+  const series = async (a: string, b: string, n: number) => {
+    await setPrefs(a, b);
+    const out: { arena: string; how: string; prefs: string[]; sideA: number }[] = [];
+    for (let i = 0; i < n; i++) out.push(await next());
+    return out;
+  };
+
+  const s1 = await series('casino', 'casino', 12);
+  check(`both chose the same set: ${s1.length}/${s1.length} matches on it («same»)`, s1.every((x) => x.arena === 'casino' && x.how === 'same'));
+  const fightNow = await (async () => {
+    await call(A, 'POST', `${R}/rematch`, { want: true });
+    await call(B, 'POST', `${R}/rematch`, { want: true });
+    const st = (await call(A, 'POST', `${R}/pulse`, {})).j;
+    const r = await call(B, 'POST', `${R}/arena`, { arena: 'newsroom' });
+    games++;
+    await call(A, 'POST', `/api/prime/live/match/${st.match.id}/leave`, {});
+    return r;
+  })();
+  check('the set cannot be changed while a match runs (409 match_running — fixed in its snapshot)', fightNow.status === 409 && fightNow.j.code === 'match_running');
+  const s2 = await series('backlot', 'random', 12);
+  const s2b = await series('random', 'graveyard', 12);
+  check(`a set + RANDOM → the set, either way round: ${s2.length + s2b.length}/${s2.length + s2b.length} («one»)`, s2.every((x) => x.arena === 'backlot' && x.how === 'one') && s2b.every((x) => x.arena === 'graveyard' && x.how === 'one'));
+  const s3 = await series('random', 'random', 60);
+  const drawn = new Map<string, number>();
+  for (const x of s3) drawn.set(x.arena, (drawn.get(x.arena) ?? 0) + 1);
+  check(`both RANDOM → only sets open now, each of the ${openNow.length} drawn (${[...drawn].map(([k, v]) => `${k} ${v}`).join(', ')})`, s3.every((x) => openNow.includes(x.arena) && x.how === 'random') && openNow.every((a) => (drawn.get(a) ?? 0) > 0));
+  const N = 200;
+  const s4 = await series('casino', 'newsroom', N);
+  const nCasino = s4.filter((x) => x.arena === 'casino').length;
+  const nNews = s4.filter((x) => x.arena === 'newsroom').length;
+  // a fair coin over 200 tosses: 100 ± 7.1 (one standard deviation); 70–130 is ±4.2 σ — a biased draw would fall out
+  check(`two different sets → only those two, ${nCasino} : ${nNews} over ${N} matches (fair coin: 100 ± 7)`, nCasino + nNews === N && nCasino >= 70 && nCasino <= 130 && s4.every((x) => x.how === 'coin'));
+  const prefsOk = [...s1, ...s2, ...s2b, ...s3, ...s4].every((x) => x.prefs.length === 2 && x.prefs[x.sideA] !== undefined);
+  const sidesSwap = s4.slice(0, 6).every((x, i, a) => i === 0 || x.sideA !== a[i - 1].sideA);
+  check('each match keeps both preferences by side in its snapshot; the corners still swap every rematch', prefsOk && sidesSwap && s4.every((x) => x.prefs[x.sideA] === 'casino' && x.prefs[1 - x.sideA] === 'newsroom'));
+  await call(A, 'POST', `${R}/leave`, {});
+  console.log(`  (${games} matches started and given up in this room)`);
 }
 
 /** The real limits (no budget scale), a short invitation life: a second throwaway server. */

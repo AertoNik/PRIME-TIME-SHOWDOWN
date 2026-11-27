@@ -1,3 +1,4 @@
+import type { ArenaPref } from '../config/arenas.config';
 import type { CardId, FighterId } from '../config/types';
 import { LIVE, normalizeCode } from '../config/live.config';
 import { SIM_VERSION } from '../league/simVersion';
@@ -27,6 +28,7 @@ export const LIVE_ERRORS: Record<string, string> = {
   look_not_owned: 'Этот облик не куплен.',
   not_league_fighter: 'Этого бойца нельзя взять в дуэль.',
   pick_first: 'Сначала выберите бойца и колоду.',
+  arena_unavailable: 'Эта сезонная арена уже закрыта — событие закончилось. Выберите другую.',
   match_running: 'Бой уже идёт.',
   update_required: 'Сервер уже работает по новым правилам боя. Обновите страницу.',
   too_many_requests: 'Слишком много попыток. Подождите минуту.',
@@ -221,11 +223,27 @@ export class LiveRuntime {
     return true;
   }
 
-  async pick(fighter: FighterId, deck: CardId[], look: string | null): Promise<void> {
+  async pick(fighter: FighterId, deck: CardId[], look: string | null, arena?: ArenaPref): Promise<void> {
     const s = this.session;
     if (!s?.room) return;
-    const r = await s.api.pick(s.room.id, fighter, deck, look);
+    const r = await s.api.pick(s.room.id, fighter, deck, look, arena);
     s.room = r.room;
+    this.emit();
+  }
+
+  /** Beta 2.7.1: this player's set preference (the server keeps it in the pick and shows it to both). */
+  async arena(pref: ArenaPref): Promise<void> {
+    const s = this.session;
+    if (!s?.room) return;
+    try {
+      const r = await s.api.arena(s.room.id, pref);
+      s.room = r.room;
+    } catch (e) {
+      // a closed seasonal set: the server's answer carries the room with the sets open now
+      if (e instanceof PrimeApiError && e.data.room) s.room = e.data.room as LiveRoom;
+      this.emit();
+      throw e;
+    }
     this.emit();
   }
 
