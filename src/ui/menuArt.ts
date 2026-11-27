@@ -8,7 +8,7 @@ import { DUEL_EMBLEM, MODE_ICONS } from './modeArt';
 // falls back to its earlier drawing if its file cannot be loaded.
 
 /** The main screen's own icons (each IS its button's face — never a button drawn inside a button). */
-export type UiIcon = 'gift' | 'invite' | 'shop' | 'cards' | 'settings';
+export type UiIcon = 'gift' | 'invite' | 'shop' | 'cards' | 'settings' | 'live_duels';
 
 const UI_OLD: Record<UiIcon, () => string> = {
   gift: () => UI_ICONS.gift,
@@ -16,6 +16,8 @@ const UI_OLD: Record<UiIcon, () => string> = {
   shop: () => UI_ICONS.shop,
   cards: () => UI_ICONS.cards,
   settings: () => UI_ICONS.gear,
+  // Beta 2.7: the owner's LIVE DUELS picture (PRIME_TIME_2_7_UI_ART/ui_live_duels.png); the two gloves if it fails
+  live_duels: () => DUEL_EMBLEM,
 };
 
 /** A main-screen icon at `size` CSS px. */

@@ -76,7 +76,7 @@ const walk = (d: string) => {
 };
 walk('public/ui');
 const listed = Object.values(manifest.icons).flatMap((g) => Object.values(g).flatMap((e) => Object.values(e.out).map((o) => `public/${o.file}`)));
-check(`every picture listed: ${webp.length} WebP in public/ui = the manifest's (Beta 2.2's 251 + Beta 2.3's 44 — npm run art24 checks the 251 are byte-for-byte the same — + Beta 2.4's 2 of INVITE SIGNAL + Beta 2.6's 3 of DAILY MISSIONS), each one exists`, webp.length === 300 && listed.length === 300 && listed.every((p) => fs.existsSync(p)) && ['public/ui/effects/sm/dash_invite_signal.webp', 'public/ui/effects/md/dash_invite_signal.webp'].every((p) => listed.includes(p)));
+check(`every picture listed: ${webp.length} WebP in public/ui = the manifest's (Beta 2.2's 251 + Beta 2.3's 44 — npm run art24 checks the 251 are byte-for-byte the same — + Beta 2.4's 2 of INVITE SIGNAL + Beta 2.6's 3 of DAILY MISSIONS + Beta 2.7's 2 of LIVE DUELS), each one exists`, webp.length === 302 && listed.length === 302 && listed.every((p) => fs.existsSync(p)) && ['public/ui/effects/sm/dash_invite_signal.webp', 'public/ui/effects/md/dash_invite_signal.webp', 'public/ui/ui/xs/live_duels.webp', 'public/ui/ui/sm/live_duels.webp'].every((p) => listed.includes(p)));
 
 let failed = 0;
 for (const [name, pass] of checks) {

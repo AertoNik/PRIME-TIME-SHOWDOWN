@@ -10,6 +10,7 @@
 //     the outline's thin share only on small parts;
 //   * nothing in the fight changed: src/combat/** and the simulation's fingerprint are the published Beta 2.2's.
 import { fs, proc } from './lib/node';
+import { SIM_LOCK } from './lib/simLock';
 
 let seed = 0x2b23;
 const rnd = () => {
@@ -334,9 +335,17 @@ if (fs.existsSync(`${PUB}/src/combat`)) {
   const list = (d: string): string[] => (fs.readdirSync(d) as string[]).flatMap((f) => (fs.statSync(`${d}/${f}`).isDirectory() ? list(`${d}/${f}`).map((x) => `${f}/${x}`) : [f]));
   const a = list('src/combat').sort();
   const b = list(`${PUB}/src/combat`).sort();
-  check(`src/combat/** byte-identical to the published Beta 2.2 (${a.length} files)`, a.join() === b.join() && a.every((f) => read(`src/combat/${f}`) === read(`${PUB}/src/combat/${f}`)));
+  // Beta 2.7 LIVE DUELS: two files carry the live duel's own lines (MatchConfig.live, side 1's pilot, the symmetric
+  // telegraph) — without exactly those lines they must still be the published files byte for byte
+  const no27 = (f: string, t: string): string =>
+    f === 'Abilities.ts'
+      ? t.replace("        // (Beta 2.7 LIVE DUELS: both people wind up with the telegraph — the same rule for both corners)\n        const telegraph = f.side === 1 || m.cfg.live === true;", '        const telegraph = f.side === 1;')
+      : f === 'Match.ts'
+        ? t.replace(/\n  \/\*\*\n   \* Beta 2\.7 LIVE DUELS:[\s\S]*?\*\/\n  live\?: boolean;/, '').replace('cfg.live ? { ...playerProfile } : enemyProfile', 'enemyProfile')
+        : t;
+  check(`src/combat/** = the published files (${a.length}); only the Beta 2.7 live lines differ`, a.join() === b.join() && a.every((f) => read(`src/combat/${f}`) === read(`${PUB}/src/combat/${f}`) || no27(f, read(`src/combat/${f}`)) === read(`${PUB}/src/combat/${f}`)));
 }
-check('SIM_VERSION unchanged (a141348f2a0dea20)', /a141348f2a0dea20/.test(read('src/league/simVersion.ts')));
+check('SIM_VERSION = the locked engine (scripts/lib/simLock.ts)', read('src/league/simVersion.ts').includes(SIM_LOCK));
 
 let failed = 0;
 for (const [name, pass] of checks) {

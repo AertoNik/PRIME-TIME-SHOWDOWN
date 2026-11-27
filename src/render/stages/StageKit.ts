@@ -1,5 +1,7 @@
 import {
   AdditiveBlending,
+  Box3,
+  BufferAttribute,
   BufferGeometry,
   CanvasTexture,
   CapsuleGeometry,
@@ -120,10 +122,174 @@ export function merge(parts: BufferGeometry[]): BufferGeometry {
   return g;
 }
 
+/** Beta 2.7: the painted floor tops of the sets now built (a set's textures leave the list when it is disposed). */
+const floorMaps = new Set<CanvasTexture>();
+
+/**
+ * Beta 2.7 LIVE DUELS: the player of side 1 watches from the other end, where the floor's lettering reads upside
+ * down — its painting is turned half a circle (a texture transform: no new shader, no new geometry). The sets are
+ * point-symmetric, so every mark stays where the fight has it.
+ */
+export function flipFloors(on: boolean): void {
+  for (const t of floorMaps) {
+    if ((t.rotation !== 0) === on) continue;
+    t.center.set(0.5, 0.5);
+    t.rotation = on ? Math.PI : 0;
+  }
+  // …and the dressing of the far end appears at the end that player faces (see buildFarMirror)
+  for (const g of farMirrors) {
+    if (!g.parent) farMirrors.delete(g);
+    else g.visible = on;
+  }
+}
+
+/** Beta 2.7: the turned copies of each set's far end (one per built set; dropped with the set). */
+const farMirrors = new Set<Group>();
+
+/**
+ * Beta 2.7 LIVE DUELS — THE OTHER END OF THE STUDIO. Every set was dressed for the one camera of the game: its
+ * screens, walls, posts and lights stand beyond the FAR barrier (z < 0), and the camera's own end was left empty — it
+ * was always behind the camera. The player of side 1 now looks at that end. Here the far end's dressing is repeated
+ * there, turned half a circle about the centre (a rotation, not a mirror: every word on a screen or a sign still reads
+ * the right way), so the studio is finished on both ends and both players see the same place.
+ *   Light on the GPU: the copies share the originals' geometry and materials (themes and animated screen textures
+ *   follow by themselves), are merged per material like the set itself (batchStatic), cast no shadow, and are shown
+ *   only while the camera is turned (flipFloors) — the usual view draws exactly what it drew before.
+ * Called by the arena right after a set is built, before its own static batching.
+ */
+export function buildFarMirror(stage: Stage): number {
+  const root = stage.group;
+  root.updateMatrixWorld(true);
+  const inv = new Matrix4().copy(root.matrixWorld).invert();
+  // the far end = everything beyond the far barrier line (the barrier itself is a full ring, never copied)
+  const limit = -(ARENA.wallZ + 0.3);
+  const box = new Box3();
+  const m4 = new Matrix4();
+  const mi = new Matrix4();
+  const v = new Vector3();
+  const copies: Object3D[] = [];
+  const visible = (o: Object3D) => {
+    for (let p: Object3D | null = o; p && p !== root; p = p.parent) if (!p.visible) return false;
+    return true;
+  };
+  root.traverse((o) => {
+    const mesh = o as Mesh & { isSkinnedMesh?: boolean; isInstancedMesh?: boolean; isPoints?: boolean };
+    if (!(mesh.isMesh || mesh.isPoints) || mesh.isSkinnedMesh || !visible(o)) return;
+    box.setFromObject(o);
+    if (box.isEmpty() || box.min.z >= limit) return;
+    // a full ring (the barrier, the ground, the snow around it) is already finished on both ends
+    if (box.max.z > -limit - 0.5 && Math.abs(box.min.z + box.max.z) < 1.5) return;
+    m4.multiplyMatrices(inv, o.matrixWorld);
+    const whole = box.max.z < limit;
+    let c: Object3D | null = null;
+    if (mesh.isInstancedMesh) {
+      const im = mesh as unknown as InstancedMesh;
+      if (whole) {
+        const ci = new InstancedMesh(im.geometry, im.material, im.count);
+        // the very same instance data: a set that twinkles its bulbs twinkles the copy too
+        ci.instanceMatrix = im.instanceMatrix;
+        ci.instanceColor = im.instanceColor;
+        ci.boundingSphere = im.boundingSphere;
+        ci.boundingBox = im.boundingBox;
+        c = ci;
+      } else {
+        const keep: number[] = [];
+        for (let i = 0; i < im.count; i++) {
+          im.getMatrixAt(i, mi);
+          v.setFromMatrixPosition(mi).applyMatrix4(m4);
+          if (v.z < limit) keep.push(i);
+        }
+        if (!keep.length) return;
+        const ci = new InstancedMesh(im.geometry, im.material, keep.length);
+        const col = new Color();
+        keep.forEach((i, k) => {
+          im.getMatrixAt(i, mi);
+          ci.setMatrixAt(k, mi);
+          if (im.instanceColor) {
+            im.getColorAt(i, col);
+            ci.setColorAt(k, col);
+          }
+        });
+        c = ci;
+      }
+    } else if (whole) {
+      c = mesh.isPoints ? new Points(mesh.geometry, mesh.material) : new Mesh(mesh.geometry, mesh.material);
+    } else {
+      // a structure that runs from the far end along the sides (stands, the crowd, the outer floor): only its far part
+      const geo = farSlice(mesh.geometry, m4, limit, !!mesh.isPoints);
+      if (!geo) return;
+      c = mesh.isPoints ? new Points(geo, mesh.material) : new Mesh(geo, mesh.material);
+    }
+    c.matrixAutoUpdate = false;
+    c.matrix.copy(m4);
+    c.castShadow = false;
+    c.receiveShadow = mesh.receiveShadow;
+    c.renderOrder = mesh.renderOrder;
+    c.frustumCulled = mesh.frustumCulled;
+    c.userData.farCopy = true;
+    copies.push(c);
+  });
+  if (!copies.length) return 0;
+  const g = new Group();
+  g.name = 'far-mirror';
+  g.rotation.y = Math.PI;
+  g.visible = false;
+  // (never merged into the set's own batches: it is hidden most of the time)
+  g.userData.dynamic = true;
+  for (const c of copies) g.add(c);
+  root.add(g);
+  // the static copies merged per material (like the set): a handful of draw calls for the whole far end
+  batchStatic({ group: g } as unknown as Stage);
+  farMirrors.add(g);
+  return copies.length;
+}
+
+/**
+ * The part of a geometry beyond the far barrier (set space z < limit): whole triangles (or points) whose centre lies
+ * there, every attribute kept. null = nothing there, or a geometry this cannot slice (several material groups, morphs).
+ */
+function farSlice(geo: BufferGeometry, toSet: Matrix4, limit: number, points: boolean): BufferGeometry | null {
+  if (geo.groups.length > 1 || Object.keys(geo.morphAttributes).length) return null;
+  const src = geo.index && !points ? geo.toNonIndexed() : geo;
+  const pos = src.getAttribute('position');
+  if (!pos) return null;
+  const per = points ? 1 : 3;
+  const n = Math.floor(pos.count / per);
+  const keep: number[] = [];
+  const p = new Vector3();
+  for (let i = 0; i < n; i++) {
+    let z = 0;
+    for (let k = 0; k < per; k++) z += p.fromBufferAttribute(pos, i * per + k).applyMatrix4(toSet).z;
+    if (z / per < limit) keep.push(i);
+  }
+  if (!keep.length) {
+    if (src !== geo) src.dispose();
+    return null;
+  }
+  const out = new BufferGeometry();
+  for (const name of Object.keys(src.attributes)) {
+    const a = src.getAttribute(name) as BufferAttribute;
+    if (!(a as { isBufferAttribute?: boolean }).isBufferAttribute || (a as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) continue;
+    const size = a.itemSize;
+    const arr = new (a.array.constructor as Float32ArrayConstructor)(keep.length * per * size);
+    let w = 0;
+    for (const i of keep) for (let k = 0; k < per; k++) for (let c = 0; c < size; c++) arr[w++] = a.array[(i * per + k) * size + c];
+    // (the same array type and normalisation — colours stored as bytes stay bytes)
+    out.setAttribute(name, new BufferAttribute(arr, size, a.normalized));
+  }
+  if (src !== geo) src.dispose();
+  out.computeBoundingSphere();
+  return out;
+}
+
 /** Floor plate of the fighting area with a painted top (map + glowing emissive lines). */
 export function floorMesh(map: CanvasTexture, emissive: CanvasTexture | null, top: { roughness: number; metalness: number; emissiveIntensity?: number; color?: number }, sideColor: number): Mesh {
   map.anisotropy = 8;
   if (emissive) emissive.anisotropy = 8;
+  for (const t of emissive ? [map, emissive] : [map]) {
+    floorMaps.add(t);
+    t.addEventListener('dispose', () => floorMaps.delete(t));
+  }
   const shape = roundedRectShape(FLOOR_HX, FLOOR_HZ, ARENA.wallCorner + 0.4);
   const geo = flatExtrude(shape, 0.35, true);
   geo.translate(0, -0.35, 0);

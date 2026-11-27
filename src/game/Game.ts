@@ -1,13 +1,14 @@
 import { COSMETICS, isCosmeticId, isServerEarned, type CosmeticId } from '../config/cosmetics.config';
 import { arenaById, type ArenaId, type ArenaPref } from '../config/arenas.config';
 import { MATCH } from '../config/balance';
+import { CARDS } from '../config/cards';
 import { eventSettings, type EventSettings } from '../config/events.config';
 import { FIGHTERS, RIVALS } from '../config/fighters';
 import { challengeById, SURVIVAL } from '../config/modes.config';
 import { ARENA_MUSIC, MENU_MUSIC, type MusicId } from '../config/music.config';
 import { bossById } from '../config/boss.config';
 import { bossPhaseFlash, bossPhaseSpots, championThemeFor } from '../config/themes.config';
-import type { CardId, Difficulty, FighterId, RivalId } from '../config/types';
+import type { CardId, Difficulty, FighterId, RivalId, Side } from '../config/types';
 import { AudioSystem } from '../audio/AudioSystem';
 import { leagueConfig, stateHash, type LeagueInput } from '../league/replay';
 import { snapshotOf, type LeagueMatch } from '../net/LeagueApi';
@@ -37,7 +38,7 @@ import type { FighterRig } from '../render/FighterModel';
 import { Vector3, type Object3D } from 'three';
 import { renderPortraits } from '../render/PortraitStudio';
 import { Renderer, type QualitySetting } from '../render/Renderer';
-import { tooEarly } from '../render/framePacing';
+import { PACED_INTERVAL_S, tooEarly } from '../render/framePacing';
 import { Showcase } from '../render/Showcase';
 import { VFX } from '../render/VFX';
 import { BattleHUD } from '../ui/screens/BattleHUD';
@@ -66,8 +67,11 @@ import { DailyRuntime } from './DailyRuntime';
 import { LeagueRuntime, leagueLook } from './LeagueRuntime';
 import { ProducerRuntime } from './ProducerRuntime';
 import { LeagueResultScreen, LeagueScreen } from '../ui/screens/LeagueScreen';
+import type { LiveMatchView } from '../net/LiveApi';
+import { LiveRuntime } from './LiveRuntime';
+import { LiveResultScreen, LiveScreen } from '../ui/screens/LiveScreen';
 
-export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival' | 'league' | 'leagueResult' | 'cards';
+export type ScreenName = 'title' | 'menu' | 'roster' | 'prep' | 'career' | 'events' | 'collection' | 'modes' | 'profile' | 'shop' | 'battle' | 'results' | 'survival' | 'league' | 'leagueResult' | 'cards' | 'live' | 'liveResult';
 
 /** Which game mode the current fight belongs to (kept with the match, never global). */
 export type ModeSession =
@@ -78,7 +82,9 @@ export type ModeSession =
   /** Alpha 1.6.5 — FIRST BROADCAST: the first-run tutorial (no career, event, mode or deck progress). */
   | { kind: 'tutorial' }
   /** Alpha 1.9.0 — PRIME LEAGUE: a fight the server fixed; nothing of the career is paid, the server settles it. */
-  | { kind: 'league'; view: LeagueMatch };
+  | { kind: 'league'; view: LeagueMatch }
+  /** Beta 2.7 — LIVE DUELS: two people, the server's journal; `side` = the corner this player commands. */
+  | { kind: 'live'; side: Side; view: LiveMatchView };
 
 /** Everything needed to set up one fight. */
 interface LaunchSpec {
@@ -148,6 +154,8 @@ export class Game {
   readonly daily: DailyRuntime;
   /** Alpha 1.9.0 PRIME LEAGUE (the fight's taps, checkpoints, the server's result). */
   readonly league: LeagueRuntime;
+  /** Beta 2.7 LIVE DUELS: rooms, the live fight's journal, its server result. */
+  readonly live: LiveRuntime;
   /** Alpha 1.9.7 — WINTER SHOWDOWN (R-22): the server's CANDY CANES wallet for this page. */
   readonly season: SeasonRuntime;
   /** Beta 2.6: DAILY MISSIONS — today's five as the server states them, and the career fights reported to it. */
@@ -238,6 +246,8 @@ export class Game {
     this.account?.onChange(() => void this.producer.load());
     this.daily = new DailyRuntime(this);
     this.league = new LeagueRuntime(this);
+    this.live = new LiveRuntime(this);
+    this.live.readInvite();
     this.season = new SeasonRuntime(this);
     this.missions = new MissionRuntime(this);
     this.producer = new ProducerRuntime(this);
@@ -355,6 +365,8 @@ export class Game {
     this.ui.register('survival', new SurvivalScreen(this));
     this.ui.register('league', new LeagueScreen(this));
     this.ui.register('leagueResult', new LeagueResultScreen(this));
+    this.ui.register('live', new LiveScreen(this));
+    this.ui.register('liveResult', new LiveResultScreen(this));
 
     const f = FIGHTERS[this.save.data.selected];
     this.showcase.show(this.fighterLook(f.id), f.theme.accent);
@@ -466,8 +478,8 @@ export class Game {
   }
 
   // ------------------------------------------------------------ navigation
-  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results' | 'survival' | 'leagueResult'>, param?: unknown): void {
-    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult') this.endBattleView();
+  goto(name: Exclude<ScreenName, 'title' | 'battle' | 'results' | 'survival' | 'leagueResult' | 'liveResult'>, param?: unknown): void {
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult' || this.screen === 'liveResult') this.endBattleView();
     this.screen = name;
     this.refreshSeason();
     this.setChampionStage(false);
@@ -1033,7 +1045,119 @@ export class Game {
     if (isBlockedLandscape()) this.pause();
   }
 
+  /**
+   * Beta 2.7 LIVE DUELS: the fight of the server's snapshot, run by the session's LiveDriver on the server's journal.
+   * A fight already running (a reload, a late start) is caught up without pictures first.
+   */
+  launchLive(view: LiveMatchView): void {
+    const d = this.live.session?.driver;
+    if (!d) return;
+    if (this.screen === 'battle' || this.screen === 'results' || this.screen === 'survival' || this.screen === 'leagueResult' || this.screen === 'liveResult') this.endBattleView();
+    this.audio.stopCelebration(0.6);
+    const stage = view.snapshot.arena;
+    const switched = this.arena.setStage(stage);
+    this.setChampionStage(false);
+    if (d.lag() > 0) {
+      d.advance(d.lag(), 0);
+      d.match.drainEvents();
+    }
+    const match = d.match;
+    const mode: ModeSession = { kind: 'live', side: view.side, view };
+    const sides = view.snapshot.sides;
+    this.match = match;
+    this.matchMeta = { fighter: sides[view.side].fighter, rival: 'dex', difficulty: 'pro', mode };
+    this.applyCosmetics(sides[view.side].fighter);
+    this.matchEventId = null;
+    this.resultsShown = false;
+    this.paused = false;
+    this.acc = 0;
+    this.timeFx.hitstop = 0;
+    this.timeFx.slowmo = 0;
+    this.timeFx.slowScale = 1;
+    this.showcase.hide();
+    this.battleView.setup(match, [leagueLook(sides[0].fighter, sides[0].look), leagueLook(sides[1].fighter, sides[1].look)], view.side);
+    this.hud.setup(match, mode, { stage: switched || stage !== 'original', halloween: false });
+    this.cam.setMode('battle', 1.9);
+    this.cam.finishShift = 0.04;
+    this.cam.finishDist = 7.5;
+    this.screen = 'battle';
+    this.ui.showSoundFab(false);
+    this.ui.show('battle');
+    this.updateLayoutFraming();
+    this.audio.playTrack(ARENA_MUSIC[stage]);
+    this.audio.crowd(1);
+  }
+
+  /** Beta 2.7 LIVE DUELS: an entry came for a step already shown — the fight rebuilt from the journal, swapped in. */
+  liveRebuild(): void {
+    const d = this.live.session?.driver;
+    if (!d || this.matchMeta?.mode.kind !== 'live' || !this.match) return;
+    const m = d.rebuild();
+    this.match = m;
+    this.battleView.rebind(m);
+    this.hud.rebind(m);
+  }
+
+  /** Beta 2.7 LIVE DUELS: the server settled the match (it may end earlier than this screen: a surrender, a drop). */
+  liveEnded(view: LiveMatchView): void {
+    const mode = this.matchMeta?.mode;
+    if (this.screen === 'battle' && mode?.kind === 'live' && mode.view.id === view.id && !this.resultsShown) {
+      this.resultsShown = true;
+      const r = view.result;
+      this.enterResultsView(!r || r.winner < 0 ? 'draw' : r.winner === view.side ? 'win' : 'loss', true);
+    }
+    if (this.screen === 'results' || this.screen === 'liveResult' || this.screen === 'live') this.ui.show('liveResult');
+  }
+
+  /** Beta 2.7 LIVE DUELS: the room closed (the friend left, it expired) — the LIVE screen tells why. */
+  liveClosed(why: string): void {
+    if (this.screen === 'live') this.ui.show('live', { closed: why });
+  }
+
+  /** Beta 2.7: the screen now (the LIVE screens repaint only while they are shown). */
+  get currentScreen(): ScreenName {
+    return this.screen;
+  }
+
+  /** Beta 2.7 LIVE DUELS: the live match on screen (the result screen shows it until the server's result arrives). */
+  get liveView(): LiveMatchView | null {
+    const mode = this.matchMeta?.mode;
+    return mode && mode.kind === 'live' ? mode.view : null;
+  }
+
+  /** Beta 2.7: the side this screen's player commands (LIVE DUELS: 0 or 1; every other mode: 0). */
+  get viewSide(): Side {
+    const mode = this.matchMeta?.mode;
+    return mode && mode.kind === 'live' ? mode.side : 0;
+  }
+
+  /** Beta 2.7 LIVE DUELS: a played card waits for the server's journal (the HUD keeps it lit meanwhile). */
+  livePending(deckIndex: number): boolean {
+    return deckIndex >= 0 && this.live.pending(deckIndex);
+  }
+
+  /**
+   * Beta 2.7 LIVE DUELS: the tap is checked against what this screen shows (energy, cooldown, the fighter's state —
+   * the same rules, nothing changed) and sent to the server; the card goes on air when the journal brings it back.
+   */
+  private playLiveCard(index: number): CardFailReason | null {
+    const m = this.match;
+    const mode = this.matchMeta?.mode;
+    if (!m || !mode || mode.kind !== 'live') return 'phase';
+    const side = mode.side;
+    const hand = m.hands[side];
+    const card = hand.hand[index];
+    if (!card || m.phase !== 'fight' || m.fighters[side].ko) return 'phase';
+    if (this.live.pending(hand.deck.indexOf(card))) return 'cooldown';
+    if (hand.lockout > 0) return 'cooldown';
+    if (hand.energy < CARDS[card].cost) return 'energy';
+    const rules = m.cardRules(side, card, m.combos.detect(side, card, m.time));
+    if (rules.fail) return rules.fail;
+    return this.live.play(index) ? null : 'cooldown';
+  }
+
   playCard(index: number): CardFailReason | null {
+    if (this.matchMeta?.mode.kind === 'live') return this.playLiveCard(index);
     if (!this.match || this.paused) return 'phase';
     // PRIME LEAGUE: every tap that reaches the fight is recorded with the step it came before (the server replays them)
     if (this.matchMeta?.mode.kind === 'league') this.league.tap(this.match.steps, index);
@@ -1058,7 +1182,9 @@ export class Game {
            ${
              tut
                ? '<button class="btn ghost wide" data-a="skip">Пропустить обучение</button>'
-               : '<button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Выйти из боя</button>'
+               : this.matchMeta?.mode.kind === 'live'
+                 ? '<p class="muted live-pause-note">Живая дуэль не останавливается: бой идёт, пока открыто это окно.</p><button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Сдаться</button>'
+                 : '<button class="btn ghost wide" data-a="help">Как играть</button><button class="btn ghost wide" data-a="forfeit">Выйти из боя</button>'
            }
          </div>`,
         (root, close) => {
@@ -1089,7 +1215,9 @@ export class Game {
               // (REWARDS.forfeit) — the rule is said before, simply: finishing a fight always pays more than leaving it
               const none = ' Без гонорара, фанатов, репутации и прогресса целей — выгоднее довести бой до конца.';
               const text =
-                kind === 'league'
+                kind === 'live'
+                  ? 'Бой засчитают как поражение — победа другу. Комната останется открытой: можно сыграть ещё.'
+                  : kind === 'league'
                   ? 'Бой будет засчитан как поражение. Сервер запишет выход в журнал эфира.'
                   : kind === 'survival'
                   ? 'Марафон закончится. Награда — только за уже пройденные волны.'
@@ -1098,8 +1226,13 @@ export class Game {
                     : kind === 'boss'
                       ? 'Чемпион сохранит титул: технический проигрыш.' + none
                       : 'Бой будет засчитан как технический проигрыш.' + none;
-              this.confirm('Выйти из боя?', text, 'Выйти', () => {
+              this.confirm(kind === 'live' ? 'Сдаться?' : 'Выйти из боя?', text, kind === 'live' ? 'Сдаться' : 'Выйти', () => {
                 this.paused = false;
+                // LIVE: the server ends the match (its result comes back to both screens); the shown fight is not touched
+                if (kind === 'live') {
+                  void this.live.surrender().catch(() => undefined);
+                  return;
+                }
                 if (this.matchMeta?.mode.kind === 'league' && this.match) this.league.forfeitTap(this.match.steps);
                 this.match?.forfeit();
               }, () => {
@@ -1139,6 +1272,14 @@ export class Game {
     if (!this.save.data.hintsSeen) {
       this.save.data.hintsSeen = true;
       this.save.save();
+    }
+    // Beta 2.7 LIVE DUELS (after the session check, like the league): nothing of the career is paid; the SERVER replays the journal and its result is shown
+    if (mode.kind === 'live') {
+      void this.live.session?.finish();
+      const w = m.winner;
+      this.enterResultsView(w === null ? 'draw' : w === mode.side ? 'win' : 'loss', true);
+      this.ui.show('liveResult');
+      return;
     }
     if (mode.kind === 'survival') {
       const wave = this.modes.recordWave(mode.runId, m.result, m.fighters[0].hpFrac);
@@ -1433,7 +1574,7 @@ export class Game {
     const now = performance.now();
     // Beta 2.5.5: paced to an even 30 fps (the automatic quality on a device that struggles at its lowest — see
     // src/render/framePacing.ts): a refresh that comes too early is skipped, the frame waits for the next one
-    if (tooEarly((now - this.last) / 1000, this.renderer.frameInterval)) {
+    if (tooEarly((now - this.last) / 1000, Math.max(this.renderer.frameInterval, this.coveredInterval()))) {
       this.scheduleNext();
       return;
     }
@@ -1442,6 +1583,17 @@ export class Game {
     this.frame(dtReal, now / 1000);
     this.scheduleNext();
   };
+
+  /**
+   * Beta 2.7 — a studio the screen covers (the dark scrim of LIVE DUELS, PRIME LEAGUE and the modes: rooms, lobbies,
+   * lists a player may keep open for minutes) is drawn at an even 30 fps instead of every refresh: the same picture
+   * behind the scrim, half the GPU work. Never during a fight or its results (no match then), never in the main menu
+   * or the shop (the studio is the picture there); the interface itself (CSS) keeps the display's rate.
+   */
+  private coveredInterval(): number {
+    if (this.match) return 0;
+    return this.screen === 'live' || this.screen === 'league' || this.screen === 'modes' ? PACED_INTERVAL_S : 0;
+  }
 
   /** rAF when visible, with a watchdog timer so the game never freezes if rAF stalls. */
   private scheduleNext(): void {
@@ -1461,6 +1613,13 @@ export class Game {
 
   private frame(dtReal: number, nowSec: number): void {
     this.renderer.monitor(dtReal, nowSec);
+    // Beta 2.7 LIVE DUELS: the fight follows the SERVER's clock (LiveDriver) — never paused, never slowed down
+    const liveD = this.matchMeta?.mode.kind === 'live' ? (this.live.session?.driver ?? null) : null;
+    if (liveD) {
+      if (liveD.late) this.liveRebuild();
+      this.timeFx.hitstop = 0;
+      this.timeFx.slowmo = 0;
+    }
     let scale = 1;
     if (this.timeFx.hitstop > 0) {
       this.timeFx.hitstop -= dtReal;
@@ -1471,10 +1630,19 @@ export class Game {
       if (this.timeFx.slowmo <= 0) this.timeFx.slowScale = 1;
     }
     const m = this.match;
-    const paused = this.paused || this.ui.modalOpen;
+    const paused = !liveD && (this.paused || this.ui.modalOpen);
     const dt = paused ? 0 : dtReal * scale * this.debugSpeed;
     let alpha = 1;
-    if (m && !paused) {
+    if (m && liveD && liveD.match === m) {
+      // far behind (the app was in the background, a slow phone): the missing steps run at once, without pictures
+      const lag = liveD.lag();
+      if (lag > 45) {
+        liveD.advance(lag - 3, 0);
+        m.drainEvents();
+      }
+      liveD.advance(8, dtReal * 1000);
+      alpha = 1;
+    } else if (m && !paused) {
       this.acc += dt;
       const step = MATCH.fixedStep;
       let n = 0;
@@ -1499,6 +1667,7 @@ export class Game {
       }
       this.tutorial?.update(paused ? 0 : dtReal);
       this.audio.intensity = m.broadcast.rating / 100;
+      if (liveD) this.hud.setLiveNet(this.live.net());
       // Alpha 1.6.4: a quiet murmur, rising only a little with the show; small swells while the fight runs
       this.audio.crowdTick(m.phase === 'fight', m.broadcast.rating / 100);
       if (this.matchMeta?.mode.kind === 'league' && m.phase === 'fight') this.league.tick(m.steps);
@@ -1530,15 +1699,15 @@ export class Game {
     switch (e.type) {
       case 'shot':
         if (e.kind === 'zap') a.electric(0.35, 0.3);
-        else a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank' || e.kind === 'split', e.side === 1);
+        else a.shoot(e.weapon, e.kind === 'power' || e.kind === 'bank' || e.kind === 'split', e.side !== this.viewSide);
         break;
       case 'zapCharge':
         a.zapCharge(e.duration);
         break;
       case 'hit':
-        if (e.kind !== 'dot' && e.kind !== 'bleed') a.hit(e.heavy, e.crit, e.side === 0);
+        if (e.kind !== 'dot' && e.kind !== 'bleed') a.hit(e.heavy, e.crit, e.side === this.viewSide);
         // Alpha 1.6.4: the crowd answers a crit / combo hit; a plain heavy hit only gets an «oh!» now and then
-        if (e.heavy && e.source === 0) a.crowd(e.crit || e.combo ? 2 : 1);
+        if (e.heavy && e.source === this.viewSide) a.crowd(e.crit || e.combo ? 2 : 1);
         break;
       case 'card':
         a.card(e.card);
@@ -1572,7 +1741,7 @@ export class Game {
       }
       case 'dodge':
         a.dodge(e.perfect);
-        if (e.perfect && e.side === 0) a.crowd(2);
+        if (e.perfect && e.side === this.viewSide) a.crowd(2);
         break;
       case 'miss':
         a.miss();
@@ -1581,7 +1750,7 @@ export class Game {
         a.stun();
         break;
       case 'combo':
-        if (e.side === 0) a.combo(e.combo === 'superstar' || e.combo === 'electro_blast');
+        if (e.side === this.viewSide) a.combo(e.combo === 'superstar' || e.combo === 'electro_blast');
         break;
       case 'impact':
         if (e.kind === 'shield') a.deflect(e.heavy);
@@ -1596,7 +1765,7 @@ export class Game {
         a.countdown(e.n);
         break;
       case 'ko':
-        a.ko(e.side === 1);
+        a.ko(e.side !== this.viewSide);
         break;
       // Alpha 1.6.4: the fight just ended (KO / time up / forfeit) — its music fades out from here
       case 'phase':
@@ -1623,7 +1792,7 @@ export class Game {
         a.perfectTake();
         break;
       case 'starTurn':
-        if (e.what === 'ready' && e.side === 0) a.starTurn();
+        if (e.what === 'ready' && e.side === this.viewSide) a.starTurn();
         break;
       // Alpha 1.9.8 — the three new cards
       case 'showtime':

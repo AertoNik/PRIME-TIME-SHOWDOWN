@@ -138,7 +138,8 @@ export class Abilities {
                   : card === 'main_event'
                     ? CARD_TUNING.main_event
                     : CARD_TUNING.knockout;
-        const telegraph = f.side === 1;
+        // (Beta 2.7 LIVE DUELS: both people wind up with the telegraph — the same rule for both corners)
+        const telegraph = f.side === 1 || m.cfg.live === true;
         const total = (telegraph ? t.telegraph * m.difficulty.telegraphMult : t.windup) * (onCue ? CARD_TUNING.showtime.windupMult : 1);
         // Alpha 1.6: charged attacks aim at the real fighter (a HOLO DECOY only fools regular fire)
         m.combat.windupAim(f, card, comboId, aim);

@@ -3,6 +3,7 @@
 // §7): a banner now spans y 136–213 px, the fighters' heads were at 264 / 476 (the old strip began at 228, on a head).
 import { SIM_VERSION } from '../src/league/simVersion';
 import { fs, proc } from './lib/node';
+import { SIM_LOCK } from './lib/simLock';
 
 const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
@@ -27,7 +28,7 @@ check('a repeat merges as «×N» into the banner on screen or the one waiting �
 check('priorities: a big moment cuts a minor banner short; at most two minor ones wait', /if \(this\.bannerTier < 3\) this\.bannerT = 0;/.test(hud) && /else if \(this\.bannerQueue\.length < 2\)/.test(hud));
 check('K.O. is the only message of its moment: the strip and the queue are cleared, minor banners are dropped, «WHAT A FINISH!» becomes one line under K.O.', /this\.big\('K\.O\.!', 'fight ko'\);\s*\n\s*this\.onKo\(\);/.test(hud) && /if \(this\.koT > 0\) \{\s*\n\s*if \(b\.tier >= 3\) this\.koLine\(b\.text\);\s*\n\s*return;/.test(hud) && /\.big-center \.ko-line \{/.test(css));
 check('callouts over a fighter: the same text merges («ПРОМАХ! ×2»), at most two per fighter, shorter (0.95 s)', /same\.el\.textContent = `\$\{text\} ×\$\{same\.sum\}`;/.test(hud) && /if \(mine\.length >= 2\)/.test(hud) && /'callout', f\.x, 2\.9, f\.z, 0\.95, 0\.6\)/.test(hud));
-check('the fight is untouched: SIM_VERSION a141348f2a0dea20 (no file of the simulation changed for this)', SIM_VERSION === 'a141348f2a0dea20');
+check('the fight is untouched: SIM_VERSION = the locked engine (no file of the simulation changed for this)', SIM_VERSION === SIM_LOCK);
 
 let failed = 0;
 for (const [name, pass] of checks) {

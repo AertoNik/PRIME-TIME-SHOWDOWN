@@ -125,6 +125,21 @@ export class BattleHUD implements Screen {
   private hpNum: HTMLElement[] = [];
   private status: HTMLElement[] = [];
   private lag = [1, 1];
+  /** Beta 2.7 LIVE DUELS: the connection chip of the mode strip. */
+  private liveNet: HTMLElement | null = null;
+  /** Beta 2.7 LIVE DUELS: a played card waits for the server's journal — it stays lit, never flies off early. */
+  private live = false;
+  private liveNetKey = '';
+  /** Beta 2.7 LIVE DUELS: the side this player commands (0 in every other mode). The left bar, the hand and the
+   *  player's reactions follow it; the right bar is the other side. */
+  private me: Side = 0;
+  private get foe(): Side {
+    return (1 - this.me) as Side;
+  }
+  /** The side shown in display slot 0 (left) / 1 (right). */
+  private sideAt(slot: number): Side {
+    return (slot === 0 ? this.me : 1 - this.me) as Side;
+  }
   private timeEl!: HTMLElement;
   private timerBox!: HTMLElement;
   private ratingFill!: HTMLElement;
@@ -355,9 +370,11 @@ export class BattleHUD implements Screen {
    */
   setup(m: Match, mode: ModeSession = { kind: 'classic' }, dress: { stage?: boolean; halloween?: boolean } = {}): void {
     this.m = m;
+    this.me = mode.kind === 'live' ? mode.side : 0;
+    this.live = mode.kind === 'live';
     const g = this.g;
     // 1.9.9: the deck's pictures (the hand's larger file) start loading now, before the first card is dealt
-    preloadCardArt(m.hands[0].deck, 'md');
+    preloadCardArt(m.hands[this.me].deck, 'md');
     this.setHeadHp(g.save.data.settings.headHp);
     const pf = FIGHTERS[m.cfg.fighter];
     const rv = m.rival;
@@ -374,15 +391,31 @@ export class BattleHUD implements Screen {
       (this.el.querySelector('[data-name="0"]') as HTMLElement).innerHTML = `<span class="hp-fighter">${esc(pf.name)}</span>${mine ? `<span class="hp-prod me">${esc(mine)}</span>` : ''}`;
       (this.el.querySelector('[data-name="1"]') as HTMLElement).innerHTML = `<span class="hp-fighter">${esc(df.name)}</span><span class="hp-prod foe">${esc(v.opponent.kind === 'system' ? 'PRIME NETWORK' : v.opponent.name)}</span>`;
     }
-    for (const side of [0, 1] as Side[]) {
+    // the matchup intro's two names (left = the player's own corner)
+    let aName = pf.name;
+    let bName = rv.name;
+    if (mode.kind === 'live') {
+      // Beta 2.7 LIVE DUELS: the left bar is this player's corner (side 0 or 1), the right one the friend's
+      const sides = mode.view.snapshot.sides;
+      for (const slot of [0, 1]) {
+        const c = sides[this.sideAt(slot)];
+        const fd = FIGHTERS[c.fighter];
+        (this.el.querySelector(`[data-portrait="${slot}"]`) as HTMLElement).innerHTML = portraitHTML(g.portraitFor(c.look || fd.look), fd.theme.main, fd.theme.dark);
+        (this.el.querySelector(`[data-name="${slot}"]`) as HTMLElement).innerHTML = `<span class="hp-fighter">${esc(fd.name)}</span><span class="hp-prod ${slot === 0 ? 'me' : 'foe'}">${esc(c.name ?? '')}</span>`;
+      }
+      aName = FIGHTERS[sides[this.me].fighter].name;
+      bName = FIGHTERS[sides[this.foe].fighter].name;
+    }
+    for (const slot of [0, 1]) {
       // one tick per 1000 HP so damage reads at a glance
-      const bar = this.hpBoxes[side].querySelector('.hp-bar') as HTMLElement;
-      bar.style.setProperty('--tick', `${(1000 / m.fighters[side].maxHp) * 100}%`);
+      const bar = this.hpBoxes[slot].querySelector('.hp-bar') as HTMLElement;
+      bar.style.setProperty('--tick', `${(1000 / m.fighters[this.sideAt(slot)].maxHp) * 100}%`);
     }
     this.rendered = [null, null, null];
     this.renderedNext = null;
     // Survival: the bar starts at the carried-over health, without a fake damage trail.
-    this.lag = [m.fighters[0].hpFrac, m.fighters[1].hpFrac];
+    this.lag = [m.fighters[this.sideAt(0)].hpFrac, m.fighters[this.sideAt(1)].hpFrac];
+    this.hpShown = [NaN, NaN];
     this.displayRating = m.broadcast.rating;
     this.lastSecond = -1;
     this.bannerQueue = [];
@@ -412,7 +445,7 @@ export class BattleHUD implements Screen {
     const [capHead, capSet] = set.caption.includes(' — ') ? set.caption.split(' — ') : ['NEXT BROADCAST', set.name];
     const stageCap = dress.stage ? `<div class="mi-stage st-${set.id}"><i>${esc(capHead)}</i><b>${esc(capSet)}</b><span>${esc(set.show)}</span></div>` : '';
     // Matchup intro (modes add a TV caption: wave number or challenge name)
-    const sides = `<span class="side a">${esc(pf.name)}</span><span class="vs">VS</span><span class="side b">${esc(rv.name)}</span>`;
+    const sides = `<span class="side a">${esc(aName)}</span><span class="vs">VS</span><span class="side b">${esc(bName)}</span>`;
     if (this.bossDef) {
       // BOSS FIGHT: a short championship presentation instead of the plain VS card
       // (LEGENDARY SHOWDOWN — CHAMPIONSHIP EDITION, or its HALLOWEEN SPECIAL in season)
@@ -530,6 +563,8 @@ export class BattleHUD implements Screen {
     this.bossDef = null;
     this.modeLive = null;
     this.modeLiveTxt = '';
+    this.liveNet = null;
+    this.liveNetKey = '';
     this.bossWarnEl?.remove();
     this.bossWarnEl = null;
     this.clearCut();
@@ -582,6 +617,14 @@ export class BattleHUD implements Screen {
       this.modeStrip.innerHTML = `<span class="ms-tag lg">${tag}</span><span class="ms-main"><i>${en ? 'AI director' : 'ИИ-режиссёр'}</i>${t ? esc(t.name) : 'PRIME'}</span>${v.ranked ? '<span class="ms-live on">RP</span>' : `<span class="ms-live">${v.mode === 'rush' ? (en ? 'NO RP' : 'БЕЗ RP') : en ? 'TRAINING' : 'ТРЕНИРОВКА'}</span>`}`;
       return `<div class="mi-cap lg">PRIME LEAGUE · VS ${esc(v.opponent.name)}</div>`;
     }
+    if (mode.kind === 'live') {
+      // Beta 2.7 LIVE DUELS: a real person on the other side; the dot shows the connection of both
+      const foe = mode.view.snapshot.sides[this.foe];
+      this.modeStrip.innerHTML = `<span class="ms-tag lv">LIVE DUEL</span><span class="ms-main"><i>VS</i>${esc(foe.name ?? '')}</span><span class="ms-live on" data-ms-net>● ONLINE</span>`;
+      this.modeLive = null;
+      this.liveNet = this.modeStrip.querySelector('[data-ms-net]');
+      return `<div class="mi-cap lv">LIVE DUEL · ${mode.view.game > 1 ? `РЕВАНШ ${mode.view.game - 1}` : 'PRIME TIME'}</div>`;
+    }
     if (mode.kind === 'challenge') {
       const def = challengeById(mode.id);
       this.challenge = def;
@@ -609,11 +652,27 @@ export class BattleHUD implements Screen {
     return { top: Math.min(0.4, top / root.height), bottom: Math.min(0.45, bottom / root.height) };
   }
 
+  /** Beta 2.7 LIVE DUELS: the same fight rebuilt from the server's journal takes the old Match's place. */
+  rebind(m: Match): void {
+    if (!this.m) return;
+    this.m = m;
+    this.syncHand(true);
+  }
+
+  /** Beta 2.7 LIVE DUELS: the connection chip — 'ok', 'peer' (the friend is reconnecting), 'self' (this game is). */
+  setLiveNet(state: 'ok' | 'peer' | 'self'): void {
+    if (!this.liveNet || state === this.liveNetKey) return;
+    this.liveNetKey = state;
+    this.liveNet.textContent = state === 'ok' ? '● ONLINE' : state === 'peer' ? '● СОПЕРНИК ПЕРЕПОДКЛЮЧАЕТСЯ' : '● ПЕРЕПОДКЛЮЧЕНИЕ…';
+    this.liveNet.classList.toggle('on', state === 'ok');
+    this.liveNet.classList.toggle('warn', state !== 'ok');
+  }
+
   tapCard(i: number): void {
     const m = this.m;
     if (!m || this.g.paused) return;
     // Alpha 1.6.5 — FIRST BROADCAST: only the card the tutorial points at plays
-    if (this.tut && (!this.tutTarget || m.hands[0].hand[i] !== this.tutTarget)) {
+    if (this.tut && (!this.tutTarget || m.hands[this.me].hand[i] !== this.tutTarget)) {
       const card = this.slots[i].querySelector('.hand-card:not(.played)') as HTMLElement | null;
       if (card) restart(card, 'shake');
       return;
@@ -622,13 +681,18 @@ export class BattleHUD implements Screen {
     // be played by the second half of an accidental double tap.
     const now = performance.now();
     if (now - this.lastPlayAt[i] < 280) return;
-    const card = m.hands[0].hand[i];
+    const card = m.hands[this.me].hand[i];
     const res = this.g.playCard(i);
     const slot = this.slots[i];
     const cardEl = slot.firstElementChild as HTMLElement | null;
     if (res === null) {
       this.lastPlayAt[i] = now;
       vibrate(12);
+      // LIVE: the card goes on air when the server's journal reaches the fight (≈ 0.2–0.4 s) — until then it glows
+      if (this.live) {
+        cardEl?.classList.add('live-pending');
+        return;
+      }
       if (cardEl) {
         const ghost = cardEl.cloneNode(true) as HTMLElement;
         // (Beta 2.6.2: the one-shot animations are not replayed on the flying copy — only its own fly-off runs)
@@ -645,8 +709,8 @@ export class BattleHUD implements Screen {
       // 'cooldown' is the short guard after a play: it only swallows accidental double taps.
       restart(cardEl, 'shake');
       if (res === 'energy') this.flashEnergyNeed(CARDS[card].cost);
-      const need = Math.ceil(CARDS[card].cost - m.hands[0].energy);
-      const me = m.fighters[0];
+      const need = Math.ceil(CARDS[card].cost - m.hands[this.me].energy);
+      const me = m.fighters[this.me];
       const msg: Record<string, string> = {
         energy: `Ещё ${Math.max(1, need)} ⚡`,
         stunned: 'Боец оглушён',
@@ -678,7 +742,7 @@ export class BattleHUD implements Screen {
   private flashEnergyNeed(cost: number): void {
     const m = this.m;
     if (!m) return;
-    const have = Math.floor(m.hands[0].energy);
+    const have = Math.floor(m.hands[this.me].energy);
     const segs = this.energyBar.querySelectorAll('i');
     segs.forEach((seg, i) => seg.classList.toggle('need', i >= have && i < cost));
     restart(this.energyBar, 'deny');
@@ -688,7 +752,7 @@ export class BattleHUD implements Screen {
   private syncHand(force: boolean): void {
     const m = this.m;
     if (!m) return;
-    const hand = m.hands[0];
+    const hand = m.hands[this.me];
     for (let i = 0; i < 3; i++) {
       const c = hand.hand[i] ?? null;
       if (force || c !== this.rendered[i]) {
@@ -752,18 +816,19 @@ export class BattleHUD implements Screen {
     const g = this.g;
     this.el.classList.toggle('outro', m.phase === 'outro' || m.phase === 'over');
     // health
-    for (const side of [0, 1] as Side[]) {
-      const f = m.fighters[side];
+    for (const slot of [0, 1]) {
+      // (Beta 2.7: display slot 0 = the player's own side — side 1 in a live duel where this player stands there)
+      const f = m.fighters[this.sideAt(slot)];
       const frac = f.hpFrac;
-      setStyle(this.hpVal[side], 'transform', `scaleX(${r3(frac)})`);
-      this.hpBoxes[side].classList.toggle('low', frac < 0.25 && !f.ko);
-      this.lag[side] = this.lag[side] > frac ? damp(this.lag[side], frac, 3, dt) : frac;
-      setStyle(this.hpLag[side], 'transform', `scaleX(${r3(this.lag[side])})`);
+      setStyle(this.hpVal[slot], 'transform', `scaleX(${r3(frac)})`);
+      this.hpBoxes[slot].classList.toggle('low', frac < 0.25 && !f.ko);
+      this.lag[slot] = this.lag[slot] > frac ? damp(this.lag[slot], frac, 3, dt) : frac;
+      setStyle(this.hpLag[slot], 'transform', `scaleX(${r3(this.lag[slot])})`);
       // (Beta 2.1: the number is formatted only when it changes — toLocaleString is not free, twice a frame)
       const hpInt = Math.ceil(f.hp);
-      if (this.hpShown[side] !== hpInt) {
-        this.hpShown[side] = hpInt;
-        this.hpNum[side].textContent = hpInt.toLocaleString('ru-RU');
+      if (this.hpShown[slot] !== hpInt) {
+        this.hpShown[slot] = hpInt;
+        this.hpNum[slot].textContent = hpInt.toLocaleString('ru-RU');
       }
       // statuses: only the most important few, so the top bar stays readable
       const on: Record<string, boolean> = {
@@ -786,9 +851,9 @@ export class BattleHUD implements Screen {
         if (on[s.key] && st.length < MAX_STATUS) st.push(`<span class="st" style="color:${s.color}">${s.label}</span>`);
       }
       const key = st.join('');
-      if (key !== this.statusKey[side]) {
-        this.statusKey[side] = key;
-        this.status[side].innerHTML = key;
+      if (key !== this.statusKey[slot]) {
+        this.statusKey[slot] = key;
+        this.status[slot].innerHTML = key;
       }
     }
     // timer
@@ -834,8 +899,16 @@ export class BattleHUD implements Screen {
 
     // hand + energy
     this.syncHand(false);
-    const hand = m.hands[0];
-    const p = m.fighters[0];
+    if (this.live) {
+      const h = m.hands[this.me];
+      for (let i = 0; i < 3; i++) {
+        const c = h.hand[i];
+        const cardEl = this.slots[i].querySelector('.hand-card:not(.played)');
+        if (cardEl) cardEl.classList.toggle('live-pending', !!c && this.g.livePending(h.deck.indexOf(c)));
+      }
+    }
+    const hand = m.hands[this.me];
+    const p = m.fighters[this.me];
     const energy = hand.energy;
     const eTxt = String(Math.floor(energy));
     if (this.energyNum.textContent !== eTxt) this.energyNum.textContent = eTxt;
@@ -939,8 +1012,8 @@ export class BattleHUD implements Screen {
     for (const side of [0, 1] as Side[]) {
       const f = m.fighters[side];
       const tag = this.headTags[side];
-      const minY = this.safeTop + (side === 1 && this.enemyWarn ? 36 : 10);
-      const shown = headTagShown({ headHp: this.headHp, ko: f.ko, fight: m.phase === 'fight', warn: side === 1 && this.enemyWarn });
+      const minY = this.safeTop + (side === this.foe && this.enemyWarn ? 36 : 10);
+      const shown = headTagShown({ headHp: this.headHp, ko: f.ko, fight: m.phase === 'fight', warn: side === this.foe && this.enemyWarn });
       tag.style.display = shown ? '' : 'none';
       if (shown) {
         view.headPos(side, _v);
@@ -948,8 +1021,8 @@ export class BattleHUD implements Screen {
         tag.style.transform = `translate3d(${_p.x}px, ${Math.max(minY, _p.y)}px, 0) translate(-50%, -100%)`;
         if (this.headHp) this.headBars[side].style.transform = `scaleX(${f.hpFrac})`;
       }
-      const warn = side === 1 && f.action.kind === 'windup';
-      if (warn !== this.enemyWarn && side === 1) {
+      const warn = side === this.foe && f.action.kind === 'windup';
+      if (warn !== this.enemyWarn && side === this.foe) {
         this.enemyWarn = warn;
         tag.classList.toggle('warn', warn);
       }
@@ -1167,7 +1240,7 @@ export class BattleHUD implements Screen {
         break;
       case 'hit': {
         const crit = e.crit;
-        const cls = e.side === 0 ? 'dmg player-hit' + (e.heavy ? ' heavy' : '') : crit ? 'dmg crit' : e.heavy ? 'dmg heavy' : 'dmg';
+        const cls = e.side === this.me ? 'dmg player-hit' + (e.heavy ? ' heavy' : '') : crit ? 'dmg crit' : e.heavy ? 'dmg heavy' : 'dmg';
         if (!e.heavy) {
           // Rapid small hits on the same target merge into one growing number.
           const agg = this.floaters.find((q) => q.active && q.side === e.side && q.t < 0.35);
@@ -1185,11 +1258,11 @@ export class BattleHUD implements Screen {
         } else {
           this.spawnFloater(crit ? `${e.damage}!` : String(e.damage), cls, e.x, 2.2, e.z, 1.15, 1.3);
         }
-        if (e.side === 0 && e.heavy) {
+        if (e.side === this.me && e.heavy) {
           this.flashVignette = 0.8;
           vibrate([20, 30, 20]);
         }
-        if (e.source === 0 && e.heavy) {
+        if (e.source === this.me && e.heavy) {
           this.screenFlash(crit ? 0.35 : 0.18);
           vibrate(25);
         }
@@ -1203,7 +1276,7 @@ export class BattleHUD implements Screen {
         break;
       case 'dodge':
         // The player's perfect dodge already gets a banner and a rating pop.
-        if (e.perfect && e.side === 1) this.callout(1, 'PERFECT DODGE', '#9af6ff');
+        if (e.perfect && e.side === this.foe) this.callout(e.side, 'PERFECT DODGE', '#9af6ff');
         else if (!e.perfect && e.heavy) this.callout(e.side, 'НА ВОЛОСОК', '#c8d4ff');
         break;
       case 'stun':
@@ -1229,7 +1302,7 @@ export class BattleHUD implements Screen {
           const mv = this.bossDef.moves.find((x) => x.id === 'spotlight');
           if (mv) this.bossWarn(mv.name, 'Уйдите с красной линии рывком DASH', e.duration);
         }
-        if (e.side === 1) {
+        if (e.side === this.foe) {
           this.g.audio.telegraph();
           if (!this.hints.telegraph && !this.g.save.data.hintsSeen) {
             this.hints.telegraph = true;
@@ -1241,7 +1314,7 @@ export class BattleHUD implements Screen {
         }
         break;
       case 'combo':
-        if (e.side === 0) {
+        if (e.side === this.me) {
           const ultra = e.combo === 'superstar' || e.combo === 'electro_blast';
           // (Beta 2.6.2: the pulse restarts through its twin — no forced layout at the combo's own moment)
           restart(this.edgeGlow, 'on');
@@ -1249,10 +1322,14 @@ export class BattleHUD implements Screen {
           vibrate(ultra ? [20, 40, 30] : 18);
         }
         break;
+      // Beta 2.7 LIVE DUELS: the show's rating and its reactions are written for side 0 — in a duel of two people
+      // neither screen shows them (the same for both corners)
       case 'rating':
+        if (this.live) break;
         if (e.label && Math.abs(e.amount) >= 1) this.ratingPop(e.amount, e.label);
         break;
       case 'reaction': {
+        if (this.live) break;
         const pc = this.pendingCombo;
         const detail = pc && pc.name === e.text ? pc.detail : undefined;
         if (detail) this.pendingCombo = null;
@@ -1270,7 +1347,7 @@ export class BattleHUD implements Screen {
         break;
       case 'card': {
         const c = CARDS[e.card];
-        if (e.side === 0) {
+        if (e.side === this.me) {
           if (e.combo && this.prevCard) {
             // Explain the payoff: which two cards made it and what it gives.
             const def = COMBOS.find((x) => x.id === e.combo)!;
@@ -1279,14 +1356,14 @@ export class BattleHUD implements Screen {
           this.prevCard = e.card;
           // The combo banner already names the move; skip the duplicate card callout.
           // SECOND TAKE calls its own «SECOND TAKE!» when the replay appears.
-          if (!e.combo && e.card !== 'second_take') this.callout(0, c.name, c.color);
+          if (!e.combo && e.card !== 'second_take') this.callout(this.me, c.name, c.color);
         } else {
           // Rival combos name the combo instead of the card (one label, not two);
           // the champion's cards carry his signature names.
           const rc = e.combo ? COMBOS.find((x) => x.id === e.combo)! : null;
           const bossName = this.bossDef?.cardNames[e.card];
           // DIRECTOR'S CUT has its own big alert
-          if (e.card !== 'directors_cut' || rc) this.callout(1, (rc ? rc.name : (bossName ?? c.name)) + '!', bossName ? '#ffd76a' : '#ff8a7a');
+          if (e.card !== 'directors_cut' || rc) this.callout(e.side, (rc ? rc.name : (bossName ?? c.name)) + '!', bossName ? '#ffd76a' : '#ff8a7a');
         }
         break;
       }
@@ -1327,6 +1404,12 @@ export class BattleHUD implements Screen {
         if (e.completed) this.callout(e.side, 'ЧЕМПИОН ОТКРЫТ!', '#9dff5c');
         break;
       case 'cardFail':
+        // LIVE: the card reached the fight but the fight refused it there (stunned meanwhile…) — say why
+        if (this.live && e.side === this.me) {
+          const i = this.m ? this.m.hands[this.me].hand.indexOf(e.card) : -1;
+          const why: Record<string, string> = { energy: 'Не хватило ⚡', stunned: 'Боец оглушён', glitched: 'Система взломана', busy: 'Боец занят', cooldown: 'Слишком быстро' };
+          if (i >= 0 && why[e.reason]) this.denyTip(i, why[e.reason]);
+        }
         break;
       // Alpha 1.6: a fighter tore out of nets / cables (short immunity)
       case 'breakFree':
@@ -1341,7 +1424,7 @@ export class BattleHUD implements Screen {
         break;
       case 'frameCatch':
         if (e.first) this.callout(e.side, 'ПАРИРОВАНО!', '#c6ff4d');
-        if (e.refund > 0 && e.side === 0) {
+        if (e.refund > 0 && e.side === this.me) {
           const f = this.m?.fighters[e.side];
           if (f) this.spawnFloater(`+${e.refund} ⚡`, 'callout', f.x, 2.5, f.z, 0.9, 0.7).el.style.color = '#ffe14d';
         }
@@ -1396,7 +1479,7 @@ export class BattleHUD implements Screen {
   private syncTutorialCards(): void {
     const m = this.m;
     if (!m) return;
-    const hand = m.hands[0].hand;
+    const hand = m.hands[this.me].hand;
     let at = -1;
     for (let i = 0; i < 3; i++) {
       const on = this.tut && !!this.tutTarget && hand[i] === this.tutTarget;

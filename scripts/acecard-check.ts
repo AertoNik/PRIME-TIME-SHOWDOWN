@@ -23,6 +23,7 @@ import { comboBot, type BotState } from './bots';
 import { leagueAutoSource, leagueRulesSource, leagueSim, simVersionSource } from './backend';
 import { LEGACY_CHECK_ENV, ROOT, binariesReady, ensurePortsFree, ownServerStarted, registrationExtras, spawnPocketBase, stopChild, upsertSuperuser, waitHealthy } from './lib/backendKit';
 import { crypto, fs, nodeModule, os, path, proc } from './lib/node';
+import { SIM_LOCK } from './lib/simLock';
 
 const req = nodeModule.createRequire(path.join(ROOT, 'backend', 'pb_hooks', 'lib', 'x.js'));
 
@@ -225,7 +226,7 @@ function rulesChecks(): void {
   section('Правила: бой и SIM не изменились');
   check(`the fight's card kinds (AI weights, inside SIM) unchanged: 29 cards, no MAIN EVENT`, Object.keys(CARD_KIND).length === 29 && !('main_event' in CARD_KIND));
   check('the AI already counts a card without a kind as an «attack» — the kind the deck rule gives MAIN EVENT', /CARD_KIND\[card\] \?\? 'attack'/.test(read('src/combat/FighterAI.ts')));
-  check(`SIM_VERSION is Beta 2.6's a141348f2a0dea20, the server's fight file is built from today's code`, SIM_VERSION === 'a141348f2a0dea20' && read('backend/pb_hooks/lib/league_sim.js') === leagueSim().code && read('src/league/simVersion.ts') === simVersionSource());
+  check(`SIM_VERSION is the locked engine (scripts/lib/simLock.ts), the server's fight file is built from today's code`, SIM_VERSION === SIM_LOCK && read('backend/pb_hooks/lib/league_sim.js') === leagueSim().code && read('src/league/simVersion.ts') === simVersionSource());
   check('the deck rule is not part of the fight bundle (league_sim.js knows nothing of leagueDeck.ts)', !/LEAGUE_DECK_KIND|leagueDeckFrom/.test(read('backend/pb_hooks/lib/league_sim.js')) && !/leagueDeck/.test(read('src/league/server.ts')));
   const LR = req('./league_rules.js');
   check('the server reads exactly this rule (league_rules.cardKind = LEAGUE_DECK_KIND; the file is generated and up to date)', JSON.stringify(LR.cardKind) === JSON.stringify(LEAGUE_DECK_KIND) && read('backend/pb_hooks/lib/league_rules.js') === leagueRulesSource());

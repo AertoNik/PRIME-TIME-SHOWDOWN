@@ -5470,6 +5470,37 @@
           1062,
           1095
         ]
+      },
+      "live_duels": {
+        "src": "PRIME_TIME_2_7_UI_ART/ui_live_duels.png",
+        "sha256": "c05614f52fa164b72e88993593e578a32d0691d1c04f8068224cd583cf6a95a5",
+        "size": [
+          1254,
+          1254
+        ],
+        "out": {
+          "xs": {
+            "file": "ui/ui/xs/live_duels.webp",
+            "w": 96,
+            "h": 96,
+            "bytes": 7856,
+            "sha256": "413e68175a7ff216c0dbabfff13cdab1d7c5b578ad73c2fd696b7f1b42bf1bcf"
+          },
+          "sm": {
+            "file": "ui/ui/sm/live_duels.webp",
+            "w": 192,
+            "h": 192,
+            "bytes": 21484,
+            "sha256": "044207c4dd9d01a272c6921797aaf9da1d662c1df749f891ce56146c9c98dd74"
+          }
+        },
+        "bbox": [
+          22,
+          40,
+          1232,
+          1232
+        ],
+        "encoder": "Chrome canvas WebP q0.9 (alpha ≤ 4 cleared, trimmed, scaled whole with a 3 % margin — the fit of prepare_art.py)"
       }
     },
     "nav": {

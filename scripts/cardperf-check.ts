@@ -1,5 +1,5 @@
 // Beta 2.6.2 — `npm run cardperf`: COMBAT CARDS PERFORMANCE & UI POLISH, the guarantees in code.
-//   1. the fight is untouched: SIM_VERSION a141348f2a0dea20, the server's fight file built from today's src/combat;
+//   1. the fight is untouched: SIM_VERSION = the locked engine, the server's fight file built from today's src/combat;
 //   2. effects warmed ahead (Renderer.warmPrograms / warmProgramsAsync / warmStep): at boot behind the loading screen, at
 //      each fight's set-up for its new objects, a fighter's hidden parts with the fighter (warmRig) — never mid-fight;
 //   3. the automatic drop to a quality without bloom prepares its shaders over frames before switching (stepDown);
@@ -12,6 +12,7 @@ import { SIM_VERSION } from '../src/league/simVersion';
 import { leagueSim, simVersionSource } from './backend';
 import { ROOT } from './lib/backendKit';
 import { fs, path, proc } from './lib/node';
+import { SIM_LOCK } from './lib/simLock';
 
 let passed = 0;
 let failed = 0;
@@ -57,7 +58,7 @@ const game = read('src/game/Game.ts');
 const bv = read('src/render/BattleView.ts');
 
 section('Бой не тронут');
-check(`SIM_VERSION is Beta 2.6.1's a141348f2a0dea20 and the server's fight file is built from today's code`, SIM_VERSION === 'a141348f2a0dea20' && read('backend/pb_hooks/lib/league_sim.js') === leagueSim().code && read('src/league/simVersion.ts') === simVersionSource());
+check(`SIM_VERSION is the locked engine (scripts/lib/simLock.ts) and the server's fight file is built from today's code`, SIM_VERSION === SIM_LOCK && read('backend/pb_hooks/lib/league_sim.js') === leagueSim().code && read('src/league/simVersion.ts') === simVersionSource());
 check('the HUD only reads the match (comboHint is a query): no rule, timing or card value is written by the UI', !/m\.hands\[0\]\.(energy|lockout)\s*=|\.cooldown\s*=|cardLockout\s*=/.test(hud));
 check('the 0.3 s card lockout and the 280 ms same-slot guard are kept as they were', /cardLockout: 0\.3,/.test(read('src/config/balance.ts')) && /if \(now - this\.lastPlayAt\[i\] < 280\) return;/.test(hud));
 

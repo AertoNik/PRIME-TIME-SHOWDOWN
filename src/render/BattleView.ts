@@ -16,6 +16,7 @@ import { DEFEAT_DELAY, RECOIL } from '../config/animation';
 import { ARENA } from '../config/balance';
 import { CARDS, TAKE_CARDS } from '../config/cards';
 import type { CastKind, Side, WeaponType } from '../config/types';
+import { flipFloors } from './stages/StageKit';
 import { lineReach } from '../combat/CombatSystem';
 import type { FighterSim } from '../combat/FighterSim';
 import type { Match } from '../combat/Match';
@@ -126,6 +127,8 @@ export class BattleView {
   /** Alpha 1.6.1 SECOND TAKE: the replay ghosts by stage-object id (one per side at most). */
   private echoes = new Map<number, { model: CachedFighter; side: Side; x: number; z: number; yaw: number; age: number; gone: number }>();
   private match: Match | null = null;
+  /** Beta 2.7: the side whose player looks at this screen (LIVE DUELS; 0 in every other mode). */
+  private me: Side = 0;
   /** Alpha 1.8.8: the look each side is shown in (a PRIME SHOP skin of the player's fighter). */
   private looks: string[] = [];
   /** 1.9.4: the rig copy of each side (1 for side 1 when both sides wear the same look — ModelCache RigCopy). */
@@ -191,9 +194,13 @@ export class BattleView {
 
   // ---------------------------------------------------------------- setup
   /** `looks`: the look per side when it differs from the fighter's own (a worn PRIME SHOP skin). */
-  setup(match: Match, looks: readonly (string | null)[] = []): void {
+  setup(match: Match, looks: readonly (string | null)[] = [], viewSide: Side = 0, warm = true): void {
     this.teardown();
     this.match = match;
+    // Beta 2.7 LIVE DUELS: the side this screen belongs to (0 everywhere else) — its colours, its camera corner
+    this.me = viewSide;
+    this.cam.flip = viewSide === 1;
+    flipFloors(viewSide === 1);
     // 1.9.4: a look this game cannot build (old data, a newer skin) never breaks a fight: the fighter's own look instead
     this.looks = match.fighters.map((f, i) => {
       const want = looks[i] ?? f.look;
@@ -222,7 +229,7 @@ export class BattleView {
         new PlaneGeometry(1.7, 1.7),
         new MeshBasicMaterial({
           map: teamRingTexture(),
-          color: TEAM_COLORS[f.side].clone().multiplyScalar(1.3),
+          color: TEAM_COLORS[f.side === this.me ? 0 : 1].clone().multiplyScalar(1.3),
           transparent: true,
           blending: AdditiveBlending,
           depthWrite: false,
@@ -246,8 +253,8 @@ export class BattleView {
         teamRing,
         shadow,
         accent,
-        dashFx: f.side === 0 ? this.style.dashFx : null,
-        dashColor: (f.side === 0 && dashColor(this.style.dashFx)?.clone()) || accent,
+        dashFx: f.side === this.me ? this.style.dashFx : null,
+        dashColor: (f.side === this.me && dashColor(this.style.dashFx)?.clone()) || accent,
         pos: new Vector3(f.x, 0, f.z),
         stunArcT: 0,
         emberT: 0,
@@ -290,15 +297,15 @@ export class BattleView {
     this.cam.snapBattle(this.slots[0].pos, this.slots[1].pos);
     this.arena.setScreen({
       mode: 'fight',
-      left: match.fighters[0].name,
-      right: match.fighters[1].name,
+      left: match.fighters[this.me].name,
+      right: match.fighters[1 - this.me].name,
       leftColor: '#2ad8ff',
       rightColor: '#ff5a4a',
       headline: '',
     });
     // Beta 2.6.2: every effect's shader compiled now, behind the VS intro — not on its first show mid-fight
     // (dev only: ?nofxwarm fights without it — the A/B of the 2.6.2 measurements)
-    if (!(import.meta.env.DEV && new URLSearchParams(location.search).has('nofxwarm'))) this.lastWarm = this.r.warmPrograms();
+    if (warm && !(import.meta.env.DEV && new URLSearchParams(location.search).has('nofxwarm'))) this.lastWarm = this.r.warmPrograms();
   }
   /** Beta 2.6.2: what the last warm-up compiled (dev measurements). */
   lastWarm: { programs: number; textures: number; drawn: number; ms: number } | null = null;
@@ -342,9 +349,29 @@ export class BattleView {
     this.clock.reset();
     this.slots = [];
     this.match = null;
+    // (the menus' showcase looks at the set from the usual end again)
+    flipFloors(false);
   }
 
   /** World→screen (CSS px, relative to canvas). */
+  /**
+   * Beta 2.7 LIVE DUELS: the same fight rebuilt from the server's journal (a late entry, a return from the
+   * background) — the new Match takes the old one's place; the rigs, the set and the effects stay, the fighters jump
+   * to where the rebuilt fight has them.
+   */
+  rebind(match: Match): void {
+    if (!this.match) return;
+    this.match = match;
+    for (const s of this.slots) {
+      const f = match.fighters[s.side];
+      s.pos.set(f.x, 0, f.z);
+      s.model.rig.root.position.set(f.x, 0, f.z);
+      s.koHandled = f.ko;
+    }
+    for (const d of this.decoys.values()) this.root.remove(d.rig.root);
+    this.decoys.clear();
+  }
+
   project(x: number, y: number, z: number, out: { x: number; y: number }): boolean {
     _v.set(x, y, z).project(this.r.camera);
     const { w, h } = this.r.size;
@@ -673,7 +700,7 @@ export class BattleView {
     const muzzle = s.model.rig.muzzles[0].getWorldPosition(_v);
     v.y = Math.max(0.7, Math.min(1.5, muzzle.y));
     const accent = s.accent;
-    const enemy = p.owner === 1;
+    const enemy = p.owner !== this.me;
     // Per-weapon tracer identity: thin pistol needles, short hot pellets,
     // flickering carbine bolts, fat power shots.
     let r = 0.11;
@@ -922,7 +949,7 @@ export class BattleView {
           this.cam.addTrauma(0.18);
           this.r.pulseFlash(s.accent.getHex(), 1.2);
         } else if (rp.shake > 0) {
-          this.cam.addTrauma(rp.shake * (e.side === 0 ? 0.6 : 1));
+          this.cam.addTrauma(rp.shake * (e.side === this.me ? 0.6 : 1));
           if (e.weapon === 'boom_cannon') this.r.pulseFlash(0xffb060, 0.35);
         }
         break;
@@ -963,10 +990,10 @@ export class BattleView {
           this.cam.addTrauma(0.025);
         } else if (weapon === 'breaker') {
           // CHAMPION BURST slugs land with weight: a moderate jolt when they hit the player
-          this.cam.addTrauma(e.side === 0 ? 0.08 : 0.03);
-          if (e.side === 0) this.cam.kick(0.1);
+          this.cam.addTrauma(e.side === this.me ? 0.08 : 0.03);
+          if (e.side === this.me) this.cam.kick(0.1);
         } else {
-          this.cam.addTrauma(e.side === 0 ? 0.04 : 0.02);
+          this.cam.addTrauma(e.side === this.me ? 0.04 : 0.02);
         }
         break;
       }
@@ -1006,7 +1033,7 @@ export class BattleView {
           this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xff4fd8), 0.6, 5.5, 0.55, 3);
           this.vfx.rays(s.pos.x, 1.3, s.pos.z, _c.set(0xff4fd8), 0.6, 4.4, 0.6, 1.8);
         }
-        if (e.side === 0) {
+        if (e.side === this.me) {
           // seasonal accent: an extra burst in the event palette
           const pal = this.style.combo;
           for (let i = 1; i < pal.length; i++) this.vfx.burst(s.pos.x, 1.3, s.pos.z, _c.set(pal[i]), ultra ? 14 : 9, ultra ? 8 : 6, 0.18, 0.7, 2.4, -1.5, 2.5);
@@ -1023,7 +1050,7 @@ export class BattleView {
           s.model.anim.evade();
           this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xffffff), 0.6, 3.5, 0.35, 2.5);
           this.vfx.glow(s.pos.x, 1.2, s.pos.z, s.accent, 1, 3, 0.25, 1.6);
-          if (e.side === 0 && e.heavy) this.requestTime(0.35, 0.4);
+          if (e.side === this.me && e.heavy) this.requestTime(0.35, 0.4);
         }
         break;
       }
@@ -1095,7 +1122,7 @@ export class BattleView {
           this.night.gather(e.side, s.pos.x, s.pos.z);
           this.vfx.ring(s.pos.x, s.pos.z, _c.set(0xc4123a), 0.5, 2.6, 0.4, 2.2);
         }
-        s.fx.laneMat.color.copy(e.side === 1 ? _c.set(0xff3a2a) : _c.set(0x2ad8ff)).multiplyScalar(e.player ? 0.9 : 1.6);
+        s.fx.laneMat.color.copy(e.side !== this.me ? _c.set(0xff3a2a) : _c.set(0x2ad8ff)).multiplyScalar(e.player ? 0.9 : 1.6);
         s.fx.ringMat.color.copy(s.fx.laneMat.color);
         break;
       }
@@ -1367,7 +1394,7 @@ export class BattleView {
         this.finishTimer = 0;
         const winner = this.slots[1 - e.side];
         winner.victoryDelay = 0.9;
-        if (e.side === 1) {
+        if (e.side !== this.me) {
           this.vfx.confetti(s.pos.x, 2, s.pos.z, 120, this.style.confetti);
         }
         break;

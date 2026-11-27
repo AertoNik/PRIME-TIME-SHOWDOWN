@@ -11,6 +11,7 @@
 import { LONG_FRAME_S, PACED_INTERVAL_S, PACING_WINDOW, SLOW_AVG_S, pacingStep, tooEarly } from '../src/render/framePacing';
 import { SIM_VERSION } from '../src/league/simVersion';
 import { fs, proc } from './lib/node';
+import { SIM_LOCK } from './lib/simLock';
 
 const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
@@ -69,9 +70,9 @@ check('a set\'s materials are let go without material.dispose() — textures and
 check('…except a material the shadow pass copies (alpha test, displacement, clipping, alpha to coverage) — still disposed, so its depth copy is released', /m\.alphaTest > 0 \|\| mm\.displacementMap \|\| m\.alphaToCoverage \|\| mm\.clipShadows\) m\.dispose\(\)/.test(kit));
 const game = read('src/game/Game.ts');
 check('the career\'s next rival is drawn at boot (behind the loading screen) and again on the results screen when it changes — once a session each, never a rig on stage', /this\.warmNextRival\(\);[\s\S]{0,700}?this\.portraits = renderPortraits/.test(game) /* (2.6.2: the effects warm-up sits between them) */ && /if \(this\.screen === 'results'\) this\.warmNextRival\(\);/.test(game) && /if \(rig\.root\.parent\) return;/.test(game) && /this\.warmedRivals\.has\(id\)/.test(game));
-check('the loop keeps to the paced interval (Game.loop → tooEarly) and the settings say «ровные 30 кадров/с» while it is on', /if \(tooEarly\(\(now - this\.last\) \/ 1000, this\.renderer\.frameInterval\)\) \{\s*\n\s*this\.scheduleNext\(\);\s*\n\s*return;/.test(game) && game.includes("' · ровные 30 кадров/с'"));
+check('the loop keeps to the paced interval (Game.loop → tooEarly) and the settings say «ровные 30 кадров/с» while it is on', /if \(tooEarly\(\(now - this\.last\) \/ 1000, (this\.renderer\.frameInterval|Math\.max\(this\.renderer\.frameInterval, this\.coveredInterval\(\)\))\)\) \{\s*\n\s*this\.scheduleNext\(\);\s*\n\s*return;/.test(game) && game.includes("' · ровные 30 кадров/с'"));
 const rnd = read('src/render/Renderer.ts');
-check('only «Авто» decides (a quality chosen by hand turns pacing off); the fight itself is not touched (fixed step, SIM_VERSION a141348f2a0dea20)', /if \(this\.setting !== 'auto' \|\| document\.hidden\) return;/.test(rnd) && /this\.frameInterval = 0;/.test(rnd.slice(rnd.indexOf('setQualitySetting'), rnd.indexOf('setQualitySetting') + 400)) && SIM_VERSION === 'a141348f2a0dea20');
+check('only «Авто» decides (a quality chosen by hand turns pacing off); the fight itself is not touched (fixed step, SIM_VERSION = the locked engine)', /if \(this\.setting !== 'auto' \|\| document\.hidden\) return;/.test(rnd) && /this\.frameInterval = 0;/.test(rnd.slice(rnd.indexOf('setQualitySetting'), rnd.indexOf('setQualitySetting') + 400)) && SIM_VERSION === SIM_LOCK);
 
 let failed = 0;
 for (const [name, pass] of checks) {

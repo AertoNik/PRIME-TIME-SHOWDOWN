@@ -45,6 +45,13 @@ export interface MatchConfig {
    * tactic (`rival` and `difficulty` are then ignored). Fixed by the server; the server replays the same fight.
    */
   league?: LeagueFight;
+  /**
+   * Beta 2.7 LIVE DUELS: two people play — side 1 is no AI rival. Its fighter moves with the very same pilot brain as
+   * side 0 and never plays a card by itself; both sides wind up their heavy attacks with the visible telegraph
+   * (symmetric). Used together with `league` (the foe = side 1's fighter and deck, multipliers 1). Absent everywhere
+   * else, so no other mode changes.
+   */
+  live?: boolean;
 }
 
 /**
@@ -217,7 +224,7 @@ export class Match implements BroadcastHost {
       control: this.rival.mods?.control,
       tactic,
     };
-    this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, enemyProfile)];
+    this.ais = [new FighterAI(this, 0, playerProfile), new FighterAI(this, 1, cfg.live ? { ...playerProfile } : enemyProfile)];
     // Alpha 1.4: the stage's set pieces (Classic default: the original studio's speaker stacks)
     this.props = arenaById(cfg.arena).props.map((p) => ({
       kind: p.kind,

@@ -131,7 +131,7 @@ check('no copy of an original PNG ships with the game (public/ holds WebP only)'
 {
   const hud = read('src/ui/screens/BattleHUD.ts');
   const prep = read('src/ui/screens/PrepScreen.ts');
-  check('the battle hand uses the md file and the deck is preloaded (battle start and prep screen)', hud.includes("cardHTML(c, 'hand-card enter', false, true)") && hud.includes("preloadCardArt(m.hands[0].deck, 'md')") && prep.includes("preloadCardArt(this.deck, 'md')"));
+  check('the battle hand uses the md file and the deck is preloaded (battle start and prep screen)', hud.includes("cardHTML(c, 'hand-card enter', false, true)") && (hud.includes("preloadCardArt(m.hands[0].deck, 'md')") || hud.includes("preloadCardArt(m.hands[this.me].deck, 'md')")) && prep.includes("preloadCardArt(this.deck, 'md')"));
 }
 
 // ----------------------------------------------------------- the cards themselves did not change (1.9.8 values)

@@ -13,6 +13,7 @@ import { ARCHETYPES } from './lib/economyModel';
 import { fs, proc } from './lib/node';
 import { quotedTemplates } from './lib/quotedTemplates';
 import { SIM_VERSION } from '../src/league/simVersion';
+import { SIM_LOCK } from './lib/simLock';
 
 const checks: [string, boolean][] = [];
 const check = (name: string, pass: boolean) => checks.push([name, pass]);
@@ -25,7 +26,7 @@ const lg = read('backend/pb_hooks/lib/league.js');
 check('paid only in the settlement of a ranked fight the attacker LOST against a real player\'s defender (o === "loss", ranked, defKind player)', /if \(o === 'loss' && m\.getBool\('ranked'\)\) \{[\s\S]{0,700}payDefenseRep\(ds, uid, t\)/.test(lg) && /if \(snap\.defKind === 'player' && m\.getString\('defOwner'\)\)/.test(lg));
 check('once per attacker and game day, within the daily cap; the lifetime sum in stats.repTotal', /r\.a\.indexOf\(attacker\) >= 0\) return 0/.test(lg) && /Math\.min\(cfg\.win, cfg\.perDay - \(r\.n \|\| 0\)\)/.test(lg) && /ds\.repTotal = \(ds\.repTotal \|\| 0\) \+ pay/.test(lg));
 check('a server switch: PRIME_LEAGUE_DEFENSE_REP=off', /env\('PRIME_LEAGUE_DEFENSE_REP'\) !== 'off'/.test(lg));
-check('the fight is untouched: SIM_VERSION a141348f2a0dea20', SIM_VERSION === 'a141348f2a0dea20');
+check('the fight is untouched: SIM_VERSION = the locked engine', SIM_VERSION === SIM_LOCK);
 check('the league rules carry it (npm run backend:rules)', /"defenseRep": \{\s*"win": 5,\s*"perDay": 25/.test(read('backend/pb_hooks/lib/league_rules.js')));
 // Beta 2.1 final: the defence note in PRIME LEAGUE printed «+${LEAGUE.defenseRep.win} ★ … до ${LEAGUE.defenseRep.perDay} ★»
 // literally (Beta 2.0: a template in plain quotes) — the player reads the numbers now, and no plain string in the game

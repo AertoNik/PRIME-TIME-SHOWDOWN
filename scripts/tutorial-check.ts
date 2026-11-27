@@ -58,7 +58,7 @@ const DT = 1 / 60;
   check('flow: «ПРОПУСТИТЬ» is on screen from the start and skips', /class="tut-skip" data-act="tut-skip">ПРОПУСТИТЬ</.test(hud) && /closest\('\[data-act="tut-skip"\]'\)\) \{\s*this\.g\.skipTutorial\(\);/.test(hud));
   check('flow: a progress reset does not force the tutorial on someone who has seen it', /const seen = this\.save\.data\.tutorial !== 'pending';\s*this\.save\.reset\(\);\s*if \(seen\)/.test(game));
   // nothing counts
-  check('no progress: the tutorial match returns before results, career, money, fans, Classic wins, events and modes', /if \(mode\.kind === 'tutorial'\) return;\s*\n\s*let challenge/.test(game) || /mode\.kind === 'tutorial'\) return;[\s\S]{0,400}const wave = this\.modes\.recordWave/.test(game));
+  check('no progress: the tutorial match returns before results, career, money, fans, Classic wins, events and modes', /if \(mode\.kind === 'tutorial'\) return;\s*\n\s*let challenge/.test(game) || /mode\.kind === 'tutorial'\) return;[\s\S]{0,1100}const wave = this\.modes\.recordWave/.test(game));
   check('no progress: no seasonal event is credited for it', /mode\.kind !== 'survival' && mode\.kind !== 'tutorial' && this\.events\.playable/.test(game));
   check('no progress: it brings its own deck (the player\'s decks are never written)', /deck: TUTORIAL\.deck\.slice\(\)/.test(game) && !/fighters\[[^\]]*\]\.deck = TUTORIAL/.test(game));
 }

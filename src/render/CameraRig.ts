@@ -49,6 +49,13 @@ export class CameraRig {
   showcaseHeight = 1.05;
   // finish
   finishFocus = new Vector3();
+  /**
+   * Beta 2.7 LIVE DUELS: the player of side 1 watches from the other end of the studio (behind its own fighter).
+   * The battle and finish framing is worked out as if the stage were turned half a circle, then turned back.
+   */
+  flip = false;
+  private readonly ma = new Vector3();
+  private readonly mb = new Vector3();
   finishSide = 1;
   finishShift = 0.04;
   finishDist = 7.5;
@@ -69,6 +76,10 @@ export class CameraRig {
   }
 
   snapBattle(a: Vector3, b: Vector3): void {
+    if (this.flip) {
+      a = this.ma.set(-a.x, a.y, -a.z);
+      b = this.mb.set(-b.x, b.y, -b.z);
+    }
     this.bTarget.set((a.x + b.x) / 2, LOOK_Y, (a.z + b.z) / 2);
     this.bDist = this.requiredDistance(this.bTarget, [a, b]);
     this.distGoal = this.bDist;
@@ -134,6 +145,12 @@ export class CameraRig {
   }
 
   private battlePose(a: Vector3, b: Vector3, dt: number): Pose {
+    // (flip: the whole framing in the turned stage — bTarget lives there too — and the pose turned back at the end)
+    const k = this.flip ? -1 : 1;
+    if (this.flip) {
+      a = this.ma.set(-a.x, a.y, -a.z);
+      b = this.mb.set(-b.x, b.y, -b.z);
+    }
     let tx = clamp((a.x + b.x) / 2, -3.2, 3.2);
     let tz = clamp((a.z + b.z) / 2, -6, 6);
     // combo accent: lean the frame toward the highlight for a beat
@@ -142,8 +159,8 @@ export class CameraRig {
       this.accentT = Math.max(0, this.accentT - dt);
       const p = 1 - this.accentT / 0.75;
       accent = Math.sin(Math.min(1, p * 1.6) * Math.PI) * this.accentStrength;
-      tx += (this.accentPos.x - tx) * 0.3 * accent;
-      tz += (this.accentPos.z - tz) * 0.3 * accent;
+      tx += (this.accentPos.x * k - tx) * 0.3 * accent;
+      tz += (this.accentPos.z * k - tz) * 0.3 * accent;
     }
     this.bTarget.x = damp(this.bTarget.x, tx, 3.2, dt);
     this.bTarget.y = LOOK_Y;
@@ -154,8 +171,8 @@ export class CameraRig {
     this.bDist = damp(this.bDist, this.distGoal, this.distGoal > this.bDist ? 4.5 : 0.8, dt);
     const d = this.bDist * (1 - 0.1 * accent);
     return {
-      pos: new Vector3(this.bTarget.x, this.bTarget.y + Math.sin(PITCH) * d, this.bTarget.z + Math.cos(PITCH) * d),
-      look: this.bTarget.clone(),
+      pos: new Vector3(this.bTarget.x * k, this.bTarget.y + Math.sin(PITCH) * d, (this.bTarget.z + Math.cos(PITCH) * d) * k),
+      look: new Vector3(this.bTarget.x * k, this.bTarget.y, this.bTarget.z * k),
       fov: 40,
       shift: (this.hudBottom - this.hudTop) / 2,
     };
@@ -178,7 +195,7 @@ export class CameraRig {
     const d = this.finishDist;
     const p = 0.42;
     return {
-      pos: new Vector3(f.x, 1 + Math.sin(p) * d, f.z + Math.cos(p) * d),
+      pos: new Vector3(f.x, 1 + Math.sin(p) * d, f.z + Math.cos(p) * d * (this.flip ? -1 : 1)),
       look: new Vector3(f.x, 1.1, f.z),
       fov: 36,
       shift: this.finishShift,

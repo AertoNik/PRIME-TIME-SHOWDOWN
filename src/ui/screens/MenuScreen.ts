@@ -108,6 +108,7 @@ export class MenuScreen implements Screen {
       // 1.9.0: «В БОЙ!» → the career's modes or PRIME LEAGUE (the last choice; the first time — the choice)
       if (act === 'modes') openFightEntry(this.g);
       else if (act === 'shop') this.g.goto('shop');
+      else if (act === 'live') this.g.goto('live');
       else if (act === 'roster') this.g.goto('roster');
       else if (act === 'career') this.g.goto('career');
       else if (act === 'settings') this.g.openSettings();
@@ -310,6 +311,15 @@ export class MenuScreen implements Screen {
         <span class="ce-text"><b>КАРТЫ</b><small>${cardStats.have}/${cardStats.total}</small></span>
         ${cardStats.buyable ? `<span class="badge-dot">${cardStats.buyable}</span>` : ''}
       </button>`;
+    // Beta 2.7 LIVE DUELS: online duels with friends — shown while this server runs them (a guest is shown the way in)
+    const liveOn = !!g.account?.serverConfig?.live;
+    const liveEntry = liveOn
+      ? `<button class="live-entry" data-act="live" aria-label="LIVE DUELS — онлайн-дуэли с друзьями">
+        <span class="le-emb pic" aria-hidden="true">${uiIcon('live_duels', 56)}</span>
+        <span class="le-text"><b>LIVE <em>DUELS</em></b><small>Онлайн-дуэли с друзьями</small></span>
+        <span class="le-live" aria-hidden="true"><i></i>LIVE</span>
+      </button>`
+      : '';
     // 1.8.8: the PRIME ID hint (not signed in, not during the first-run choice, not retired)
     const signedIn = !!g.account?.api?.sessionRecord;
     const showHint = !signedIn && s.tutorial !== 'pending' && hintLeft();
@@ -340,6 +350,7 @@ export class MenuScreen implements Screen {
       <div class="menu-actions">
         <div class="menu-play">
           ${fightEntry}
+          ${liveEntry}
           <div class="menu-shops">${shopEntry}${cardsEntry}</div>
         </div>
         <div class="menu-nav skinned">
@@ -366,5 +377,8 @@ export class MenuScreen implements Screen {
     void refreshCases(this.g);
     void g.daily.refresh();
     this.shownRep = s.reputation;
+    // Beta 2.7 LIVE DUELS: an invitation link (?duel=CODE) or a room left by a reload brings the player straight back
+    // (after this screen finished showing — switching screens from inside onShow would leave both on screen)
+    if (liveOn && s.tutorial !== 'pending') queueMicrotask(() => g.live.autoOpen());
   }
 }

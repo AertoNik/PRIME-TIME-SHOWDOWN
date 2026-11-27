@@ -10,7 +10,7 @@ import { HauntedStage } from './stages/HauntedStage';
 import { HolidayStage } from './stages/HolidayStage';
 import { NewsroomStage } from './stages/NewsroomStage';
 import { OriginalStage } from './stages/OriginalStage';
-import { batchStatic, type Stage, type StageShared } from './stages/StageKit';
+import { batchStatic, buildFarMirror, type Stage, type StageShared } from './stages/StageKit';
 import { canvasTexture, makeCanvas } from './textures';
 import type { VFX } from './VFX';
 
@@ -160,6 +160,8 @@ export class Arena {
       owned: new Set([this.screenTex, this.boardTex]),
     };
     this.stage = new OriginalStage(this.shared);
+    // Beta 2.7: the far end's dressing repeated at the camera's end for side 1 of a live duel (StageKit.buildFarMirror)
+    buildFarMirror(this.stage);
     // Beta 2.1: the set's static dressing merged per material (fewer draw calls — StageKit.batchStatic)
     this.batchInfo = batchStatic(this.stage);
     this.group.add(this.stage.group);
@@ -176,6 +178,7 @@ export class Arena {
     this.stage.dispose();
     this.stageId = id;
     this.stage = new STAGE_TYPES[id](this.shared);
+    buildFarMirror(this.stage);
     this.batchInfo = batchStatic(this.stage);
     this.stage.setQuality(this.lowQuality);
     this.stage.setMotion(this.motion);

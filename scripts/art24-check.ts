@@ -102,7 +102,7 @@ check('the bottom bar\'s slices in menuArt.ts are the manifest\'s (emblem share 
 // ------------------------------------------------------------- nothing earlier changed
 // (Beta 2.4 adds exactly one later entry, INVITE SIGNAL's preview — checked by npm run art22 / rewards24)
 // (Beta 2.6 adds exactly one later entry, the DAILY MISSIONS picture — checked by npm run missions)
-const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && e.src !== 'PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png' && !e.src.startsWith('PRIME_TIME_2_6_UI_ART/'));
+const older = all.filter(([, , e]) => !e.src.startsWith(`${DIR}/`) && e.src !== 'PRIME_TIME_2_2_ART_ASSETS/dash_invite_signal.png' && !e.src.startsWith('PRIME_TIME_2_6_UI_ART/') && !e.src.startsWith('PRIME_TIME_2_7_UI_ART/'));
 const groups = [...new Set(older.map(([g]) => g))].sort();
 const canon = JSON.stringify(groups.map((g) => [g, older.filter(([gg]) => gg === g).map(([, i, e]) => [i, e.src, e.sha256, Object.keys(e.out).sort().map((k) => [k, e.out[k].sha256])] as const).sort((a, b) => (a[0] < b[0] ? -1 : 1))]));
 const FP = crypto.createHash('sha256').update(canon).digest('hex') as string;
@@ -122,7 +122,9 @@ const newCopies = mine.reduce((n, [, , e]) => n + Object.keys(e.out).length, 0);
 const signalCopies = ['public/ui/effects/sm/dash_invite_signal.webp', 'public/ui/effects/md/dash_invite_signal.webp'];
 // (+ Beta 2.6's three copies of the DAILY MISSIONS picture, missions/{xs,sm,md}/daily_missions.webp — npm run missions)
 const missionCopies = ['xs', 'sm', 'md'].map((v) => `public/ui/missions/${v}/daily_missions.webp`);
-check(`WebP in public/ui: ${webp.length} = Beta 2.2's 251 + ${newCopies} new + Beta 2.4's 2 (INVITE SIGNAL) + Beta 2.6's 3 (DAILY MISSIONS), every one in the manifest`, newCopies === 44 && signalCopies.every((p) => webp.includes(p)) && missionCopies.every((p) => webp.includes(p)) && webp.length === 251 + 44 + 2 + 3);
+// (+ Beta 2.7's two copies of the LIVE DUELS picture, ui/{xs,sm}/live_duels.webp — npm run live)
+const liveCopies = ['xs', 'sm'].map((v) => `public/ui/ui/${v}/live_duels.webp`);
+check(`WebP in public/ui: ${webp.length} = Beta 2.2's 251 + ${newCopies} new + Beta 2.4's 2 (INVITE SIGNAL) + Beta 2.6's 3 (DAILY MISSIONS) + Beta 2.7's 2 (LIVE DUELS), every one in the manifest`, newCopies === 44 && signalCopies.every((p) => webp.includes(p)) && missionCopies.every((p) => webp.includes(p)) && liveCopies.every((p) => webp.includes(p)) && webp.length === 251 + 44 + 2 + 3 + 2);
 
 // ------------------------------------------------------------- the main screen
 const ms = read('src/ui/screens/MenuScreen.ts');

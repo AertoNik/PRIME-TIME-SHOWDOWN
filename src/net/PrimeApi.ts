@@ -174,6 +174,8 @@ export interface ServerConfig {
   producer: number;
   /** 1.9.7 WINTER SHOWDOWN: this server keeps the seasonal wallet of these secure events (a server before 1.9.7: none). */
   season: { on: boolean; events: string[] };
+  /** Beta 2.7 LIVE DUELS are switched on here (/api/prime/live; a server before 2.7: off). */
+  live: boolean;
 }
 
 /** 1.9.7 (R-22) — a secure event's wallet as the server states it (lib/season.js view). */
@@ -761,6 +763,7 @@ export class PrimeApi {
         const v = (r.season ?? {}) as Rec;
         return { on: v.on === true, events: Array.isArray(v.events) ? v.events.filter((x): x is string => typeof x === 'string') : [] };
       })(),
+      live: ((r.live ?? {}) as Rec).on === true,
     };
   }
 
@@ -789,6 +792,14 @@ export class PrimeApi {
    */
   async league<T>(method: 'GET' | 'POST' | 'PUT', path: string, body?: Record<string, unknown>, timeoutMs?: number): Promise<T> {
     return this.call((o) => this.pb.send<T>('/api/prime/league' + path, { ...o, method, ...(body ? { body } : {}) }), false, timeoutMs ?? this.timeoutMs);
+  }
+
+  /**
+   * Beta 2.7 LIVE DUELS: one request to /api/prime/live/* as the signed-in account (src/net/LiveApi.ts shapes the
+   * answers). Errors come back as PrimeApiError with the server's code (live_off, room_full, match_over…).
+   */
+  async live<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>, timeoutMs?: number): Promise<T> {
+    return this.call((o) => this.pb.send<T>('/api/prime/live' + path, { ...o, method, ...(body ? { body } : {}) }), false, timeoutMs ?? this.timeoutMs);
   }
 
   // ------------------------------------------------------- 1.8.9 DAILY PRIME STREAK
